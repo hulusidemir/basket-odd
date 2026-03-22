@@ -1,0 +1,6 @@
+venv/
+.env
+basketball.db
+discovery_output.json
+__pycache__/
+*.pyc

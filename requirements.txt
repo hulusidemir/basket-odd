@@ -1,0 +1,5 @@
+requests==2.31.0
+python-telegram-bot==20.8
+python-dotenv==1.0.1
+playwright==1.53.0
+flask==3.1.3
