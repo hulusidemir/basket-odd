@@ -152,9 +152,27 @@ class AiscoreOperaScraper:
     async def get_live_basketball_totals(self) -> list[dict]:
         async with async_playwright() as p:
             if self.browser_mode == "headless":
-                browser = await p.chromium.launch(headless=True)
-                context = await browser.new_context()
-                logger.debug("Headless Chromium başlatıldı.")
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                    ],
+                )
+                context = await browser.new_context(
+                    user_agent=(
+                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+                    ),
+                    viewport={"width": 1920, "height": 1080},
+                    locale="en-US",
+                )
+                # navigator.webdriver özelliğini gizle
+                await context.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                """)
+                logger.debug("Headless Chromium başlatıldı (stealth).")
             else:
                 # Opera modunda — otomatik başlat ve CDP bağlan
                 self._launch_opera()
@@ -170,12 +188,27 @@ class AiscoreOperaScraper:
             list_page = await context.new_page()
             list_page.set_default_timeout(self.page_timeout_ms)
             await list_page.goto(self.aiscore_url, wait_until="domcontentloaded")
-            # AIScore SPA — JS ile içerik yükleniyor
-            await list_page.wait_for_timeout(5000)
+            # AIScore SPA — JS ile içerik yükleniyor, headless'ta daha uzun bekle
+            wait_secs = 10 if self.browser_mode == "headless" else 5
+            await list_page.wait_for_timeout(wait_secs * 1000)
 
             links = await self._collect_match_links(list_page)
             if not links:
-                logger.warning("AIScore listesinde maç linki bulunamadı.")
+                # Debug: sayfa durumunu logla
+                page_title = await list_page.title()
+                page_url = list_page.url
+                body_len = await list_page.evaluate("document.body?.innerText?.length || 0")
+                logger.warning(
+                    "AIScore listesinde maç linki bulunamadı. "
+                    "title=%s, url=%s, body_len=%s",
+                    page_title, page_url, body_len,
+                )
+                # Debug screenshot
+                try:
+                    await list_page.screenshot(path="debug_aiscore.png", full_page=False)
+                    logger.info("Debug screenshot: debug_aiscore.png")
+                except Exception:
+                    pass
                 await list_page.close()
                 return []
 
