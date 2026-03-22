@@ -264,6 +264,7 @@
     <button class="filter-btn" data-filter="ignored">Gözardı Edildi</button>
     <button class="filter-btn" data-filter="alt">🔻 ALT</button>
     <button class="filter-btn" data-filter="ust">🔺 ÜST</button>
+    <button class="filter-btn" id="deleteSelectedBtn" onclick="deleteSelected()" style="display:none;background:rgba(239,68,68,0.15);border-color:#ef4444;color:#ef4444">🗑️ Seçilenleri Sil (<span id="selectedCount">0</span>)</button>
     <input class="search-box" type="text" placeholder="Takım veya turnuva ara..." id="searchInput">
   </div>
 
@@ -275,6 +276,7 @@
     <table>
       <thead>
         <tr>
+          <th style="width:32px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this.checked)" title="Tümünü seç"></th>
           <th data-sort="alerted_at">Zaman ▼</th>
           <th data-sort="direction">Sinyal</th>
           <th data-sort="match_name">Maç</th>
@@ -421,6 +423,7 @@
         const ignoreBtnText = a.ignored ? '✓ Gözardı' : '🚫 Gözardı';
 
         return `<tr class="${classes.join(' ')}">
+          <td><input type="checkbox" class="row-check" data-id="${a.id}" onchange="updateSelectedCount()"></td>
           <td class="time-col">${time}</td>
           <td><span class="badge ${dirClass}">${dirIcon} ${a.direction}</span></td>
           <td class="col-match">${matchDisplay}</td>
@@ -432,7 +435,6 @@
           <td>
             <button class="action-btn ${betBtnClass}" onclick="toggleBet(${a.id})">${betBtnText}</button>
             <button class="action-btn ${ignoreBtnClass}" onclick="toggleIgnore(${a.id})">${ignoreBtnText}</button>
-            <button class="action-btn" onclick="deleteAlert(${a.id})" title="Sil" style="color:#ef4444">🗑️</button>
           </td>
         </tr>`;
       }).join('');
@@ -461,12 +463,35 @@
       updateStats();
     }
 
-    async function deleteAlert(id) {
-      if (!confirm('Bu kaydı silmek istediğinize emin misiniz?')) return;
-      await fetch(`/api/alerts/${id}`, { method: 'DELETE' });
-      allAlerts = allAlerts.filter(x => x.id !== id);
+    function getSelectedIds() {
+      return Array.from(document.querySelectorAll('.row-check:checked')).map(cb => parseInt(cb.dataset.id));
+    }
+
+    function updateSelectedCount() {
+      const ids = getSelectedIds();
+      const btn = document.getElementById('deleteSelectedBtn');
+      const cnt = document.getElementById('selectedCount');
+      cnt.textContent = ids.length;
+      btn.style.display = ids.length > 0 ? 'inline-block' : 'none';
+      // Update selectAll checkbox
+      const all = document.querySelectorAll('.row-check');
+      document.getElementById('selectAll').checked = all.length > 0 && ids.length === all.length;
+    }
+
+    function toggleSelectAll(checked) {
+      document.querySelectorAll('.row-check').forEach(cb => cb.checked = checked);
+      updateSelectedCount();
+    }
+
+    async function deleteSelected() {
+      const ids = getSelectedIds();
+      if (!ids.length) return;
+      if (!confirm(`${ids.length} kayıt silinecek. Emin misiniz?`)) return;
+      await Promise.all(ids.map(id => fetch(`/api/alerts/${id}`, { method: 'DELETE' })));
+      allAlerts = allAlerts.filter(a => !ids.includes(a.id));
       renderTable();
       updateStats();
+      document.getElementById('deleteSelectedBtn').style.display = 'none';
     }
 
     // Filter buttons
