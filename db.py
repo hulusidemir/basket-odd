@@ -147,3 +147,8 @@ class Database:
         with self._conn() as conn:
             row = conn.execute("SELECT * FROM alerts WHERE id = ?", (alert_id,)).fetchone()
         return dict(row) if row else None
+
+    def delete_alert(self, alert_id: int) -> bool:
+        with self._conn() as conn:
+            cursor = conn.execute("DELETE FROM alerts WHERE id = ?", (alert_id,))
+        return cursor.rowcount > 0

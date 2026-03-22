@@ -432,6 +432,7 @@
           <td>
             <button class="action-btn ${betBtnClass}" onclick="toggleBet(${a.id})">${betBtnText}</button>
             <button class="action-btn ${ignoreBtnClass}" onclick="toggleIgnore(${a.id})">${ignoreBtnText}</button>
+            <button class="action-btn" onclick="deleteAlert(${a.id})" title="Sil" style="color:#ef4444">🗑️</button>
           </td>
         </tr>`;
       }).join('');
@@ -456,6 +457,14 @@
       await fetch(`/api/alerts/${id}/ignore`, { method: 'POST' });
       const a = allAlerts.find(x => x.id === id);
       if (a) a.ignored = a.ignored ? 0 : 1;
+      renderTable();
+      updateStats();
+    }
+
+    async function deleteAlert(id) {
+      if (!confirm('Bu kaydı silmek istediğinize emin misiniz?')) return;
+      await fetch(`/api/alerts/${id}`, { method: 'DELETE' });
+      allAlerts = allAlerts.filter(x => x.id !== id);
       renderTable();
       updateStats();
     }

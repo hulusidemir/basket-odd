@@ -52,6 +52,14 @@ def api_toggle_ignore(alert_id: int):
     return jsonify({"id": alert_id, "ignored": int(new_val)})
 
 
+@app.route("/api/alerts/<int:alert_id>", methods=["DELETE"])
+def api_delete_alert(alert_id: int):
+    """Kayıt sil."""
+    if not db.delete_alert(alert_id):
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"id": alert_id, "deleted": True})
+
+
 if __name__ == "__main__":
     port = int(os.getenv("DASHBOARD_PORT", "5050"))
     app.run(host="0.0.0.0", port=port, debug=False)
