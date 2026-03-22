@@ -215,20 +215,35 @@ class AiscoreOperaScraper:
             logger.info("AIScore listesinde %s maç linki bulundu.", len(links))
             out = []
 
-            for link in links[: self.max_matches_per_cycle]:
-                detail = await context.new_page()
-                detail.set_default_timeout(self.page_timeout_ms)
-                try:
-                    row = await self._extract_match(detail, link)
-                    if row:
-                        out.append(row)
-                except Exception as exc:
-                    logger.debug("Maç okunamadı (%s): %s", link, exc)
-                finally:
-                    await detail.close()
+            # Paralel tarama: aynı anda CONCURRENT_TABS maç aç
+            concurrent_tabs = 4
+            batch_links = links[: self.max_matches_per_cycle]
+
+            for i in range(0, len(batch_links), concurrent_tabs):
+                batch = batch_links[i : i + concurrent_tabs]
+                tasks = [self._extract_single(context, link) for link in batch]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for r in results:
+                    if isinstance(r, dict):
+                        out.append(r)
+                    elif isinstance(r, Exception):
+                        logger.debug("Paralel maç hatası: %s", r)
 
             await list_page.close()
             return out
+
+    async def _extract_single(self, context, link: str) -> dict | None:
+        """Tek bir maçı yeni tab'da aç, oku, kapat."""
+        detail = await context.new_page()
+        detail.set_default_timeout(self.page_timeout_ms)
+        try:
+            row = await self._extract_match(detail, link)
+            return row
+        except Exception as exc:
+            logger.debug("Maç okunamadı (%s): %s", link, exc)
+            return None
+        finally:
+            await detail.close()
 
     async def _collect_match_links(self, page) -> list[str]:
         """
@@ -285,7 +300,7 @@ class AiscoreOperaScraper:
         # Doğrudan /odds URL'sine git
         odds_url = url.rstrip("/") + "/odds"
         await page.goto(odds_url, wait_until="domcontentloaded")
-        await page.wait_for_timeout(4000)
+        await page.wait_for_timeout(3000)
 
         parsed = await page.evaluate(
             r"""
@@ -345,10 +360,34 @@ class AiscoreOperaScraper:
                 .trim();
 
               let tournament = '';
+              // 1) Breadcrumb linklerinden turnuva adı
               const breadcrumbs = Array.from(document.querySelectorAll('a'))
                 .map(e => ({text: text(e.innerText), href: e.getAttribute('href') || ''}))
                 .filter(e => e.href.includes('/tournament-'));
-              if (breadcrumbs.length) tournament = breadcrumbs[breadcrumbs.length - 1].text;
+              if (breadcrumbs.length) {
+                tournament = breadcrumbs[breadcrumbs.length - 1].text;
+              }
+              // 2) URL'den ülke/lig parse et (fallback veya ek bilgi)
+              const urlMatch = window.location.pathname.match(/\/basketball\/match-(.+?)\/\d+/);
+              let urlLeague = '';
+              if (urlMatch) {
+                // match-usa-nba-miami-heat-vs-... → "usa nba" kısmını al
+                const parts = urlMatch[1].split('-');
+                // İlk 1-3 kelime genelde ülke + lig
+                // Takım isimlerini ayırmak zor, ama "vs" öncesini lig olarak alabilir
+                const vsIdx = parts.indexOf('vs');
+                if (vsIdx > 0) {
+                  urlLeague = parts.slice(0, Math.min(vsIdx, 3)).join(' ');
+                }
+              }
+              // Temizle: "live score", "betting odds" vb. kaldır
+              tournament = tournament
+                .replace(/\s*live\s*score\s*/gi, '')
+                .replace(/\s*betting\s*odds\s*/gi, '')
+                .replace(/\s*prediction\s*/gi, '')
+                .trim();
+              // Eğer boş kaldıysa URL'den kullan
+              if (!tournament && urlLeague) tournament = urlLeague;
 
               let status = '';
               const allSpans = Array.from(document.querySelectorAll('span, div'));
