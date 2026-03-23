@@ -311,6 +311,9 @@ class AiscoreOperaScraper:
         # Trim to live count (don't take extras)
         links = [urljoin(page.url, href) for href in all_hrefs]
         links = [u for u in links if "/basketball/match-" in u]
+        # Strip sub-page suffixes like /h2h, /odds, /stats to get the base match URL
+        _suffixes = re.compile(r'/(h2h|odds|stats|lineups|standings|summary)/?$')
+        links = [_suffixes.sub('', u) for u in links]
         links = sorted(set(links))[:live_max]
         return links
 
@@ -535,5 +538,7 @@ class AiscoreOperaScraper:
     @staticmethod
     def _extract_match_id(url: str) -> str:
         # /basketball/match-team1-team2/MATCH_ID
-        parts = url.rstrip("/").split("/")
+        # Strip sub-page suffixes that may remain
+        cleaned = re.sub(r'/(h2h|odds|stats|lineups|standings|summary)/?$', '', url.rstrip('/'))
+        parts = cleaned.split('/')
         return parts[-1] if parts else url
