@@ -8,7 +8,6 @@
     :root {
       --bg: #0f1117;
       --card: #1a1d27;
-      --card-hover: #1f2230;
       --border: #2a2d3a;
       --text: #e4e6eb;
       --text-dim: #8b8fa3;
@@ -17,7 +16,6 @@
       --accent-blue: #3b82f6;
       --bet-bg: rgba(59, 130, 246, 0.08);
       --ignored-bg: rgba(255,255,255,0.03);
-      --radius: 12px;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -25,63 +23,45 @@
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
-      -webkit-tap-highlight-color: transparent;
     }
-
-    /* ── Header ──────────────────────────────────────── */
     .header {
-      padding: 20px;
+      padding: 24px 32px;
       border-bottom: 1px solid var(--border);
-    }
-    .header-top {
       display: flex;
       align-items: center;
       justify-content: space-between;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: 16px;
     }
     .header h1 {
-      font-size: 20px;
+      font-size: 22px;
       font-weight: 700;
     }
-    .header h1 .subtitle { opacity: 0.5; font-weight: 400; font-size: 14px; }
-
+    .header h1 span { opacity: 0.5; font-weight: 400; }
     .stats {
       display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
+      gap: 24px;
+      font-size: 14px;
     }
-    .stat-chip {
+    .stat-item {
       display: flex;
       align-items: center;
-      gap: 5px;
-      padding: 5px 10px;
-      border-radius: 20px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      font-size: 12px;
-      font-weight: 600;
-      white-space: nowrap;
+      gap: 6px;
     }
     .stat-dot {
-      width: 7px; height: 7px;
+      width: 8px; height: 8px;
       border-radius: 50%;
-      flex-shrink: 0;
+      display: inline-block;
     }
-
-    /* ── Filters ─────────────────────────────────────── */
     .filters {
-      padding: 12px 20px;
+      padding: 16px 32px;
       display: flex;
-      gap: 6px;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
+      gap: 8px;
+      flex-wrap: wrap;
       border-bottom: 1px solid var(--border);
-      scrollbar-width: none;
     }
-    .filters::-webkit-scrollbar { display: none; }
     .filter-btn {
-      padding: 7px 14px;
+      padding: 6px 16px;
       border-radius: 20px;
       border: 1px solid var(--border);
       background: transparent;
@@ -89,8 +69,6 @@
       cursor: pointer;
       font-size: 13px;
       transition: all 0.2s;
-      white-space: nowrap;
-      flex-shrink: 0;
     }
     .filter-btn:hover { border-color: var(--accent-blue); color: var(--text); }
     .filter-btn.active {
@@ -98,43 +76,22 @@
       border-color: var(--accent-blue);
       color: #fff;
     }
-    #deleteSelectedBtn {
-      background: rgba(239,68,68,0.15);
-      border-color: #ef4444;
-      color: #ef4444;
-    }
-
-    /* ── Search & Refresh Bar ────────────────────────── */
-    .toolbar {
-      padding: 10px 20px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      border-bottom: 1px solid var(--border);
-    }
     .search-box {
-      flex: 1;
-      min-width: 0;
-      padding: 8px 14px;
-      border-radius: 10px;
+      padding: 6px 14px;
+      border-radius: 20px;
       border: 1px solid var(--border);
-      background: var(--card);
+      background: transparent;
       color: var(--text);
-      font-size: 14px;
+      font-size: 13px;
       outline: none;
+      width: 200px;
+      margin-left: auto;
     }
     .search-box::placeholder { color: var(--text-dim); }
     .search-box:focus { border-color: var(--accent-blue); }
-    .refresh-info {
-      color: var(--text-dim);
-      font-size: 11px;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
 
-    /* ── Desktop Table ───────────────────────────────── */
     .table-wrap {
-      padding: 0 20px;
+      padding: 16px 32px;
       overflow-x: auto;
     }
     table {
@@ -154,10 +111,6 @@
       white-space: nowrap;
       cursor: pointer;
       user-select: none;
-      position: sticky;
-      top: 0;
-      background: var(--bg);
-      z-index: 2;
     }
     thead th:hover { color: var(--text); }
     tbody tr {
@@ -165,141 +118,53 @@
       transition: background 0.15s;
     }
     tbody tr:hover { background: rgba(255,255,255,0.03); }
-    tbody td { padding: 10px 12px; white-space: nowrap; }
-    tr.bet-placed { background: var(--bet-bg); opacity: 0.55; }
+    tbody td {
+      padding: 10px 12px;
+      white-space: nowrap;
+    }
+
+    /* Satır durumları */
+    tr.bet-placed {
+      background: var(--bet-bg);
+      opacity: 0.55;
+    }
     tr.bet-placed:hover { opacity: 0.7; }
     tr.is-ignored td.col-match,
     tr.is-ignored td.col-tournament,
-    tr.is-ignored td.col-direction { text-decoration: line-through; opacity: 0.4; }
-
-    /* ── Mobile Cards ────────────────────────────────── */
-    .cards-wrap {
-      display: none;
-      padding: 12px 16px;
-      gap: 10px;
-      flex-direction: column;
-    }
-    .alert-card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 14px;
-      transition: background 0.15s;
-    }
-    .alert-card.bet-placed { background: var(--bet-bg); opacity: 0.6; }
-    .alert-card.is-ignored { opacity: 0.5; }
-    .alert-card.is-ignored .card-match,
-    .alert-card.is-ignored .card-tournament { text-decoration: line-through; }
-
-    .card-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin-bottom: 10px;
-    }
-    .card-match {
-      font-weight: 600;
-      font-size: 14px;
-      line-height: 1.3;
-      word-break: break-word;
-      flex: 1;
-      min-width: 0;
-    }
-    .card-match a {
-      color: var(--text);
-      text-decoration: none;
-    }
-    .card-match a:hover { color: var(--accent-blue); }
-
-    .card-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px 14px;
-      font-size: 12px;
-      color: var(--text-dim);
-      margin-bottom: 10px;
-    }
-    .card-meta-item { display: flex; align-items: center; gap: 4px; }
-
-    .card-odds {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 12px;
-      background: rgba(255,255,255,0.03);
-      border-radius: 8px;
-      margin-bottom: 10px;
-    }
-    .card-odds-value {
-      text-align: center;
-      flex: 1;
-    }
-    .card-odds-label {
-      font-size: 10px;
-      text-transform: uppercase;
-      color: var(--text-dim);
-      letter-spacing: 0.5px;
-    }
-    .card-odds-num {
-      font-size: 18px;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-    }
-    .card-odds-arrow {
-      font-size: 18px;
-      color: var(--text-dim);
-    }
-    .card-diff {
-      text-align: center;
-      flex: 1;
-    }
-    .card-diff-label {
-      font-size: 10px;
-      text-transform: uppercase;
-      color: var(--text-dim);
-      letter-spacing: 0.5px;
-    }
-    .card-diff-value {
-      font-size: 20px;
-      font-weight: 800;
+    tr.is-ignored td.col-direction {
+      text-decoration: line-through;
+      opacity: 0.4;
     }
 
-    .card-actions {
-      display: flex;
-      gap: 8px;
-    }
-    .card-actions .action-btn { flex: 1; text-align: center; }
-
-    /* ── Shared Components ────────────────────────────── */
+    /* Direction badge */
     .badge {
       display: inline-block;
       padding: 3px 10px;
       border-radius: 12px;
       font-weight: 700;
       font-size: 12px;
-      white-space: nowrap;
-      flex-shrink: 0;
     }
     .badge-alt { background: rgba(239,68,68,0.15); color: var(--accent-alt); }
     .badge-ust { background: rgba(34,197,94,0.15); color: var(--accent-ust); }
 
+    /* Diff highlight */
     .diff-val { font-weight: 700; font-variant-numeric: tabular-nums; }
     .diff-positive { color: var(--accent-alt); }
     .diff-negative { color: var(--accent-ust); }
 
+    /* Action buttons */
     .action-btn {
-      padding: 6px 12px;
-      border-radius: 8px;
+      padding: 4px 12px;
+      border-radius: 6px;
       border: 1px solid var(--border);
       background: transparent;
       color: var(--text-dim);
       cursor: pointer;
       font-size: 12px;
       transition: all 0.15s;
+      margin-right: 4px;
     }
     .action-btn:hover { border-color: var(--accent-blue); color: var(--text); }
-    .action-btn:active { transform: scale(0.97); }
     .action-btn.active-bet {
       background: var(--accent-blue);
       border-color: var(--accent-blue);
@@ -316,26 +181,29 @@
       text-decoration: none;
     }
     .match-link:hover { text-decoration: underline; }
-    .time-col { color: var(--text-dim); font-size: 12px; }
 
+    .time-col { color: var(--text-dim); font-size: 12px; }
     .empty-state {
       text-align: center;
       padding: 60px 20px;
       color: var(--text-dim);
-      font-size: 15px;
+      font-size: 16px;
     }
-
-    /* ── Pagination ───────────────────────────────────── */
+    .refresh-info {
+      padding: 8px 32px;
+      color: var(--text-dim);
+      font-size: 11px;
+      text-align: right;
+    }
     .pagination {
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
-      padding: 16px 20px;
-      flex-wrap: wrap;
+      padding: 16px 32px;
     }
     .page-btn {
-      padding: 8px 16px;
+      padding: 6px 14px;
       border-radius: 8px;
       border: 1px solid var(--border);
       background: transparent;
@@ -345,66 +213,46 @@
       transition: all 0.15s;
     }
     .page-btn:hover:not(:disabled) { border-color: var(--accent-blue); color: var(--text); }
-    .page-btn:active:not(:disabled) { transform: scale(0.97); }
     .page-btn:disabled { opacity: 0.3; cursor: default; }
     .page-btn.active-page {
       background: var(--accent-blue);
       border-color: var(--accent-blue);
       color: #fff;
     }
-    .page-info { color: var(--text-dim); font-size: 13px; }
+    .page-info {
+      color: var(--text-dim);
+      font-size: 13px;
+    }
     .page-size-select {
-      padding: 6px 10px;
-      border-radius: 8px;
+      padding: 4px 8px;
+      border-radius: 6px;
       border: 1px solid var(--border);
       background: var(--card);
       color: var(--text);
       font-size: 12px;
       cursor: pointer;
     }
-
-    /* ── Responsive ───────────────────────────────────── */
-    @media (max-width: 768px) {
-      .header { padding: 16px; }
-      .header h1 { font-size: 17px; }
-      .header h1 .subtitle { display: none; }
-      .stats { width: 100%; justify-content: space-between; }
-
-      .table-wrap { display: none; }
-      .cards-wrap { display: flex; }
-
-      .toolbar { padding: 10px 16px; }
-      .filters { padding: 10px 16px; }
-      .pagination { padding: 12px 16px; }
-    }
-
-    @media (min-width: 769px) {
-      .cards-wrap { display: none !important; }
-      .table-wrap { display: block !important; }
-    }
   </style>
 </head>
 <body>
   <div class="header">
-    <div class="header-top">
-      <h1>🏀 Basket Anomali <span class="subtitle">— Canlı Barem Takibi</span></h1>
-      <div class="stats">
-        <div class="stat-chip">
-          <span class="stat-dot" style="background:var(--accent-alt)"></span>
-          <span id="stat-alt">0</span> ALT
-        </div>
-        <div class="stat-chip">
-          <span class="stat-dot" style="background:var(--accent-ust)"></span>
-          <span id="stat-ust">0</span> ÜST
-        </div>
-        <div class="stat-chip">
-          <span class="stat-dot" style="background:var(--accent-blue)"></span>
-          <span id="stat-bet">0</span> Bahis
-        </div>
-        <div class="stat-chip">
-          <span class="stat-dot" style="background:#6b7280"></span>
-          <span id="stat-total">0</span> Toplam
-        </div>
+    <h1>🏀 Basket Anomali Dashboard <span>— Canlı Barem Takibi</span></h1>
+    <div class="stats">
+      <div class="stat-item">
+        <span class="stat-dot" style="background:var(--accent-alt)"></span>
+        <span id="stat-alt">0</span> ALT
+      </div>
+      <div class="stat-item">
+        <span class="stat-dot" style="background:var(--accent-ust)"></span>
+        <span id="stat-ust">0</span> ÜST
+      </div>
+      <div class="stat-item">
+        <span class="stat-dot" style="background:var(--accent-blue)"></span>
+        <span id="stat-bet">0</span> Bahis Oynandı
+      </div>
+      <div class="stat-item">
+        <span class="stat-dot" style="background:#6b7280"></span>
+        <span id="stat-total">0</span> Toplam
       </div>
     </div>
   </div>
@@ -412,19 +260,18 @@
   <div class="filters">
     <button class="filter-btn active" data-filter="all">Tümü</button>
     <button class="filter-btn" data-filter="pending">Bekleyen</button>
-    <button class="filter-btn" data-filter="bet">Bahis</button>
-    <button class="filter-btn" data-filter="ignored">Gözardı</button>
+    <button class="filter-btn" data-filter="bet">Bahis Oynandı</button>
+    <button class="filter-btn" data-filter="ignored">Gözardı Edildi</button>
     <button class="filter-btn" data-filter="alt">🔻 ALT</button>
     <button class="filter-btn" data-filter="ust">🔺 ÜST</button>
-    <button class="filter-btn" id="deleteSelectedBtn" onclick="deleteSelected()" style="display:none">🗑️ Sil (<span id="selectedCount">0</span>)</button>
-  </div>
-
-  <div class="toolbar">
+    <button class="filter-btn" id="deleteSelectedBtn" onclick="deleteSelected()" style="display:none;background:rgba(239,68,68,0.15);border-color:#ef4444;color:#ef4444">🗑️ Seçilenleri Sil (<span id="selectedCount">0</span>)</button>
     <input class="search-box" type="text" placeholder="Takım veya turnuva ara..." id="searchInput">
-    <span class="refresh-info"><span id="countdown">15</span>s | <span id="lastUpdate">-</span></span>
   </div>
 
-  <!-- Desktop: Table -->
+  <div class="refresh-info">
+    Otomatik yenileme: <span id="countdown">15</span>s | Son güncelleme: <span id="lastUpdate">-</span>
+  </div>
+
   <div class="table-wrap">
     <table>
       <thead>
@@ -441,17 +288,12 @@
           <th>Aksiyon</th>
         </tr>
       </thead>
-      <tbody id="alertsBody"></tbody>
+      <tbody id="alertsBody">
+      </tbody>
     </table>
     <div class="empty-state" id="emptyState" style="display:none;">
       Henüz anomali tespiti yok. Bot çalışırken otomatik olarak güncellenecek.
     </div>
-  </div>
-
-  <!-- Mobile: Cards -->
-  <div class="cards-wrap" id="cardsWrap"></div>
-  <div class="empty-state" id="emptyStateMobile" style="display:none;">
-    Henüz anomali tespiti yok. Bot çalışırken otomatik güncellenecek.
   </div>
 
   <div class="pagination" id="paginationBar">
@@ -459,10 +301,10 @@
     <span class="page-info" id="pageInfo">1 / 1</span>
     <button class="page-btn" id="nextPage" onclick="changePage(1)">Sonraki →</button>
     <select class="page-size-select" id="pageSizeSelect" onchange="changePageSize(this.value)">
-      <option value="15">15</option>
-      <option value="25" selected>25</option>
-      <option value="50">50</option>
-      <option value="100">100</option>
+      <option value="15">15 / sayfa</option>
+      <option value="25" selected>25 / sayfa</option>
+      <option value="50">50 / sayfa</option>
+      <option value="100">100 / sayfa</option>
     </select>
   </div>
 
@@ -484,17 +326,12 @@
         .trim() || name;
     }
 
-    function escapeHtml(text) {
-      const d = document.createElement('div');
-      d.textContent = text;
-      return d.innerHTML;
-    }
-
+    // Fetch alerts from API
     async function fetchAlerts() {
       try {
         const res = await fetch('/api/alerts');
         allAlerts = await res.json();
-        render();
+        renderTable();
         updateStats();
         document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('tr-TR');
       } catch (e) {
@@ -514,11 +351,13 @@
 
     function filterAlerts() {
       let filtered = [...allAlerts];
+      // Filter
       if (currentFilter === 'pending') filtered = filtered.filter(a => !a.bet_placed && !a.ignored);
       else if (currentFilter === 'bet') filtered = filtered.filter(a => a.bet_placed);
       else if (currentFilter === 'ignored') filtered = filtered.filter(a => a.ignored);
       else if (currentFilter === 'alt') filtered = filtered.filter(a => a.direction === 'ALT');
       else if (currentFilter === 'ust') filtered = filtered.filter(a => a.direction === 'ÜST');
+      // Search
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         filtered = filtered.filter(a =>
@@ -526,6 +365,7 @@
           (a.tournament || '').toLowerCase().includes(q)
         );
       }
+      // Sort
       filtered.sort((a, b) => {
         let va = a[sortField], vb = b[sortField];
         if (typeof va === 'string') va = va.toLowerCase();
@@ -535,11 +375,6 @@
         return 0;
       });
       return filtered;
-    }
-
-    function render() {
-      renderTable();
-      renderCards();
     }
 
     function renderTable() {
@@ -552,7 +387,8 @@
       const start = (currentPage - 1) * pageSize;
       const paged = filtered.slice(start, start + pageSize);
 
-      document.getElementById('pageInfo').textContent = `${currentPage} / ${totalPages} (${filtered.length})`;
+      // Update pagination UI
+      document.getElementById('pageInfo').textContent = `${currentPage} / ${totalPages} (${filtered.length} kayıt)`;
       document.getElementById('prevPage').disabled = currentPage <= 1;
       document.getElementById('nextPage').disabled = currentPage >= totalPages;
 
@@ -567,25 +403,29 @@
         const classes = [];
         if (a.bet_placed) classes.push('bet-placed');
         if (a.ignored) classes.push('is-ignored');
+
         const dirClass = a.direction === 'ALT' ? 'badge-alt' : 'badge-ust';
         const dirIcon = a.direction === 'ALT' ? '🔻' : '🔺';
         const diffClass = a.diff >= 0 ? 'diff-positive' : 'diff-negative';
         const diffSign = a.direction === 'ALT' ? '+' : '-';
+
         const time = a.alerted_at ? new Date(a.alerted_at + 'Z').toLocaleString('tr-TR', {
           day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
         }) : '-';
+
         const matchDisplay = a.url
           ? `<a class="match-link" href="${escapeHtml(a.url)}" target="_blank">${escapeHtml(cleanMatchName(a.match_name))}</a>`
           : escapeHtml(cleanMatchName(a.match_name));
+
         const betBtnClass = a.bet_placed ? 'active-bet' : '';
-        const betBtnText = a.bet_placed ? '✓ Bahis' : '💰 Bahis';
+        const betBtnText = a.bet_placed ? '✓ Bahis Oynandı' : '💰 Bahis Oyna';
         const ignoreBtnClass = a.ignored ? 'active-ignore' : '';
         const ignoreBtnText = a.ignored ? '✓ Gözardı' : '🚫 Gözardı';
 
         return `<tr class="${classes.join(' ')}">
           <td><input type="checkbox" class="row-check" data-id="${a.id}" onchange="updateSelectedCount()"></td>
           <td class="time-col">${time}</td>
-          <td class="col-direction"><span class="badge ${dirClass}">${dirIcon} ${a.direction}</span></td>
+          <td><span class="badge ${dirClass}">${dirIcon} ${a.direction}</span></td>
           <td class="col-match">${matchDisplay}</td>
           <td class="col-tournament">${escapeHtml(a.tournament || '-')}</td>
           <td>${escapeHtml(a.status || '-')}</td>
@@ -600,82 +440,18 @@
       }).join('');
     }
 
-    function renderCards() {
-      const wrap = document.getElementById('cardsWrap');
-      const emptyM = document.getElementById('emptyStateMobile');
-      const filtered = filterAlerts();
-
-      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-      if (currentPage > totalPages) currentPage = totalPages;
-      const start = (currentPage - 1) * pageSize;
-      const paged = filtered.slice(start, start + pageSize);
-
-      if (filtered.length === 0) {
-        wrap.innerHTML = '';
-        emptyM.style.display = 'block';
-        return;
-      }
-      emptyM.style.display = 'none';
-
-      wrap.innerHTML = paged.map(a => {
-        const classes = ['alert-card'];
-        if (a.bet_placed) classes.push('bet-placed');
-        if (a.ignored) classes.push('is-ignored');
-        const dirClass = a.direction === 'ALT' ? 'badge-alt' : 'badge-ust';
-        const dirIcon = a.direction === 'ALT' ? '🔻' : '🔺';
-        const diffClass = a.diff >= 0 ? 'diff-positive' : 'diff-negative';
-        const diffSign = a.direction === 'ALT' ? '+' : '-';
-        const time = a.alerted_at ? new Date(a.alerted_at + 'Z').toLocaleString('tr-TR', {
-          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-        }) : '-';
-        const matchName = cleanMatchName(a.match_name);
-        const matchDisplay = a.url
-          ? `<a href="${escapeHtml(a.url)}" target="_blank">${escapeHtml(matchName)}</a>`
-          : escapeHtml(matchName);
-        const betBtnClass = a.bet_placed ? 'active-bet' : '';
-        const betBtnText = a.bet_placed ? '✓ Bahis Oynandı' : '💰 Bahis Oyna';
-        const ignoreBtnClass = a.ignored ? 'active-ignore' : '';
-        const ignoreBtnText = a.ignored ? '✓ Gözardı' : '🚫 Gözardı';
-
-        return `<div class="${classes.join(' ')}">
-          <div class="card-top">
-            <div class="card-match">${matchDisplay}</div>
-            <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
-          </div>
-          <div class="card-meta">
-            <span class="card-meta-item">🕐 ${time}</span>
-            <span class="card-meta-item card-tournament">🏆 ${escapeHtml(a.tournament || '-')}</span>
-            <span class="card-meta-item">📡 ${escapeHtml(a.status || '-')}</span>
-          </div>
-          <div class="card-odds">
-            <div class="card-odds-value">
-              <div class="card-odds-label">Açılış</div>
-              <div class="card-odds-num">${a.opening.toFixed(1)}</div>
-            </div>
-            <div class="card-odds-arrow">→</div>
-            <div class="card-odds-value">
-              <div class="card-odds-label">Canlı</div>
-              <div class="card-odds-num">${a.live.toFixed(1)}</div>
-            </div>
-            <div class="card-odds-arrow">＝</div>
-            <div class="card-diff">
-              <div class="card-diff-label">Fark</div>
-              <div class="card-diff-value ${diffClass}">${diffSign}${a.diff.toFixed(1)}</div>
-            </div>
-          </div>
-          <div class="card-actions">
-            <button class="action-btn ${betBtnClass}" onclick="toggleBet(${a.id})">${betBtnText}</button>
-            <button class="action-btn ${ignoreBtnClass}" onclick="toggleIgnore(${a.id})">${ignoreBtnText}</button>
-          </div>
-        </div>`;
-      }).join('');
+    function escapeHtml(text) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d.innerHTML;
     }
 
     async function toggleBet(id) {
       await fetch(`/api/alerts/${id}/bet`, { method: 'POST' });
+      // Update local data
       const a = allAlerts.find(x => x.id === id);
       if (a) a.bet_placed = a.bet_placed ? 0 : 1;
-      render();
+      renderTable();
       updateStats();
     }
 
@@ -683,7 +459,7 @@
       await fetch(`/api/alerts/${id}/ignore`, { method: 'POST' });
       const a = allAlerts.find(x => x.id === id);
       if (a) a.ignored = a.ignored ? 0 : 1;
-      render();
+      renderTable();
       updateStats();
     }
 
@@ -697,6 +473,7 @@
       const cnt = document.getElementById('selectedCount');
       cnt.textContent = ids.length;
       btn.style.display = ids.length > 0 ? 'inline-block' : 'none';
+      // Update selectAll checkbox
       const all = document.querySelectorAll('.row-check');
       document.getElementById('selectAll').checked = all.length > 0 && ids.length === all.length;
     }
@@ -712,19 +489,19 @@
       if (!confirm(`${ids.length} kayıt silinecek. Emin misiniz?`)) return;
       await Promise.all(ids.map(id => fetch(`/api/alerts/${id}`, { method: 'DELETE' })));
       allAlerts = allAlerts.filter(a => !ids.includes(a.id));
-      render();
+      renderTable();
       updateStats();
       document.getElementById('deleteSelectedBtn').style.display = 'none';
     }
 
     // Filter buttons
-    document.querySelectorAll('.filter-btn[data-filter]').forEach(btn => {
+    document.querySelectorAll('.filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn[data-filter]').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentFilter = btn.dataset.filter;
         currentPage = 1;
-        render();
+        renderTable();
       });
     });
 
@@ -732,27 +509,42 @@
     document.getElementById('searchInput').addEventListener('input', e => {
       searchQuery = e.target.value;
       currentPage = 1;
-      render();
+      renderTable();
     });
 
     // Sort headers
     document.querySelectorAll('thead th[data-sort]').forEach(th => {
       th.addEventListener('click', () => {
         const field = th.dataset.sort;
-        if (sortField === field) sortAsc = !sortAsc;
-        else { sortField = field; sortAsc = true; }
-        render();
+        if (sortField === field) {
+          sortAsc = !sortAsc;
+        } else {
+          sortField = field;
+          sortAsc = true;
+        }
+        renderTable();
       });
     });
 
-    function changePage(delta) { currentPage += delta; render(); }
-    function changePageSize(val) { pageSize = parseInt(val); currentPage = 1; render(); }
+    // Pagination controls
+    function changePage(delta) {
+      currentPage += delta;
+      renderTable();
+    }
+    function changePageSize(val) {
+      pageSize = parseInt(val);
+      currentPage = 1;
+      renderTable();
+    }
 
     // Auto refresh
     fetchAlerts();
     setInterval(() => {
       countdownVal--;
-      if (countdownVal <= 0) { countdownVal = 15; fetchAlerts(); }
+      if (countdownVal <= 0) {
+        countdownVal = 15;
+        fetchAlerts();
+      }
       document.getElementById('countdown').textContent = countdownVal;
     }, 1000);
   </script>
