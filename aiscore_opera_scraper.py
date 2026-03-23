@@ -233,12 +233,30 @@ class AiscoreOperaScraper:
             return out
 
     async def _extract_single(self, context, link: str) -> dict | None:
-        """Open a single match in a new tab, read data, and close."""
+        """Open a single match in a new tab, read data, and close.
+        Retries up to 2 times if odds are temporarily locked/unavailable."""
         detail = await context.new_page()
         detail.set_default_timeout(self.page_timeout_ms)
+        max_retries = 2
         try:
-            row = await self._extract_match(detail, link)
-            return row
+            for attempt in range(1, max_retries + 1):
+                row = await self._extract_match(detail, link)
+                if row is not None:
+                    return row
+                if attempt < max_retries:
+                    logger.debug(
+                        "Retry %s/%s for %s (odds possibly locked/loading)",
+                        attempt, max_retries - 1, link,
+                    )
+                    await detail.wait_for_timeout(3000)
+                    # Reload to get fresh DOM state after lock clears
+                    try:
+                        await detail.reload(wait_until="domcontentloaded")
+                        await detail.wait_for_timeout(3000)
+                    except Exception:
+                        pass
+            logger.debug("All %s attempts failed for %s", max_retries, link)
+            return None
         except Exception as exc:
             logger.debug("Could not read match (%s): %s", link, exc)
             return None
@@ -321,6 +339,19 @@ class AiscoreOperaScraper:
                 return null;
               };
 
+              // Helper: detect if an element is locked/suspended (bookmaker updating odds)
+              const isLocked = (el) => {
+                const html = (el.innerHTML || '').toLowerCase();
+                const txt = text(el.innerText).toLowerCase();
+                // Lock icon (SVG or font icon), "suspended", dash placeholders
+                if (html.includes('lock') || html.includes('🔒')) return true;
+                if (txt === '-' || txt === '--' || txt === '—') return true;
+                if (/suspend|locked|unavail/i.test(txt)) return true;
+                // Check for lock SVG icons
+                if (el.querySelector('svg[class*="lock"], [class*="Lock"], [class*="suspend"]')) return true;
+                return false;
+              };
+
               // --- Find odds container ---
               const container = document.querySelector('.newOdds')
                              || document.querySelector('[class*="newOdds"]')
@@ -330,17 +361,20 @@ class AiscoreOperaScraper:
                 // ── Strategy 1: class-based (openingBg / inPlayBg) ──
                 // Each bookmaker has 3 rows: opening, pre-match, in-play
                 // Rows are distinguished by color classes
+                // Skip rows that are locked/suspended (bookmaker updating odds)
                 const openingEls = container.querySelectorAll('[class*="openingBg"]');
                 const inPlayEls = container.querySelectorAll('[class*="inPlayBg"]');
 
                 if (openingEls.length > 0) {
                   for (const el of openingEls) {
+                    if (isLocked(el)) continue;
                     const v = findLine(text(el.innerText));
                     if (v !== null) { opening = v; break; }
                   }
                 }
                 if (inPlayEls.length > 0) {
                   for (const el of inPlayEls) {
+                    if (isLocked(el)) continue;
                     const v = findLine(text(el.innerText));
                     if (v !== null) { inplay = v; break; }
                   }
@@ -377,8 +411,9 @@ class AiscoreOperaScraper:
                 if (opening === null || inplay === null) {
                   const contentDivs = container.querySelectorAll('.content');
                   for (const content of contentDivs) {
+                    if (isLocked(content)) continue;
                     const rows = Array.from(content.children).filter(el => {
-                      return findLine(text(el.innerText)) !== null;
+                      return !isLocked(el) && findLine(text(el.innerText)) !== null;
                     });
                     if (rows.length >= 3) {
                       if (opening === null) opening = findLine(text(rows[0].innerText));
@@ -392,7 +427,7 @@ class AiscoreOperaScraper:
                 if (opening === null || inplay === null) {
                   const leafLines = [];
                   container.querySelectorAll('*').forEach(el => {
-                    if (el.children.length === 0) {
+                    if (el.children.length === 0 && !isLocked(el)) {
                       const v = findLine(text(el.innerText));
                       if (v !== null) leafLines.push(v);
                     }
@@ -455,14 +490,28 @@ class AiscoreOperaScraper:
                 if (tm) remainingMinutes = parseInt(tm[1]) + parseInt(tm[2]) / 60;
               }
 
-              return { opening, inplay, matchName, tournament, status, isQ4, remainingMinutes };
+              // Detect if any bookmaker rows are locked
+              let hasLockedRows = false;
+              if (container) {
+                const allRows = container.querySelectorAll('[class*="openingBg"], [class*="inPlayBg"], .content > *');
+                for (const el of allRows) {
+                  if (isLocked(el)) { hasLockedRows = true; break; }
+                }
+              }
+
+              return { opening, inplay, matchName, tournament, status, isQ4, remainingMinutes, hasLockedRows };
             }
             """
         )
 
         opening = parsed.get("opening")
         inplay = parsed.get("inplay")
+        locked = parsed.get("hasLockedRows", False)
         if opening is None or inplay is None:
+            if locked:
+                logger.debug("Odds locked/suspended for %s (bookmaker updating)", url)
+            else:
+                logger.debug("Could not find opening/inplay totals for %s", url)
             return None
 
         # Skip match if less than 5 minutes remain in Q4
