@@ -1,7 +1,7 @@
 """
-main.py — Basketbol barem izleme botu ana döngüsü.
+main.py — Basketball odds monitoring bot main loop.
 
-Çalıştırmak için:
+Usage:
     python main.py
 """
 
@@ -31,9 +31,9 @@ async def process_match(
     config: Config,
 ) -> None:
     """
-    Tek bir maçı işler:
-    - AIScore ekranındaki Opening odds ve In-play odds total line farkını hesaplar.
-    - Fark eşik üzerindeyse Telegram bildirimi gönderir.
+    Processes a single match:
+    - Calculates the difference between Opening odds and In-play odds total lines.
+    - Sends a Telegram notification if the difference exceeds the threshold.
     """
     match_id = match["match_id"]
     match_name = match["match_name"]
@@ -42,7 +42,7 @@ async def process_match(
     inplay_total = match["inplay_total"]
     status = match.get("status", "Canlı")
 
-    diff = inplay_total - opening_total  # pozitif → barem yükseldi, negatif → düştü
+    diff = inplay_total - opening_total  # positive → line went up, negative → line went down
     abs_diff = abs(diff)
     if abs_diff < config.THRESHOLD:
         return
@@ -51,7 +51,7 @@ async def process_match(
 
     if diff >= 0:
         direction = "ALT"
-        if not db.was_alerted_recently(match_id, direction, config.ALERT_COOLDOWN_HOURS):
+        if not db.was_alerted_recently(match_id, direction, config.ALERT_COOLDOWN_MINUTES):
             await notifier.send_alert(
                 match_name, tournament, opening_total, inplay_total, direction, abs_diff, status
             )
@@ -60,7 +60,7 @@ async def process_match(
 
     else:
         direction = "ÜST"
-        if not db.was_alerted_recently(match_id, direction, config.ALERT_COOLDOWN_HOURS):
+        if not db.was_alerted_recently(match_id, direction, config.ALERT_COOLDOWN_MINUTES):
             await notifier.send_alert(
                 match_name, tournament, opening_total, inplay_total, direction, abs_diff, status
             )
@@ -73,7 +73,7 @@ async def run():
     try:
         config.validate()
     except ValueError as e:
-        print(f"HATA: {e}")
+        print(f"ERROR: {e}")
         sys.exit(1)
 
     setup_logging(config.LOG_LEVEL)
@@ -95,7 +95,7 @@ async def run():
 
     await notifier.send_startup()
     log.info(
-        "Bot başlatıldı. Eşik: %s puan | Kontrol aralığı: %s-%ss | CDP: %s",
+        "Bot started. Threshold: %s pts | Poll interval: %s-%ss | CDP: %s",
         config.THRESHOLD,
         config.POLL_INTERVAL_MIN,
         config.POLL_INTERVAL_MAX,
@@ -107,7 +107,7 @@ async def run():
     while True:
         try:
             matches = await scraper.get_live_basketball_totals()
-            log.info("%s maçta opening/in-play total yakalandı.", len(matches))
+            log.info("Captured opening/in-play totals for %s matches.", len(matches))
 
             for match in matches:
                 await process_match(match, db, notifier, config)
@@ -115,17 +115,17 @@ async def run():
             consecutive_errors = 0
 
         except KeyboardInterrupt:
-            log.info("Bot durduruldu.")
+            log.info("Bot stopped.")
             break
         except Exception as e:
             consecutive_errors += 1
-            log.error(f"Döngü hatası (#{consecutive_errors}): {e}", exc_info=True)
+            log.error(f"Loop error (#{consecutive_errors}): {e}", exc_info=True)
             if consecutive_errors >= 5:
-                await notifier.send_error(f"{consecutive_errors} ardışık hata: {e}")
-                consecutive_errors = 0  # Sıfırla, tekrar dene
+                await notifier.send_error(f"{consecutive_errors} consecutive errors: {e}")
+                consecutive_errors = 0  # Reset and retry
 
         delay = random.uniform(config.POLL_INTERVAL_MIN, config.POLL_INTERVAL_MAX)
-        log.debug(f"Sonraki kontrol: {delay:.0f}s sonra")
+        log.debug(f"Next check in {delay:.0f}s")
         await asyncio.sleep(delay)
 
 

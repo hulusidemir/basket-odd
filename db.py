@@ -88,16 +88,16 @@ class Database:
 
     # ---------- alerts ----------
 
-    def was_alerted_recently(self, match_id: str, direction: str, cooldown_hours: int) -> bool:
+    def was_alerted_recently(self, match_id: str, direction: str, cooldown_minutes: int) -> bool:
         with self._conn() as conn:
             row = conn.execute(
                 """
                 SELECT 1 FROM alerts
                 WHERE match_id = ? AND direction = ?
-                  AND alerted_at > datetime('now', ? || ' hours')
+                  AND alerted_at > datetime('now', ? || ' minutes')
                 LIMIT 1
                 """,
-                (match_id, direction, f"-{cooldown_hours}"),
+                (match_id, direction, f"-{cooldown_minutes}"),
             ).fetchone()
         return row is not None
 

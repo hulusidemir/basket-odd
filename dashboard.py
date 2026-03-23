@@ -1,8 +1,8 @@
 """
-dashboard.py — Anomali tespiti dashboard'u.
-Flask ile çalışan web arayüzü.
+dashboard.py — Anomaly detection dashboard.
+Flask-powered web interface.
 
-Çalıştırmak için:
+Usage:
     python dashboard.py
 """
 
@@ -25,14 +25,14 @@ def index():
 
 @app.route("/api/alerts")
 def api_alerts():
-    """Tüm anomali kayıtlarını döndürür."""
+    """Returns all anomaly records."""
     alerts = db.recent_alerts(limit=500)
     return jsonify(alerts)
 
 
 @app.route("/api/alerts/<int:alert_id>/bet", methods=["POST"])
 def api_toggle_bet(alert_id: int):
-    """Bahis oynandı/oynanmadı toggle."""
+    """Toggle bet placed/not placed."""
     alert = db.get_alert(alert_id)
     if not alert:
         return jsonify({"error": "not found"}), 404
@@ -43,7 +43,7 @@ def api_toggle_bet(alert_id: int):
 
 @app.route("/api/alerts/<int:alert_id>/ignore", methods=["POST"])
 def api_toggle_ignore(alert_id: int):
-    """Gözardı et toggle."""
+    """Toggle ignore status."""
     alert = db.get_alert(alert_id)
     if not alert:
         return jsonify({"error": "not found"}), 404
@@ -54,7 +54,7 @@ def api_toggle_ignore(alert_id: int):
 
 @app.route("/api/alerts/<int:alert_id>", methods=["DELETE"])
 def api_delete_alert(alert_id: int):
-    """Kayıt sil."""
+    """Delete a record."""
     if not db.delete_alert(alert_id):
         return jsonify({"error": "not found"}), 404
     return jsonify({"id": alert_id, "deleted": True})

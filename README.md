@@ -1,99 +1,171 @@
-# Basket Tahmin Botu (AIScore + Opera VPN)
+# Basketball Odds Monitor (AIScore)
 
-Bu bot, AIScore'da canlı basketbol maçlarını gezer ve her maçta:
-- Opening odds -> Total Points
-- In-play odds -> Total Points
+A bot that monitors live basketball matches on AIScore, comparing **Opening odds** vs **In-play odds** for Total Points. When the difference exceeds a configurable threshold, it sends a Telegram notification.
 
-değerlerini karşılaştırır.
+## Alert Rules
 
-Fark `THRESHOLD` (varsayılan 10) ve üzerindeyse Telegram bildirimi yollar.
+| Condition | Direction |
+|---|---|
+| In-play − Opening ≥ THRESHOLD | **ALT** (line went up) |
+| Opening − In-play ≥ THRESHOLD | **ÜST** (line went down) |
 
-Kurallar:
-- In-play - Opening >= 10 -> ALT
-- Opening - In-play >= 10 -> UST
+Default threshold: **10 points**. Cooldown: **15 minutes** per match per direction.
 
-## Neden Opera?
+## How It Works
 
-AIScore bazı ağlarda masaüstünden erişimi engelleyebiliyor.
-Opera'nın kendi VPN'i ile sadece Opera trafiğini VPN'den geçirip botu çalıştırıyoruz.
+Each cycle:
+1. Opens `https://www.aiscore.com/basketball` and collects live match links.
+2. Navigates to each match's `/odds` page.
+3. Reads the first bookmaker's **Total Points** column — **1st row** (opening) and **3rd row** (in-play).
+4. If the difference ≥ threshold → sends a Telegram alert.
+5. Waits 25–40 seconds (randomized) before the next cycle.
 
-## Kurulum
+## Browser Modes
 
-1) Sanal ortam
+| Mode | `BROWSER_MODE` | Use Case |
+|---|---|---|
+| **Opera** | `opera` | Local machine where ISP blocks AIScore. Opera's built-in VPN bypasses the block. |
+| **Headless** | `headless` | Server/VPS where AIScore is accessible without VPN. No GUI needed. |
+
+In Opera mode, the bot **automatically finds and launches Opera** with the correct CDP port — no manual steps needed.
+
+---
+
+## Setup — Windows (Opera Mode)
+
+### 1. Install prerequisites
+
+- [Python 3.10+](https://www.python.org/downloads/) — check **"Add Python to PATH"** during install
+- [Opera Browser](https://www.opera.com/)
+
+### 2. Enable Opera VPN (one time only)
+
+Open Opera → Settings → VPN → Enable VPN. Close Opera. The setting is saved in the profile and reused automatically.
+
+### 3. Install dependencies
+
+Open PowerShell and navigate to the project folder:
+
+```powershell
+cd C:\path\to\basket-odd
+python -m venv venv
+.\venv\Scripts\activate
+pip install -r requirements.txt
+python -m playwright install chromium
+```
+
+### 4. Configure environment
+
+```powershell
+copy .env.example .env
+```
+
+Edit `.env`:
+
+```ini
+TELEGRAM_TOKEN=your_real_token
+TELEGRAM_CHAT_ID=your_real_chat_id
+BROWSER_MODE=opera
+```
+
+All other values have sensible defaults. Opera binary path and CDP port are auto-detected.
+
+### 5. Run
+
+```powershell
+.\venv\Scripts\activate
+python main.py
+```
+
+Opera will open minimized with VPN enabled. The bot runs in your terminal.
+
+---
+
+## Setup — Linux Server (Headless Mode)
+
+### 1. Install prerequisites
 
 ```bash
+sudo apt update && sudo apt install -y python3 python3-venv
+```
+
+### 2. Install dependencies
+
+```bash
+cd /path/to/basket-odd
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-venv/bin/playwright install chromium
+python -m playwright install chromium
+python -m playwright install-deps
 ```
 
-2) Ortam dosyası
+### 3. Configure environment
 
 ```bash
 cp .env.example .env
 ```
 
-`.env` içine şunları gir:
+Edit `.env`:
 
-- `TELEGRAM_TOKEN`
-- `TELEGRAM_CHAT_ID`
-- gerekirse `THRESHOLD`
-
-3) Opera'yı CDP ile aç
-
-Önce Opera içinde VPN'i ON yap.
-Sonra terminalden Opera'yı uzaktan kontrol portuyla başlat:
-
-```bash
-opera --remote-debugging-port=9222 --user-data-dir=$HOME/.opera-cdp-profile
+```ini
+TELEGRAM_TOKEN=your_real_token
+TELEGRAM_CHAT_ID=your_real_chat_id
+BROWSER_MODE=headless
 ```
 
-Notlar:
-- Sisteminde komut `opera-beta` veya başka isimde olabilir.
-- Bot bu açık Opera oturumuna bağlanır.
-- Bot ile Opera ayni makinede olmalı. SSH ile baska sunucuda calistirirsan `127.0.0.1:9222` baglanamaz.
-
-## Çalıştırma
-
-Yeni bir terminal aç:
+### 4. Run
 
 ```bash
-cd basket-tahmin
 source venv/bin/activate
 python main.py
 ```
 
-## Nasıl Çalışır?
+For persistent background execution:
 
-Her döngüde:
-1. `https://www.aiscore.com/basketball` sayfasına gider.
-2. Maç linklerini toplar.
-3. Her maça girer.
-4. `Odds` sekmesini açar.
-5. `Opening odds` ve `In-play odds` satırlarından `Total Points` line değerlerini okur.
-6. Fark `THRESHOLD` ve üzerindeyse Telegram bildirimi gönderir.
+```bash
+nohup python main.py > bot.log 2>&1 &
+```
 
-## Onemli Ayarlar (.env)
+---
 
-- `THRESHOLD=10`
-- `POLL_INTERVAL_MIN=25`
-- `POLL_INTERVAL_MAX=40`
-- `OPERA_CDP_URL=http://127.0.0.1:9222`
-- `AISCORE_URL=https://www.aiscore.com/basketball`
-- `MAX_MATCHES_PER_CYCLE=40`
-- `PAGE_TIMEOUT_MS=30000`
+## Configuration Reference (.env)
 
-## Sorun Giderme
+| Variable | Default | Description |
+|---|---|---|
+| `TELEGRAM_TOKEN` | — | Telegram Bot API token (required) |
+| `TELEGRAM_CHAT_ID` | — | Telegram chat ID for alerts (required) |
+| `BROWSER_MODE` | `opera` | `opera` or `headless` |
+| `THRESHOLD` | `10` | Minimum point difference to trigger alert |
+| `ALERT_COOLDOWN_MINUTES` | `15` | Minutes before re-alerting same match + direction |
+| `POLL_INTERVAL_MIN` | `25` | Minimum seconds between cycles |
+| `POLL_INTERVAL_MAX` | `40` | Maximum seconds between cycles |
+| `MAX_MATCHES_PER_CYCLE` | `80` | Max matches to scan per cycle |
+| `PAGE_TIMEOUT_MS` | `30000` | Page load timeout (ms) |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, or `WARNING` |
+| `AISCORE_URL` | `https://www.aiscore.com/basketball` | AIScore basketball page |
+| `OPERA_CDP_URL` | `http://127.0.0.1:9222` | Opera CDP address (opera mode only) |
+| `OPERA_CDP_PORT` | `9222` | Opera CDP port (opera mode only) |
+| `OPERA_BINARY` | auto-detect | Opera executable path override (opera mode only) |
+| `DB_PATH` | `basketball.db` | SQLite database file path |
 
-1) `CDP bağlanamadı` hatası:
-- Opera'yı `--remote-debugging-port=9222` ile başlattığından emin ol.
-- `.env` içindeki `OPERA_CDP_URL` doğru mu kontrol et.
+## Troubleshooting
 
-2) Maç bulunamıyor:
-- AIScore sayfasında captcha/popup olabilir.
-- Opera penceresinde siteyi bir kez manuel açıp popup'ları kapat.
+### "Opera not found" error
+Opera is installed in a non-standard location. Set `OPERA_BINARY` in `.env`:
+```ini
+OPERA_BINARY=C:\Users\YourName\AppData\Local\Programs\Opera\opera.exe
+```
 
-3) Bildirim gelmiyor:
-- `TELEGRAM_TOKEN` ve `TELEGRAM_CHAT_ID` doğru mu kontrol et.
-- İlk test için `THRESHOLD=1` yapıp dene.
+### No matches found
+- AIScore may show a captcha or popup. Open the site manually in Opera once and dismiss any popups.
+- Set `LOG_LEVEL=DEBUG` to see detailed scraping output.
+- Check `debug_aiscore.png` (auto-generated when no matches are found).
+
+### No Telegram notifications
+- Verify `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID` are correct.
+- For testing, set `THRESHOLD=1` to trigger easily.
+
+### CDP connection failed (Opera mode)
+- The bot auto-launches Opera. If it still fails, ensure no other Opera instance is running on the same port.
+- Try killing existing Opera processes and restarting the bot.

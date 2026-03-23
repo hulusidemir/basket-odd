@@ -1,5 +1,5 @@
 """
-notifier.py — Telegram üzerinden bahis uyarısı gönderir.
+notifier.py — Sends betting alerts via Telegram.
 """
 
 import logging
@@ -22,13 +22,13 @@ class TelegramNotifier:
         tournament: str,
         opening: float,
         live: float,
-        direction: str,   # "ALT" veya "ÜST"
+        direction: str,   # "ALT" (under) or "ÜST" (over)
         diff: float,
         status: str,
     ) -> bool:
         """
-        Tek bir bildirim gönderir.
-        Başarılı ise True, hata oluşursa False döner.
+        Sends a single alert notification.
+        Returns True on success, False on error.
         """
         if direction == "ALT":
             emoji = "🔻"
@@ -53,14 +53,14 @@ class TelegramNotifier:
                 text=text,
                 parse_mode=ParseMode.HTML,
             )
-            logger.info(f"Bildirim gönderildi: {match_name} [{direction}]")
+            logger.info(f"Alert sent: {match_name} [{direction}]")
             return True
         except TelegramError as e:
-            logger.error(f"Telegram hatası: {e}")
+            logger.error(f"Telegram error: {e}")
             return False
 
     async def send_startup(self):
-        """Bot başladığında bilgi mesajı gönderir."""
+        """Sends an info message when the bot starts."""
         try:
             await self._bot.send_message(
                 chat_id=self._chat_id,
@@ -71,10 +71,10 @@ class TelegramNotifier:
                 parse_mode=ParseMode.HTML,
             )
         except TelegramError as e:
-            logger.error(f"Başlangıç mesajı gönderilemedi: {e}")
+            logger.error(f"Failed to send startup message: {e}")
 
     async def send_error(self, message: str):
-        """Kritik hata bildirimi."""
+        """Sends a critical error notification."""
         try:
             await self._bot.send_message(
                 chat_id=self._chat_id,

@@ -1,10 +1,10 @@
 """
-discover.py — SofaScore API yanıtlarını inceler ve JSON olarak kaydeder.
+discover.py — Inspects SofaScore API responses and saves them as JSON.
 
-Bu aracı bir kez çalıştırın; çıktıyı inceleyerek scraper.py'yi
-kendi maç/odds yapınıza göre ayarlayın.
+Run this tool once; examine the output to adjust scraper.py
+for your match/odds structure.
 
-Kullanım:
+Usage:
     python discover.py
 """
 
@@ -42,20 +42,20 @@ def get(url: str) -> dict | None:
         if r.status_code == 200:
             return r.json()
     except Exception as e:
-        log.error(f"Hata: {e}")
+        log.error(f"Error: {e}")
     return None
 
 
 def main():
     output = {}
 
-    # 1) Canlı basketbol maçları
-    log.info("=== Canlı basketbol maçları ===")
+    # 1) Live basketball events
+    log.info("=== Live basketball events ===")
     live = get(f"{BASE}/sport/basketball/events/live")
     output["live_events"] = live
 
     if not live or not live.get("events"):
-        log.warning("Şu an canlı basketbol maçı yok. Bugünün maçlarına bakılıyor...")
+        log.warning("No live basketball events right now. Checking today's scheduled events...")
         from datetime import date
         today = date.today().isoformat()
         scheduled = get(f"{BASE}/sport/basketball/scheduled-events/{today}")
@@ -64,14 +64,14 @@ def main():
     else:
         events = live["events"][:3]
 
-    log.info(f"{len(events)} maç için odds verisi çekilecek.")
+    log.info(f"Fetching odds data for {len(events)} matches.")
 
-    # 2) Birkaç maçın odds verisini çek
+    # 2) Fetch odds data for a few matches
     output["sample_odds"] = {}
     for event in events:
         eid = event.get("id")
         name = f"{event.get('homeTeam', {}).get('name', '?')} - {event.get('awayTeam', {}).get('name', '?')}"
-        log.info(f"Odds çekiliyor: {name} (ID: {eid})")
+        log.info(f"Fetching odds: {name} (ID: {eid})")
 
         for suffix in ["1/all/all", "0/all/all"]:
             url = f"{BASE}/event/{eid}/odds/{suffix}"
@@ -81,40 +81,40 @@ def main():
                 log.info(f"  ✓ Odds bulundu → {url}")
                 break
         else:
-            log.warning(f"  ✗ {name} için odds verisi alınamadı.")
+            log.warning(f"  ✗ Could not fetch odds data for {name}.")
 
     # 3) Kaydet
     out_file = "discovery_output.json"
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
-    log.info(f"\nSonuçlar '{out_file}' dosyasına kaydedildi.")
-    log.info("Bu dosyayı açıp 'markets' veya 'odds' anahtarlarını arayın.")
-    log.info("Over/Under veya Total içeren market yapısını bulup scraper.py'yi güncelleyin.")
+    log.info(f"\nResults saved to '{out_file}'.")
+    log.info("Open this file and search for 'markets' or 'odds' keys.")
+    log.info("Find the market structure containing Over/Under or Total and update scraper.py.")
 
-    # 4) Özet yazdır
+    # 4) Print summary
     _print_summary(output)
 
 
 def _print_summary(output: dict):
     print("\n" + "=" * 60)
-    print("ÖZET")
+    print("SUMMARY")
     print("=" * 60)
 
-    # Canlı maç sayısı
+    # Live match count
     live_events = (output.get("live_events") or {}).get("events", [])
-    print(f"Canlı maç sayısı: {len(live_events)}")
+    print(f"Live matches: {len(live_events)}")
 
-    # Odds örnek yapısı
+    # Sample odds structure
     sample = output.get("sample_odds", {})
     if not sample:
-        print("Odds verisi bulunamadı.")
+        print("No odds data found.")
         return
 
     first_key = next(iter(sample))
     first_odds = sample[first_key]
 
-    # Markets var mı?
+    # Are there markets?
     markets = first_odds.get("markets", [])
     if markets:
         print(f"\nMarket sayısı (ilk maç): {len(markets)}")
@@ -125,7 +125,7 @@ def _print_summary(output: dict):
             choice_names = [c.get("name", "?") for c in choices[:3]]
             print(f"  [{mid}] {name} → {choice_names}")
     else:
-        print("'markets' anahtarı bulunamadı. discovery_output.json dosyasına bakın.")
+        print("'markets' key not found. Check discovery_output.json.")
 
 
 if __name__ == "__main__":

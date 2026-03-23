@@ -17,10 +17,10 @@ logger = logging.getLogger(__name__)
 
 class AiscoreOperaScraper:
     """
-    İki modda çalışır (.env BROWSER_MODE):
-      - opera:    Opera VPN üzerinden CDP ile bağlanır (ISP engeli varsa)
-      - headless: Playwright headless Chromium (sistem geneli VPN varsa)
-    Opera modunda tarayıcıyı otomatik başlatır.
+    Runs in two modes (.env BROWSER_MODE):
+      - opera:    Connects via CDP through Opera VPN (when ISP blocks access)
+      - headless: Playwright headless Chromium (when system-wide VPN or no block)
+    In opera mode, the browser is launched automatically.
     """
 
     def __init__(
@@ -42,24 +42,24 @@ class AiscoreOperaScraper:
         self.cdp_port = cdp_port
         self._opera_process = None
 
-    # ── Opera otomatik başlatma ──────────────────────────────────────
+    # ── Auto-launch Opera ──────────────────────────────────────────────────
 
     def _find_opera_binary(self) -> str:
-        """Opera binary yolunu bul: .env > flatpak export > PATH > yaygın konumlar."""
+        """Find Opera binary path: .env > flatpak export > PATH > common locations."""
         if self.opera_binary:
             return self.opera_binary
 
-        # Flatpak exported binary (en yaygın Linux kurulumu)
+        # Flatpak exported binary (most common Linux installation)
         flatpak_export = "/var/lib/flatpak/exports/bin/com.opera.Opera"
         if os.path.exists(flatpak_export):
             return flatpak_export
 
-        # PATH'te opera var mı?
+        # Is opera in PATH?
         found = shutil.which("opera")
         if found:
             return found
 
-        # Flatpak kontrolü (export yoksa)
+        # Flatpak check (if export doesn't exist)
         try:
             result = subprocess.run(
                 ["flatpak", "list", "--app", "--columns=application"],
@@ -70,7 +70,7 @@ class AiscoreOperaScraper:
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
 
-        # Windows yaygın konumlar
+        # Common Windows locations
         if platform.system() == "Windows":
             candidates = [
                 os.path.expandvars(r"%LOCALAPPDATA%\Programs\Opera\opera.exe"),
@@ -82,11 +82,11 @@ class AiscoreOperaScraper:
                     return c
 
         raise RuntimeError(
-            "Opera bulunamadı! OPERA_BINARY .env'de ayarlayın veya PATH'e ekleyin."
+            "Opera not found! Set OPERA_BINARY in .env or add Opera to PATH."
         )
 
     def _is_opera_cdp_alive(self) -> bool:
-        """CDP portu dinleniyor ve HTTP yanıt veriyor mu?"""
+        """Check if CDP port is listening and responding to HTTP."""
         import socket
         import http.client
         try:
@@ -94,7 +94,7 @@ class AiscoreOperaScraper:
                 pass
         except (ConnectionRefusedError, OSError):
             return False
-        # Port açık ama HTTP yanıt verebilir mi?
+        # Port is open, but can it respond to HTTP?
         try:
             conn = http.client.HTTPConnection("127.0.0.1", self.cdp_port, timeout=5)
             conn.request("GET", "/json/version")
@@ -105,19 +105,19 @@ class AiscoreOperaScraper:
             return False
 
     def _launch_opera(self):
-        """Opera'yı CDP portuyla otomatik başlat."""
+        """Auto-launch Opera with CDP port."""
         if self._is_opera_cdp_alive():
-            logger.info("Opera zaten CDP port %s'de çalışıyor.", self.cdp_port)
+            logger.info("Opera already running on CDP port %s.", self.cdp_port)
             return
 
         binary = self._find_opera_binary()
 
-        # user-data-dir: VPN ayarları bu profilde saklanıyor
+        # user-data-dir: VPN settings are stored in this profile
         user_data_dir = os.path.expanduser("~/.opera-cdp-profile")
 
-        # Binary bir script/symlink olabilir (flatpak export) veya shell komutu
+        # Binary may be a script/symlink (flatpak export) or shell command
         if " " in binary:
-            # "flatpak run ..." gibi boşluklu komut
+            # Shell command with spaces like "flatpak run ..."
             cmd_parts = binary.split()
         else:
             cmd_parts = [binary]
@@ -129,22 +129,22 @@ class AiscoreOperaScraper:
             "--disable-popup-blocking",
             "--start-minimized",
         ]
-        logger.info("Opera başlatılıyor: %s", " ".join(args))
+        logger.info("Launching Opera: %s", " ".join(args))
         self._opera_process = subprocess.Popen(
             args,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
 
-        # CDP portu açılana kadar bekle
+        # Wait for CDP port to become available
         for _ in range(30):
             time.sleep(1)
             if self._is_opera_cdp_alive():
-                logger.info("Opera CDP hazır (port %s).", self.cdp_port)
+                logger.info("Opera CDP ready (port %s).", self.cdp_port)
                 return
         raise RuntimeError(
-            f"Opera başlatıldı ama CDP port {self.cdp_port} açılmadı. "
-            "Opera'nın düzgün yüklenip yüklenmediğini kontrol edin."
+            f"Opera launched but CDP port {self.cdp_port} did not open. "
+            "Check that Opera is installed correctly."
         )
 
     # ── Ana tarama ────────────────────────────────────────────────────
@@ -168,19 +168,19 @@ class AiscoreOperaScraper:
                     viewport={"width": 1920, "height": 1080},
                     locale="en-US",
                 )
-                # navigator.webdriver özelliğini gizle
+                # Hide navigator.webdriver property
                 await context.add_init_script("""
                     Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
                 """)
-                logger.debug("Headless Chromium başlatıldı (stealth).")
+                logger.debug("Headless Chromium launched (stealth).")
             else:
-                # Opera modunda — otomatik başlat ve CDP bağlan
+                # Opera mode — auto-launch and connect via CDP
                 self._launch_opera()
                 try:
                     browser = await p.chromium.connect_over_cdp(self.cdp_url)
                 except PlaywrightError as exc:
                     raise RuntimeError(
-                        "Opera CDP bağlantısı kurulamadı. "
+                        "Could not establish Opera CDP connection. "
                         f"CDP URL: {self.cdp_url}"
                     ) from exc
                 context = browser.contexts[0] if browser.contexts else await browser.new_context()
@@ -188,18 +188,18 @@ class AiscoreOperaScraper:
             list_page = await context.new_page()
             list_page.set_default_timeout(self.page_timeout_ms)
             await list_page.goto(self.aiscore_url, wait_until="domcontentloaded")
-            # AIScore SPA — JS ile içerik yükleniyor, headless'ta daha uzun bekle
+            # AIScore SPA — content loads via JS, wait longer in headless mode
             wait_secs = 10 if self.browser_mode == "headless" else 5
             await list_page.wait_for_timeout(wait_secs * 1000)
 
             links = await self._collect_match_links(list_page)
             if not links:
-                # Debug: sayfa durumunu logla
+                # Debug: log the page state
                 page_title = await list_page.title()
                 page_url = list_page.url
                 body_len = await list_page.evaluate("document.body?.innerText?.length || 0")
                 logger.warning(
-                    "AIScore listesinde maç linki bulunamadı. "
+                    "No match links found on AIScore listing. "
                     "title=%s, url=%s, body_len=%s",
                     page_title, page_url, body_len,
                 )
@@ -212,10 +212,10 @@ class AiscoreOperaScraper:
                 await list_page.close()
                 return []
 
-            logger.info("AIScore listesinde %s maç linki bulundu.", len(links))
+            logger.info("Found %s match links on AIScore.", len(links))
             out = []
 
-            # Paralel tarama: aynı anda CONCURRENT_TABS maç aç
+            # Parallel scraping: open CONCURRENT_TABS matches at once
             concurrent_tabs = 4
             batch_links = links[: self.max_matches_per_cycle]
 
@@ -227,40 +227,40 @@ class AiscoreOperaScraper:
                     if isinstance(r, dict):
                         out.append(r)
                     elif isinstance(r, Exception):
-                        logger.debug("Paralel maç hatası: %s", r)
+                        logger.debug("Parallel match error: %s", r)
 
             await list_page.close()
             return out
 
     async def _extract_single(self, context, link: str) -> dict | None:
-        """Tek bir maçı yeni tab'da aç, oku, kapat."""
+        """Open a single match in a new tab, read data, and close."""
         detail = await context.new_page()
         detail.set_default_timeout(self.page_timeout_ms)
         try:
             row = await self._extract_match(detail, link)
             return row
         except Exception as exc:
-            logger.debug("Maç okunamadı (%s): %s", link, exc)
+            logger.debug("Could not read match (%s): %s", link, exc)
             return None
         finally:
             await detail.close()
 
     async def _collect_match_links(self, page) -> list[str]:
         """
-        AIScore ana sayfasında varsayılan olarak 'Live' sekmesi aktif.
-        Sayfa virtual scroller kullanıyor — sadece görünen maçlar DOM'da.
-        Live sekmesindeki maç sayısını okuyup, o kadar maç toplanınca duruyoruz.
+        The 'Live' tab is active by default on the AIScore homepage.
+        The page uses a virtual scroller — only visible matches are in the DOM.
+        We read the live match count and stop once that many matches are collected.
         """
         await page.wait_for_timeout(3000)
 
-        # Live sekmesinin aktif olduğundan emin ol ve canlı maç sayısını al
+        # Ensure Live tab is active and get live match count
         live_max = await page.evaluate(r"""() => {
             const tab = document.querySelector('.activeLiveTab');
             if (!tab) return 999;
             const m = (tab.innerText || '').match(/\((\d+)\)/);
             return m ? parseInt(m[1], 10) : 999;
         }""")
-        logger.info("AIScore Live sekmesinde %s canlı maç var.", live_max)
+        logger.info("AIScore Live tab shows %s live matches.", live_max)
 
         all_hrefs: set[str] = set()
         max_scrolls = 50
@@ -275,7 +275,7 @@ class AiscoreOperaScraper:
             }""")
             all_hrefs.update(hrefs)
 
-            # Live sayısına ulaştıysak dur
+            # Stop if we've reached the live count
             if len(all_hrefs) >= live_max:
                 break
 
@@ -290,14 +290,14 @@ class AiscoreOperaScraper:
             await page.evaluate("window.scrollBy(0, 600)")
             await page.wait_for_timeout(800)
 
-        # Live sayısı kadar kes (fazlasını alma)
+        # Trim to live count (don't take extras)
         links = [urljoin(page.url, href) for href in all_hrefs]
         links = [u for u in links if "/basketball/match-" in u]
         links = sorted(set(links))[:live_max]
         return links
 
     async def _extract_match(self, page, url: str) -> dict | None:
-        # Doğrudan /odds URL'sine git
+        # Navigate directly to the /odds URL
         odds_url = url.rstrip("/") + "/odds"
         await page.goto(odds_url, wait_until="domcontentloaded")
         await page.wait_for_timeout(3000)
@@ -307,47 +307,104 @@ class AiscoreOperaScraper:
             () => {
               const text = s => (s || '').replace(/\s+/g, ' ').trim();
 
-              // --- Total Points extraction from newOdds container ---
-              const container = document.querySelector('.newOdds');
               let opening = null;
               let inplay = null;
 
+              // Helper: find the first basketball total line value (100-400 range) in text
+              const findLine = (txt) => {
+                const nums = txt.match(/\d+\.?\d*/g);
+                if (!nums) return null;
+                for (const n of nums) {
+                  const v = parseFloat(n);
+                  if (v >= 100 && v <= 400) return v;
+                }
+                return null;
+              };
+
+              // --- Find odds container ---
+              const container = document.querySelector('.newOdds')
+                             || document.querySelector('[class*="newOdds"]')
+                             || document.querySelector('[class*="oddsContent"]');
+
               if (container) {
-                // Her bahis şirketi için 3 sütun var: To Win(0), Spread(1), Total Points(2)
-                // Tüm flex-col sütunlarını bul
-                const contentDivs = container.querySelectorAll('.content');
-                // İlk content = header, sonrakiler = bahis şirketleri
-                for (const content of contentDivs) {
-                  const cols = content.querySelectorAll('.flex.flex-1.align-center.flex-col');
-                  // Her 3 sütundan 3. (index 2) = Total Points
-                  for (let i = 2; i < cols.length; i += 3) {
-                    const col = cols[i];
-                    const openingEls = col.querySelectorAll('[class*="openingBg"]');
-                    const inPlayEls = col.querySelectorAll('[class*="inPlayBg"]');
+                // ── Strategy 1: class-based (openingBg / inPlayBg) ──
+                // Each bookmaker has 3 rows: opening, pre-match, in-play
+                // Rows are distinguished by color classes
+                const openingEls = container.querySelectorAll('[class*="openingBg"]');
+                const inPlayEls = container.querySelectorAll('[class*="inPlayBg"]');
 
-                    const parseTotal = (els) => {
-                      const allText = Array.from(els).map(e => e.innerText).join(' ');
-                      const nums = allText.match(/(\d+\.?\d*)/g);
-                      if (!nums) return null;
-                      // Total line genelde en büyük sayıdır (100+)
-                      const candidates = nums.map(Number).filter(n => n >= 50);
-                      return candidates.length ? candidates[0] : null;
-                    };
+                if (openingEls.length > 0) {
+                  for (const el of openingEls) {
+                    const v = findLine(text(el.innerText));
+                    if (v !== null) { opening = v; break; }
+                  }
+                }
+                if (inPlayEls.length > 0) {
+                  for (const el of inPlayEls) {
+                    const v = findLine(text(el.innerText));
+                    if (v !== null) { inplay = v; break; }
+                  }
+                }
 
-                    const op = parseTotal(openingEls);
-                    const ip = parseTotal(inPlayEls);
-
-                    // İlk geçerli bahis şirketini kullan
-                    if (op !== null && opening === null) opening = op;
-                    if (ip !== null && inplay === null) inplay = ip;
-
+                // ── Strategy 2: Column-based (flex-col) layout ──
+                if (opening === null || inplay === null) {
+                  const contentDivs = container.querySelectorAll('.content');
+                  for (const content of contentDivs) {
+                    const cols = content.querySelectorAll('.flex.flex-1.align-center.flex-col');
+                    for (let i = 2; i < cols.length; i += 3) {
+                      const col = cols[i];
+                      const opEls = col.querySelectorAll('[class*="openingBg"]');
+                      const ipEls = col.querySelectorAll('[class*="inPlayBg"]');
+                      if (opening === null) {
+                        for (const el of opEls) {
+                          const v = findLine(text(el.innerText));
+                          if (v !== null) { opening = v; break; }
+                        }
+                      }
+                      if (inplay === null) {
+                        for (const el of ipEls) {
+                          const v = findLine(text(el.innerText));
+                          if (v !== null) { inplay = v; break; }
+                        }
+                      }
+                      if (opening !== null && inplay !== null) break;
+                    }
                     if (opening !== null && inplay !== null) break;
                   }
-                  if (opening !== null && inplay !== null) break;
+                }
+
+                // ── Strategy 3: Positional — 1st and 3rd rows of each bookmaker ──
+                if (opening === null || inplay === null) {
+                  const contentDivs = container.querySelectorAll('.content');
+                  for (const content of contentDivs) {
+                    const rows = Array.from(content.children).filter(el => {
+                      return findLine(text(el.innerText)) !== null;
+                    });
+                    if (rows.length >= 3) {
+                      if (opening === null) opening = findLine(text(rows[0].innerText));
+                      if (inplay === null) inplay = findLine(text(rows[2].innerText));
+                    }
+                    if (opening !== null && inplay !== null) break;
+                  }
+                }
+
+                // ── Strategy 4: Broad search — all leaf elements in the container ──
+                if (opening === null || inplay === null) {
+                  const leafLines = [];
+                  container.querySelectorAll('*').forEach(el => {
+                    if (el.children.length === 0) {
+                      const v = findLine(text(el.innerText));
+                      if (v !== null) leafLines.push(v);
+                    }
+                  });
+                  if (leafLines.length >= 2) {
+                    if (opening === null) opening = leafLines[0];
+                    if (inplay === null) inplay = leafLines[leafLines.length - 1];
+                  }
                 }
               }
 
-              // --- Maç bilgileri ---
+              // --- Match info ---
               const title = text(document.title || '');
               let matchName = title
                 .replace(/\s*\|.*/,'')
@@ -360,33 +417,28 @@ class AiscoreOperaScraper:
                 .trim();
 
               let tournament = '';
-              // 1) Breadcrumb linklerinden turnuva adı
+              // 1) Tournament name from breadcrumb links
               const breadcrumbs = Array.from(document.querySelectorAll('a'))
                 .map(e => ({text: text(e.innerText), href: e.getAttribute('href') || ''}))
                 .filter(e => e.href.includes('/tournament-'));
               if (breadcrumbs.length) {
                 tournament = breadcrumbs[breadcrumbs.length - 1].text;
               }
-              // 2) URL'den ülke/lig parse et (fallback veya ek bilgi)
+              // 2) Parse country/league from URL (fallback or extra info)
               const urlMatch = window.location.pathname.match(/\/basketball\/match-(.+?)\/\d+/);
               let urlLeague = '';
               if (urlMatch) {
-                // match-usa-nba-miami-heat-vs-... → "usa nba" kısmını al
                 const parts = urlMatch[1].split('-');
-                // İlk 1-3 kelime genelde ülke + lig
-                // Takım isimlerini ayırmak zor, ama "vs" öncesini lig olarak alabilir
                 const vsIdx = parts.indexOf('vs');
                 if (vsIdx > 0) {
                   urlLeague = parts.slice(0, Math.min(vsIdx, 3)).join(' ');
                 }
               }
-              // Temizle: "live score", "betting odds" vb. kaldır
               tournament = tournament
                 .replace(/\s*live\s*score\s*/gi, '')
                 .replace(/\s*betting\s*odds\s*/gi, '')
                 .replace(/\s*prediction\s*/gi, '')
                 .trim();
-              // Eğer boş kaldıysa URL'den kullan
               if (!tournament && urlLeague) tournament = urlLeague;
 
               let status = '';
@@ -396,7 +448,6 @@ class AiscoreOperaScraper:
                 .find(v => /^(Q[1-4]|[1-4]Q|OT|HT|FT|1st|2nd|3rd|4th|live|finished|half)/i.test(v));
               if (statusEl) status = statusEl;
 
-              // Q4 kalan süre tespiti
               let isQ4 = /Q4|4Q|4th/i.test(status);
               let remainingMinutes = null;
               if (status) {
@@ -414,19 +465,19 @@ class AiscoreOperaScraper:
         if opening is None or inplay is None:
             return None
 
-        # Q4'te 5 dakikadan az kaldıysa maçı atla
+        # Skip match if less than 5 minutes remain in Q4
         is_q4 = parsed.get("isQ4", False)
         remaining = parsed.get("remainingMinutes")
         if is_q4 and remaining is not None and remaining < 5:
-            logger.debug("Q4 <5dk kaldı, atlanıyor: %s (%.1f dk)", url, remaining)
+            logger.debug("Q4 <5min remaining, skipping: %s (%.1f min)", url, remaining)
             return None
 
         match_id = self._extract_match_id(url)
         return {
             "match_id": match_id,
             "match_name": parsed.get("matchName") or f"Match {match_id}",
-            "tournament": parsed.get("tournament") or "Bilinmiyor",
-            "status": parsed.get("status") or "Canlı",
+            "tournament": parsed.get("tournament") or "Unknown",
+            "status": parsed.get("status") or "Live",
             "opening_total": float(opening),
             "inplay_total": float(inplay),
             "url": url,
