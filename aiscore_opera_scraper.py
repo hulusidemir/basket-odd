@@ -239,7 +239,9 @@ class AiscoreOperaScraper:
         detail.set_default_timeout(self.page_timeout_ms)
         max_retries = 2
         try:
+            logger.debug("Checking match link: %s", link)
             for attempt in range(1, max_retries + 1):
+                logger.debug("Attempt %s/%s for %s", attempt, max_retries, link)
                 row = await self._extract_match(detail, link)
                 if row is not None:
                     return row

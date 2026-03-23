@@ -41,13 +41,33 @@ async def process_match(
     opening_total = match["opening_total"]
     inplay_total = match["inplay_total"]
     status = match.get("status", "Canlı")
+    url = match.get("url", "")
+
+    log = logging.getLogger("main")
 
     diff = inplay_total - opening_total  # positive → line went up, negative → line went down
     abs_diff = abs(diff)
+    log.debug(
+        "Evaluating match: id=%s | name=%s | opening=%.2f | inplay=%.2f | diff=%.2f | threshold=%.2f | status=%s | url=%s",
+        match_id,
+        match_name,
+        opening_total,
+        inplay_total,
+        diff,
+        config.THRESHOLD,
+        status,
+        url,
+    )
     if abs_diff < config.THRESHOLD:
+        log.debug(
+            "Skipped (below threshold): id=%s | name=%s | abs_diff=%.2f < %.2f | url=%s",
+            match_id,
+            match_name,
+            abs_diff,
+            config.THRESHOLD,
+            url,
+        )
         return
-
-    url = match.get("url", "")
 
     if diff >= 0:
         direction = "ALT"
@@ -57,6 +77,23 @@ async def process_match(
             )
             db.save_alert(match_id, match_name, opening_total, inplay_total, direction, abs_diff,
                           tournament=tournament, status=status, url=url)
+            log.info(
+                "Alert sent: id=%s | name=%s | direction=%s | diff=%.2f | url=%s",
+                match_id,
+                match_name,
+                direction,
+                abs_diff,
+                url,
+            )
+        else:
+            log.debug(
+                "Skipped (cooldown active): id=%s | name=%s | direction=%s | cooldown=%s min | url=%s",
+                match_id,
+                match_name,
+                direction,
+                config.ALERT_COOLDOWN_MINUTES,
+                url,
+            )
 
     else:
         direction = "ÜST"
@@ -66,6 +103,23 @@ async def process_match(
             )
             db.save_alert(match_id, match_name, opening_total, inplay_total, direction, abs_diff,
                           tournament=tournament, status=status, url=url)
+            log.info(
+                "Alert sent: id=%s | name=%s | direction=%s | diff=%.2f | url=%s",
+                match_id,
+                match_name,
+                direction,
+                abs_diff,
+                url,
+            )
+        else:
+            log.debug(
+                "Skipped (cooldown active): id=%s | name=%s | direction=%s | cooldown=%s min | url=%s",
+                match_id,
+                match_name,
+                direction,
+                config.ALERT_COOLDOWN_MINUTES,
+                url,
+            )
 
 
 async def run():
