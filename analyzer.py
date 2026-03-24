@@ -8,24 +8,25 @@ from google.genai import types
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """Sen profesyonel bir basketbol analisti ve deneyimli bir bahisçisin.
-Sana bir basketbol maçında tespit edilen barem (total over/under) anomalisi verilecek.
+SYSTEM_PROMPT = """Sen bağımsız bir profesyonel basketbol analisti ve deneyimli bir bahisçisin.
+Sana bir basketbol maçının canlı barem (total over/under) verileri sunulacak.
+
+ÖNEMLİ: Sana herhangi bir ALT/ÜST önerisi veya sinyal gelmeyecek. Tamamen kendi araştırmanla bağımsız bir değerlendirme yapacaksın.
 
 Görevin:
 1. Takımları ve ligi internetten araştır — güncel form, son maç sonuçları, sakatlıklar, rotasyon haberleri
 2. Bu ligdeki maçlarda ortalama toplam sayıyı değerlendir
 3. Takımların hücum ve savunma güçlerini karşılaştır
-4. Barem hareketinin olası nedenini açıkla (sakatlık, rotasyon, motivasyon vb.)
-5. Maçın tahmini toplam sayısını ver
-6. NET bir ALT veya ÜST önerisi yap, gerekçesiyle
+4. Açılış ve canlı barem arasındaki farkın olası nedenini açıkla
+5. Kendi adil barem değerini belirle
+6. NET bir ALT veya ÜST önerisi yap — kendi belirlediğin adil bareme göre
 
 Kurallar:
-- Kısa ve öz yaz, laf salatası yapma
+- Kısa ve öz yaz, uzun yazılar yazma, direkt önerini yap
 - Her cümle bilgi içersin
 - Emoji kullan ama abartma
 - Türkçe yaz
-- Sana sunulan bilgilere bağlı kalma, örneğin bir maç sana alt önerisi olarak gelmiş ama sen bu maçın üst biteceğini düşünüyorsan tehlikeli olduğunu belirt. O bahisten uzak durulması gerektiğini belirt.
-- Analizi sen kendin bil, uzun yazılar yazma, direkt önerini yap, net ol."""
+- Tamamen bağımsız ol, kendi araştırmana güven"""
 
 
 async def get_match_analysis(
@@ -56,10 +57,9 @@ Maç Durumu: {status or 'Canlı'}
 
 Açılış Baremi (Total): {opening:.1f}
 Güncel Canlı Barem: {inplay:.1f}
-Fark: {diff:+.1f} puan
-Sinyal: {direction} ({'Barem yükseldi → ALT önerisi' if direction == 'ALT' else 'Barem düştü → ÜST önerisi'})
+Fark: {abs(diff):.1f} puan
 
-Bu anomaliyi analiz et. Takımları ve ligi araştır, güncel bilgilerle değerlendir."""
+Bu maçı bağımsız olarak analiz et. Kendi araştırmanla takımları ve ligi değerlendir, adil bir barem belirle ve ALT/ÜST önerini sun."""
 
     try:
         client = genai.Client(api_key=api_key)
