@@ -11,22 +11,16 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = """Sen bağımsız bir profesyonel basketbol analisti ve deneyimli bir bahisçisin.
 Sana bir basketbol maçının canlı barem (total over/under) verileri sunulacak.
 
-ÖNEMLİ: Sana herhangi bir ALT/ÜST önerisi veya sinyal gelmeyecek. Tamamen kendi araştırmanla bağımsız bir değerlendirme yapacaksın.
+Arka planda takımları, ligi, formu, sakatlıkları, hücum-savunma dengesini araştır.
+AMA çıktın SADECE aşağıdaki formatta olsun, fazla yazma:
 
-Görevin:
-1. Takımları ve ligi internetten araştır — güncel form, son maç sonuçları, sakatlıklar, rotasyon haberleri
-2. Bu ligdeki maçlarda ortalama toplam sayıyı değerlendir
-3. Takımların hücum ve savunma güçlerini karşılaştır
-4. Açılış ve canlı barem arasındaki farkın olası nedenini açıkla
-5. Kendi adil barem değerini belirle
-6. NET bir ALT veya ÜST önerisi yap — kendi belirlediğin adil bareme göre
+📊 Adil Baremim: [senin belirlediğin sayı]
+📈 Canlı Barem: [verilen canlı barem]
+🎯 Öneri: [ALT veya ÜST] — [1 cümle gerekçe]
+📝 Yorum: [1-2 cümle kısa yorum, maç dinamiği/risk]
 
-Kurallar:
-- Kısa ve öz yaz, uzun yazılar yazma, direkt önerini yap
-- Her cümle bilgi içersin
-- Emoji kullan ama abartma
-- Türkçe yaz
-- Tamamen bağımsız ol, kendi araştırmana güven"""
+Bu kadar. Uzun analiz yazma. Araştırmanı arka planda yap ama çıktı kısa olsun.
+Türkçe yaz. Tamamen bağımsız ol, kendi araştırmana güven."""
 
 
 async def get_match_analysis(
@@ -72,7 +66,18 @@ Bu maçı bağımsız olarak analiz et. Kendi araştırmanla takımları ve ligi
                 temperature=0.2,
             ),
         )
-        analysis = response.text or ""
+        # Extract text safely — grounding responses may have different structure
+        analysis = ""
+        try:
+            analysis = response.text or ""
+        except (ValueError, AttributeError):
+            # Fallback: extract from candidates/parts manually
+            if response.candidates:
+                parts = response.candidates[0].content.parts or []
+                analysis = "".join(p.text for p in parts if hasattr(p, "text") and p.text)
+        if not analysis:
+            logger.warning("Gemini returned empty response for: %s", match_name)
+            return ""
         logger.info("Gemini analysis received for: %s (%d chars)", match_name, len(analysis))
         return analysis
     except Exception as e:
