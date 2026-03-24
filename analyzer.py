@@ -23,7 +23,9 @@ Kurallar:
 - Kısa ve öz yaz, laf salatası yapma
 - Her cümle bilgi içersin
 - Emoji kullan ama abartma
-- Türkçe yaz"""
+- Türkçe yaz
+- Sana sunulan bilgilere bağlı kalma, örneğin bir maç sana alt önerisi olarak gelmiş ama sen bu maçın üst biteceğini düşünüyorsan tehlikeli olduğunu belirt. O bahisten uzak durulması gerektiğini belirt.
+- Analizi sen kendin bil, uzun yazılar yazma, direkt önerini yap, net ol."""
 
 
 async def get_match_analysis(
