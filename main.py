@@ -10,11 +10,16 @@ import logging
 import random
 import sys
 
+from cachetools import TTLCache
+
 from aiscore_opera_scraper import AiscoreOperaScraper
 from analyzer import get_match_analysis
 from config import Config
 from db import Database
 from notifier import TelegramNotifier
+
+# In-memory cache: one Gemini call per match. Key = match_id, TTL = 4 hours.
+_analysis_cache: TTLCache = TTLCache(maxsize=1024, ttl=4 * 3600)
 
 
 def setup_logging(level: str):
@@ -102,14 +107,19 @@ async def process_match(
         match_id, match_name, direction, abs_diff,
     )
 
-    # 3) Spawn background AI analysis (non-blocking)
+    # 3) Spawn background AI analysis (non-blocking) — one per match
     if config.GEMINI_API_KEY:
-        asyncio.create_task(
-            _run_analysis(
-                config, db, notifier, alert_id, msg_ids,
-                match_name, tournament, score, opening_total, inplay_total, diff, direction, status,
+        if match_id in _analysis_cache:
+            log.debug("AI skipped (already analyzed): match_id=%s | %s", match_id, match_name)
+        else:
+            _analysis_cache[match_id] = True
+            log.info("AI analysis queued (first time): match_id=%s | %s", match_id, match_name)
+            asyncio.create_task(
+                _run_analysis(
+                    config, db, notifier, alert_id, msg_ids,
+                    match_name, tournament, score, opening_total, inplay_total, diff, direction, status,
+                )
             )
-        )
 
 
 async def _run_analysis(

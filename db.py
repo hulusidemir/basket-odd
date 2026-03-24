@@ -179,7 +179,16 @@ class Database:
                 (analysis, alert_id),
             )
 
+    def get_match_analysis_text(self, match_id: str) -> str | None:
+        """Return the latest non-empty AI analysis for a match, if any."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT ai_analysis FROM alerts WHERE match_id = ? AND ai_analysis != '' ORDER BY alerted_at DESC LIMIT 1",
+                (match_id,),
+            ).fetchone()
+        return row["ai_analysis"] if row else None
+
     def delete_alert(self, alert_id: int) -> bool:
         with self._conn() as conn:
-            cursor = conn.execute("DELETE FROM alerts WHERE id = ?", (alert_id,))
+            cursor = conn.execute("DELETE FROM alerts WHERE id = ?",(alert_id,))
         return cursor.rowcount > 0
