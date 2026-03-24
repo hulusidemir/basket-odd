@@ -641,22 +641,30 @@ class AiscoreOperaScraper:
               if (!tournament && urlLeague) tournament = urlLeague;
 
               let status = '';
-              // Search for match status in short text elements only (avoid page headers)
+              // Search for match status — look for period-time patterns like "Q4 06:42", "Q2-10:00"
               const statusCandidates = Array.from(document.querySelectorAll('span, div'))
                 .map(e => ({el: e, txt: text(e.innerText)}))
                 .filter(({txt}) => txt.length > 0 && txt.length < 30);
-              // Priority 1: Specific quarter/period indicators
-              const specificStatus = statusCandidates
+              // Priority 1: Period + time format like "Q4 06:42", "Q2-10:00", "OT 05:00"
+              const periodTime = statusCandidates
                 .map(({txt}) => txt)
-                .find(v => /^(Q[1-4]|[1-4]Q|OT|HT|FT|1st\s|2nd\s|3rd\s|4th\s|finished|ended|final)/i.test(v));
-              if (specificStatus) {
-                status = specificStatus;
+                .find(v => /^(Q[1-4]|[1-4]Q|OT)\s*[-\s]?\s*\d{1,2}:\d{2}$/i.test(v.trim()));
+              if (periodTime) {
+                status = periodTime.trim();
               } else {
-                // Priority 2: Time patterns like "05:32" (game clock)
-                const timeStatus = statusCandidates
+                // Priority 2: Just period indicator like "Q4", "HT", "FT"
+                const periodOnly = statusCandidates
                   .map(({txt}) => txt)
-                  .find(v => /^\d{1,2}:\d{2}$/.test(v.trim()));
-                if (timeStatus) status = timeStatus;
+                  .find(v => /^(Q[1-4]|[1-4]Q|OT|HT|FT|1st|2nd|3rd|4th)$/i.test(v.trim()));
+                if (periodOnly) {
+                  status = periodOnly.trim();
+                } else {
+                  // Priority 3: Standalone time "05:32"
+                  const timeOnly = statusCandidates
+                    .map(({txt}) => txt)
+                    .find(v => /^\d{1,2}:\d{2}$/.test(v.trim()));
+                  if (timeOnly) status = timeOnly.trim();
+                }
               }
 
               let isQ4 = /Q4|4Q|4th/i.test(status);
@@ -687,18 +695,49 @@ class AiscoreOperaScraper:
 
               // --- Extract live score ---
               let score = '';
-              // Strategy 1: Look for score pattern like "85 - 72" or "85-72" near match header
+              // Strategy 1: Direct "NN - NN" pattern in short text elements
               const scoreEls = Array.from(document.querySelectorAll('span, div'))
                 .map(e => ({el: e, txt: text(e.innerText)}))
-                .filter(({txt}) => /^\d{1,3}\s*[-–]\s*\d{1,3}$/.test(txt.trim()));
+                .filter(({el, txt}) => {
+                  if (!/^\d{1,3}\s*[-–]\s*\d{1,3}$/.test(txt.trim())) return false;
+                  // Must be a score, not something else — check it's in header area
+                  // and both numbers are reasonable basketball scores (0-300)
+                  const parts = txt.trim().split(/\s*[-–]\s*/);
+                  return parts.length === 2 && parseInt(parts[0]) <= 300 && parseInt(parts[1]) <= 300;
+                });
               if (scoreEls.length > 0) {
                 score = scoreEls[0].txt.trim();
-              } else {
-                // Strategy 2: Look for individual team scores (two separate big number elements)
-                const headerArea = document.querySelector('[class*="matchHeader"], [class*="match-header"], [class*="score"], [class*="Score"]');
-                if (headerArea) {
+              }
+              // Strategy 2: Look for big standalone numbers near the top of the page
+              // AIScore shows scores as separate large number elements in the match header
+              if (!score) {
+                const topEls = Array.from(document.querySelectorAll('span, div, b, strong'))
+                  .filter(el => {
+                    const rect = el.getBoundingClientRect();
+                    return rect.top < 200 && el.children.length === 0;
+                  })
+                  .map(el => ({el, txt: text(el.innerText).trim()}))
+                  .filter(({txt}) => /^\d{1,3}$/.test(txt));
+                // Find the two largest font-size numbers (likely the main score)
+                if (topEls.length >= 2) {
+                  const withSize = topEls.map(({el, txt}) => ({
+                    txt,
+                    size: parseFloat(window.getComputedStyle(el).fontSize) || 0
+                  })).sort((a, b) => b.size - a.size);
+                  // Take the two biggest — they should be the team scores
+                  if (withSize.length >= 2 && withSize[0].size >= 16) {
+                    score = withSize[0].txt + ' - ' + withSize[1].txt;
+                  }
+                }
+              }
+              // Strategy 3: Search in any element with score-like classes
+              if (!score) {
+                const scoreContainer = document.querySelector(
+                  '[class*="score" i], [class*="Score"], [class*="matchScore"], [class*="match-score"]'
+                );
+                if (scoreContainer) {
                   const nums = [];
-                  headerArea.querySelectorAll('*').forEach(el => {
+                  scoreContainer.querySelectorAll('*').forEach(el => {
                     if (el.children.length === 0) {
                       const t = text(el.innerText).trim();
                       if (/^\d{1,3}$/.test(t) && parseInt(t) <= 300) nums.push(t);
