@@ -14,7 +14,20 @@ logger = logging.getLogger(__name__)
 class TelegramNotifier:
     def __init__(self, token: str, chat_id: str):
         self._bot = Bot(token=token)
-        self._chat_id = chat_id
+        # Support multiple chat IDs (comma-separated)
+        self._chat_ids = [cid.strip() for cid in chat_id.split(",") if cid.strip()]
+
+    async def _send_to_all(self, text: str):
+        """Send a message to all configured chat IDs."""
+        for cid in self._chat_ids:
+            try:
+                await self._bot.send_message(
+                    chat_id=cid,
+                    text=text,
+                    parse_mode=ParseMode.HTML,
+                )
+            except TelegramError as e:
+                logger.error(f"Telegram error (chat_id={cid}): {e}")
 
     async def send_alert(
         self,
@@ -52,11 +65,7 @@ class TelegramNotifier:
         )
 
         try:
-            await self._bot.send_message(
-                chat_id=self._chat_id,
-                text=text,
-                parse_mode=ParseMode.HTML,
-            )
+            await self._send_to_all(text)
             logger.info(f"Alert sent: {match_name} [{direction}]")
             return True
         except TelegramError as e:
@@ -66,13 +75,9 @@ class TelegramNotifier:
     async def send_startup(self):
         """Sends an info message when the bot starts."""
         try:
-            await self._bot.send_message(
-                chat_id=self._chat_id,
-                text=(
-                    "🤖 <b>Basket Tahmin Botu başlatıldı.</b>\n"
-                    "Canlı basketbol maçlarındaki barem hareketleri izleniyor..."
-                ),
-                parse_mode=ParseMode.HTML,
+            await self._send_to_all(
+                "🤖 <b>Basket Tahmin Botu başlatıldı.</b>\n"
+                "Canlı basketbol maçlarındaki barem hareketleri izleniyor..."
             )
         except TelegramError as e:
             logger.error(f"Failed to send startup message: {e}")
@@ -80,10 +85,6 @@ class TelegramNotifier:
     async def send_error(self, message: str):
         """Sends a critical error notification."""
         try:
-            await self._bot.send_message(
-                chat_id=self._chat_id,
-                text=f"⚠️ Bot hatası: {message}",
-                parse_mode=ParseMode.HTML,
-            )
+            await self._send_to_all(f"⚠️ Bot hatası: {message}")
         except TelegramError:
             pass
