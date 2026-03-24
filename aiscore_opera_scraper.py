@@ -385,9 +385,9 @@ class AiscoreOperaScraper:
             logger.warning("Could not find Live tab! Using max=%s.", live_max)
 
         # Wait for content to refresh after tab click
-        await page.wait_for_timeout(3000)
+        await page.wait_for_timeout(4000)
 
-        # ── Step 2: Collect links and filter to live-only ──
+        # ── Step 2: Collect links — only from rows with a live time indicator ──
         all_hrefs: set[str] = set()
         max_scrolls = 50
         last_count = 0
@@ -395,9 +395,30 @@ class AiscoreOperaScraper:
 
         for scroll_i in range(max_scrolls):
             hrefs = await page.evaluate(r"""() => {
-                return Array.from(document.querySelectorAll('a[href*="/basketball/match-"]'))
-                    .map(a => a.getAttribute('href'))
-                    .filter(Boolean);
+                const liveHrefs = [];
+                // Each match row is an <a> containing the match link
+                const matchLinks = document.querySelectorAll('a[href*="/basketball/match-"]');
+                for (const a of matchLinks) {
+                    // Walk up to the match row container (up to 6 levels)
+                    let row = a;
+                    for (let i = 0; i < 6; i++) {
+                        if (row.parentElement) row = row.parentElement;
+                        else break;
+                    }
+                    const rowText = (row.innerText || '').replace(/\s+/g, ' ');
+                    // Live matches have a time indicator like "Q1-05:00", "Q2-10:00",
+                    // "03-02:38", "01-00:21", "OT-05:00", "HT" etc.
+                    // Pattern: period-time format OR standalone Q/OT/HT indicators
+                    const hasLiveTime = /\b(Q[1-4]|[1-4]Q|OT|HT|1st|2nd|3rd|4th)\b/i.test(rowText)
+                                     || /\b\d{1,2}[-:]\d{2}[:-]\d{2}\b/.test(rowText);
+                    // Also check for colored/red time elements (live indicator)
+                    const timeEl = row.querySelector('[class*="live"], [class*="Live"], [style*="color: red"], [style*="color:#"]');
+                    if (hasLiveTime || timeEl) {
+                        const href = a.getAttribute('href');
+                        if (href) liveHrefs.push(href);
+                    }
+                }
+                return liveHrefs;
             }""")
             all_hrefs.update(hrefs)
 
@@ -415,6 +436,16 @@ class AiscoreOperaScraper:
             await page.evaluate("window.scrollBy(0, 600)")
             await page.wait_for_timeout(800)
 
+        # Fallback: if live-only filter found nothing, try all links on page
+        if not all_hrefs:
+            logger.warning("Live-only filter found 0 links. Falling back to all match links on page.")
+            fallback = await page.evaluate(r"""() => {
+                return Array.from(document.querySelectorAll('a[href*="/basketball/match-"]'))
+                    .map(a => a.getAttribute('href'))
+                    .filter(Boolean);
+            }""")
+            all_hrefs.update(fallback)
+
         # Build full URLs and deduplicate
         links = [urljoin(page.url, href) for href in all_hrefs]
         links = [u for u in links if "/basketball/match-" in u]
@@ -422,7 +453,7 @@ class AiscoreOperaScraper:
         links = [_suffixes.sub('', u) for u in links]
         links = sorted(set(links))[:live_max]
 
-        logger.info("Collected %s match links (live_max=%s).", len(links), live_max)
+        logger.info("Collected %s live match links (live_max=%s).", len(links), live_max)
         return links
 
     async def _extract_match(self, page, url: str) -> dict | None:
