@@ -52,6 +52,7 @@ async def get_match_analysis(
 Turnuva/Lig: {tournament}
 Mevcut Skor: {score or 'Bilinmiyor'}
 Maç Durumu: {status or 'Canlı'}
+(Not: Format "Q4 09:29" = 4. çeyrek, periyodun bitmesine 9 dk 29 sn kaldı. Basketbolda her çeyrek 10 veya 12 dakikadır. Q1=1.çeyrek, Q2=2.çeyrek, Q3=3.çeyrek, Q4=4.çeyrek, OT=uzatma, HT=devre arası)
 
 Açılış Baremi (Total): {opening:.1f}
 Güncel Canlı Barem: {inplay:.1f}
