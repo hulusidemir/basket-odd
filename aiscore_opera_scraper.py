@@ -616,12 +616,16 @@ class AiscoreOperaScraper:
                 .trim();
 
               let tournament = '';
-              // 1) Tournament name from breadcrumb links
+              let country = '';
+              // 1) Tournament/country from breadcrumb links
               const breadcrumbs = Array.from(document.querySelectorAll('a'))
                 .map(e => ({text: text(e.innerText), href: e.getAttribute('href') || ''}))
                 .filter(e => e.href.includes('/tournament-'));
-              if (breadcrumbs.length) {
+              if (breadcrumbs.length >= 2) {
+                country = breadcrumbs[0].text;
                 tournament = breadcrumbs[breadcrumbs.length - 1].text;
+              } else if (breadcrumbs.length === 1) {
+                tournament = breadcrumbs[0].text;
               }
               // 2) Parse country/league from URL (fallback or extra info)
               const urlMatch = window.location.pathname.match(/\/basketball\/match-(.+?)\/\d+/);
@@ -631,14 +635,22 @@ class AiscoreOperaScraper:
                 const vsIdx = parts.indexOf('vs');
                 if (vsIdx > 0) {
                   urlLeague = parts.slice(0, Math.min(vsIdx, 3)).join(' ');
+                  // First part of URL path is usually the country
+                  if (!country && parts.length > 0) {
+                    country = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+                  }
                 }
               }
-              tournament = tournament
-                .replace(/\s*live\s*score\s*/gi, '')
-                .replace(/\s*betting\s*odds\s*/gi, '')
-                .replace(/\s*prediction\s*/gi, '')
-                .trim();
+              const cleanRe = /\s*(live\s*score|betting\s*odds|prediction)\s*/gi;
+              tournament = tournament.replace(cleanRe, '').trim();
+              country = country.replace(cleanRe, '').trim();
               if (!tournament && urlLeague) tournament = urlLeague;
+              // Prefix country to tournament if available and not already included
+              if (country && tournament && !tournament.toLowerCase().startsWith(country.toLowerCase())) {
+                tournament = country + ' : ' + tournament;
+              } else if (country && !tournament) {
+                tournament = country;
+              }
 
               let status = '';
               // Search for match status — look for period-time patterns like "Q4 06:42", "Q2-10:00"

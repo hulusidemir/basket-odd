@@ -10,7 +10,7 @@ class Config:
     THRESHOLD: float = float(os.getenv("THRESHOLD", "10"))
     POLL_INTERVAL_MIN: int = int(os.getenv("POLL_INTERVAL_MIN", "25"))
     POLL_INTERVAL_MAX: int = int(os.getenv("POLL_INTERVAL_MAX", "40"))
-    ALERT_COOLDOWN_MINUTES: int = int(os.getenv("ALERT_COOLDOWN_MINUTES", "15"))
+    ALERT_COOLDOWN_MINUTES: int = int(os.getenv("ALERT_COOLDOWN_MINUTES", "10"))
     DB_PATH: str = os.getenv("DB_PATH", "basketball.db")
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     BROWSER_MODE: str = os.getenv("BROWSER_MODE", "opera")  # "opera" or "headless"
@@ -22,6 +22,7 @@ class Config:
     PAGE_TIMEOUT_MS: int = int(os.getenv("PAGE_TIMEOUT_MS", "30000"))
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    BLACKLIST: list = [b.strip().lower() for b in os.getenv("BLACKLIST", "").split(",") if b.strip()]
 
     def validate(self):
         if not self.TELEGRAM_TOKEN or self.TELEGRAM_TOKEN == "123456789:ABCdefGhIJKlmNOpqRSTuvWXyz":

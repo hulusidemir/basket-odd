@@ -318,6 +318,18 @@
     .match-link:hover { text-decoration: underline; }
     .time-col { color: var(--text-dim); font-size: 12px; }
 
+    .signal-badge {
+      display: inline-block;
+      background: #f59e0b;
+      color: #000;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 8px;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+
     .empty-state {
       text-align: center;
       padding: 60px 20px;
@@ -666,7 +678,7 @@
         return `<tr class="${classes.join(' ')}">
           <td><input type="checkbox" class="row-check" data-id="${a.id}" onchange="updateSelectedCount()"></td>
           <td class="time-col">${time}</td>
-          <td class="col-direction"><span class="badge ${dirClass}">${dirIcon} ${a.direction}</span></td>
+          <td class="col-direction"><span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}</td>
           <td class="col-match">${matchDisplay}</td>
           <td class="col-tournament">${escapeHtml(a.tournament || '-')}</td>
           <td>${escapeHtml(a.status || '-')}</td>
@@ -724,6 +736,7 @@
           <div class="card-top">
             <div class="card-match">${matchDisplay}</div>
             <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
+            ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
           </div>
           <div class="card-meta">
             <span class="card-meta-item">🕐 ${time}</span>

@@ -71,6 +71,10 @@ class Database:
                 conn.execute("ALTER TABLE alerts ADD COLUMN ai_analysis TEXT NOT NULL DEFAULT ''")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN signal_count INTEGER NOT NULL DEFAULT 1")
+            except Exception:
+                pass
 
     # ---------- opening line ----------
 
@@ -109,6 +113,15 @@ class Database:
             ).fetchone()
         return row is not None
 
+    def count_match_alerts(self, match_id: str) -> int:
+        """Count how many alerts have been sent for this match (any direction)."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM alerts WHERE match_id = ?",
+                (match_id,),
+            ).fetchone()
+        return row["cnt"] if row else 0
+
     def save_alert(
         self,
         match_id: str,
@@ -121,14 +134,15 @@ class Database:
         status: str = "",
         url: str = "",
         score: str = "",
+        signal_count: int = 1,
     ) -> int:
         with self._conn() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO alerts (match_id, match_name, opening, live, direction, diff, tournament, status, url, score)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO alerts (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (match_id, match_name, opening, live, direction, diff, tournament, status, url, score),
+                (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count),
             )
             return cursor.lastrowid
 

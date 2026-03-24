@@ -48,6 +48,14 @@ async def process_match(
 
     log = logging.getLogger("main")
 
+    # Blacklist check
+    if config.BLACKLIST:
+        check_text = f"{match_name} {tournament} {url}".lower()
+        for term in config.BLACKLIST:
+            if term in check_text:
+                log.debug("Blacklisted (%s): %s", term, match_name)
+                return
+
     diff = inplay_total - opening_total  # positive → line went up, negative → line went down
     abs_diff = abs(diff)
     log.info(
@@ -74,15 +82,19 @@ async def process_match(
         )
         return
 
-    # 1) Send instant Telegram alert
+    # 1) Count previous alerts for this match (signal number)
+    signal_count = db.count_match_alerts(match_id) + 1
+
+    # 2) Send instant Telegram alert
     msg_ids = await notifier.send_alert(
-        match_name, tournament, opening_total, inplay_total, direction, abs_diff, status, score=score
+        match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
+        score=score, signal_count=signal_count,
     )
 
-    # 2) Save to database
+    # 3) Save to database
     alert_id = db.save_alert(
         match_id, match_name, opening_total, inplay_total, direction, abs_diff,
-        tournament=tournament, status=status, url=url, score=score,
+        tournament=tournament, status=status, url=url, score=score, signal_count=signal_count,
     )
 
     log.info(

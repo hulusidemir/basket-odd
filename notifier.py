@@ -45,6 +45,7 @@ class TelegramNotifier:
         diff: float,
         status: str,
         score: str = "",
+        signal_count: int = 1,
     ) -> dict:
         """
         Sends a single alert notification.
@@ -58,9 +59,11 @@ class TelegramNotifier:
             tip = "Barem düştü → ÜST oyna (Over)"
 
         score_line = f"📊 Skor: <b>{score}</b>\n" if score else ""
+        signal_line = f"🔁 <b>{signal_count}. sinyal</b>\n" if signal_count > 1 else ""
 
         text = (
-            f"{emoji} <b>Bahis Fırsatı: {direction}</b>\n\n"
+            f"{emoji} <b>Bahis Fırsatı: {direction}</b>\n"
+            f"{signal_line}\n"
             f"🏀 <b>{match_name}</b>\n"
             f"🏆 {tournament} | {status}\n"
             f"{score_line}\n"
