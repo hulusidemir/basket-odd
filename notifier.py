@@ -25,6 +25,7 @@ class TelegramNotifier:
         direction: str,   # "ALT" (under) or "ÜST" (over)
         diff: float,
         status: str,
+        score: str = "",
     ) -> bool:
         """
         Sends a single alert notification.
@@ -37,10 +38,13 @@ class TelegramNotifier:
             emoji = "🔺"
             tip = "Barem düştü → ÜST oyna (Over)"
 
+        score_line = f"📊 Skor: <b>{score}</b>\n" if score else ""
+
         text = (
             f"{emoji} <b>Bahis Fırsatı: {direction}</b>\n\n"
             f"🏀 <b>{match_name}</b>\n"
-            f"🏆 {tournament} | {status}\n\n"
+            f"🏆 {tournament} | {status}\n"
+            f"{score_line}\n"
             f"Açılış Baremi: <b>{opening:.1f}</b>\n"
             f"Güncel Barem:  <b>{live:.1f}</b>\n"
             f"Fark: <b>{diff:+.1f}</b> puan\n\n"

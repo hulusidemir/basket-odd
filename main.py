@@ -42,6 +42,7 @@ async def process_match(
     inplay_total = match["inplay_total"]
     status = match.get("status", "Canlı")
     url = match.get("url", "")
+    score = match.get("score", "")
 
     log = logging.getLogger("main")
 
@@ -73,10 +74,10 @@ async def process_match(
         direction = "ALT"
         if not db.was_alerted_recently(match_id, direction, config.ALERT_COOLDOWN_MINUTES):
             await notifier.send_alert(
-                match_name, tournament, opening_total, inplay_total, direction, abs_diff, status
+                match_name, tournament, opening_total, inplay_total, direction, abs_diff, status, score=score
             )
             db.save_alert(match_id, match_name, opening_total, inplay_total, direction, abs_diff,
-                          tournament=tournament, status=status, url=url)
+                          tournament=tournament, status=status, url=url, score=score)
             log.info(
                 "Alert sent: id=%s | name=%s | direction=%s | diff=%.2f | url=%s",
                 match_id,
@@ -99,10 +100,10 @@ async def process_match(
         direction = "ÜST"
         if not db.was_alerted_recently(match_id, direction, config.ALERT_COOLDOWN_MINUTES):
             await notifier.send_alert(
-                match_name, tournament, opening_total, inplay_total, direction, abs_diff, status
+                match_name, tournament, opening_total, inplay_total, direction, abs_diff, status, score=score
             )
             db.save_alert(match_id, match_name, opening_total, inplay_total, direction, abs_diff,
-                          tournament=tournament, status=status, url=url)
+                          tournament=tournament, status=status, url=url, score=score)
             log.info(
                 "Alert sent: id=%s | name=%s | direction=%s | diff=%.2f | url=%s",
                 match_id,

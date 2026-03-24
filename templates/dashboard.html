@@ -435,6 +435,7 @@
           <th data-sort="match_name">Maç</th>
           <th data-sort="tournament">Turnuva</th>
           <th data-sort="status">Durum</th>
+          <th data-sort="score">Skor</th>
           <th data-sort="opening">Açılış</th>
           <th data-sort="live">Canlı</th>
           <th data-sort="diff">Fark</th>
@@ -589,6 +590,7 @@
           <td class="col-match">${matchDisplay}</td>
           <td class="col-tournament">${escapeHtml(a.tournament || '-')}</td>
           <td>${escapeHtml(a.status || '-')}</td>
+          <td><b>${escapeHtml(a.score || '-')}</b></td>
           <td>${a.opening.toFixed(1)}</td>
           <td>${a.live.toFixed(1)}</td>
           <td class="diff-val ${diffClass}">${diffSign}${a.diff.toFixed(1)}</td>
@@ -646,6 +648,7 @@
             <span class="card-meta-item">🕐 ${time}</span>
             <span class="card-meta-item card-tournament">🏆 ${escapeHtml(a.tournament || '-')}</span>
             <span class="card-meta-item">📡 ${escapeHtml(a.status || '-')}</span>
+            <span class="card-meta-item">🏀 ${escapeHtml(a.score || '-')}</span>
           </div>
           <div class="card-odds">
             <div class="card-odds-value">

@@ -63,6 +63,10 @@ class Database:
                 conn.execute("ALTER TABLE alerts ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN score TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
 
     # ---------- opening line ----------
 
@@ -112,14 +116,15 @@ class Database:
         tournament: str = "",
         status: str = "",
         url: str = "",
+        score: str = "",
     ):
         with self._conn() as conn:
             conn.execute(
                 """
-                INSERT INTO alerts (match_id, match_name, opening, live, direction, diff, tournament, status, url)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO alerts (match_id, match_name, opening, live, direction, diff, tournament, status, url, score)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (match_id, match_name, opening, live, direction, diff, tournament, status, url),
+                (match_id, match_name, opening, live, direction, diff, tournament, status, url, score),
             )
 
     def recent_alerts(self, limit: int = 200) -> list:

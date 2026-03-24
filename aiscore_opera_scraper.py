@@ -431,6 +431,28 @@ class AiscoreOperaScraper:
         await page.goto(odds_url, wait_until="domcontentloaded")
         await page.wait_for_timeout(3000)
 
+        # Try to click the Total/O-U tab to show over/under market
+        try:
+            clicked_total = await page.evaluate(r"""
+                () => {
+                    const text = s => (s || '').replace(/\s+/g, ' ').trim();
+                    const tabs = Array.from(document.querySelectorAll('*')).filter(el => {
+                        const t = text(el.innerText).toLowerCase();
+                        return t.length < 30 && el.children.length <= 3
+                            && (/\btotal\b|\bo\/u\b|\bover.*under\b|\büst.*alt\b|\bou\b/i.test(t));
+                    });
+                    for (const tab of tabs) {
+                        try { tab.click(); return true; } catch(e) {}
+                    }
+                    return false;
+                }
+            """)
+            if clicked_total:
+                logger.debug("Clicked Total/O-U tab for %s", url)
+                await page.wait_for_timeout(2000)
+        except Exception:
+            pass
+
         parsed = await page.evaluate(
             r"""
             () => {
@@ -588,11 +610,23 @@ class AiscoreOperaScraper:
               if (!tournament && urlLeague) tournament = urlLeague;
 
               let status = '';
-              const allSpans = Array.from(document.querySelectorAll('span, div'));
-              const statusEl = allSpans
-                .map(e => text(e.innerText))
-                .find(v => /^(Q[1-4]|[1-4]Q|OT|HT|FT|1st|2nd|3rd|4th|live|finished|half)/i.test(v));
-              if (statusEl) status = statusEl;
+              // Search for match status in short text elements only (avoid page headers)
+              const statusCandidates = Array.from(document.querySelectorAll('span, div'))
+                .map(e => ({el: e, txt: text(e.innerText)}))
+                .filter(({txt}) => txt.length > 0 && txt.length < 30);
+              // Priority 1: Specific quarter/period indicators
+              const specificStatus = statusCandidates
+                .map(({txt}) => txt)
+                .find(v => /^(Q[1-4]|[1-4]Q|OT|HT|FT|1st\s|2nd\s|3rd\s|4th\s|finished|ended|final)/i.test(v));
+              if (specificStatus) {
+                status = specificStatus;
+              } else {
+                // Priority 2: Time patterns like "05:32" (game clock)
+                const timeStatus = statusCandidates
+                  .map(({txt}) => txt)
+                  .find(v => /^\d{1,2}:\d{2}$/.test(v.trim()));
+                if (timeStatus) status = timeStatus;
+              }
 
               let isQ4 = /Q4|4Q|4th/i.test(status);
               let remainingMinutes = null;
@@ -618,7 +652,30 @@ class AiscoreOperaScraper:
                 }
               }
 
-              return { opening, inplay, matchName, tournament, status, isQ4, remainingMinutes, hasLockedRows, isFinished };
+              // --- Extract live score ---
+              let score = '';
+              // Strategy 1: Look for score pattern like "85 - 72" or "85-72" near match header
+              const scoreEls = Array.from(document.querySelectorAll('span, div'))
+                .map(e => ({el: e, txt: text(e.innerText)}))
+                .filter(({txt}) => /^\d{1,3}\s*[-–]\s*\d{1,3}$/.test(txt.trim()));
+              if (scoreEls.length > 0) {
+                score = scoreEls[0].txt.trim();
+              } else {
+                // Strategy 2: Look for individual team scores (two separate big number elements)
+                const headerArea = document.querySelector('[class*="matchHeader"], [class*="match-header"], [class*="score"], [class*="Score"]');
+                if (headerArea) {
+                  const nums = [];
+                  headerArea.querySelectorAll('*').forEach(el => {
+                    if (el.children.length === 0) {
+                      const t = text(el.innerText).trim();
+                      if (/^\d{1,3}$/.test(t) && parseInt(t) <= 300) nums.push(t);
+                    }
+                  });
+                  if (nums.length >= 2) score = nums[0] + ' - ' + nums[1];
+                }
+              }
+
+              return { opening, inplay, matchName, tournament, status, isQ4, remainingMinutes, hasLockedRows, isFinished, score };
             }
             """
         )
@@ -656,6 +713,7 @@ class AiscoreOperaScraper:
             "opening_total": float(opening),
             "inplay_total": float(inplay),
             "url": url,
+            "score": parsed.get("score") or "",
         }
 
     @staticmethod
