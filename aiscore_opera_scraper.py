@@ -636,11 +636,13 @@ class AiscoreOperaScraper:
               }
 
               // Detect if match is finished/not live
-              let isFinished = /\b(FT|Final|Finished|Ended)\b/i.test(status);
-              // Also check page-level indicators
-              const pageText = (document.body?.innerText || '').substring(0, 2000).toLowerCase();
-              if (!status && (pageText.includes('final') || pageText.includes('finished'))) {
-                isFinished = true;
+              let isFinished = /\b(FT|Finished|Ended)\b/i.test(status);
+              // Check for a dedicated "finished" badge/indicator (not generic page text)
+              if (!isFinished) {
+                const finishedBadge = document.querySelector(
+                  '[class*="finished"], [class*="Finished"], [class*="ended"], [class*="final-score"]'
+                );
+                if (finishedBadge) isFinished = true;
               }
 
               // Detect if any bookmaker rows are locked
