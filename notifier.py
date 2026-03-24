@@ -17,17 +17,23 @@ class TelegramNotifier:
         # Support multiple chat IDs (comma-separated)
         self._chat_ids = [cid.strip() for cid in chat_id.split(",") if cid.strip()]
 
-    async def _send_to_all(self, text: str):
-        """Send a message to all configured chat IDs."""
+    async def _send_to_all(self, text: str, reply_to: dict | None = None) -> dict:
+        """Send a message to all configured chat IDs.
+        Returns {chat_id: message_id} for sent messages."""
+        msg_ids = {}
         for cid in self._chat_ids:
             try:
-                await self._bot.send_message(
+                reply_id = reply_to.get(cid) if reply_to else None
+                msg = await self._bot.send_message(
                     chat_id=cid,
                     text=text,
                     parse_mode=ParseMode.HTML,
+                    reply_to_message_id=reply_id,
                 )
+                msg_ids[cid] = msg.message_id
             except TelegramError as e:
                 logger.error(f"Telegram error (chat_id={cid}): {e}")
+        return msg_ids
 
     async def send_alert(
         self,
@@ -39,10 +45,10 @@ class TelegramNotifier:
         diff: float,
         status: str,
         score: str = "",
-    ) -> bool:
+    ) -> dict:
         """
         Sends a single alert notification.
-        Returns True on success, False on error.
+        Returns {chat_id: message_id} dict for reply threading.
         """
         if direction == "ALT":
             emoji = "🔻"
@@ -65,11 +71,27 @@ class TelegramNotifier:
         )
 
         try:
-            await self._send_to_all(text)
+            msg_ids = await self._send_to_all(text)
             logger.info(f"Alert sent: {match_name} [{direction}]")
-            return True
+            return msg_ids
         except TelegramError as e:
             logger.error(f"Telegram error: {e}")
+            return {}
+
+    async def send_analysis(self, analysis: str, match_name: str, reply_to: dict | None = None) -> bool:
+        """Send AI analysis as a reply to the original alert message."""
+        # Truncate if too long for Telegram (4096 char limit)
+        if len(analysis) > 3800:
+            analysis = analysis[:3800] + "\n\n<i>... (kırpıldı)</i>"
+
+        text = f"🤖 <b>AI Analiz: {match_name}</b>\n\n{analysis}"
+
+        try:
+            await self._send_to_all(text, reply_to=reply_to)
+            logger.info(f"Analysis sent: {match_name}")
+            return True
+        except TelegramError as e:
+            logger.error(f"Analysis send error: {e}")
             return False
 
     async def send_startup(self):

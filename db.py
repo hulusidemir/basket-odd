@@ -67,6 +67,10 @@ class Database:
                 conn.execute("ALTER TABLE alerts ADD COLUMN score TEXT NOT NULL DEFAULT ''")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN ai_analysis TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
 
     # ---------- opening line ----------
 
@@ -117,15 +121,16 @@ class Database:
         status: str = "",
         url: str = "",
         score: str = "",
-    ):
+    ) -> int:
         with self._conn() as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """
                 INSERT INTO alerts (match_id, match_name, opening, live, direction, diff, tournament, status, url, score)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (match_id, match_name, opening, live, direction, diff, tournament, status, url, score),
             )
+            return cursor.lastrowid
 
     def recent_alerts(self, limit: int = 200) -> list:
         with self._conn() as conn:
@@ -152,6 +157,13 @@ class Database:
         with self._conn() as conn:
             row = conn.execute("SELECT * FROM alerts WHERE id = ?", (alert_id,)).fetchone()
         return dict(row) if row else None
+
+    def update_analysis(self, alert_id: int, analysis: str):
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE alerts SET ai_analysis = ? WHERE id = ?",
+                (analysis, alert_id),
+            )
 
     def delete_alert(self, alert_id: int) -> bool:
         with self._conn() as conn:

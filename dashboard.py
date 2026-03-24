@@ -60,6 +60,15 @@ def api_delete_alert(alert_id: int):
     return jsonify({"id": alert_id, "deleted": True})
 
 
+@app.route("/api/alerts/<int:alert_id>/analysis")
+def api_get_analysis(alert_id: int):
+    """Returns AI analysis for a specific alert."""
+    alert = db.get_alert(alert_id)
+    if not alert:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"id": alert_id, "ai_analysis": alert.get("ai_analysis", "")})
+
+
 if __name__ == "__main__":
     port = int(os.getenv("DASHBOARD_PORT", "5050"))
     app.run(host="0.0.0.0", port=port, debug=False)

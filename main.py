@@ -11,6 +11,7 @@ import random
 import sys
 
 from aiscore_opera_scraper import AiscoreOperaScraper
+from analyzer import get_match_analysis
 from config import Config
 from db import Database
 from notifier import TelegramNotifier
@@ -34,6 +35,7 @@ async def process_match(
     Processes a single match:
     - Calculates the difference between Opening odds and In-play odds total lines.
     - Sends a Telegram notification if the difference exceeds the threshold.
+    - Spawns background AI analysis task.
     """
     match_id = match["match_id"]
     match_name = match["match_name"]
@@ -62,55 +64,80 @@ async def process_match(
 
     if diff >= 0:
         direction = "ALT"
-        if not db.was_alerted_recently(match_id, direction, config.ALERT_COOLDOWN_MINUTES):
-            await notifier.send_alert(
-                match_name, tournament, opening_total, inplay_total, direction, abs_diff, status, score=score
-            )
-            db.save_alert(match_id, match_name, opening_total, inplay_total, direction, abs_diff,
-                          tournament=tournament, status=status, url=url, score=score)
-            log.info(
-                "Alert sent: id=%s | name=%s | direction=%s | diff=%.2f | url=%s",
-                match_id,
-                match_name,
-                direction,
-                abs_diff,
-                url,
-            )
-        else:
-            log.debug(
-                "Skipped (cooldown active): id=%s | name=%s | direction=%s | cooldown=%s min | url=%s",
-                match_id,
-                match_name,
-                direction,
-                config.ALERT_COOLDOWN_MINUTES,
-                url,
-            )
-
     else:
         direction = "ÜST"
-        if not db.was_alerted_recently(match_id, direction, config.ALERT_COOLDOWN_MINUTES):
-            await notifier.send_alert(
-                match_name, tournament, opening_total, inplay_total, direction, abs_diff, status, score=score
+
+    if db.was_alerted_recently(match_id, direction, config.ALERT_COOLDOWN_MINUTES):
+        log.debug(
+            "Skipped (cooldown active): id=%s | direction=%s | cooldown=%s min",
+            match_id, direction, config.ALERT_COOLDOWN_MINUTES,
+        )
+        return
+
+    # 1) Send instant Telegram alert
+    msg_ids = await notifier.send_alert(
+        match_name, tournament, opening_total, inplay_total, direction, abs_diff, status, score=score
+    )
+
+    # 2) Save to database
+    alert_id = db.save_alert(
+        match_id, match_name, opening_total, inplay_total, direction, abs_diff,
+        tournament=tournament, status=status, url=url, score=score,
+    )
+
+    log.info(
+        "Alert sent: id=%s | name=%s | direction=%s | diff=%.2f",
+        match_id, match_name, direction, abs_diff,
+    )
+
+    # 3) Spawn background AI analysis (non-blocking)
+    if config.GEMINI_API_KEY:
+        asyncio.create_task(
+            _run_analysis(
+                config, db, notifier, alert_id, msg_ids,
+                match_name, tournament, score, opening_total, inplay_total, diff, direction, status,
             )
-            db.save_alert(match_id, match_name, opening_total, inplay_total, direction, abs_diff,
-                          tournament=tournament, status=status, url=url, score=score)
-            log.info(
-                "Alert sent: id=%s | name=%s | direction=%s | diff=%.2f | url=%s",
-                match_id,
-                match_name,
-                direction,
-                abs_diff,
-                url,
-            )
+        )
+
+
+async def _run_analysis(
+    config: Config,
+    db: Database,
+    notifier: TelegramNotifier,
+    alert_id: int,
+    msg_ids: dict,
+    match_name: str,
+    tournament: str,
+    score: str,
+    opening: float,
+    inplay: float,
+    diff: float,
+    direction: str,
+    status: str,
+):
+    """Background task: get Gemini analysis, send as Telegram reply, save to DB."""
+    log = logging.getLogger("main")
+    try:
+        analysis = await get_match_analysis(
+            api_key=config.GEMINI_API_KEY,
+            model=config.GEMINI_MODEL,
+            match_name=match_name,
+            tournament=tournament,
+            score=score,
+            opening=opening,
+            inplay=inplay,
+            diff=diff,
+            direction=direction,
+            status=status,
+        )
+        if analysis:
+            await notifier.send_analysis(analysis, match_name, reply_to=msg_ids)
+            db.update_analysis(alert_id, analysis)
+            log.info("AI analysis saved for alert #%s: %s", alert_id, match_name)
         else:
-            log.debug(
-                "Skipped (cooldown active): id=%s | name=%s | direction=%s | cooldown=%s min | url=%s",
-                match_id,
-                match_name,
-                direction,
-                config.ALERT_COOLDOWN_MINUTES,
-                url,
-            )
+            log.warning("Empty AI analysis for: %s", match_name)
+    except Exception as e:
+        log.error("Background analysis error for %s: %s", match_name, e)
 
 
 async def run():
