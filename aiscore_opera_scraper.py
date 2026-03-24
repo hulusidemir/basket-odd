@@ -424,30 +424,6 @@ class AiscoreOperaScraper:
 
         logger.info("Collected %s match links (live_max=%s).", len(links), live_max)
         return links
-            all_hrefs.update(hrefs)
-
-            if len(all_hrefs) >= live_max:
-                break
-
-            if len(all_hrefs) == last_count:
-                stale_rounds += 1
-                if stale_rounds >= 3:
-                    break
-            else:
-                stale_rounds = 0
-                last_count = len(all_hrefs)
-
-            await page.evaluate("window.scrollBy(0, 600)")
-            await page.wait_for_timeout(800)
-
-        # Trim to live count
-        links = [urljoin(page.url, href) for href in all_hrefs]
-        links = [u for u in links if "/basketball/match-" in u]
-        # Strip sub-page suffixes like /h2h, /odds, /stats to get the base match URL
-        _suffixes = re.compile(r'/(h2h|odds|stats|lineups|standings|summary)/?$')
-        links = [_suffixes.sub('', u) for u in links]
-        links = sorted(set(links))[:live_max]
-        return links
 
     async def _extract_match(self, page, url: str) -> dict | None:
         # Navigate directly to the /odds URL
