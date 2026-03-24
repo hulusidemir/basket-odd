@@ -267,42 +267,77 @@ class AiscoreOperaScraper:
 
     async def _collect_match_links(self, page) -> list[str]:
         """
-        The 'Live' tab is active by default on the AIScore homepage.
-        The page uses a virtual scroller — only visible matches are in the DOM.
-        We click the Live tab, read the live match count, and collect only live match links.
+        Navigate to AIScore basketball live page and collect live match links.
+        Uses multiple strategies to find and activate the Live tab.
         """
         await page.wait_for_timeout(3000)
 
-        # ── Step 1: Find and click the Live tab, get live match count ──
+        # ── Step 0: Dump page structure for diagnostics ──
+        page_diag = await page.evaluate(r"""() => {
+            const text = s => (s || '').replace(/\s+/g, ' ').trim();
+
+            // Collect the top-level navigation/tab area HTML
+            const topArea = document.querySelector('header, nav, [class*="header"], [class*="nav"]');
+            const topHtml = topArea ? text(topArea.innerHTML).substring(0, 500) : 'NO_HEADER';
+
+            // Collect ALL elements that might be tabs/navigation items (with their text + classes)
+            const tabCandidates = [];
+            document.querySelectorAll('*').forEach(el => {
+                const t = text(el.innerText);
+                const cls = el.className || '';
+                // Short text elements that look like tabs
+                if (t.length > 0 && t.length < 40 && el.children.length <= 3) {
+                    if (/live|canlı|today|bugün|score|match|result|finish|schedul|ended/i.test(t)
+                        || /tab|menu|nav|filter|switch/i.test(typeof cls === 'string' ? cls : '')) {
+                        tabCandidates.push({
+                            tag: el.tagName,
+                            text: t.substring(0, 40),
+                            cls: (typeof cls === 'string' ? cls : '').substring(0, 100),
+                            href: el.getAttribute?.('href') || ''
+                        });
+                    }
+                }
+            });
+
+            // Count match links
+            const allMatchLinks = document.querySelectorAll('a[href*="/basketball/match-"]').length;
+
+            return {
+                url: window.location.href,
+                title: document.title,
+                tabCandidates: tabCandidates.slice(0, 20),
+                matchLinkCount: allMatchLinks,
+                topHtml: topHtml
+            };
+        }""")
+        logger.info(
+            "AIScore page diagnostics: url=%s, title=%s, matchLinks=%s, tabs=%s",
+            page_diag.get("url"), page_diag.get("title"),
+            page_diag.get("matchLinkCount"), page_diag.get("tabCandidates", [])[:10]
+        )
+
+        # ── Step 1: Try to activate the Live tab ──
         live_info = await page.evaluate(r"""() => {
             const text = s => (s || '').replace(/\s+/g, ' ').trim();
 
-            // Strategy 1: Look for element with 'activeLiveTab' class
-            let tab = document.querySelector('.activeLiveTab');
+            let tab = null;
 
-            // Strategy 2: Look for any tab-like element containing "Live" text
-            if (!tab) {
-                const candidates = document.querySelectorAll(
-                    '[class*="tab"], [class*="Tab"], [role="tab"], .menu-item, nav a, nav div'
-                );
-                for (const el of candidates) {
-                    const t = text(el.innerText).toLowerCase();
-                    if (t.includes('live') || t.includes('canlı')) {
-                        tab = el;
-                        break;
-                    }
-                }
-            }
+            // Strategy 1: class contains 'activeLiveTab' or 'liveTab' or 'live_tab'
+            tab = document.querySelector('.activeLiveTab, [class*="liveTab"], [class*="live_tab"], [class*="live-tab"]');
 
-            // Strategy 3: Broader search — any clickable element with "Live" text
+            // Strategy 2: Look through all elements for ones that look like tabs with "Live" text
             if (!tab) {
-                const all = document.querySelectorAll('a, button, div, span');
-                for (const el of all) {
+                const allEls = document.querySelectorAll('*');
+                for (const el of allEls) {
                     const t = text(el.innerText);
-                    // Match "Live", "Live (5)", "LIVE" etc. but not long text
-                    if (t.length < 30 && /^live\b/i.test(t.trim())) {
-                        tab = el;
-                        break;
+                    const cls = (typeof el.className === 'string') ? el.className : '';
+                    // Must be a short label containing "Live" or a number in parentheses
+                    if (t.length > 0 && t.length < 30 && /^live\b/i.test(t.trim())) {
+                        // Prefer elements that look like tabs (few children, clickable)
+                        if (el.children.length <= 5) {
+                            tab = el;
+                            break;
+                        }
                     }
                 }
             }
@@ -310,6 +345,7 @@ class AiscoreOperaScraper:
             let count = 0;
             let tabText = '';
             let found = false;
+            let clicked = false;
 
             if (tab) {
                 found = true;
@@ -317,87 +353,77 @@ class AiscoreOperaScraper:
                 const m = tabText.match(/\((\d+)\)/);
                 if (m) count = parseInt(m[1], 10);
 
-                // Click the Live tab to make sure it's active
-                try { tab.click(); } catch(e) {}
+                // Click it
+                try {
+                    tab.click();
+                    clicked = true;
+                } catch(e) {
+                    // Try dispatching a click event
+                    try {
+                        tab.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                        clicked = true;
+                    } catch(e2) {}
+                }
             }
 
-            // Debug info: collect all tab-like elements for logging
-            const tabDebug = [];
-            document.querySelectorAll('[class*="tab"], [class*="Tab"], [role="tab"]').forEach(el => {
-                tabDebug.push({
-                    text: text(el.innerText).substring(0, 50),
-                    classes: (el.className || '').substring(0, 80)
-                });
-            });
-
-            return { found, tabText, count, tabDebug };
+            return { found, tabText, count, clicked };
         }""")
 
         live_found = live_info.get("found", False)
         live_count = live_info.get("count", 0)
         tab_text = live_info.get("tabText", "")
+        tab_clicked = live_info.get("clicked", False)
 
         if live_found and live_count > 0:
             live_max = live_count
-            logger.info("AIScore Live tab found: '%s' (%s live matches).", tab_text, live_max)
+            logger.info("Live tab found: '%s' (%s matches), clicked=%s.", tab_text, live_max, tab_clicked)
         elif live_found:
-            # Tab found but count not in text — use a reasonable default
             live_max = 50
-            logger.info("AIScore Live tab found: '%s' (count not detected, using %s).", tab_text, live_max)
+            logger.info("Live tab found: '%s' (no count), clicked=%s. Using max=%s.", tab_text, tab_clicked, live_max)
         else:
             live_max = 30
-            tab_debug = live_info.get("tabDebug", [])
-            logger.warning(
-                "Could not find AIScore Live tab. Using default max=%s. "
-                "Tab elements found: %s", live_max, tab_debug[:5]
-            )
+            logger.warning("Could not find Live tab! Using max=%s.", live_max)
 
-        # Wait for live tab content to load after click
-        await page.wait_for_timeout(2000)
+        # Wait for content to refresh after tab click
+        await page.wait_for_timeout(3000)
 
-        # ── Step 2: Collect match links with live indicator detection ──
+        # ── Step 2: Collect links and filter to live-only ──
         all_hrefs: set[str] = set()
         max_scrolls = 50
         last_count = 0
         stale_rounds = 0
 
-        for _ in range(max_scrolls):
+        for scroll_i in range(max_scrolls):
             hrefs = await page.evaluate(r"""() => {
-                const links = [];
-                document.querySelectorAll('a[href*="/basketball/match-"]').forEach(a => {
-                    const href = a.getAttribute('href');
-                    if (!href) return;
-
-                    // Check if this match link is inside/near a live indicator
-                    // Look at the match row container for live signals
-                    const row = a.closest('[class*="match"], [class*="game"], [class*="row"], [class*="item"], li, tr')
-                        || a.parentElement?.parentElement;
-                    if (!row) { links.push(href); return; }
-
-                    const rowHtml = (row.innerHTML || '').toLowerCase();
-                    const rowText = (row.innerText || '').toLowerCase();
-
-                    // Positive: has live indicators (red dot, "live", quarter info, running time)
-                    const hasLiveSignal =
-                        /\blive\b/.test(rowText) ||
-                        /\bq[1-4]\b|\b[1-4]q\b|\bot\b|\bht\b/.test(rowText) ||
-                        /\d+\s*:\s*\d+/.test(rowText) ||  // score like "45:38"
-                        rowHtml.includes('live') ||
-                        rowHtml.includes('blink') ||
-                        rowHtml.includes('pulse') ||
-                        row.querySelector('[class*="live"], [class*="Live"], [class*="playing"], [class*="inprogress"], [style*="red"], [class*="blink"], [class*="pulse"]') !== null;
-
-                    // Negative: finished or scheduled indicators
-                    const hasFinishedSignal =
-                        /\b(ft|final|finished|ended|completed)\b/.test(rowText) ||
-                        /\b(scheduled|upcoming|not started|vs)\b/.test(rowText);
-
-                    if (hasLiveSignal || !hasFinishedSignal) {
-                        links.push(href);
-                    }
-                });
-                return links;
+                return Array.from(document.querySelectorAll('a[href*="/basketball/match-"]'))
+                    .map(a => a.getAttribute('href'))
+                    .filter(Boolean);
             }""")
+            all_hrefs.update(hrefs)
+
+            if len(all_hrefs) >= live_max:
+                break
+
+            if len(all_hrefs) == last_count:
+                stale_rounds += 1
+                if stale_rounds >= 3:
+                    break
+            else:
+                stale_rounds = 0
+                last_count = len(all_hrefs)
+
+            await page.evaluate("window.scrollBy(0, 600)")
+            await page.wait_for_timeout(800)
+
+        # Build full URLs and deduplicate
+        links = [urljoin(page.url, href) for href in all_hrefs]
+        links = [u for u in links if "/basketball/match-" in u]
+        _suffixes = re.compile(r'/(h2h|odds|stats|lineups|standings|summary)/?$')
+        links = [_suffixes.sub('', u) for u in links]
+        links = sorted(set(links))[:live_max]
+
+        logger.info("Collected %s match links (live_max=%s).", len(links), live_max)
+        return links
             all_hrefs.update(hrefs)
 
             if len(all_hrefs) >= live_max:
@@ -599,6 +625,14 @@ class AiscoreOperaScraper:
                 if (tm) remainingMinutes = parseInt(tm[1]) + parseInt(tm[2]) / 60;
               }
 
+              // Detect if match is finished/not live
+              let isFinished = /\b(FT|Final|Finished|Ended)\b/i.test(status);
+              // Also check page-level indicators
+              const pageText = (document.body?.innerText || '').substring(0, 2000).toLowerCase();
+              if (!status && (pageText.includes('final') || pageText.includes('finished'))) {
+                isFinished = true;
+              }
+
               // Detect if any bookmaker rows are locked
               let hasLockedRows = false;
               if (container) {
@@ -608,10 +642,17 @@ class AiscoreOperaScraper:
                 }
               }
 
-              return { opening, inplay, matchName, tournament, status, isQ4, remainingMinutes, hasLockedRows };
+              return { opening, inplay, matchName, tournament, status, isQ4, remainingMinutes, hasLockedRows, isFinished };
             }
             """
         )
+
+        # Skip finished matches early
+        is_finished = parsed.get("isFinished", False)
+        status = parsed.get("status", "")
+        if is_finished:
+            logger.debug("Skipping finished match: %s (status=%s)", url, status)
+            return None
 
         opening = parsed.get("opening")
         inplay = parsed.get("inplay")
