@@ -15,7 +15,9 @@
       --accent-alt: #ef4444;
       --accent-ust: #22c55e;
       --accent-blue: #3b82f6;
+      --accent-follow: #fbbf24;
       --bet-bg: rgba(59, 130, 246, 0.08);
+      --follow-bg: rgba(251, 191, 36, 0.12);
       --ignored-bg: rgba(255,255,255,0.03);
       --radius: 12px;
     }
@@ -168,6 +170,7 @@
     tbody td { padding: 10px 12px; white-space: nowrap; }
     tr.bet-placed { background: var(--bet-bg); opacity: 0.55; }
     tr.bet-placed:hover { opacity: 0.7; }
+    tr.is-followed { background: var(--follow-bg); }
     tr.is-ignored td.col-match,
     tr.is-ignored td.col-tournament,
     tr.is-ignored td.col-direction { text-decoration: line-through; opacity: 0.4; }
@@ -187,6 +190,7 @@
       transition: background 0.15s;
     }
     .alert-card.bet-placed { background: var(--bet-bg); opacity: 0.6; }
+    .alert-card.is-followed { background: var(--follow-bg); }
     .alert-card.is-ignored { opacity: 0.5; }
     .alert-card.is-ignored .card-match,
     .alert-card.is-ignored .card-tournament { text-decoration: line-through; }
@@ -266,10 +270,12 @@
     }
 
     .card-actions {
-      display: flex;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
       gap: 8px;
+      align-items: stretch;
     }
-    .card-actions .action-btn { flex: 1; text-align: center; }
+    .card-actions .action-btn { width: 100%; text-align: center; }
 
     /* ── Shared Components ────────────────────────────── */
     .badge {
@@ -297,6 +303,8 @@
       cursor: pointer;
       font-size: 12px;
       transition: all 0.15s;
+      min-width: 98px;
+      font-weight: 600;
     }
     .action-btn:hover { border-color: var(--accent-blue); color: var(--text); }
     .action-btn:active { transform: scale(0.97); }
@@ -309,6 +317,24 @@
       background: #6b7280;
       border-color: #6b7280;
       color: #fff;
+    }
+    .action-btn.active-follow {
+      background: #f59e0b;
+      border-color: #f59e0b;
+      color: #111827;
+    }
+
+    .actions-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      justify-content: flex-start;
+    }
+
+    .action-btn.follow-btn:not(.active-follow) {
+      border-color: #d4a94d;
+      color: #f6cf72;
+      background: rgba(251, 191, 36, 0.08);
     }
 
     .match-link {
@@ -481,6 +507,10 @@
           <span id="stat-bet">0</span> Bahis
         </div>
         <div class="stat-chip">
+          <span class="stat-dot" style="background:var(--accent-follow)"></span>
+          <span id="stat-follow">0</span> Takip
+        </div>
+        <div class="stat-chip">
           <span class="stat-dot" style="background:#6b7280"></span>
           <span id="stat-total">0</span> Toplam
         </div>
@@ -492,6 +522,7 @@
     <button class="filter-btn active" data-filter="all">Tümü</button>
     <button class="filter-btn" data-filter="pending">Bekleyen</button>
     <button class="filter-btn" data-filter="bet">Bahis</button>
+    <button class="filter-btn" data-filter="follow">Takip</button>
     <button class="filter-btn" data-filter="ignored">Gözardı</button>
     <button class="filter-btn" data-filter="alt">🔻 ALT</button>
     <button class="filter-btn" data-filter="ust">🔺 ÜST</button>
@@ -599,16 +630,19 @@
       const alt = allAlerts.filter(a => a.direction === 'ALT').length;
       const ust = allAlerts.filter(a => a.direction === 'ÜST').length;
       const bet = allAlerts.filter(a => a.bet_placed).length;
+      const follow = allAlerts.filter(a => a.followed).length;
       document.getElementById('stat-alt').textContent = alt;
       document.getElementById('stat-ust').textContent = ust;
       document.getElementById('stat-bet').textContent = bet;
+      document.getElementById('stat-follow').textContent = follow;
       document.getElementById('stat-total').textContent = allAlerts.length;
     }
 
     function filterAlerts() {
       let filtered = [...allAlerts];
-      if (currentFilter === 'pending') filtered = filtered.filter(a => !a.bet_placed && !a.ignored);
+      if (currentFilter === 'pending') filtered = filtered.filter(a => !a.bet_placed && !a.ignored && !a.followed);
       else if (currentFilter === 'bet') filtered = filtered.filter(a => a.bet_placed);
+      else if (currentFilter === 'follow') filtered = filtered.filter(a => a.followed);
       else if (currentFilter === 'ignored') filtered = filtered.filter(a => a.ignored);
       else if (currentFilter === 'alt') filtered = filtered.filter(a => a.direction === 'ALT');
       else if (currentFilter === 'ust') filtered = filtered.filter(a => a.direction === 'ÜST');
@@ -659,6 +693,7 @@
       tbody.innerHTML = paged.map(a => {
         const classes = [];
         if (a.bet_placed) classes.push('bet-placed');
+        if (a.followed) classes.push('is-followed');
         if (a.ignored) classes.push('is-ignored');
         const dirClass = a.direction === 'ALT' ? 'badge-alt' : 'badge-ust';
         const dirIcon = a.direction === 'ALT' ? '🔻' : '🔺';
@@ -674,6 +709,8 @@
         const betBtnText = a.bet_placed ? '✓ Bahis' : '💰 Bahis';
         const ignoreBtnClass = a.ignored ? 'active-ignore' : '';
         const ignoreBtnText = a.ignored ? '✓ Gözardı' : '🚫 Gözardı';
+        const followBtnClass = a.followed ? 'active-follow' : '';
+        const followBtnText = a.followed ? '✓ Takipte' : '👁 Takip Et';
 
         return `<tr class="${classes.join(' ')}">
           <td><input type="checkbox" class="row-check" data-id="${a.id}" onchange="updateSelectedCount()"></td>
@@ -687,9 +724,12 @@
           <td>${a.live.toFixed(1)}</td>
           <td class="diff-val ${diffClass}">${diffSign}${a.diff.toFixed(1)}</td>
           <td>
-            <button class="action-btn ${betBtnClass}" onclick="toggleBet(${a.id})">${betBtnText}</button>
-            <button class="action-btn ${ignoreBtnClass}" onclick="toggleIgnore(${a.id})">${ignoreBtnText}</button>
-            <button class="ai-btn${a.ai_analysis ? '' : ' no-analysis'}" onclick="showAnalysis(${a.id})" title="AI Analiz">🤖</button>
+            <div class="actions-wrap">
+              <button class="action-btn ${betBtnClass}" onclick="toggleBet(${a.id})">${betBtnText}</button>
+              <button class="action-btn follow-btn ${followBtnClass}" onclick="toggleFollow(${a.id})">${followBtnText}</button>
+              <button class="action-btn ${ignoreBtnClass}" onclick="toggleIgnore(${a.id})">${ignoreBtnText}</button>
+              <button class="ai-btn${a.ai_analysis ? '' : ' no-analysis'}" onclick="showAnalysis(${a.id})" title="AI Analiz">🤖</button>
+            </div>
           </td>
         </tr>`;
       }).join('');
@@ -715,6 +755,7 @@
       wrap.innerHTML = paged.map(a => {
         const classes = ['alert-card'];
         if (a.bet_placed) classes.push('bet-placed');
+        if (a.followed) classes.push('is-followed');
         if (a.ignored) classes.push('is-ignored');
         const dirClass = a.direction === 'ALT' ? 'badge-alt' : 'badge-ust';
         const dirIcon = a.direction === 'ALT' ? '🔻' : '🔺';
@@ -731,6 +772,8 @@
         const betBtnText = a.bet_placed ? '✓ Bahis Oynandı' : '💰 Bahis Oyna';
         const ignoreBtnClass = a.ignored ? 'active-ignore' : '';
         const ignoreBtnText = a.ignored ? '✓ Gözardı' : '🚫 Gözardı';
+        const followBtnClass = a.followed ? 'active-follow' : '';
+        const followBtnText = a.followed ? '✓ Takipte' : '👁 Takip Et';
 
         return `<div class="${classes.join(' ')}">
           <div class="card-top">
@@ -762,6 +805,7 @@
           </div>
           <div class="card-actions">
             <button class="action-btn ${betBtnClass}" onclick="toggleBet(${a.id})">${betBtnText}</button>
+            <button class="action-btn follow-btn ${followBtnClass}" onclick="toggleFollow(${a.id})">${followBtnText}</button>
             <button class="action-btn ${ignoreBtnClass}" onclick="toggleIgnore(${a.id})">${ignoreBtnText}</button>
             <button class="ai-btn${a.ai_analysis ? '' : ' no-analysis'}" onclick="showAnalysis(${a.id})" title="AI Analiz">🤖</button>
           </div>
@@ -796,18 +840,35 @@
 
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
+    function applyMatchStatusUpdate(payload) {
+      if (!payload || !payload.match_id) return;
+      allAlerts = allAlerts.map(a => {
+        if (a.match_id !== payload.match_id) return a;
+        const next = { ...a };
+        if (payload.bet_placed !== null && payload.bet_placed !== undefined) next.bet_placed = payload.bet_placed;
+        if (payload.ignored !== null && payload.ignored !== undefined) next.ignored = payload.ignored;
+        if (payload.followed !== null && payload.followed !== undefined) next.followed = payload.followed;
+        return next;
+      });
+    }
+
     async function toggleBet(id) {
-      await fetch(`/api/alerts/${id}/bet`, { method: 'POST' });
-      const a = allAlerts.find(x => x.id === id);
-      if (a) a.bet_placed = a.bet_placed ? 0 : 1;
+      const resp = await fetch(`/api/alerts/${id}/bet`, { method: 'POST' });
+      applyMatchStatusUpdate(await resp.json());
       render();
       updateStats();
     }
 
     async function toggleIgnore(id) {
-      await fetch(`/api/alerts/${id}/ignore`, { method: 'POST' });
-      const a = allAlerts.find(x => x.id === id);
-      if (a) a.ignored = a.ignored ? 0 : 1;
+      const resp = await fetch(`/api/alerts/${id}/ignore`, { method: 'POST' });
+      applyMatchStatusUpdate(await resp.json());
+      render();
+      updateStats();
+    }
+
+    async function toggleFollow(id) {
+      const resp = await fetch(`/api/alerts/${id}/follow`, { method: 'POST' });
+      applyMatchStatusUpdate(await resp.json());
       render();
       updateStats();
     }

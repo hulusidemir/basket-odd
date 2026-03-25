@@ -39,6 +39,7 @@ class Database:
                     url         TEXT NOT NULL DEFAULT '',
                     bet_placed  INTEGER NOT NULL DEFAULT 0,
                     ignored     INTEGER NOT NULL DEFAULT 0,
+                    followed    INTEGER NOT NULL DEFAULT 0,
                     alerted_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
@@ -61,6 +62,10 @@ class Database:
                 pass
             try:
                 conn.execute("ALTER TABLE alerts ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN followed INTEGER NOT NULL DEFAULT 0")
             except Exception:
                 pass
             try:
@@ -166,6 +171,39 @@ class Database:
                 "UPDATE alerts SET ignored = ? WHERE id = ?",
                 (1 if value else 0, alert_id),
             )
+
+    def set_match_statuses(
+        self,
+        match_id: str,
+        *,
+        bet_placed: bool | None = None,
+        ignored: bool | None = None,
+        followed: bool | None = None,
+    ) -> int:
+        """Update one or more status flags for all alerts of the same match."""
+        updates = []
+        params = []
+
+        if bet_placed is not None:
+            updates.append("bet_placed = ?")
+            params.append(1 if bet_placed else 0)
+        if ignored is not None:
+            updates.append("ignored = ?")
+            params.append(1 if ignored else 0)
+        if followed is not None:
+            updates.append("followed = ?")
+            params.append(1 if followed else 0)
+
+        if not updates:
+            return 0
+
+        params.append(match_id)
+        with self._conn() as conn:
+            cursor = conn.execute(
+                f"UPDATE alerts SET {', '.join(updates)} WHERE match_id = ?",
+                tuple(params),
+            )
+        return cursor.rowcount
 
     def get_alert(self, alert_id: int) -> dict | None:
         with self._conn() as conn:

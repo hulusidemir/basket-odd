@@ -32,24 +32,71 @@ def api_alerts():
 
 @app.route("/api/alerts/<int:alert_id>/bet", methods=["POST"])
 def api_toggle_bet(alert_id: int):
-    """Toggle bet placed/not placed."""
+    """Toggle bet placed/not placed for all alerts of the same match."""
     alert = db.get_alert(alert_id)
     if not alert:
         return jsonify({"error": "not found"}), 404
     new_val = not bool(alert["bet_placed"])
-    db.set_bet_placed(alert_id, new_val)
-    return jsonify({"id": alert_id, "bet_placed": int(new_val)})
+    affected = db.set_match_statuses(
+        alert["match_id"],
+        bet_placed=new_val,
+        ignored=False if new_val else None,
+        followed=False if new_val else None,
+    )
+    return jsonify({
+        "id": alert_id,
+        "match_id": alert["match_id"],
+        "bet_placed": int(new_val),
+        "ignored": 0 if new_val else None,
+        "followed": 0 if new_val else None,
+        "affected": affected,
+    })
 
 
 @app.route("/api/alerts/<int:alert_id>/ignore", methods=["POST"])
 def api_toggle_ignore(alert_id: int):
-    """Toggle ignore status."""
+    """Toggle ignore status for all alerts of the same match."""
     alert = db.get_alert(alert_id)
     if not alert:
         return jsonify({"error": "not found"}), 404
     new_val = not bool(alert["ignored"])
-    db.set_ignored(alert_id, new_val)
-    return jsonify({"id": alert_id, "ignored": int(new_val)})
+    affected = db.set_match_statuses(
+        alert["match_id"],
+        ignored=new_val,
+        bet_placed=False if new_val else None,
+        followed=False if new_val else None,
+    )
+    return jsonify({
+        "id": alert_id,
+        "match_id": alert["match_id"],
+        "ignored": int(new_val),
+        "bet_placed": 0 if new_val else None,
+        "followed": 0 if new_val else None,
+        "affected": affected,
+    })
+
+
+@app.route("/api/alerts/<int:alert_id>/follow", methods=["POST"])
+def api_toggle_follow(alert_id: int):
+    """Toggle follow status for all alerts of the same match."""
+    alert = db.get_alert(alert_id)
+    if not alert:
+        return jsonify({"error": "not found"}), 404
+    new_val = not bool(alert.get("followed", 0))
+    affected = db.set_match_statuses(
+        alert["match_id"],
+        followed=new_val,
+        bet_placed=False if new_val else None,
+        ignored=False if new_val else None,
+    )
+    return jsonify({
+        "id": alert_id,
+        "match_id": alert["match_id"],
+        "followed": int(new_val),
+        "bet_placed": 0 if new_val else None,
+        "ignored": 0 if new_val else None,
+        "affected": affected,
+    })
 
 
 @app.route("/api/alerts/<int:alert_id>", methods=["DELETE"])
