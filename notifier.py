@@ -46,6 +46,7 @@ class TelegramNotifier:
         status: str,
         score: str = "",
         signal_count: int = 1,
+        risk: dict | None = None,
     ) -> dict:
         """
         Sends a single alert notification.
@@ -61,6 +62,14 @@ class TelegramNotifier:
         score_line = f"📊 Skor: <b>{score}</b>\n" if score else ""
         signal_line = f"🔁 <b>{signal_count}. sinyal</b>\n" if signal_count > 1 else ""
 
+        # Risk assessment line
+        risk_line = ""
+        if risk:
+            r_emoji = risk.get("emoji", "")
+            r_text = risk.get("text", "")
+            if r_text:
+                risk_line = f"\n{r_emoji} <i>({r_text})</i>\n"
+
         text = (
             f"{emoji} <b>Bahis Fırsatı: {direction}</b>\n"
             f"{signal_line}\n"
@@ -71,6 +80,7 @@ class TelegramNotifier:
             f"Güncel Barem:  <b>{live:.1f}</b>\n"
             f"Fark: <b>{diff:+.1f}</b> puan\n\n"
             f"💡 <i>{tip}</i>"
+            f"{risk_line}"
         )
 
         try:

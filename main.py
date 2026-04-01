@@ -8,6 +8,7 @@ Usage:
 import asyncio
 import logging
 import random
+import re
 import sys
 
 from cachetools import TTLCache
@@ -20,6 +21,122 @@ from notifier import TelegramNotifier
 
 # In-memory cache: one Gemini call per match. Key = match_id, TTL = 4 hours.
 _analysis_cache: TTLCache = TTLCache(maxsize=1024, ttl=4 * 3600)
+
+
+def calculate_risk(direction: str, inplay_total: float, score: str, status: str) -> dict:
+    """
+    Calculate risk assessment based on score tempo vs live total line.
+    Returns dict with level, emoji, text, icon keys.
+    """
+    # Parse score
+    if not score or not score.strip():
+        return {
+            "level": "unknown", "emoji": "❓", "icon": "?",
+            "text": "Skor verisi alınamadı, risk değerlendirmesi yapılamadı",
+        }
+
+    score_match = re.match(r'(\d+)\s*[-–]\s*(\d+)', score.strip())
+    if not score_match:
+        return {
+            "level": "unknown", "emoji": "❓", "icon": "?",
+            "text": "Skor verisi okunamadı, risk değerlendirmesi yapılamadı",
+        }
+
+    home_score = int(score_match.group(1))
+    away_score = int(score_match.group(2))
+    total_score = home_score + away_score
+
+    # Parse status/period
+    if not status or not status.strip():
+        return {
+            "level": "unknown", "emoji": "❓", "icon": "?",
+            "text": f"Periyod verisi alınamadı (Skor: {score})",
+        }
+
+    status_clean = status.strip()
+
+    # OT
+    if re.match(r'^OT', status_clean, re.IGNORECASE):
+        return {
+            "level": "unknown", "emoji": "❓", "icon": "?",
+            "text": f"Uzatma (OT), tempo hesaplanamıyor (Skor: {score})",
+        }
+
+    period = None
+    remaining_min = None
+
+    # HT (halftime)
+    if re.match(r'^HT$', status_clean, re.IGNORECASE):
+        period = 2
+        remaining_min = 0.0
+    else:
+        # Q1-Q4 with time: "Q2 05:30", "Q4-09:29", "3Q 04:11"
+        q_match = re.match(
+            r'(?:Q(\d)|(\d)Q)\s*[-\s]?\s*(\d{1,2}):(\d{2})',
+            status_clean, re.IGNORECASE,
+        )
+        if q_match:
+            period = int(q_match.group(1) or q_match.group(2))
+            remaining_min = int(q_match.group(3)) + int(q_match.group(4)) / 60.0
+        else:
+            # Just period, no time: "Q2", "3Q", "2nd"
+            q_only = re.match(
+                r'(?:Q(\d)|(\d)Q|(\d)(?:st|nd|rd|th))',
+                status_clean, re.IGNORECASE,
+            )
+            if q_only:
+                period = int(q_only.group(1) or q_only.group(2) or q_only.group(3))
+                remaining_min = 5.0  # assume mid-quarter
+
+    if period is None:
+        return {
+            "level": "unknown", "emoji": "❓", "icon": "?",
+            "text": f"Periyod bilgisi okunamadı (Skor: {score}, Durum: {status})",
+        }
+
+    # Calculate elapsed minutes (10-min quarters = FIBA standard)
+    quarter_length = 10
+    elapsed_min = (period - 1) * quarter_length + (quarter_length - remaining_min)
+    total_game_min = 4 * quarter_length  # 40 min
+
+    if elapsed_min <= 1:
+        return {
+            "level": "unknown", "emoji": "❓", "icon": "?",
+            "text": f"Maç henüz başlangıçta, tempo hesaplanamıyor (Skor: {score}, {status})",
+        }
+
+    # Project total score to full game
+    projected_total = (total_score / elapsed_min) * total_game_min
+    pace_ratio = projected_total / inplay_total if inplay_total > 0 else 1.0
+
+    detail = (
+        f"Projeksiyon: {projected_total:.0f}, "
+        f"Canlı barem: {inplay_total:.0f}, "
+        f"Skor: {score}, {status}"
+    )
+
+    if direction == "ALT":
+        # ALT = under. High risk if tempo is too fast
+        if pace_ratio > 1.12:
+            return {"level": "high", "emoji": "⚠️", "icon": "!",
+                    "text": f"Yüksek risk: Tempo çok yüksek ({detail})"}
+        elif pace_ratio > 1.05:
+            return {"level": "medium", "emoji": "⚠️", "icon": "!",
+                    "text": f"Orta risk: Tempo ortalamanın üstünde ({detail})"}
+        else:
+            return {"level": "low", "emoji": "✅", "icon": "",
+                    "text": f"Düşük risk: Tempo uyumlu ({detail})"}
+    else:
+        # ÜST = over. High risk if tempo is too slow
+        if pace_ratio < 0.88:
+            return {"level": "high", "emoji": "⚠️", "icon": "!",
+                    "text": f"Yüksek risk: Tempo çok düşük ({detail})"}
+        elif pace_ratio < 0.95:
+            return {"level": "medium", "emoji": "⚠️", "icon": "!",
+                    "text": f"Orta risk: Tempo ortalamanın altında ({detail})"}
+        else:
+            return {"level": "low", "emoji": "✅", "icon": "",
+                    "text": f"Düşük risk: Tempo uyumlu ({detail})"}
 
 
 def setup_logging(level: str):
@@ -90,16 +207,22 @@ async def process_match(
     # 1) Count previous alerts for this match (signal number)
     signal_count = db.count_match_alerts(match_id) + 1
 
+    # 1.5) Risk assessment based on score tempo
+    risk = calculate_risk(direction, inplay_total, score, status)
+    risk_note = risk["text"]
+    log.info("Risk: %s | %s | %s", risk["level"], match_name, risk_note)
+
     # 2) Send instant Telegram alert
     msg_ids = await notifier.send_alert(
         match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
-        score=score, signal_count=signal_count,
+        score=score, signal_count=signal_count, risk=risk,
     )
 
     # 3) Save to database
     alert_id = db.save_alert(
         match_id, match_name, opening_total, inplay_total, direction, abs_diff,
         tournament=tournament, status=status, url=url, score=score, signal_count=signal_count,
+        risk_note=risk_note,
     )
 
     log.info(

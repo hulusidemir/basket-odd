@@ -80,6 +80,10 @@ class Database:
                 conn.execute("ALTER TABLE alerts ADD COLUMN signal_count INTEGER NOT NULL DEFAULT 1")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN risk_note TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
 
     # ---------- opening line ----------
 
@@ -140,14 +144,15 @@ class Database:
         url: str = "",
         score: str = "",
         signal_count: int = 1,
+        risk_note: str = "",
     ) -> int:
         with self._conn() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO alerts (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO alerts (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count, risk_note)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count),
+                (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count, risk_note),
             )
             return cursor.lastrowid
 

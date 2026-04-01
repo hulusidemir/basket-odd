@@ -487,6 +487,43 @@
     .ai-btn:hover { border-color: #a78bfa; background: rgba(139,92,246,0.2); }
     .ai-btn.no-analysis { opacity: 0.3; cursor: default; }
 
+    /* ── Risk Icons ────────────────────────────────────── */
+    .risk-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      margin-left: 4px;
+      vertical-align: middle;
+      transition: transform 0.15s;
+      flex-shrink: 0;
+    }
+    .risk-icon:hover { transform: scale(1.15); }
+    .risk-icon-high {
+      background: rgba(239,68,68,0.2);
+      color: #ef4444;
+      border: 1.5px solid #ef4444;
+    }
+    .risk-icon-medium {
+      background: rgba(245,158,11,0.2);
+      color: #f59e0b;
+      border: 1.5px solid #f59e0b;
+    }
+    .risk-icon-low {
+      background: rgba(34,197,94,0.15);
+      color: #22c55e;
+      border: 1.5px solid #22c55e;
+    }
+    .risk-icon-unknown {
+      background: rgba(139,143,163,0.15);
+      color: #8b8fa3;
+      border: 1.5px solid #8b8fa3;
+    }
+
     @media (min-width: 769px) {
       .cards-wrap { display: none !important; }
       .table-wrap { display: block !important; }
@@ -594,6 +631,18 @@
     </div>
   </div>
 
+  <!-- Risk Assessment Modal -->
+  <div class="modal-overlay" id="riskModal" onclick="if(event.target===this)closeRiskModal()">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="riskModalTitle">📊 Risk Değerlendirmesi</h3>
+        <button class="modal-close" onclick="closeRiskModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="riskModalBody">
+      </div>
+    </div>
+  </div>
+
   <script>
     let allAlerts = [];
     let currentFilter = 'all';
@@ -616,6 +665,34 @@
       const d = document.createElement('div');
       d.textContent = text;
       return d.innerHTML;
+    }
+
+    function riskIconHtml(a) {
+      const note = a.risk_note || '';
+      if (!note) return '';
+      // Determine risk level from the note text
+      let level = 'unknown';
+      let symbol = '?';
+      if (note.startsWith('Yüksek risk')) { level = 'high'; symbol = '!'; }
+      else if (note.startsWith('Orta risk')) { level = 'medium'; symbol = '!'; }
+      else if (note.startsWith('Düşük risk')) { level = 'low'; symbol = '✓'; }
+      else { level = 'unknown'; symbol = '?'; }
+      return `<span class="risk-icon risk-icon-${level}" onclick="showRisk(${a.id})" title="${escapeHtml(note)}">${symbol}</span>`;
+    }
+
+    function showRisk(id) {
+      const modal = document.getElementById('riskModal');
+      const body = document.getElementById('riskModalBody');
+      const a = allAlerts.find(x => x.id === id);
+      const title = a ? cleanMatchName(a.match_name) : 'Risk';
+      document.getElementById('riskModalTitle').textContent = '📊 Risk: ' + title;
+      const note = a && a.risk_note ? a.risk_note : 'Risk verisi mevcut değil.';
+      body.innerHTML = '<p style="font-size:15px;line-height:1.7">' + escapeHtml(note) + '</p>';
+      modal.style.display = 'flex';
+    }
+
+    function closeRiskModal() {
+      document.getElementById('riskModal').style.display = 'none';
     }
 
     async function fetchAlerts() {
@@ -719,7 +796,7 @@
         return `<tr class="${classes.join(' ')}">
           <td><input type="checkbox" class="row-check" data-id="${a.id}" onchange="updateSelectedCount()"></td>
           <td class="time-col">${time}</td>
-          <td class="col-direction"><span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}</td>
+          <td class="col-direction"><span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}${riskIconHtml(a)}</td>
           <td class="col-match">${matchDisplay}</td>
           <td class="col-tournament">${escapeHtml(a.tournament || '-')}</td>
           <td>${escapeHtml(a.status || '-')}</td>
@@ -784,6 +861,7 @@
             <div class="card-match">${matchDisplay}</div>
             <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
             ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
+            ${riskIconHtml(a)}
           </div>
           <div class="card-meta">
             <span class="card-meta-item">🕐 ${time}</span>
@@ -842,7 +920,7 @@
       document.getElementById('aiModal').style.display = 'none';
     }
 
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeRiskModal(); } });
 
     function applyMatchStatusUpdate(payload) {
       if (!payload || !payload.match_id) return;
