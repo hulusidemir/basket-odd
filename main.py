@@ -26,9 +26,13 @@ _analysis_cache: TTLCache = TTLCache(maxsize=1024, ttl=4 * 3600)
 def calculate_risk(direction: str, inplay_total: float, score: str, status: str) -> dict:
     """
     Calculate risk assessment based on score tempo vs live total line.
+    Two methods:
+      1. Period-based: if period + time can be parsed → project full-game total from pace
+      2. Score-ratio fallback: compare total_score / inplay_total regardless of period
+
     Returns dict with level, emoji, text, icon keys.
     """
-    # Parse score
+    # ── Parse score ──
     if not score or not score.strip():
         return {
             "level": "unknown", "emoji": "❓", "icon": "?",
@@ -46,77 +50,109 @@ def calculate_risk(direction: str, inplay_total: float, score: str, status: str)
     away_score = int(score_match.group(2))
     total_score = home_score + away_score
 
-    # Parse status/period
-    if not status or not status.strip():
+    if total_score == 0:
         return {
             "level": "unknown", "emoji": "❓", "icon": "?",
-            "text": f"Periyod verisi alınamadı (Skor: {score})",
+            "text": f"Skor 0-0, tempo hesaplanamıyor ({status or 'Durum bilinmiyor'})",
         }
 
-    status_clean = status.strip()
-
-    # OT
-    if re.match(r'^OT', status_clean, re.IGNORECASE):
-        return {
-            "level": "unknown", "emoji": "❓", "icon": "?",
-            "text": f"Uzatma (OT), tempo hesaplanamıyor (Skor: {score})",
-        }
-
+    # ── Try to parse period from status ──
     period = None
     remaining_min = None
+    status_clean = (status or "").strip()
 
-    # HT (halftime)
-    if re.match(r'^HT$', status_clean, re.IGNORECASE):
-        period = 2
-        remaining_min = 0.0
-    else:
+    if status_clean:
+        # OT — can't project in overtime
+        if re.match(r'^OT', status_clean, re.IGNORECASE):
+            return _score_ratio_risk(direction, inplay_total, total_score, score,
+                                     status, note="Uzatma (OT)")
+
+        # HT (halftime) — period 2, remaining 0
+        if re.match(r'^HT$', status_clean, re.IGNORECASE):
+            period = 2
+            remaining_min = 0.0
+
         # Q1-Q4 with time: "Q2 05:30", "Q4-09:29", "3Q 04:11"
-        q_match = re.match(
-            r'(?:Q(\d)|(\d)Q)\s*[-\s]?\s*(\d{1,2}):(\d{2})',
-            status_clean, re.IGNORECASE,
-        )
-        if q_match:
-            period = int(q_match.group(1) or q_match.group(2))
-            remaining_min = int(q_match.group(3)) + int(q_match.group(4)) / 60.0
-        else:
-            # Just period, no time: "Q2", "3Q", "2nd"
-            q_only = re.match(
-                r'(?:Q(\d)|(\d)Q|(\d)(?:st|nd|rd|th))',
+        if period is None:
+            q_match = re.match(
+                r'(?:Q(\d)|(\d)Q)\s*[-\s]?\s*(\d{1,2}):(\d{2})',
                 status_clean, re.IGNORECASE,
             )
+            if q_match:
+                period = int(q_match.group(1) or q_match.group(2))
+                remaining_min = int(q_match.group(3)) + int(q_match.group(4)) / 60.0
+
+        # "1st", "2nd", "3rd", "4th" with optional time
+        if period is None:
+            ord_match = re.match(
+                r'(\d)(?:st|nd|rd|th)\s*[-\s]?\s*(?:(\d{1,2}):(\d{2}))?',
+                status_clean, re.IGNORECASE,
+            )
+            if ord_match:
+                period = int(ord_match.group(1))
+                if ord_match.group(2) and ord_match.group(3):
+                    remaining_min = int(ord_match.group(2)) + int(ord_match.group(3)) / 60.0
+                else:
+                    remaining_min = 5.0
+
+        # Just period label: "Q2", "3Q", "1H", "2H"
+        if period is None:
+            q_only = re.match(r'^(?:Q(\d)|(\d)Q)$', status_clean, re.IGNORECASE)
             if q_only:
-                period = int(q_only.group(1) or q_only.group(2) or q_only.group(3))
-                remaining_min = 5.0  # assume mid-quarter
+                period = int(q_only.group(1) or q_only.group(2))
+                remaining_min = 5.0
 
-    if period is None:
-        return {
-            "level": "unknown", "emoji": "❓", "icon": "?",
-            "text": f"Periyod bilgisi okunamadı (Skor: {score}, Durum: {status})",
-        }
+        # Half labels: "1H" → mid first half (~Q1-Q2 boundary), "2H" → mid second half (~Q3-Q4 boundary)
+        if period is None:
+            h_match = re.match(r'^(\d)H$', status_clean, re.IGNORECASE)
+            if h_match:
+                half = int(h_match.group(1))
+                period = 2 if half == 1 else 4
+                remaining_min = 5.0  # assume mid-half
 
-    # Calculate elapsed minutes (10-min quarters = FIBA standard)
-    quarter_length = 10
-    elapsed_min = (period - 1) * quarter_length + (quarter_length - remaining_min)
-    total_game_min = 4 * quarter_length  # 40 min
+        # Standalone digit: "1", "2", "3", "4" (period number)
+        if period is None:
+            d_match = re.match(r'^([1-4])$', status_clean)
+            if d_match:
+                period = int(d_match.group(1))
+                remaining_min = 5.0
 
-    if elapsed_min <= 1:
-        return {
-            "level": "unknown", "emoji": "❓", "icon": "?",
-            "text": f"Maç henüz başlangıçta, tempo hesaplanamıyor (Skor: {score}, {status})",
-        }
+        # Numeric period-time: "01-05:32", "03-02:38", "2-08:00"
+        if period is None:
+            nt_match = re.match(
+                r'(\d{1,2})[-:](\d{1,2}):(\d{2})',
+                status_clean,
+            )
+            if nt_match:
+                p = int(nt_match.group(1))
+                if 1 <= p <= 4:
+                    period = p
+                    remaining_min = int(nt_match.group(2)) + int(nt_match.group(3)) / 60.0
 
-    # Project total score to full game
-    projected_total = (total_score / elapsed_min) * total_game_min
-    pace_ratio = projected_total / inplay_total if inplay_total > 0 else 1.0
+    # ── Period-based projection (preferred method) ──
+    if period is not None and remaining_min is not None:
+        quarter_length = 10  # FIBA standard
+        elapsed_min = (period - 1) * quarter_length + (quarter_length - remaining_min)
+        total_game_min = 4 * quarter_length  # 40 min
 
-    detail = (
-        f"Projeksiyon: {projected_total:.0f}, "
-        f"Canlı barem: {inplay_total:.0f}, "
-        f"Skor: {score}, {status}"
-    )
+        if elapsed_min > 1:
+            projected_total = (total_score / elapsed_min) * total_game_min
+            pace_ratio = projected_total / inplay_total if inplay_total > 0 else 1.0
 
+            detail = (
+                f"Projeksiyon: {projected_total:.0f}, "
+                f"Canlı barem: {inplay_total:.0f}, "
+                f"Skor: {score}, {status_clean}"
+            )
+            return _evaluate_pace(direction, pace_ratio, detail)
+
+    # ── Fallback: score-ratio method (no period info) ──
+    return _score_ratio_risk(direction, inplay_total, total_score, score, status)
+
+
+def _evaluate_pace(direction: str, pace_ratio: float, detail: str) -> dict:
+    """Evaluate risk based on pace_ratio (projected_total / inplay_total)."""
     if direction == "ALT":
-        # ALT = under. High risk if tempo is too fast
         if pace_ratio > 1.12:
             return {"level": "high", "emoji": "⚠️", "icon": "!",
                     "text": f"Yüksek risk: Tempo çok yüksek ({detail})"}
@@ -127,7 +163,6 @@ def calculate_risk(direction: str, inplay_total: float, score: str, status: str)
             return {"level": "low", "emoji": "✅", "icon": "",
                     "text": f"Düşük risk: Tempo uyumlu ({detail})"}
     else:
-        # ÜST = over. High risk if tempo is too slow
         if pace_ratio < 0.88:
             return {"level": "high", "emoji": "⚠️", "icon": "!",
                     "text": f"Yüksek risk: Tempo çok düşük ({detail})"}
@@ -137,6 +172,58 @@ def calculate_risk(direction: str, inplay_total: float, score: str, status: str)
         else:
             return {"level": "low", "emoji": "✅", "icon": "",
                     "text": f"Düşük risk: Tempo uyumlu ({detail})"}
+
+
+def _score_ratio_risk(
+    direction: str, inplay_total: float, total_score: int,
+    score: str, status: str, note: str = "",
+) -> dict:
+    """
+    Fallback risk assessment when period info is unavailable.
+    Uses total_score / inplay_total ratio.
+
+    The live barem (inplay_total) is the bookmaker's projection for the full game.
+    If a large fraction of it is already scored → pace is high.
+    If a small fraction is scored → pace is low.
+    """
+    if inplay_total <= 0:
+        return {"level": "unknown", "emoji": "❓", "icon": "?",
+                "text": "Canlı barem verisi geçersiz"}
+
+    score_ratio = total_score / inplay_total
+    score_pct = score_ratio * 100
+
+    prefix = f"{note}, " if note else ""
+    detail = (
+        f"{prefix}Skor toplamı: {total_score}, "
+        f"Canlı barem: {inplay_total:.0f}, "
+        f"Oran: %{score_pct:.0f}, "
+        f"Skor: {score}, "
+        f"Durum: {status or '?'}"
+    )
+
+    if direction == "ALT":
+        # ALT = under. Risky if score ratio is high (pace genuinely fast)
+        if score_ratio > 0.60:
+            return {"level": "high", "emoji": "⚠️", "icon": "!",
+                    "text": f"Yüksek risk: Toplam skor baremin %{score_pct:.0f}'ine ulaşmış, tempo yüksek ({detail})"}
+        elif score_ratio > 0.50:
+            return {"level": "medium", "emoji": "⚠️", "icon": "!",
+                    "text": f"Orta risk: Toplam skor baremin yarısını aşmış ({detail})"}
+        else:
+            return {"level": "low", "emoji": "✅", "icon": "",
+                    "text": f"Düşük risk: Skor/barem oranı makul ({detail})"}
+    else:
+        # ÜST = over. Risky if score ratio is low (pace genuinely slow)
+        if score_ratio < 0.30:
+            return {"level": "high", "emoji": "⚠️", "icon": "!",
+                    "text": f"Yüksek risk: Toplam skor baremin sadece %{score_pct:.0f}'i, tempo düşük ({detail})"}
+        elif score_ratio < 0.40:
+            return {"level": "medium", "emoji": "⚠️", "icon": "!",
+                    "text": f"Orta risk: Skor/barem oranı düşük ({detail})"}
+        else:
+            return {"level": "low", "emoji": "✅", "icon": "",
+                    "text": f"Düşük risk: Skor/barem oranı makul ({detail})"}
 
 
 def setup_logging(level: str):
