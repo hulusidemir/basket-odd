@@ -107,6 +107,13 @@ def api_delete_alert(alert_id: int):
     return jsonify({"id": alert_id, "deleted": True})
 
 
+@app.route("/api/clear", methods=["POST"])
+def api_clear_db():
+    """Wipe all alerts, match_actions and opening_lines."""
+    db.clear_all()
+    return jsonify({"cleared": True})
+
+
 @app.route("/api/alerts/<int:alert_id>/analysis")
 def api_get_analysis(alert_id: int):
     """Returns AI analysis for a specific alert."""

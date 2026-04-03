@@ -268,3 +268,9 @@ class Database:
         with self._conn() as conn:
             cursor = conn.execute("DELETE FROM alerts WHERE id = ?",(alert_id,))
         return cursor.rowcount > 0
+
+    def clear_all(self):
+        with self._conn() as conn:
+            conn.execute("DELETE FROM alerts")
+            conn.execute("DELETE FROM match_actions")
+            conn.execute("DELETE FROM opening_lines")

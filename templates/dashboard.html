@@ -568,6 +568,7 @@
     <button class="filter-btn" data-filter="alt">🔻 ALT</button>
     <button class="filter-btn" data-filter="ust">🔺 ÜST</button>
     <button class="filter-btn" id="deleteSelectedBtn" onclick="deleteSelected()" style="display:none">🗑️ Sil (<span id="selectedCount">0</span>)</button>
+    <button class="filter-btn" onclick="clearDatabase()" style="margin-left:auto; background:rgba(239,68,68,0.15); color:#ef4444; border-color:rgba(239,68,68,0.3);">🧹 Veritabanını Temizle</button>
   </div>
 
   <div class="toolbar">
@@ -987,6 +988,14 @@
       render();
       updateStats();
       document.getElementById('deleteSelectedBtn').style.display = 'none';
+    }
+
+    async function clearDatabase() {
+      if (!confirm('Tüm veritabanı temizlenecek (alertler, aksiyonlar, açılış çizgileri). Emin misiniz?')) return;
+      await fetch('/api/clear', { method: 'POST' });
+      allAlerts = [];
+      render();
+      updateStats();
     }
 
     // Filter buttons
