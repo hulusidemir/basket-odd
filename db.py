@@ -42,6 +42,13 @@ class Database:
                     followed    INTEGER NOT NULL DEFAULT 0,
                     alerted_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS match_actions (
+                    match_id    TEXT PRIMARY KEY,
+                    bet_placed  INTEGER NOT NULL DEFAULT 0,
+                    ignored     INTEGER NOT NULL DEFAULT 0,
+                    followed    INTEGER NOT NULL DEFAULT 0
+                );
             """)
             # Migrate: add new columns if they don't exist yet
             try:
@@ -147,12 +154,20 @@ class Database:
         risk_note: str = "",
     ) -> int:
         with self._conn() as conn:
+            # Inherit match-level actions if previously set
+            action = conn.execute(
+                "SELECT bet_placed, ignored, followed FROM match_actions WHERE match_id = ?",
+                (match_id,),
+            ).fetchone()
+            bet = action["bet_placed"] if action else 0
+            ign = action["ignored"] if action else 0
+            fol = action["followed"] if action else 0
             cursor = conn.execute(
                 """
-                INSERT INTO alerts (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count, risk_note)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO alerts (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count, risk_note, bet_placed, ignored, followed)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count, risk_note),
+                (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count, risk_note, bet, ign, fol),
             )
             return cursor.lastrowid
 
@@ -162,20 +177,6 @@ class Database:
                 "SELECT * FROM alerts ORDER BY alerted_at DESC LIMIT ?", (limit,)
             ).fetchall()
         return [dict(r) for r in rows]
-
-    def set_bet_placed(self, alert_id: int, value: bool):
-        with self._conn() as conn:
-            conn.execute(
-                "UPDATE alerts SET bet_placed = ? WHERE id = ?",
-                (1 if value else 0, alert_id),
-            )
-
-    def set_ignored(self, alert_id: int, value: bool):
-        with self._conn() as conn:
-            conn.execute(
-                "UPDATE alerts SET ignored = ? WHERE id = ?",
-                (1 if value else 0, alert_id),
-            )
 
     def set_match_statuses(
         self,
@@ -208,6 +209,29 @@ class Database:
                 f"UPDATE alerts SET {', '.join(updates)} WHERE match_id = ?",
                 tuple(params),
             )
+            # Persist match-level actions for future alerts
+            ma_cols = ["match_id"]
+            ma_vals = [match_id]
+            ma_updates = []
+            if bet_placed is not None:
+                ma_cols.append("bet_placed")
+                ma_vals.append(1 if bet_placed else 0)
+                ma_updates.append("bet_placed = excluded.bet_placed")
+            if ignored is not None:
+                ma_cols.append("ignored")
+                ma_vals.append(1 if ignored else 0)
+                ma_updates.append("ignored = excluded.ignored")
+            if followed is not None:
+                ma_cols.append("followed")
+                ma_vals.append(1 if followed else 0)
+                ma_updates.append("followed = excluded.followed")
+            if ma_updates:
+                placeholders = ", ".join("?" for _ in ma_vals)
+                conn.execute(
+                    f"INSERT INTO match_actions ({', '.join(ma_cols)}) VALUES ({placeholders}) "
+                    f"ON CONFLICT(match_id) DO UPDATE SET {', '.join(ma_updates)}",
+                    tuple(ma_vals),
+                )
         return cursor.rowcount
 
     def get_alert(self, alert_id: int) -> dict | None:

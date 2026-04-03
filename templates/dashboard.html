@@ -572,6 +572,10 @@
 
   <div class="toolbar">
     <input class="search-box" type="text" placeholder="Takım veya turnuva ara..." id="searchInput">
+    <button class="filter-btn" onclick="manualRefresh()" style="display: flex; align-items: center; gap: 5px;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+      Yenile
+    </button>
     <span class="refresh-info"><span id="countdown">15</span>s | <span id="lastUpdate">-</span></span>
   </div>
 
@@ -1017,6 +1021,12 @@
     function changePageSize(val) { pageSize = parseInt(val); currentPage = 1; render(); }
 
     // Auto refresh
+    function manualRefresh() {
+      countdownVal = 15;
+      document.getElementById('countdown').textContent = countdownVal;
+      fetchAlerts();
+    }
+
     fetchAlerts();
     setInterval(() => {
       countdownVal--;
