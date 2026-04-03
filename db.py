@@ -91,6 +91,15 @@ class Database:
                 conn.execute("ALTER TABLE alerts ADD COLUMN risk_note TEXT NOT NULL DEFAULT ''")
             except Exception:
                 pass
+            # Ensure match_actions table exists for action inheritance
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS match_actions (
+                    match_id    TEXT PRIMARY KEY,
+                    bet_placed  INTEGER NOT NULL DEFAULT 0,
+                    ignored     INTEGER NOT NULL DEFAULT 0,
+                    followed    INTEGER NOT NULL DEFAULT 0
+                )
+            """)
 
     # ---------- opening line ----------
 
