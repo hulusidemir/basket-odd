@@ -62,15 +62,34 @@ class TelegramNotifier:
         score_line = f"📊 Skor: <b>{score}</b>\n" if score else ""
         signal_line = f"🔁 <b>{signal_count}. sinyal</b>\n" if signal_count > 1 else ""
 
-        # Risk assessment line
+        # Recommendation line (always show at top)
+        rec_line = ""
+        if risk:
+            rec = risk.get("recommendation", "")
+            rec_emoji = risk.get("rec_emoji", "")
+            if rec:
+                rec_line = f"{rec_emoji} <b>ÖNERİ: {rec}</b>\n"
+
+        # Risk assessment line (always show — even when unknown)
         risk_line = ""
         if risk:
-            r_emoji = risk.get("emoji", "")
+            r_emoji = risk.get("emoji", "❓")
             r_text = risk.get("text", "")
             if r_text:
-                risk_line = f"\n{r_emoji} <i>({r_text})</i>\n"
+                risk_line = f"\n{r_emoji} <i>({r_text})</i>"
+            else:
+                risk_line = f"\n❓ <i>(Risk hesaplanamadı — süre/skor verisi eksik)</i>"
+        else:
+            risk_line = f"\n❓ <i>(Risk hesaplanamadı — veri eksik)</i>"
+
+        # Warning lines (blowout, early signal)
+        warnings_line = ""
+        if risk:
+            for w in risk.get("warnings", []):
+                warnings_line += f"\n{w}"
 
         text = (
+            f"{rec_line}"
             f"{emoji} <b>Bahis Fırsatı: {direction}</b>\n"
             f"{signal_line}\n"
             f"🏀 <b>{match_name}</b>\n"
@@ -81,6 +100,7 @@ class TelegramNotifier:
             f"Fark: <b>{diff:+.1f}</b> puan\n\n"
             f"💡 <i>{tip}</i>"
             f"{risk_line}"
+            f"{warnings_line}\n"
         )
 
         try:

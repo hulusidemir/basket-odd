@@ -527,6 +527,34 @@
       border: 1.5px solid #8b8fa3;
     }
 
+    /* ── Recommendation Badges ─────────────────────────── */
+    .rec-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-left: 4px;
+      vertical-align: middle;
+      letter-spacing: 0.3px;
+    }
+    .rec-oyna {
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
+      border: 1px solid rgba(34, 197, 94, 0.4);
+    }
+    .rec-dikkat {
+      background: rgba(245, 158, 11, 0.2);
+      color: #f59e0b;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+    }
+    .rec-pas {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+    }
+
     @media (min-width: 769px) {
       .cards-wrap { display: none !important; }
       .table-wrap { display: block !important; }
@@ -570,6 +598,9 @@
     <button class="filter-btn" data-filter="ignored">Gözardı</button>
     <button class="filter-btn" data-filter="alt">🔻 ALT</button>
     <button class="filter-btn" data-filter="ust">🔺 ÜST</button>
+    <button class="filter-btn" data-filter="oyna" style="background:rgba(34,197,94,0.12); color:#22c55e; border-color:rgba(34,197,94,0.3);">✅ OYNA</button>
+    <button class="filter-btn" data-filter="dikkat" style="background:rgba(245,158,11,0.12); color:#f59e0b; border-color:rgba(245,158,11,0.3);">⚠️ DİKKAT</button>
+    <button class="filter-btn" data-filter="pasgec" style="background:rgba(239,68,68,0.12); color:#ef4444; border-color:rgba(239,68,68,0.3);">⛔ PAS GEÇ</button>
     <button class="filter-btn" id="deleteSelectedBtn" onclick="deleteSelected()" style="display:none">🗑️ Sil (<span id="selectedCount">0</span>)</button>
     <button class="filter-btn" onclick="clearDatabase()" style="margin-left:auto; background:rgba(239,68,68,0.15); color:#ef4444; border-color:rgba(239,68,68,0.3);">🧹 Veritabanını Temizle</button>
   </div>
@@ -677,15 +708,26 @@
 
     function riskIconHtml(a) {
       const note = a.risk_note || '';
-      if (!note) return '';
       // Determine risk level from the note text
       let level = 'unknown';
       let symbol = '?';
+      let tooltip = note;
       if (note.startsWith('Yüksek risk')) { level = 'high'; symbol = '!'; }
       else if (note.startsWith('Orta risk')) { level = 'medium'; symbol = '!'; }
       else if (note.startsWith('Düşük risk')) { level = 'low'; symbol = '✓'; }
-      else { level = 'unknown'; symbol = '?'; }
-      return `<span class="risk-icon risk-icon-${level}" onclick="showRisk(${a.id})" title="${escapeHtml(note)}">${symbol}</span>`;
+      else if (note) { level = 'unknown'; symbol = '?'; }
+      else { level = 'unknown'; symbol = '?'; tooltip = 'Risk verisi mevcut değil — süre/skor bilgisi alınamadı'; }
+      return `<span class="risk-icon risk-icon-${level}" onclick="showRisk(${a.id})" title="${escapeHtml(tooltip)}">${symbol}</span>`;
+    }
+
+    function recBadgeHtml(a) {
+      const rec = a.recommendation || '';
+      if (!rec) return '';
+      let cls = 'rec-pas';
+      let emoji = '⛔';
+      if (rec === 'OYNA') { cls = 'rec-oyna'; emoji = '✅'; }
+      else if (rec === 'DİKKAT') { cls = 'rec-dikkat'; emoji = '⚠️'; }
+      return `<span class="rec-badge ${cls}">${emoji} ${rec}</span>`;
     }
 
     function showRisk(id) {
@@ -694,8 +736,16 @@
       const a = allAlerts.find(x => x.id === id);
       const title = a ? cleanMatchName(a.match_name) : 'Risk';
       document.getElementById('riskModalTitle').textContent = '📊 Risk: ' + title;
-      const note = a && a.risk_note ? a.risk_note : 'Risk verisi mevcut değil.';
-      body.innerHTML = '<p style="font-size:15px;line-height:1.7">' + escapeHtml(note) + '</p>';
+      const note = a && a.risk_note ? a.risk_note : 'Risk verisi mevcut değil — süre veya skor bilgisi alınamadığı için hesaplama yapılamadı.';
+      const rec = a && a.recommendation ? a.recommendation : '';
+      let recHtml = '';
+      if (rec) {
+        let recColor = '#ef4444';
+        if (rec === 'OYNA') recColor = '#22c55e';
+        else if (rec === 'DİKKAT') recColor = '#f59e0b';
+        recHtml = `<p style="font-size:18px;font-weight:800;color:${recColor};margin-bottom:12px">${rec === 'OYNA' ? '✅' : rec === 'DİKKAT' ? '⚠️' : '⛔'} ÖNERİ: ${escapeHtml(rec)}</p>`;
+      }
+      body.innerHTML = recHtml + '<p style="font-size:15px;line-height:1.7">' + escapeHtml(note) + '</p>';
       modal.style.display = 'flex';
     }
 
@@ -735,6 +785,9 @@
       else if (currentFilter === 'ignored') filtered = filtered.filter(a => a.ignored);
       else if (currentFilter === 'alt') filtered = filtered.filter(a => a.direction === 'ALT');
       else if (currentFilter === 'ust') filtered = filtered.filter(a => a.direction === 'ÜST');
+      else if (currentFilter === 'oyna') filtered = filtered.filter(a => a.recommendation === 'OYNA');
+      else if (currentFilter === 'dikkat') filtered = filtered.filter(a => a.recommendation === 'DİKKAT');
+      else if (currentFilter === 'pasgec') filtered = filtered.filter(a => a.recommendation === 'PAS GEÇ');
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         filtered = filtered.filter(a =>
@@ -804,7 +857,7 @@
         return `<tr class="${classes.join(' ')}">
           <td><input type="checkbox" class="row-check" data-id="${a.id}" onchange="updateSelectedCount()"></td>
           <td class="time-col">${time}</td>
-          <td class="col-direction"><span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}${riskIconHtml(a)}</td>
+          <td class="col-direction"><span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}${riskIconHtml(a)}${recBadgeHtml(a)}</td>
           <td class="col-match">${matchDisplay}</td>
           <td class="col-tournament">${escapeHtml(a.tournament || '-')}</td>
           <td>${escapeHtml(a.status || '-')}</td>
@@ -870,6 +923,7 @@
             <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
             ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
             ${riskIconHtml(a)}
+            ${recBadgeHtml(a)}
           </div>
           <div class="card-meta">
             <span class="card-meta-item">🕐 ${time}</span>

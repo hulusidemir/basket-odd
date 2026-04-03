@@ -23,9 +23,9 @@ from notifier import TelegramNotifier
 _analysis_cache: TTLCache = TTLCache(maxsize=1024, ttl=4 * 3600)
 
 
-def calculate_risk(direction: str, inplay_total: float, score: str, status: str) -> dict:
+def _calculate_base_risk(direction: str, inplay_total: float, score: str, status: str) -> dict:
     """
-    Calculate risk assessment based on score tempo vs live total line.
+    Calculate base risk assessment based on score tempo vs live total line.
     Two methods:
       1. Period-based: if period + time can be parsed → project full-game total from pace
       2. Score-ratio fallback: compare total_score / inplay_total regardless of period
@@ -226,6 +226,55 @@ def _score_ratio_risk(
                     "text": f"Düşük risk: Skor/barem oranı makul ({detail})"}
 
 
+def calculate_risk(direction: str, inplay_total: float, score: str, status: str) -> dict:
+    """
+    Full risk assessment: base risk + blowout detection + early signal + recommendation.
+    Returns dict with: level, emoji, text, icon, recommendation, rec_emoji, warnings, is_blowout, is_early.
+    """
+    result = _calculate_base_risk(direction, inplay_total, score, status)
+
+    # ── Blowout detection (score diff >= 25) ──
+    is_blowout = False
+    if score and score.strip():
+        m = re.match(r'(\d+)\s*[-–]\s*(\d+)', score.strip())
+        if m:
+            is_blowout = abs(int(m.group(1)) - int(m.group(2))) >= 25
+
+    # ── Early signal detection (1st quarter) ──
+    is_early = False
+    s = (status or "").strip()
+    if s:
+        q = re.match(r'(?:Q(\d)|(\d)Q)', s, re.IGNORECASE)
+        if q:
+            is_early = int(q.group(1) or q.group(2)) == 1
+        elif re.match(r'^1(?:st)?\b', s, re.IGNORECASE) or re.match(r'^01[-:]', s):
+            is_early = True
+
+    # ── Build warnings ──
+    warnings = []
+    if is_blowout:
+        warnings.append("💥 Blowout: Skor farkı 25+ puan, çöp sayılar riski var")
+    if is_early:
+        warnings.append("⏰ Erken sinyal: 1. çeyrek, güvenilirlik düşük")
+
+    # ── Determine recommendation ──
+    level = result["level"]
+    if is_blowout or level == "high" or level == "unknown":
+        rec, rec_emoji = "PAS GEÇ", "⛔"
+    elif is_early or level == "medium":
+        rec, rec_emoji = "DİKKAT", "⚠️"
+    else:
+        rec, rec_emoji = "OYNA", "✅"
+
+    result["recommendation"] = rec
+    result["rec_emoji"] = rec_emoji
+    result["warnings"] = warnings
+    result["is_blowout"] = is_blowout
+    result["is_early"] = is_early
+
+    return result
+
+
 def setup_logging(level: str):
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
@@ -297,7 +346,8 @@ async def process_match(
     # 1.5) Risk assessment based on score tempo
     risk = calculate_risk(direction, inplay_total, score, status)
     risk_note = risk["text"]
-    log.info("Risk: %s | %s | %s", risk["level"], match_name, risk_note)
+    recommendation = risk.get("recommendation", "")
+    log.info("Risk: %s | Öneri: %s | %s | %s", risk["level"], recommendation, match_name, risk_note)
 
     # 2) Send instant Telegram alert
     msg_ids = await notifier.send_alert(
@@ -309,7 +359,7 @@ async def process_match(
     alert_id = db.save_alert(
         match_id, match_name, opening_total, inplay_total, direction, abs_diff,
         tournament=tournament, status=status, url=url, score=score, signal_count=signal_count,
-        risk_note=risk_note,
+        risk_note=risk_note, recommendation=recommendation,
     )
 
     log.info(
