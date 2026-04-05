@@ -247,23 +247,71 @@
     .step-row.active { background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.2); }
     .step-row.active .step-num { background: var(--accent-blue); color: #fff; }
 
-    /* ── Projection ───────────────────────────────────── */
-    .projection {
-      padding: 8px 16px;
-      border-bottom: 1px solid var(--border);
-      background: rgba(59,130,246,0.04);
+    /* ── Projection Button ────────────────────────────── */
+    .proj-btn {
+      padding: 3px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(59,130,246,0.3);
+      background: rgba(59,130,246,0.1);
+      color: var(--accent-blue);
       font-size: 11px;
-      color: var(--text-dim);
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
     }
-    .projection .proj-row {
+    .proj-btn:hover { background: rgba(59,130,246,0.2); }
+
+    /* ── Projection Modal ─────────────────────────────── */
+    .proj-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .proj-modal {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 380px;
+      max-width: 92vw;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .proj-modal-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 700;
+      font-size: 15px;
+    }
+    .proj-modal-close {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 20px;
+      cursor: pointer;
+      padding: 0 4px;
+    }
+    .proj-modal-close:hover { color: var(--text); }
+    .proj-modal-body {
+      padding: 12px 16px;
+    }
+    .proj-row {
       display: flex;
       justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 13px;
     }
-    .projection .proj-val { color: var(--accent-green); font-weight: 600; }
-    .projection .proj-label { opacity: 0.7; }
+    .proj-row:last-child { border-bottom: none; }
+    .proj-row .proj-label { color: var(--text-dim); }
+    .proj-row .proj-val { color: var(--accent-green); font-weight: 600; }
 
     /* ── Responsive ──────────────────────────────────── */
     @media (max-width: 768px) {
@@ -542,20 +590,35 @@
       return lastStep.amount;
     }
 
-    function renderProjection(group) {
-      const gStatus = getGroupStatus(group);
-      if (gStatus === 'lost') return '<div class="projection" style="color:var(--accent-red);">Bu grup kaybedildi.</div>';
+    function showProjection(groupIdx) {
+      const group = state.groups[groupIdx];
       const balance = getGroupCurrentBalance(group);
       const rate = state.defaultRate;
       const milestones = Array.from({length: 20}, (_, i) => i + 1);
-      let html = '<div class="projection">';
-      html += '<div class="proj-row" style="margin-bottom:2px;"><span style="font-weight:600;color:var(--text);">📈 Projeksiyon (×' + rate.toFixed(2) + ')</span></div>';
+
+      let rows = '';
       milestones.forEach(n => {
         const projected = balance * Math.pow(1 + rate, n);
-        html += `<div class="proj-row"><span class="proj-label">${n}. maç →</span><span class="proj-val">${fmt(projected)}</span></div>`;
+        rows += `<div class="proj-row"><span class="proj-label">${n}. maç →</span><span class="proj-val">${fmt(projected)}</span></div>`;
       });
-      html += '</div>';
-      return html;
+
+      const overlay = document.createElement('div');
+      overlay.className = 'proj-overlay';
+      overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+      overlay.innerHTML = `
+        <div class="proj-modal">
+          <div class="proj-modal-header">
+            <span>📈 Grup ${groupIdx + 1} — Projeksiyon (×${rate.toFixed(2)})</span>
+            <button class="proj-modal-close" onclick="this.closest('.proj-overlay').remove()">&times;</button>
+          </div>
+          <div class="proj-modal-body">
+            <div class="proj-row" style="font-weight:600;border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:4px;">
+              <span>Mevcut Bakiye</span><span class="proj-val">${fmt(balance)}</span>
+            </div>
+            ${rows}
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
     }
 
     // ── Render ──────────────────────────────────────
@@ -603,9 +666,10 @@
         html += `<div class="group-column ${statusClass}">`;
         html += `<div class="group-header">`;
         html += `<div class="group-title"><span class="group-num">${gi + 1}</span> Grup ${gi + 1}</div>`;
+        html += `<div style="display:flex;align-items:center;gap:8px;">`;
+        if (gStatus !== 'lost') html += `<button class="proj-btn" onclick="showProjection(${gi})">📈 Projeksiyon</button>`;
         html += `<div class="group-balance">${fmt(balance)}</div>`;
-        html += `</div>`;
-        html += renderProjection(group);
+        html += `</div></div>`;
         html += `<div class="steps-list">`;
 
         group.steps.forEach((step, si) => {
