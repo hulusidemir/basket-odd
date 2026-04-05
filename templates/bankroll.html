@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>💰 Bankroll Yönetimi — Kümülatif İddia</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --card: #1a1d27;
+      --card-hover: #1f2230;
+      --border: #2a2d3a;
+      --text: #e4e6eb;
+      --text-dim: #8b8fa3;
+      --accent-green: #22c55e;
+      --accent-red: #ef4444;
+      --accent-blue: #3b82f6;
+      --accent-yellow: #fbbf24;
+      --radius: 12px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ──────────────────────────────────────── */
+    .header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .header h1 { font-size: 20px; font-weight: 700; }
+    .header h1 .subtitle { opacity: 0.5; font-weight: 400; font-size: 14px; }
+    .nav-link {
+      padding: 7px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 13px;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .nav-link:hover { border-color: var(--accent-blue); color: var(--text); }
+
+    /* ── Setup Panel ─────────────────────────────────── */
+    .setup-panel {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: flex-end;
+    }
+    .setup-group { display: flex; flex-direction: column; gap: 4px; }
+    .setup-group label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+    .setup-group input, .setup-group select {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      min-width: 120px;
+    }
+    .setup-group input:focus, .setup-group select:focus { border-color: var(--accent-blue); }
+    .btn {
+      padding: 8px 18px;
+      border-radius: 8px;
+      border: none;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: var(--accent-blue); color: #fff; }
+    .btn-primary:hover { opacity: 0.85; }
+    .btn-danger { background: rgba(239,68,68,0.15); color: var(--accent-red); border: 1px solid rgba(239,68,68,0.3); }
+    .btn-danger:hover { background: rgba(239,68,68,0.25); }
+
+    /* ── Summary Bar ─────────────────────────────────── */
+    .summary-bar {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: 13px;
+    }
+    .summary-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: var(--card);
+      border: 1px solid var(--border);
+    }
+    .summary-item .val { font-weight: 700; }
+    .summary-item.green .val { color: var(--accent-green); }
+    .summary-item.red .val { color: var(--accent-red); }
+    .summary-item.blue .val { color: var(--accent-blue); }
+    .summary-item.yellow .val { color: var(--accent-yellow); }
+
+    /* ── Groups Grid ─────────────────────────────────── */
+    .groups-container {
+      padding: 20px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .group-column {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .group-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .group-title {
+      font-weight: 700;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .group-title .group-num {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .group-balance {
+      font-size: 13px;
+      color: var(--accent-green);
+      font-weight: 600;
+    }
+    .group-status-lost .group-balance { color: var(--accent-red); }
+    .group-status-lost { border-color: rgba(239,68,68,0.3); }
+    .group-status-lost .group-header { background: rgba(239,68,68,0.05); }
+
+    /* ── Step Rows ───────────────────────────────────── */
+    .steps-list { padding: 8px; }
+    .step-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin-bottom: 4px;
+      transition: background 0.15s;
+      flex-wrap: wrap;
+    }
+    .step-row:hover { background: rgba(255,255,255,0.03); }
+    .step-num {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      background: var(--border);
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .step-info { flex: 1; min-width: 120px; }
+    .step-amount { font-weight: 700; font-size: 14px; }
+    .step-target { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+    .step-rate-input {
+      width: 60px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 12px;
+      text-align: center;
+      outline: none;
+    }
+    .step-rate-input:focus { border-color: var(--accent-blue); }
+    .step-note-input {
+      width: 140px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 12px;
+      outline: none;
+    }
+    .step-note-input::placeholder { color: var(--text-dim); }
+    .step-note-input:focus { border-color: var(--accent-blue); }
+
+    .step-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .step-btn {
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: none;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .step-btn-win { background: rgba(34,197,94,0.15); color: var(--accent-green); }
+    .step-btn-win:hover { background: rgba(34,197,94,0.3); }
+    .step-btn-lose { background: rgba(239,68,68,0.15); color: var(--accent-red); }
+    .step-btn-lose:hover { background: rgba(239,68,68,0.3); }
+    .step-btn-undo { background: rgba(255,255,255,0.06); color: var(--text-dim); }
+    .step-btn-undo:hover { background: rgba(255,255,255,0.12); }
+
+    .step-row.won { background: rgba(34,197,94,0.06); }
+    .step-row.won .step-num { background: var(--accent-green); color: #fff; }
+    .step-row.lost { background: rgba(239,68,68,0.06); }
+    .step-row.lost .step-num { background: var(--accent-red); color: #fff; }
+    .step-row.active { background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.2); }
+    .step-row.active .step-num { background: var(--accent-blue); color: #fff; }
+
+    /* ── Responsive ──────────────────────────────────── */
+    @media (max-width: 768px) {
+      .setup-panel { flex-direction: column; align-items: stretch; }
+      .setup-group input, .setup-group select { min-width: unset; }
+      .groups-container { grid-template-columns: 1fr !important; }
+      .step-note-input { width: 100%; }
+    }
+
+    /* ── Presets ──────────────────────────────────────── */
+    .presets {
+      padding: 8px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .presets span { font-size: 12px; color: var(--text-dim); margin-right: 4px; }
+    .preset-btn {
+      padding: 4px 12px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    .preset-btn:hover { border-color: var(--accent-blue); color: var(--text); }
+    .preset-btn.active { background: var(--accent-blue); border-color: var(--accent-blue); color: #fff; }
+
+    /* ── Save indicator ──────────────────────────────── */
+    .save-indicator {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      background: var(--accent-green);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      z-index: 100;
+    }
+    .save-indicator.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>💰 Bankroll Yönetimi <span class="subtitle">— Kümülatif İddia Sistemi</span></h1>
+    <a href="/" class="nav-link">🏀 Anomali Dashboard</a>
+  </div>
+
+  <!-- Setup -->
+  <div class="setup-panel" id="setupPanel">
+    <div class="setup-group">
+      <label>Toplam Bütçe (₺)</label>
+      <input type="number" id="inputBudget" value="20000" min="1" step="100">
+    </div>
+    <div class="setup-group">
+      <label>Grup Sayısı</label>
+      <select id="inputGroups">
+        <option value="1">1 Grup</option>
+        <option value="2">2 Grup</option>
+        <option value="3">3 Grup</option>
+        <option value="4" selected>4 Grup</option>
+        <option value="5">5 Grup</option>
+        <option value="6">6 Grup</option>
+        <option value="8">8 Grup</option>
+        <option value="10">10 Grup</option>
+      </select>
+    </div>
+    <div class="setup-group">
+      <label>Varsayılan Oran (kâr çarpanı)</label>
+      <input type="number" id="inputRate" value="0.80" min="0.01" max="10" step="0.05">
+    </div>
+    <button class="btn btn-primary" onclick="startSession()">🚀 Oturumu Başlat</button>
+    <button class="btn btn-danger" onclick="resetSession()">🔄 Sıfırla</button>
+  </div>
+
+  <!-- Presets -->
+  <div class="presets" id="presetsBar" style="display:none;">
+    <span>Hızlı Oran:</span>
+    <button class="preset-btn" onclick="applyPresetRate(0.50)">×0.50</button>
+    <button class="preset-btn" onclick="applyPresetRate(0.65)">×0.65</button>
+    <button class="preset-btn active" onclick="applyPresetRate(0.80)">×0.80</button>
+    <button class="preset-btn" onclick="applyPresetRate(1.00)">×1.00</button>
+    <button class="preset-btn" onclick="applyPresetRate(1.25)">×1.25</button>
+    <button class="preset-btn" onclick="applyPresetRate(1.50)">×1.50</button>
+    <button class="preset-btn" onclick="applyPresetRate(2.00)">×2.00</button>
+  </div>
+
+  <!-- Summary -->
+  <div class="summary-bar" id="summaryBar" style="display:none;">
+    <div class="summary-item blue">Başlangıç: <span class="val" id="sumStart">0 ₺</span></div>
+    <div class="summary-item green">Güncel Toplam: <span class="val" id="sumCurrent">0 ₺</span></div>
+    <div class="summary-item yellow">Kâr: <span class="val" id="sumProfit">0 ₺</span></div>
+    <div class="summary-item">Kazanma: <span class="val" id="sumWins">0</span></div>
+    <div class="summary-item red">Kaybetme: <span class="val" id="sumLosses">0</span></div>
+  </div>
+
+  <!-- Groups -->
+  <div class="groups-container" id="groupsContainer"></div>
+
+  <!-- Save indicator -->
+  <div class="save-indicator" id="saveIndicator">✓ Kaydedildi</div>
+
+  <script>
+    // ── State ────────────────────────────────────────
+    const STORAGE_KEY = 'bankroll_state';
+
+    let state = {
+      budget: 20000,
+      groupCount: 4,
+      defaultRate: 0.80,
+      started: false,
+      groups: []      // [{ steps: [{ amount, rate, status, note }] }]
+    };
+
+    // ── Persistence ────────────────────────────────────
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      showSaveIndicator();
+    }
+
+    function loadState() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          state = { ...state, ...parsed };
+        } catch (e) { /* ignore corrupt data */ }
+      }
+    }
+
+    function showSaveIndicator() {
+      const el = document.getElementById('saveIndicator');
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 1200);
+    }
+
+    // ── Session Control ────────────────────────────────
+    function startSession() {
+      const budget = parseFloat(document.getElementById('inputBudget').value);
+      const groupCount = parseInt(document.getElementById('inputGroups').value);
+      const rate = parseFloat(document.getElementById('inputRate').value);
+
+      if (!budget || budget <= 0 || !groupCount || !rate || rate <= 0) {
+        alert('Lütfen geçerli değerler girin.');
+        return;
+      }
+
+      const perGroup = budget / groupCount;
+
+      state.budget = budget;
+      state.groupCount = groupCount;
+      state.defaultRate = rate;
+      state.started = true;
+      state.groups = [];
+
+      for (let i = 0; i < groupCount; i++) {
+        state.groups.push({
+          steps: [{
+            amount: perGroup,
+            rate: rate,
+            status: 'pending',  // pending | won | lost
+            note: ''
+          }]
+        });
+      }
+
+      saveState();
+      renderAll();
+    }
+
+    function resetSession() {
+      if (!confirm('Oturum sıfırlanacak. Emin misiniz?')) return;
+      state = { budget: 20000, groupCount: 4, defaultRate: 0.80, started: false, groups: [] };
+      localStorage.removeItem(STORAGE_KEY);
+      renderAll();
+    }
+
+    // ── Actions ────────────────────────────────────────
+    function markWin(groupIdx, stepIdx) {
+      const group = state.groups[groupIdx];
+      const step = group.steps[stepIdx];
+      step.status = 'won';
+
+      // Only add next step if this is the last step
+      if (stepIdx === group.steps.length - 1) {
+        const newAmount = step.amount + (step.amount * step.rate);
+        group.steps.push({
+          amount: newAmount,
+          rate: state.defaultRate,
+          status: 'pending',
+          note: ''
+        });
+      }
+
+      saveState();
+      renderAll();
+    }
+
+    function markLoss(groupIdx, stepIdx) {
+      const group = state.groups[groupIdx];
+      group.steps[stepIdx].status = 'lost';
+      saveState();
+      renderAll();
+    }
+
+    function undoStep(groupIdx, stepIdx) {
+      const group = state.groups[groupIdx];
+      const step = group.steps[stepIdx];
+
+      // If this step was won and there's a next pending step, remove it
+      if (step.status === 'won' && stepIdx === group.steps.length - 2) {
+        const nextStep = group.steps[stepIdx + 1];
+        if (nextStep.status === 'pending') {
+          group.steps.pop();
+        }
+      }
+
+      step.status = 'pending';
+      saveState();
+      renderAll();
+    }
+
+    function updateStepRate(groupIdx, stepIdx, newRate) {
+      const rate = parseFloat(newRate);
+      if (isNaN(rate) || rate <= 0) return;
+      state.groups[groupIdx].steps[stepIdx].rate = rate;
+      saveState();
+      renderAll();
+    }
+
+    function updateStepNote(groupIdx, stepIdx, note) {
+      state.groups[groupIdx].steps[stepIdx].note = note;
+      saveState();
+    }
+
+    function applyPresetRate(rate) {
+      document.getElementById('inputRate').value = rate;
+      state.defaultRate = rate;
+
+      // Update active preset button
+      document.querySelectorAll('.preset-btn').forEach(b => {
+        b.classList.toggle('active', parseFloat(b.textContent.replace('×', '')) === rate);
+      });
+
+      saveState();
+    }
+
+    // ── Helpers ─────────────────────────────────────
+    function fmt(n) {
+      return n.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ₺';
+    }
+
+    function getGroupStatus(group) {
+      const lastStep = group.steps[group.steps.length - 1];
+      if (lastStep.status === 'lost') return 'lost';
+      return 'active';
+    }
+
+    function getGroupCurrentBalance(group) {
+      const lastStep = group.steps[group.steps.length - 1];
+      if (lastStep.status === 'won') {
+        return lastStep.amount + (lastStep.amount * lastStep.rate);
+      }
+      if (lastStep.status === 'lost') return 0;
+      return lastStep.amount;
+    }
+
+    // ── Render ──────────────────────────────────────
+    function renderAll() {
+      const container = document.getElementById('groupsContainer');
+      const summaryBar = document.getElementById('summaryBar');
+      const presetsBar = document.getElementById('presetsBar');
+
+      if (!state.started || state.groups.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text-dim);font-size:15px;">Oturum başlatmak için yukarıdaki ayarları yapın ve <b>Oturumu Başlat</b> butonuna basın.</div>';
+        summaryBar.style.display = 'none';
+        presetsBar.style.display = 'none';
+
+        // Restore inputs from state
+        document.getElementById('inputBudget').value = state.budget;
+        document.getElementById('inputGroups').value = state.groupCount;
+        document.getElementById('inputRate').value = state.defaultRate;
+        return;
+      }
+
+      // Show bars
+      summaryBar.style.display = 'flex';
+      presetsBar.style.display = 'flex';
+
+      // Update setup inputs to reflect state
+      document.getElementById('inputBudget').value = state.budget;
+      document.getElementById('inputGroups').value = state.groupCount;
+      document.getElementById('inputRate').value = state.defaultRate;
+
+      // Grid columns
+      const cols = state.groupCount <= 2 ? state.groupCount : (state.groupCount <= 4 ? Math.min(state.groupCount, 2) : Math.min(state.groupCount, 3));
+      container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+      if (state.groupCount <= 4 && window.innerWidth >= 769) {
+        container.style.gridTemplateColumns = `repeat(${state.groupCount}, 1fr)`;
+      }
+
+      // Render groups
+      let html = '';
+      let totalCurrent = 0;
+      let totalWins = 0;
+      let totalLosses = 0;
+
+      state.groups.forEach((group, gi) => {
+        const gStatus = getGroupStatus(group);
+        const balance = getGroupCurrentBalance(group);
+        totalCurrent += balance;
+
+        const statusClass = gStatus === 'lost' ? 'group-status-lost' : '';
+
+        html += `<div class="group-column ${statusClass}">`;
+        html += `<div class="group-header">`;
+        html += `<div class="group-title"><span class="group-num">${gi + 1}</span> Grup ${gi + 1}</div>`;
+        html += `<div class="group-balance">${fmt(balance)}</div>`;
+        html += `</div>`;
+        html += `<div class="steps-list">`;
+
+        group.steps.forEach((step, si) => {
+          const isActive = step.status === 'pending';
+          const isWon = step.status === 'won';
+          const isLost = step.status === 'lost';
+          const rowClass = isWon ? 'won' : (isLost ? 'lost' : (isActive ? 'active' : ''));
+          const profit = step.amount * step.rate;
+
+          if (isWon) totalWins++;
+          if (isLost) totalLosses++;
+
+          html += `<div class="step-row ${rowClass}">`;
+          html += `<div class="step-num">${si + 1}</div>`;
+          html += `<div class="step-info">`;
+          html += `<div class="step-amount">${fmt(step.amount)}</div>`;
+          html += `<div class="step-target">Hedef kâr: ${fmt(profit)} → Toplam: ${fmt(step.amount + profit)}</div>`;
+          html += `</div>`;
+
+          // Rate input
+          html += `<input class="step-rate-input" type="number" min="0.01" max="10" step="0.05" value="${step.rate}" `;
+          html += `onchange="updateStepRate(${gi},${si},this.value)" title="Oran" ${isActive ? '' : 'disabled'}>`;
+
+          // Note input
+          html += `<input class="step-note-input" type="text" placeholder="Maç notu..." value="${escapeHtml(step.note)}" `;
+          html += `onchange="updateStepNote(${gi},${si},this.value)" ${isActive ? '' : 'disabled'}>`;
+
+          // Action buttons
+          html += `<div class="step-actions">`;
+          if (isActive) {
+            html += `<button class="step-btn step-btn-win" onclick="markWin(${gi},${si})">✅ Kazandı</button>`;
+            html += `<button class="step-btn step-btn-lose" onclick="markLoss(${gi},${si})">❌ Kaybetti</button>`;
+          } else {
+            html += `<button class="step-btn step-btn-undo" onclick="undoStep(${gi},${si})">↩ Geri Al</button>`;
+          }
+          html += `</div>`;
+          html += `</div>`;
+        });
+
+        html += `</div></div>`;
+      });
+
+      container.innerHTML = html;
+
+      // Summary
+      const totalProfit = totalCurrent - state.budget;
+      document.getElementById('sumStart').textContent = fmt(state.budget);
+      document.getElementById('sumCurrent').textContent = fmt(totalCurrent);
+      document.getElementById('sumProfit').textContent = (totalProfit >= 0 ? '+' : '') + fmt(totalProfit);
+      document.getElementById('sumWins').textContent = totalWins;
+      document.getElementById('sumLosses').textContent = totalLosses;
+
+      // Color profit
+      const profitEl = document.getElementById('sumProfit').parentElement;
+      profitEl.className = 'summary-item ' + (totalProfit >= 0 ? 'green' : 'red');
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    }
+
+    // ── Init ────────────────────────────────────────
+    loadState();
+    renderAll();
+
+    // Responsive re-render
+    window.addEventListener('resize', renderAll);
+  </script>
+</body>
+</html>
