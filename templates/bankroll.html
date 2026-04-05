@@ -120,8 +120,13 @@
     /* ── Groups Grid ─────────────────────────────────── */
     .groups-container {
       padding: 20px;
-      display: grid;
+      display: flex;
       gap: 16px;
+      overflow-x: auto;
+    }
+    .groups-container > .group-column {
+      flex: 1 1 0;
+      min-width: 280px;
     }
 
     .group-column {
@@ -242,11 +247,30 @@
     .step-row.active { background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.2); }
     .step-row.active .step-num { background: var(--accent-blue); color: #fff; }
 
+    /* ── Projection ───────────────────────────────────── */
+    .projection {
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(59,130,246,0.04);
+      font-size: 11px;
+      color: var(--text-dim);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .projection .proj-row {
+      display: flex;
+      justify-content: space-between;
+    }
+    .projection .proj-val { color: var(--accent-green); font-weight: 600; }
+    .projection .proj-label { opacity: 0.7; }
+
     /* ── Responsive ──────────────────────────────────── */
     @media (max-width: 768px) {
       .setup-panel { flex-direction: column; align-items: stretch; }
       .setup-group input, .setup-group select { min-width: unset; }
-      .groups-container { grid-template-columns: 1fr !important; }
+      .groups-container { flex-direction: column; }
+      .groups-container > .group-column { min-width: unset; }
       .step-note-input { width: 100%; }
     }
 
@@ -518,6 +542,22 @@
       return lastStep.amount;
     }
 
+    function renderProjection(group) {
+      const gStatus = getGroupStatus(group);
+      if (gStatus === 'lost') return '<div class="projection" style="color:var(--accent-red);">Bu grup kaybedildi.</div>';
+      const balance = getGroupCurrentBalance(group);
+      const rate = state.defaultRate;
+      const milestones = Array.from({length: 20}, (_, i) => i + 1);
+      let html = '<div class="projection">';
+      html += '<div class="proj-row" style="margin-bottom:2px;"><span style="font-weight:600;color:var(--text);">📈 Projeksiyon (×' + rate.toFixed(2) + ')</span></div>';
+      milestones.forEach(n => {
+        const projected = balance * Math.pow(1 + rate, n);
+        html += `<div class="proj-row"><span class="proj-label">${n}. maç →</span><span class="proj-val">${fmt(projected)}</span></div>`;
+      });
+      html += '</div>';
+      return html;
+    }
+
     // ── Render ──────────────────────────────────────
     function renderAll() {
       const container = document.getElementById('groupsContainer');
@@ -545,12 +585,7 @@
       document.getElementById('inputGroups').value = state.groupCount;
       document.getElementById('inputRate').value = state.defaultRate;
 
-      // Grid columns
-      const cols = state.groupCount <= 2 ? state.groupCount : (state.groupCount <= 4 ? Math.min(state.groupCount, 2) : Math.min(state.groupCount, 3));
-      container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-      if (state.groupCount <= 4 && window.innerWidth >= 769) {
-        container.style.gridTemplateColumns = `repeat(${state.groupCount}, 1fr)`;
-      }
+      // Flex layout — no grid columns needed, all side by side
 
       // Render groups
       let html = '';
@@ -570,6 +605,7 @@
         html += `<div class="group-title"><span class="group-num">${gi + 1}</span> Grup ${gi + 1}</div>`;
         html += `<div class="group-balance">${fmt(balance)}</div>`;
         html += `</div>`;
+        html += renderProjection(group);
         html += `<div class="steps-list">`;
 
         group.steps.forEach((step, si) => {
