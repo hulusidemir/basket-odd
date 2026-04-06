@@ -629,6 +629,7 @@
           <th data-sort="score">Skor</th>
           <th data-sort="opening">Açılış</th>
           <th data-sort="live">Canlı</th>
+          <th data-sort="projected">Proj</th>
           <th data-sort="diff">Fark</th>
           <th>Aksiyon</th>
         </tr>
@@ -729,6 +730,14 @@
       if (rec === 'OYNA') { cls = 'rec-oyna'; emoji = '✅'; }
       else if (rec === 'DİKKAT') { cls = 'rec-dikkat'; emoji = '⚠️'; }
       return `<span class="rec-badge ${cls}">${emoji} ${rec}</span>`;
+    }
+
+    function projectedHtml(a) {
+      if (!a.projected) return '<td>-</td>';
+      const isHigher = a.projected > a.live;
+      const projClass = isHigher ? 'diff-positive' : 'diff-negative';
+      const projColor = isHigher ? '#ef4444' : '#22c55e'; // Red if higher, green if lower
+      return `<td style="color: ${projColor}; font-weight: 700;">${a.projected.toFixed(1)}</td>`;
     }
 
     function showRisk(id) {
@@ -865,6 +874,7 @@
           <td><b>${escapeHtml(a.score || '-')}</b></td>
           <td>${a.opening.toFixed(1)}</td>
           <td>${a.live.toFixed(1)}</td>
+          ${projectedHtml(a)}
           <td class="diff-val ${diffClass}">${diffSign}${a.diff.toFixed(1)}</td>
           <td>
             <div class="actions-wrap">
@@ -941,6 +951,11 @@
             <div class="card-odds-value">
               <div class="card-odds-label">Canlı</div>
               <div class="card-odds-num">${a.live.toFixed(1)}</div>
+            </div>
+            <div class="card-odds-arrow">→</div>
+            <div class="card-odds-value">
+              <div class="card-odds-label">Proj</div>
+              <div class="card-odds-num" style="color: ${!a.projected ? '#999' : (a.projected > a.live ? '#ef4444' : '#22c55e')}">${a.projected ? a.projected.toFixed(1) : '-'}</div>
             </div>
             <div class="card-odds-arrow">＝</div>
             <div class="card-diff">

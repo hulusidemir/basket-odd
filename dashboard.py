@@ -7,6 +7,7 @@ Usage:
 """
 
 import os
+import re
 from flask import Flask, jsonify, render_template, request
 from db import Database
 from config import Config
@@ -18,16 +19,115 @@ db.init()
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
 
-@app.route("/")
+# ──────────────────────────────────────────────────────────────────────────────
+# Projected Score Calculation
+# ──────────────────────────────────────────────────────────────────────────────
+
+def parse_time_from_status(status: str) -> tuple[int, float] | None:
+    """
+    Parse quarter and remaining time from status string.
+    Examples:
+    - "Q4 09:29" -> (4, 9.483)  [Q4, 9:29 remaining]
+    - "3rd Quarter" -> None (no time info)
+    - "HT" -> None
+    
+    Returns: (quarter_number, remaining_minutes) or None
+    """
+    if not status:
+        return None
+    
+    # Match patterns like "Q1 10:00", "Q4 05:30", etc.
+    match = re.search(r'Q(\d)\s*(\d{1,2}):(\d{2})', status)
+    if match:
+        quarter = int(match.group(1))
+        minutes = int(match.group(2))
+        seconds = int(match.group(3))
+        remaining_minutes = minutes + seconds / 60.0
+        return (quarter, remaining_minutes)
+    
+    return None
+
+
+def parse_score(score: str) -> tuple[float, float] | None:
+    """
+    Parse current score from string.
+    Examples:
+    - "105-98" -> (105.0, 98.0)
+    - "105-98 " -> (105.0, 98.0)
+    
+    Returns: (home_score, away_score) or None
+    """
+    if not score:
+        return None
+    
+    match = re.search(r'(\d+)\s*-\s*(\d+)', score.strip())
+    if match:
+        home = float(match.group(1))
+        away = float(match.group(2))
+        return (home, away)
+    
+    return None
+
+
+def calculate_projected_score(score: str, status: str, total_quarter_minutes: int = 12) -> float | None:
+    """
+    Calculate projected final total based on current pace.
+    
+    Args:
+        score: Current score string, e.g., "105-98"
+        status: Status string with quarter and time, e.g., "Q4 09:29"
+        total_quarter_minutes: Minutes per quarter (NBA=12, FIBA=10)
+    
+    Returns:
+        Projected total points or None if calculation not possible
+    """
+    time_info = parse_time_from_status(status)
+    score_info = parse_score(score)
+    
+    if not time_info or not score_info:
+        return None
+    
+    quarter, remaining_minutes = time_info
+    home_score, away_score = score_info
+    
+    # Total game minutes
+    total_game_minutes = total_quarter_minutes * 4
+    
+    # Calculate elapsed minutes
+    elapsed_minutes = (quarter - 1) * total_quarter_minutes + (total_quarter_minutes - remaining_minutes)
+    
+    # Need at least some minutes elapsed to have meaningful pace
+    if elapsed_minutes < 1:
+        return None
+    
+    current_total = home_score + away_score
+    pace = current_total / elapsed_minutes
+    remaining_game_time = remaining_minutes + (4 - quarter) * total_quarter_minutes
+    
+    projected_total = current_total + (pace * remaining_game_time)
+    return round(projected_total, 1)
+
+
+
 def index():
     return render_template("dashboard.html")
 
 
 @app.route("/api/alerts")
 def api_alerts():
-    """Returns all anomaly records."""
+    """Returns all anomaly records with projected scores."""
     alerts = db.recent_alerts(limit=500)
+    
+    # Add projected score to each alert
+    for alert in alerts:
+        projected = calculate_projected_score(
+            score=alert.get("score", ""),
+            status=alert.get("status", "")
+        )
+        alert["projected"] = projected
+    
     return jsonify(alerts)
+
 
 
 @app.route("/api/alerts/<int:alert_id>/bet", methods=["POST"])
