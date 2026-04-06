@@ -109,7 +109,7 @@ def calculate_projected_score(score: str, status: str, total_quarter_minutes: in
     return round(projected_total, 1)
 
 
-
+@app.route("/")
 def index():
     return render_template("dashboard.html")
 
