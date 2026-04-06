@@ -8,6 +8,7 @@ Usage:
 
 import os
 import re
+from typing import Optional, Tuple
 from flask import Flask, jsonify, render_template, request
 from db import Database
 from config import Config
@@ -23,7 +24,7 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 # Projected Score Calculation
 # ──────────────────────────────────────────────────────────────────────────────
 
-def parse_time_from_status(status: str) -> tuple[int, float] | None:
+def parse_time_from_status(status: str) -> Optional[Tuple[int, float]]:
     """
     Parse quarter and remaining time from status string.
     Examples:
@@ -48,7 +49,7 @@ def parse_time_from_status(status: str) -> tuple[int, float] | None:
     return None
 
 
-def parse_score(score: str) -> tuple[float, float] | None:
+def parse_score(score: str) -> Optional[Tuple[float, float]]:
     """
     Parse current score from string.
     Examples:
@@ -69,7 +70,7 @@ def parse_score(score: str) -> tuple[float, float] | None:
     return None
 
 
-def calculate_projected_score(score: str, status: str, total_quarter_minutes: int = 12) -> float | None:
+def calculate_projected_score(score: str, status: str, total_quarter_minutes: int = 12) -> Optional[float]:
     """
     Calculate projected final total based on current pace.
     
