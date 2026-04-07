@@ -11,25 +11,18 @@ import random
 import re
 import sys
 
-from cachetools import TTLCache
-
 from aiscore_opera_scraper import AiscoreOperaScraper
-from analyzer import get_match_analysis
 from config import Config
 from db import Database
 from notifier import TelegramNotifier
 
-# In-memory cache: one Gemini call per match. Key = match_id, TTL = 4 hours.
-_analysis_cache: TTLCache = TTLCache(maxsize=1024, ttl=4 * 3600)
 
-
-def _calculate_base_risk(direction: str, inplay_total: float, score: str, status: str) -> dict:
+def _calculate_base_risk(direction: str, inplay_total: float, score: str, status: str, match_name: str, tournament: str) -> dict:
     """
     Calculate base risk assessment based on score tempo vs live total line.
-    Two methods:
-      1. Period-based: if period + time can be parsed → project full-game total from pace
-      2. Score-ratio fallback: compare total_score / inplay_total regardless of period
-
+    - Uses league specific quarter lengths (NBA: 12, NCAA: 20, FIBA: 10)
+    - Applies crunch-time multipliers to expected totals
+    - Disables analysis if time is unknown
     Returns dict with level, emoji, text, icon keys.
     """
     # ── Parse score ──
@@ -56,6 +49,18 @@ def _calculate_base_risk(direction: str, inplay_total: float, score: str, status
             "text": f"Skor 0-0, tempo hesaplanamıyor ({status or 'Durum bilinmiyor'})",
         }
 
+    # ── Determine league-specific time settings ──
+    text_to_check = f"{match_name} {tournament}".upper()
+    if "NBA" in text_to_check:
+        quarter_length = 12
+        total_game_min = 48
+    elif "NCAA" in text_to_check:
+        quarter_length = 20
+        total_game_min = 40
+    else:
+        quarter_length = 10
+        total_game_min = 40
+
     # ── Try to parse period from status ──
     period = None
     remaining_min = None
@@ -64,8 +69,12 @@ def _calculate_base_risk(direction: str, inplay_total: float, score: str, status
     if status_clean:
         # OT — can't project in overtime
         if re.match(r'^OT', status_clean, re.IGNORECASE):
-            return _score_ratio_risk(direction, inplay_total, total_score, score,
-                                     status, note="Uzatma (OT)")
+            return {
+                "level": "unknown", "emoji": "❓", "icon": "?",
+                "text": f"Oyun uzatmada, tempo hesaplanamıyor ({status_clean})",
+                "recommendation": "PAS GEÇ",
+                "rec_emoji": "⛔"
+            }
 
         # HT (halftime) — period 2, remaining 0
         if re.match(r'^HT$', status_clean, re.IGNORECASE):
@@ -131,12 +140,23 @@ def _calculate_base_risk(direction: str, inplay_total: float, score: str, status
 
     # ── Period-based projection (preferred method) ──
     if period is not None and remaining_min is not None:
-        quarter_length = 10  # FIBA standard
-        elapsed_min = (period - 1) * quarter_length + (quarter_length - remaining_min)
-        total_game_min = 4 * quarter_length  # 40 min
+        if quarter_length == 20:
+            elapsed_min = (period - 1) * 20 + (20 - remaining_min)
+        else:
+            elapsed_min = (period - 1) * quarter_length + (quarter_length - remaining_min)
 
         if elapsed_min > 1:
             projected_total = (total_score / elapsed_min) * total_game_min
+            
+            # --- Crunch Time Logic ---
+            score_diff = abs(home_score - away_score)
+            is_crunch_time = False
+            last_period = 4 if quarter_length != 20 else 2
+            
+            if period == last_period and remaining_min <= 3.0 and score_diff <= 12:
+                is_crunch_time = True
+                projected_total *= 1.15  # %15 faul/kriz anı artışı
+                
             pace_ratio = projected_total / inplay_total if inplay_total > 0 else 1.0
 
             detail = (
@@ -144,15 +164,27 @@ def _calculate_base_risk(direction: str, inplay_total: float, score: str, status
                 f"Canlı barem: {inplay_total:.0f}, "
                 f"Skor: {score}, {status_clean}"
             )
-            return _evaluate_pace(direction, pace_ratio, detail)
+            if is_crunch_time:
+                detail += " [Taktik Faul Çarpanı Aktif!]"
+                
+            return _evaluate_pace(direction, pace_ratio, detail, is_crunch_time)
 
-    # ── Fallback: score-ratio method (no period info) ──
-    return _score_ratio_risk(direction, inplay_total, total_score, score, status)
+    # ── Fallback: Time unknown ──
+    return {
+        "level": "unknown", "emoji": "❓", "icon": "?",
+        "text": f"Süre verisi net değil, risk/tempo matematiksel olarak hesaplanamıyor. (Skor: {score}, Durum: {status_clean})",
+        "recommendation": "PAS GEÇ",
+        "rec_emoji": "⛔"
+    }
 
 
-def _evaluate_pace(direction: str, pace_ratio: float, detail: str) -> dict:
+def _evaluate_pace(direction: str, pace_ratio: float, detail: str, is_crunch_time: bool = False) -> dict:
     """Evaluate risk based on pace_ratio (projected_total / inplay_total)."""
     if direction == "ALT":
+        if is_crunch_time:
+            return {"level": "high", "emoji": "⚠️", "icon": "!",
+                    "text": f"Yüksek risk: Taktik faul tehlikesi! ALT oynamayın ({detail})"}
+                    
         if pace_ratio > 1.12:
             return {"level": "high", "emoji": "⚠️", "icon": "!",
                     "text": f"Yüksek risk: Tempo çok yüksek ({detail})"}
@@ -174,64 +206,12 @@ def _evaluate_pace(direction: str, pace_ratio: float, detail: str) -> dict:
                     "text": f"Düşük risk: Tempo uyumlu ({detail})"}
 
 
-def _score_ratio_risk(
-    direction: str, inplay_total: float, total_score: int,
-    score: str, status: str, note: str = "",
-) -> dict:
-    """
-    Fallback risk assessment when period info is unavailable.
-    Uses total_score / inplay_total ratio.
-
-    The live barem (inplay_total) is the bookmaker's projection for the full game.
-    If a large fraction of it is already scored → pace is high.
-    If a small fraction is scored → pace is low.
-    """
-    if inplay_total <= 0:
-        return {"level": "unknown", "emoji": "❓", "icon": "?",
-                "text": "Canlı barem verisi geçersiz"}
-
-    score_ratio = total_score / inplay_total
-    score_pct = score_ratio * 100
-
-    prefix = f"{note}, " if note else ""
-    detail = (
-        f"{prefix}Skor toplamı: {total_score}, "
-        f"Canlı barem: {inplay_total:.0f}, "
-        f"Oran: %{score_pct:.0f}, "
-        f"Skor: {score}, "
-        f"Durum: {status or '?'}"
-    )
-
-    if direction == "ALT":
-        # ALT = under. Risky if score ratio is high (pace genuinely fast)
-        if score_ratio > 0.60:
-            return {"level": "high", "emoji": "⚠️", "icon": "!",
-                    "text": f"Yüksek risk: Toplam skor baremin %{score_pct:.0f}'ine ulaşmış, tempo yüksek ({detail})"}
-        elif score_ratio > 0.50:
-            return {"level": "medium", "emoji": "⚠️", "icon": "!",
-                    "text": f"Orta risk: Toplam skor baremin yarısını aşmış ({detail})"}
-        else:
-            return {"level": "low", "emoji": "✅", "icon": "",
-                    "text": f"Düşük risk: Skor/barem oranı makul ({detail})"}
-    else:
-        # ÜST = over. Risky if score ratio is low (pace genuinely slow)
-        if score_ratio < 0.30:
-            return {"level": "high", "emoji": "⚠️", "icon": "!",
-                    "text": f"Yüksek risk: Toplam skor baremin sadece %{score_pct:.0f}'i, tempo düşük ({detail})"}
-        elif score_ratio < 0.40:
-            return {"level": "medium", "emoji": "⚠️", "icon": "!",
-                    "text": f"Orta risk: Skor/barem oranı düşük ({detail})"}
-        else:
-            return {"level": "low", "emoji": "✅", "icon": "",
-                    "text": f"Düşük risk: Skor/barem oranı makul ({detail})"}
-
-
-def calculate_risk(direction: str, inplay_total: float, score: str, status: str) -> dict:
+def calculate_risk(direction: str, inplay_total: float, score: str, status: str, match_name: str, tournament: str) -> dict:
     """
     Full risk assessment: base risk + blowout detection + early signal + recommendation.
     Returns dict with: level, emoji, text, icon, recommendation, rec_emoji, warnings, is_blowout, is_early.
     """
-    result = _calculate_base_risk(direction, inplay_total, score, status)
+    result = _calculate_base_risk(direction, inplay_total, score, status, match_name, tournament)
 
     # ── Blowout detection (score diff >= 25) ──
     is_blowout = False
@@ -259,15 +239,17 @@ def calculate_risk(direction: str, inplay_total: float, score: str, status: str)
 
     # ── Determine recommendation ──
     level = result["level"]
-    if is_blowout or level == "high" or level == "unknown":
-        rec, rec_emoji = "PAS GEÇ", "⛔"
-    elif is_early or level == "medium":
-        rec, rec_emoji = "DİKKAT", "⚠️"
-    else:
-        rec, rec_emoji = "OYNA", "✅"
+    if "recommendation" not in result:
+        if is_blowout or level == "high" or level == "unknown":
+            rec, rec_emoji = "PAS GEÇ", "⛔"
+        elif is_early or level == "medium":
+            rec, rec_emoji = "DİKKAT", "⚠️"
+        else:
+            rec, rec_emoji = "OYNA", "✅"
 
-    result["recommendation"] = rec
-    result["rec_emoji"] = rec_emoji
+        result["recommendation"] = rec
+        result["rec_emoji"] = rec_emoji
+
     result["warnings"] = warnings
     result["is_blowout"] = is_blowout
     result["is_early"] = is_early
@@ -305,6 +287,11 @@ async def process_match(
     score = match.get("score", "")
 
     log = logging.getLogger("main")
+
+    # Uzatmaya giden (OT) maçları yoksay
+    if re.search(r'\bOT\b|Uzatma', status, re.IGNORECASE):
+        log.debug("Skipped (Overtime): %s", match_name)
+        return
 
     # Blacklist check
     if config.BLACKLIST:
@@ -344,8 +331,10 @@ async def process_match(
     signal_count = db.count_match_alerts(match_id) + 1
 
     # 1.5) Risk assessment based on score tempo
-    risk = calculate_risk(direction, inplay_total, score, status)
+    risk = calculate_risk(direction, inplay_total, score, status, match_name, tournament)
     risk_note = risk["text"]
+    if risk.get("warnings"):
+        risk_note += "\n" + "\n".join(risk["warnings"])
     recommendation = risk.get("recommendation", "")
     log.info("Risk: %s | Öneri: %s | %s | %s", risk["level"], recommendation, match_name, risk_note)
 
@@ -367,59 +356,7 @@ async def process_match(
         match_id, match_name, direction, abs_diff,
     )
 
-    # 3) Spawn background AI analysis (non-blocking) — one per match
-    if config.GEMINI_API_KEY:
-        if match_id in _analysis_cache:
-            log.debug("AI skipped (already analyzed): match_id=%s | %s", match_id, match_name)
-        else:
-            _analysis_cache[match_id] = True
-            log.info("AI analysis queued (first time): match_id=%s | %s", match_id, match_name)
-            asyncio.create_task(
-                _run_analysis(
-                    config, db, notifier, alert_id, msg_ids,
-                    match_name, tournament, score, opening_total, inplay_total, diff, direction, status,
-                )
-            )
-
-
-async def _run_analysis(
-    config: Config,
-    db: Database,
-    notifier: TelegramNotifier,
-    alert_id: int,
-    msg_ids: dict,
-    match_name: str,
-    tournament: str,
-    score: str,
-    opening: float,
-    inplay: float,
-    diff: float,
-    direction: str,
-    status: str,
-):
-    """Background task: get Gemini analysis, send as Telegram reply, save to DB."""
-    log = logging.getLogger("main")
-    try:
-        analysis = await get_match_analysis(
-            api_key=config.GEMINI_API_KEY,
-            model=config.GEMINI_MODEL,
-            match_name=match_name,
-            tournament=tournament,
-            score=score,
-            opening=opening,
-            inplay=inplay,
-            diff=diff,
-            direction=direction,
-            status=status,
-        )
-        if analysis:
-            await notifier.send_analysis(analysis, match_name, reply_to=msg_ids)
-            db.update_analysis(alert_id, analysis)
-            log.info("AI analysis saved for alert #%s: %s", alert_id, match_name)
-        else:
-            log.warning("Empty AI analysis for: %s", match_name)
-    except Exception as e:
-        log.error("Background analysis error for %s: %s", match_name, e)
+    # Yapay zeka analizi devredışı bırakıldı
 
 
 async def run():
