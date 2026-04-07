@@ -867,7 +867,12 @@
         return `<tr class="${classes.join(' ')}">
           <td><input type="checkbox" class="row-check" data-id="${a.id}" onchange="updateSelectedCount()"></td>
           <td class="time-col">${time}</td>
-          <td class="col-direction"><span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}${riskIconHtml(a)}${recBadgeHtml(a)}</td>
+          <td class="col-direction" style="display:flex;align-items:center;gap:4px;">
+            <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
+            ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
+            ${riskIconHtml(a)}
+            ${recBadgeHtml(a)}
+          </td>
           <td class="col-match">${matchDisplay}</td>
           <td class="col-tournament">${escapeHtml(a.tournament || '-')}</td>
           <td>${escapeHtml(a.status || '-')}</td>
