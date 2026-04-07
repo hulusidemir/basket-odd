@@ -17,7 +17,7 @@ from db import Database
 from notifier import TelegramNotifier
 
 
-def _calculate_base_risk(direction: str, inplay_total: float, score: str, status: str, match_name: str, tournament: str) -> dict:
+def _calculate_base_risk(direction: str, inplay_total: float, opening_total: float, score: str, status: str, match_name: str, tournament: str) -> dict:
     """
     Calculate base risk assessment based on score tempo vs live total line.
     - Uses league specific quarter lengths (NBA: 12, NCAA: 20, FIBA: 10)
@@ -148,12 +148,20 @@ def _calculate_base_risk(direction: str, inplay_total: float, score: str, status
         if elapsed_min > 1:
             projected_total = (total_score / elapsed_min) * total_game_min
             
-            # --- Crunch Time Logic ---
+            # --- YORGUNLUK / PACE DECAY ÇARPANI (Dinamik Ağırlıklandırma) ---
+            if period <= 2:
+                decay_factor = 0.94  # 1. ve 2. çeyreklerdeki tempolar sonradan %6 civarı düşer
+                projected_total *= decay_factor
+            
+            # --- Crunch Time & Garbage Time Logic ---
             score_diff = abs(home_score - away_score)
             is_crunch_time = False
+            is_garbage_time = False
             last_period = 4 if quarter_length != 20 else 2
             
-            if period == last_period and remaining_min <= 3.0 and score_diff <= 12:
+            if period == last_period and score_diff >= 20:
+                is_garbage_time = True
+            elif period == last_period and remaining_min <= 3.0 and score_diff <= 12:
                 is_crunch_time = True
                 projected_total *= 1.15  # %15 faul/kriz anı artışı
                 
@@ -164,10 +172,12 @@ def _calculate_base_risk(direction: str, inplay_total: float, score: str, status
                 f"Canlı barem: {inplay_total:.0f}, "
                 f"Skor: {score}, {status_clean}"
             )
-            if is_crunch_time:
+            if is_garbage_time:
+                detail += " [Garbage Time: Fark çok yüksek, tempo düşecektir!]"
+            elif is_crunch_time:
                 detail += " [Taktik Faul Çarpanı Aktif!]"
                 
-            return _evaluate_pace(direction, pace_ratio, detail, is_crunch_time)
+            return _evaluate_pace(direction, pace_ratio, detail, is_crunch_time, is_garbage_time, opening_total, projected_total)
 
     # ── Fallback: Time unknown ──
     return {
@@ -178,40 +188,60 @@ def _calculate_base_risk(direction: str, inplay_total: float, score: str, status
     }
 
 
-def _evaluate_pace(direction: str, pace_ratio: float, detail: str, is_crunch_time: bool = False) -> dict:
+def _evaluate_pace(direction: str, pace_ratio: float, detail: str, is_crunch_time: bool = False, is_garbage_time: bool = False, opening_total: float = 0.0, projected_total: float = 0.0) -> dict:
     """Evaluate risk based on pace_ratio (projected_total / inplay_total)."""
+    
+    trust_score = ""
+    # "ALT" oynayacağız (Canlı barem açılıştan yükseğe çıktı, düşmesini bekliyoruz)
+    # Eğer Projeksiyon hala Açılış bareminden küçükse (Bookmaker haklı çıkacaksa), güven yüksektir!
     if direction == "ALT":
+        if opening_total > 0:
+            if projected_total <= opening_total * 1.03:
+                trust_score = " 🎯 [Güven: YÜKSEK - Bookmaker Regresyonu]"
+            elif projected_total > opening_total * 1.10:
+                trust_score = " ⚠️ [Güven: DÜŞÜK - Projeksiyon çok fırladı]"
+                
+        if is_garbage_time:
+            return {"level": "low", "emoji": "✅", "icon": "",
+                    "text": f"GÜVENLİ LİMAN: Garbage Time (Maç Koptu), takımlar süreyi eritecek. OYNA ({detail})"}
+                    
         if is_crunch_time:
             return {"level": "high", "emoji": "⚠️", "icon": "!",
                     "text": f"Yüksek risk: Taktik faul tehlikesi! ALT oynamayın ({detail})"}
                     
         if pace_ratio > 1.12:
             return {"level": "high", "emoji": "⚠️", "icon": "!",
-                    "text": f"Yüksek risk: Tempo çok yüksek ({detail})"}
+                    "text": f"Yüksek risk: Tempo çok yüksek ({detail}){trust_score}"}
         elif pace_ratio > 1.05:
             return {"level": "medium", "emoji": "⚠️", "icon": "!",
-                    "text": f"Orta risk: Tempo ortalamanın üstünde ({detail})"}
+                    "text": f"Orta risk: Tempo ortalamanın üstünde ({detail}){trust_score}"}
         else:
             return {"level": "low", "emoji": "✅", "icon": "",
-                    "text": f"Düşük risk: Tempo uyumlu ({detail})"}
-    else:
+                    "text": f"Düşük risk: Tempo uyumlu ({detail}){trust_score}"}
+    else:  # ÜST oynayacağız (Canlı barem düştü)
+        if opening_total > 0:
+            if projected_total >= opening_total * 0.97:
+                trust_score = " 🎯 [Güven: YÜKSEK - Bookmaker Regresyonu]"
+            elif projected_total < opening_total * 0.90:
+                trust_score = " ⚠️ [Güven: DÜŞÜK - Projeksiyon çok geride]"
+                
         if pace_ratio < 0.88:
             return {"level": "high", "emoji": "⚠️", "icon": "!",
-                    "text": f"Yüksek risk: Tempo çok düşük ({detail})"}
+                    "text": f"Yüksek risk: Tempo çok düşük ({detail}){trust_score}"}
         elif pace_ratio < 0.95:
             return {"level": "medium", "emoji": "⚠️", "icon": "!",
-                    "text": f"Orta risk: Tempo ortalamanın altında ({detail})"}
+                    "text": f"Orta risk: Tempo ortalamanın altında ({detail}){trust_score}"}
         else:
             return {"level": "low", "emoji": "✅", "icon": "",
-                    "text": f"Düşük risk: Tempo uyumlu ({detail})"}
+                    "text": f"Düşük risk: Tempo uyumlu ({detail}){trust_score}"}
 
 
-def calculate_risk(direction: str, inplay_total: float, score: str, status: str, match_name: str, tournament: str) -> dict:
+def calculate_risk(direction: str, inplay_total: float, opening_total: float, score: str, status: str, match_name: str, tournament: str) -> dict:
     """
     Full risk assessment: base risk + blowout detection + early signal + recommendation.
     Returns dict with: level, emoji, text, icon, recommendation, rec_emoji, warnings, is_blowout, is_early.
     """
-    result = _calculate_base_risk(direction, inplay_total, score, status, match_name, tournament)
+    result = _calculate_base_risk(direction, inplay_total, opening_total, score, status, match_name, tournament)
 
     # ── Blowout detection (score diff >= 25) ──
     is_blowout = False
@@ -232,15 +262,17 @@ def calculate_risk(direction: str, inplay_total: float, score: str, status: str,
 
     # ── Build warnings ──
     warnings = []
-    if is_blowout:
-        warnings.append("💥 Blowout: Skor farkı 25+ puan, çöp sayılar riski var")
+    is_garbage_time_opportunity = "GÜVENLİ LİMAN" in result.get("text", "")
+
+    if is_blowout and not is_garbage_time_opportunity:
+        warnings.append("💥 Blowout: Skor farkı 25+ puan, çöp sayılar riski var (ÜST için tehlikeli)")
     if is_early:
         warnings.append("⏰ Erken sinyal: 1. çeyrek, güvenilirlik düşük")
 
     # ── Determine recommendation ──
     level = result["level"]
     if "recommendation" not in result:
-        if is_blowout or level == "high" or level == "unknown":
+        if (is_blowout and not is_garbage_time_opportunity) or level == "high" or level == "unknown":
             rec, rec_emoji = "PAS GEÇ", "⛔"
         elif is_early or level == "medium":
             rec, rec_emoji = "DİKKAT", "⚠️"
@@ -331,7 +363,7 @@ async def process_match(
     signal_count = db.count_match_alerts(match_id) + 1
 
     # 1.5) Risk assessment based on score tempo
-    risk = calculate_risk(direction, inplay_total, score, status, match_name, tournament)
+    risk = calculate_risk(direction, inplay_total, opening_total, score, status, match_name, tournament)
     risk_note = risk["text"]
     if risk.get("warnings"):
         risk_note += "\n" + "\n".join(risk["warnings"])
