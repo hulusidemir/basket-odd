@@ -781,11 +781,11 @@ class AiscoreOperaScraper:
                 logger.debug("Could not find opening/inplay totals for %s", url)
             return None
 
-        # Skip match if less than 5 minutes remain in Q4
+        # Skip match if less than 4 minutes remain in last period
         is_q4 = parsed.get("isQ4", False)
         remaining = parsed.get("remainingMinutes")
-        if is_q4 and remaining is not None and remaining < 5:
-            logger.debug("Q4 <5min remaining, skipping: %s (%.1f min)", url, remaining)
+        if is_q4 and remaining is not None and remaining <= 4.0:
+            logger.debug("Q4 <=4min remaining, skipping: %s (%.1f min)", url, remaining)
             return None
 
         match_id = self._extract_match_id(url)

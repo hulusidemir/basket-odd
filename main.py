@@ -167,6 +167,10 @@ def _calculate_base_risk(direction: str, inplay_total: float, opening_total: flo
                 
             pace_ratio = projected_total / inplay_total if inplay_total > 0 else 1.0
 
+            # --- Drop Filter (Son 4 Dakika Kuralı) ---
+            if period == last_period and remaining_min <= 4.0:
+                return {"skip_match": True, "level": "unknown", "text": "Son 4 dakika, analiz atlanıyor", "emoji": "", "icon": ""}
+
             detail = (
                 f"Projeksiyon: {projected_total:.0f}, "
                 f"Canlı barem: {inplay_total:.0f}, "
@@ -364,6 +368,12 @@ async def process_match(
 
     # 1.5) Risk assessment based on score tempo
     risk = calculate_risk(direction, inplay_total, opening_total, score, status, match_name, tournament)
+    
+    # Check if the risk calculation triggered an explicit skip condition
+    if risk.get("skip_match"):
+        log.debug("Skipped (Son 4 Dakika Kuralı): %s", match_name)
+        return
+
     risk_note = risk["text"]
     if risk.get("warnings"):
         risk_note += "\n" + "\n".join(risk["warnings"])
