@@ -24,88 +24,51 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 # Projected Score Calculation
 # ──────────────────────────────────────────────────────────────────────────────
 
-def parse_time_from_status(status: str) -> Optional[Tuple[int, float]]:
-    """
-    Parse quarter and remaining time from status string.
-    Examples:
-    - "Q4 09:29" -> (4, 9.483)  [Q4, 9:29 remaining]
-    - "3rd Quarter" -> None (no time info)
-    - "HT" -> None
-    
-    Returns: (quarter_number, remaining_minutes) or None
-    """
-    if not status:
-        return None
-    
-    # Match patterns like "Q1 10:00", "Q4 05:30", etc.
-    match = re.search(r'Q(\d)\s*(\d{1,2}):(\d{2})', status)
-    if match:
-        quarter = int(match.group(1))
-        minutes = int(match.group(2))
-        seconds = int(match.group(3))
-        remaining_minutes = minutes + seconds / 60.0
-        return (quarter, remaining_minutes)
-    
-    return None
+def calculate_projected_score(score: str, status: str, match_name: str = "", tournament: str = "") -> Optional[float]:
+    if not score: return None
+    match = re.search(r'(\d+)\s*[-–]\s*(\d+)', score.strip())
+    if not match: return None
+    total_score = float(match.group(1)) + float(match.group(2))
 
-
-def parse_score(score: str) -> Optional[Tuple[float, float]]:
-    """
-    Parse current score from string.
-    Examples:
-    - "105-98" -> (105.0, 98.0)
-    - "105-98 " -> (105.0, 98.0)
+    period = None
+    remaining_min = None
+    status_clean = (status or "").strip()
     
-    Returns: (home_score, away_score) or None
-    """
-    if not score:
+    if not status_clean or re.match(r'^OT', status_clean, re.IGNORECASE):
         return None
-    
-    match = re.search(r'(\d+)\s*-\s*(\d+)', score.strip())
-    if match:
-        home = float(match.group(1))
-        away = float(match.group(2))
-        return (home, away)
-    
-    return None
-
-
-def calculate_projected_score(score: str, status: str, total_quarter_minutes: int = 12) -> Optional[float]:
-    """
-    Calculate projected final total based on current pace.
-    
-    Args:
-        score: Current score string, e.g., "105-98"
-        status: Status string with quarter and time, e.g., "Q4 09:29"
-        total_quarter_minutes: Minutes per quarter (NBA=12, FIBA=10)
-    
-    Returns:
-        Projected total points or None if calculation not possible
-    """
-    time_info = parse_time_from_status(status)
-    score_info = parse_score(score)
-    
-    if not time_info or not score_info:
+        
+    if re.match(r'^HT$', status_clean, re.IGNORECASE):
+        period = 2
+        remaining_min = 0.0
+    else:
+        m1 = re.search(r'(?:Q(\d)|(\d)Q|(\d{1,2}))[-:\s]*(\d{1,2}):(\d{2})', status_clean, re.IGNORECASE)
+        if m1:
+            period = int(m1.group(1) or m1.group(2) or m1.group(3))
+            remaining_min = int(m1.group(4)) + int(m1.group(5)) / 60.0
+            
+    if period is None or remaining_min is None:
         return None
-    
-    quarter, remaining_minutes = time_info
-    home_score, away_score = score_info
-    
-    # Total game minutes
-    total_game_minutes = total_quarter_minutes * 4
-    
-    # Calculate elapsed minutes
-    elapsed_minutes = (quarter - 1) * total_quarter_minutes + (total_quarter_minutes - remaining_minutes)
-    
-    # Need at least some minutes elapsed to have meaningful pace
-    if elapsed_minutes < 1:
+
+    text_to_check = f"{match_name} {tournament}".upper()
+    if "NBA" in text_to_check:
+        quarter_length = 12
+        total_game_min = 48
+    elif "NCAA" in text_to_check:
+        quarter_length = 20
+        total_game_min = 40
+    else:
+        quarter_length = 10
+        total_game_min = 40
+        
+    if quarter_length == 20:
+        elapsed_min = (period - 1) * 20 + (20 - remaining_min)
+    else:
+        elapsed_min = (period - 1) * quarter_length + (quarter_length - remaining_min)
+
+    if elapsed_min < 1:
         return None
-    
-    current_total = home_score + away_score
-    pace = current_total / elapsed_minutes
-    remaining_game_time = remaining_minutes + (4 - quarter) * total_quarter_minutes
-    
-    projected_total = current_total + (pace * remaining_game_time)
+        
+    projected_total = (total_score / elapsed_min) * total_game_min
     return round(projected_total, 1)
 
 
@@ -123,7 +86,9 @@ def api_alerts():
     for alert in alerts:
         projected = calculate_projected_score(
             score=alert.get("score", ""),
-            status=alert.get("status", "")
+            status=alert.get("status", ""),
+            match_name=alert.get("match_name", ""),
+            tournament=alert.get("tournament", "")
         )
         alert["projected"] = projected
     
