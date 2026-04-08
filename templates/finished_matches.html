@@ -635,6 +635,7 @@
           <th data-sort="opening">Açılış</th>
           <th data-sort="live">Canlı</th>
           <th data-sort="diff">Fark</th>
+          <th>İşlem</th>
           <th data-sort="result">Sonuç</th>
         </tr>
       </thead>
@@ -878,6 +879,12 @@
         else if (a.result === 'Başarısız') resultBadge = '<span class="badge badge-alt">❌ Başarısız</span>';
         else resultBadge = '<span class="badge" style="background:#555;color:#fff">Bilinmiyor</span>';
 
+        let actionBadge = '';
+        if (a.bet_placed) actionBadge = '<span class="badge" style="background:rgba(59,130,246,0.15);color:#3b82f6;border:1px solid rgba(59,130,246,0.3)">💰 Bahis Oyna</span>';
+        else if (a.followed) actionBadge = '<span class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">👀 Takip Et</span>';
+        else if (a.ignored) actionBadge = '<span class="badge" style="background:rgba(255,255,255,0.05);color:#9ca3af;border:1px solid rgba(255,255,255,0.1)">🚫 Gözardı</span>';
+        else actionBadge = '<span class="badge" style="background:transparent;color:#6b7280;border:1px dashed #4b5563">⏳ İşlem yapılmadı</span>';
+
         const matchTotal = allAlerts.filter(x => x.match_id === a.match_id).length;
         let multiBadge = '';
         let firstTdStyle = '';
@@ -903,6 +910,7 @@
           <td>${a.opening.toFixed(1)}</td>
           <td>${a.live.toFixed(1)}</td>
           <td class="diff-val ${diffClass}">${diffSign}${a.diff.toFixed(1)}</td>
+          <td>${actionBadge}</td>
           <td>${resultBadge}</td>
         </tr>`;
       }).join('');
@@ -946,6 +954,12 @@
         if (a.result === 'Başarılı') resultBadge = '<span class="badge badge-ust">✅ Başarılı</span>';
         else if (a.result === 'Başarısız') resultBadge = '<span class="badge badge-alt">❌ Başarısız</span>';
         else resultBadge = '<span class="badge" style="background:#555;color:#fff">Bilinmiyor</span>';
+
+        let actionBadge = '';
+        if (a.bet_placed) actionBadge = '<span class="badge" style="background:rgba(59,130,246,0.15);color:#3b82f6;border:1px solid rgba(59,130,246,0.3)">💰 Bahis Oyna</span>';
+        else if (a.followed) actionBadge = '<span class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">👀 Takip Et</span>';
+        else if (a.ignored) actionBadge = '<span class="badge" style="background:rgba(255,255,255,0.05);color:#9ca3af;border:1px solid rgba(255,255,255,0.1)">🚫 Gözardı</span>';
+        else actionBadge = '<span class="badge" style="background:transparent;color:#6b7280;border:1px dashed #4b5563">⏳ İşlem yapılmadı</span>';
 
         const matchTotal = allAlerts.filter(x => x.match_id === a.match_id).length;
         let multiBadge = '';
@@ -992,7 +1006,10 @@
             </div>
           </div>
           <div class="card-actions">
-            <div style="text-align: center; width: 100%; padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.05);">${resultBadge}</div>
+            <div style="display:flex; gap:8px; width:100%;">
+              <div style="text-align: center; flex:1; padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.05); display:flex; align-items:center; justify-content:center;">${resultBadge}</div>
+              <div style="text-align: center; flex:1; padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.05); display:flex; align-items:center; justify-content:center;">${actionBadge}</div>
+            </div>
           </div>
         </div>`;
       }).join('');
