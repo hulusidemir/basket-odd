@@ -95,10 +95,11 @@ async def check_match_result(context, url: str) -> dict:
         await page.close()
 
 
-async def check_all_pending():
+async def check_all_pending(older_than_minutes: int = 45):
     config = Config()
     db = Database(config.DB_PATH)
-    alerts = db.get_pending_alerts(older_than_minutes=75)
+    db.init() # Ensure DB is migrated just in case this starts independently
+    alerts = db.get_pending_alerts(older_than_minutes=older_than_minutes)
     
     if not alerts:
         logger.info("No pending alerts to check.")

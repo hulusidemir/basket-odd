@@ -125,7 +125,7 @@ def api_trigger_check():
     cmd = [
         sys.executable, 
         "-c", 
-        "import asyncio; from result_checker import check_all_pending; asyncio.run(check_all_pending())"
+        "import asyncio; from result_checker import check_all_pending; asyncio.run(check_all_pending(older_than_minutes=0))"
     ]
     subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
