@@ -95,6 +95,14 @@ class Database:
                 conn.execute("ALTER TABLE alerts ADD COLUMN recommendation TEXT NOT NULL DEFAULT ''")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN final_score TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN result TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
             # Ensure match_actions table exists for action inheritance
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS match_actions (
@@ -191,6 +199,35 @@ class Database:
                 "SELECT * FROM alerts ORDER BY alerted_at DESC LIMIT ?", (limit,)
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def get_pending_alerts(self, older_than_minutes: int = 90) -> list:
+        """Fetch alerts that do not have a result yet and were created given minutes ago."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM alerts
+                WHERE result = '' AND url != ''
+                  AND alerted_at < datetime('now', ? || ' minutes')
+                """,
+                (f"-{older_than_minutes}",),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_finished_alerts(self) -> list:
+        """Fetch alerts that have a non-empty result."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM alerts WHERE result != '' ORDER BY alerted_at DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_alert_result(self, alert_id: int, final_score: str, result: str):
+        """Update the final status and result of a specific alert."""
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE alerts SET final_score = ?, result = ? WHERE id = ?",
+                (final_score, result, alert_id),
+            )
 
     def set_match_statuses(
         self,

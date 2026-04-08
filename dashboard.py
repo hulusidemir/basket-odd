@@ -77,6 +77,11 @@ def index():
     return render_template("dashboard.html")
 
 
+@app.route("/finished")
+def finished():
+    return render_template("finished_matches.html")
+
+
 @app.route("/api/alerts")
 def api_alerts():
     """Returns all anomaly records with projected scores."""
@@ -94,6 +99,20 @@ def api_alerts():
     
     return jsonify(alerts)
 
+
+@app.route("/api/finished-alerts")
+def api_finished_alerts():
+    """Returns alerts that have finished and have a result."""
+    alerts = db.get_finished_alerts()
+    for alert in alerts:
+        projected = calculate_projected_score(
+            score=alert.get("score", ""),
+            status=alert.get("status", ""),
+            match_name=alert.get("match_name", ""),
+            tournament=alert.get("tournament", "")
+        )
+        alert["projected"] = projected
+    return jsonify(alerts)
 
 
 @app.route("/api/alerts/<int:alert_id>/bet", methods=["POST"])

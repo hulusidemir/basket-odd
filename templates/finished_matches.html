@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🏀 Basket Anomali Dashboard</title>
+  <title>🏀 Biten Maçlar - Basket Anomali</title>
   <style>
     :root {
       --bg: #0f1117;
@@ -564,10 +564,9 @@
 <body>
   <div class="header">
     <div class="header-top">
-      <h1>🏀 Basket Anomali <span class="subtitle">— Canlı Barem Takibi</span></h1>
+      <h1>✔️ Biten Maçlar <span class="subtitle">— Sonuçlanan Sinyaller</span></h1>
       <div style="display: flex; gap: 8px;">
-        <a href="/bankroll" style="padding:5px 12px;border-radius:16px;border:1px solid var(--border);background:rgba(59,130,246,0.1);color:var(--accent-blue);font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;transition:all 0.2s;">💰 Bankroll</a>
-        <a href="/finished" style="padding:5px 12px;border-radius:16px;border:1px solid var(--border);background:rgba(34,197,94,0.1);color:var(--accent-ust);font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;transition:all 0.2s;">✔️ Biten Maçlar</a>
+        <a href="/" style="padding:5px 12px;border-radius:16px;border:1px solid var(--border);background:rgba(59,130,246,0.1);color:var(--accent-blue);font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;transition:all 0.2s;">⬅️ Dashboard'a Dön</a>
       </div>
       <div class="stats">
         <div class="stat-chip">
@@ -629,12 +628,11 @@
           <th data-sort="match_name">Maç</th>
           <th data-sort="tournament">Turnuva</th>
           <th data-sort="status">Durum</th>
-          <th data-sort="score">Skor</th>
+          <th data-sort="final_score">Final Skor</th>
           <th data-sort="opening">Açılış</th>
           <th data-sort="live">Canlı</th>
-          <th data-sort="projected">Proj</th>
           <th data-sort="diff">Fark</th>
-          <th>Aksiyon</th>
+          <th data-sort="result">Sonuç</th>
         </tr>
       </thead>
       <tbody id="alertsBody"></tbody>
@@ -768,7 +766,7 @@
 
     async function fetchAlerts() {
       try {
-        const res = await fetch('/api/alerts');
+        const res = await fetch('/api/finished-alerts');
         allAlerts = await res.json();
         render();
         updateStats();
@@ -860,12 +858,11 @@
         const matchDisplay = a.url
           ? `<a class="match-link" href="${escapeHtml(a.url)}" target="_blank">${escapeHtml(cleanMatchName(a.match_name))}</a>`
           : escapeHtml(cleanMatchName(a.match_name));
-        const betBtnClass = a.bet_placed ? 'active-bet' : '';
-        const betBtnText = a.bet_placed ? '✓ Bahis' : '💰 Bahis';
-        const ignoreBtnClass = a.ignored ? 'active-ignore' : '';
-        const ignoreBtnText = a.ignored ? '✓ Gözardı' : '🚫 Gözardı';
-        const followBtnClass = a.followed ? 'active-follow' : '';
-        const followBtnText = a.followed ? '✓ Takipte' : '👁 Takip Et';
+        
+        let resultBadge = '';
+        if (a.result === 'Başarılı') resultBadge = '<span class="badge badge-ust">✅ Başarılı</span>';
+        else if (a.result === 'Başarısız') resultBadge = '<span class="badge badge-alt">❌ Başarısız</span>';
+        else resultBadge = '<span class="badge" style="background:#555;color:#fff">Bilinmiyor</span>';
 
         return `<tr class="${classes.join(' ')}">
           <td><input type="checkbox" class="row-check" data-id="${a.id}" onchange="updateSelectedCount()"></td>
@@ -879,19 +876,11 @@
           <td class="col-match">${matchDisplay}</td>
           <td class="col-tournament">${escapeHtml(a.tournament || '-')}</td>
           <td>${escapeHtml(a.status || '-')}</td>
-          <td><b>${escapeHtml(a.score || '-')}</b></td>
+          <td><b>${escapeHtml(a.final_score || '-')}</b></td>
           <td>${a.opening.toFixed(1)}</td>
           <td>${a.live.toFixed(1)}</td>
-          ${projectedHtml(a)}
           <td class="diff-val ${diffClass}">${diffSign}${a.diff.toFixed(1)}</td>
-          <td>
-            <div class="actions-wrap">
-              <button class="action-btn ${betBtnClass}" onclick="toggleBet(${a.id})">${betBtnText}</button>
-              <button class="action-btn follow-btn ${followBtnClass}" onclick="toggleFollow(${a.id})">${followBtnText}</button>
-              <button class="action-btn ${ignoreBtnClass}" onclick="toggleIgnore(${a.id})">${ignoreBtnText}</button>
-              <button class="ai-btn${a.ai_analysis ? '' : ' no-analysis'}" onclick="showAnalysis(${a.id})" title="AI Analiz">🤖</button>
-            </div>
-          </td>
+          <td>${resultBadge}</td>
         </tr>`;
       }).join('');
     }
@@ -929,12 +918,11 @@
         const matchDisplay = a.url
           ? `<a href="${escapeHtml(a.url)}" target="_blank">${escapeHtml(matchName)}</a>`
           : escapeHtml(matchName);
-        const betBtnClass = a.bet_placed ? 'active-bet' : '';
-        const betBtnText = a.bet_placed ? '✓ Bahis Oynandı' : '💰 Bahis Oyna';
-        const ignoreBtnClass = a.ignored ? 'active-ignore' : '';
-        const ignoreBtnText = a.ignored ? '✓ Gözardı' : '🚫 Gözardı';
-        const followBtnClass = a.followed ? 'active-follow' : '';
-        const followBtnText = a.followed ? '✓ Takipte' : '👁 Takip Et';
+        
+        let resultBadge = '';
+        if (a.result === 'Başarılı') resultBadge = '<span class="badge badge-ust">✅ Başarılı</span>';
+        else if (a.result === 'Başarısız') resultBadge = '<span class="badge badge-alt">❌ Başarısız</span>';
+        else resultBadge = '<span class="badge" style="background:#555;color:#fff">Bilinmiyor</span>';
 
         return `<div class="${classes.join(' ')}">
           <div class="card-top">
@@ -972,10 +960,7 @@
             </div>
           </div>
           <div class="card-actions">
-            <button class="action-btn ${betBtnClass}" onclick="toggleBet(${a.id})">${betBtnText}</button>
-            <button class="action-btn follow-btn ${followBtnClass}" onclick="toggleFollow(${a.id})">${followBtnText}</button>
-            <button class="action-btn ${ignoreBtnClass}" onclick="toggleIgnore(${a.id})">${ignoreBtnText}</button>
-            <button class="ai-btn${a.ai_analysis ? '' : ' no-analysis'}" onclick="showAnalysis(${a.id})" title="AI Analiz">🤖</button>
+            <div style="text-align: center; width: 100%; padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.05);">${resultBadge}</div>
           </div>
         </div>`;
       }).join('');
