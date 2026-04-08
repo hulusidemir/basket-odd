@@ -115,6 +115,23 @@ def api_finished_alerts():
     return jsonify(alerts)
 
 
+@app.route("/api/trigger-check", methods=["POST"])
+def api_trigger_check():
+    """Manually triggers the result_checker script in detached mode to check pending matches."""
+    import subprocess
+    import sys
+    
+    # Run the check_all_pending once, asynchronously in background
+    cmd = [
+        sys.executable, 
+        "-c", 
+        "import asyncio; from result_checker import check_all_pending; asyncio.run(check_all_pending())"
+    ]
+    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    return jsonify({"status": "started"})
+
+
 @app.route("/api/alerts/<int:alert_id>/bet", methods=["POST"])
 def api_toggle_bet(alert_id: int):
     """Toggle bet placed/not placed for all alerts of the same match."""

@@ -95,60 +95,67 @@ async def check_match_result(context, url: str) -> dict:
         await page.close()
 
 
-async def run_checker():
+async def check_all_pending():
     config = Config()
     db = Database(config.DB_PATH)
+    alerts = db.get_pending_alerts(older_than_minutes=75)
     
+    if not alerts:
+        logger.info("No pending alerts to check.")
+        return 0
+
+    logger.info(f"Found {len(alerts)} pending alerts. Checking statuses...")
+    checked_count = 0
+    
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+            ]
+        )
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 720}
+        )
+        await context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+        """)
+        
+        for alert in alerts:
+            logger.info(f"Checking {alert['match_name']} - {alert['url']}")
+            res = await check_match_result(context, alert['url'])
+            
+            if res.get('isFinished') and res.get('score'):
+                final_score = res['score']
+                result_status = calculate_success(
+                    alert['direction'], 
+                    alert['live'], 
+                    final_score
+                )
+                if result_status:
+                    db.update_alert_result(alert['id'], final_score, result_status)
+                    logger.info(f"Updated {alert['match_name']}: {final_score} -> {result_status}")
+                    checked_count += 1
+                else:
+                    logger.warning(f"Could not calculate success for {alert['match_name']} using score {final_score}")
+            else:
+                logger.info(f"{alert['match_name']} is not finished yet or score not found.")
+                
+            await asyncio.sleep(4)
+            
+        await browser.close()
+        
+    return checked_count
+
+async def run_checker():
     logger.info("Starting Result Checker worker. It will check match results every 30 minutes in the background.")
     
     while True:
         try:
-            # Sinyal verileli en az 75 dakika olmuş bekleyenleri al
-            alerts = db.get_pending_alerts(older_than_minutes=75)
-            if not alerts:
-                logger.info("No pending alerts to check. Sleeping for 30 minutes.")
-            else:
-                logger.info(f"Found {len(alerts)} pending alerts. Checking statuses...")
-                async with async_playwright() as p:
-                    browser = await p.chromium.launch(
-                        headless=True,
-                        args=[
-                            "--disable-blink-features=AutomationControlled",
-                            "--no-sandbox",
-                            "--disable-dev-shm-usage",
-                        ]
-                    )
-                    context = await browser.new_context(
-                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-                        viewport={"width": 1280, "height": 720}
-                    )
-                    await context.add_init_script("""
-                        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                    """)
-                    
-                    for alert in alerts:
-                        logger.info(f"Checking {alert['match_name']} - {alert['url']}")
-                        res = await check_match_result(context, alert['url'])
-                        
-                        if res.get('isFinished') and res.get('score'):
-                            final_score = res['score']
-                            result_status = calculate_success(
-                                alert['direction'], 
-                                alert['live'], 
-                                final_score
-                            )
-                            if result_status:
-                                db.update_alert_result(alert['id'], final_score, result_status)
-                                logger.info(f"Updated {alert['match_name']}: {final_score} -> {result_status}")
-                            else:
-                                logger.warning(f"Could not calculate success for {alert['match_name']} using score {final_score}")
-                        else:
-                            logger.info(f"{alert['match_name']} is not finished yet or score not found.")
-                            
-                        await asyncio.sleep(4)
-                        
-                    await browser.close()
-            
+            await check_all_pending()
         except Exception as e:
             logger.error(f"Result checker error: {e}", exc_info=True)
             
