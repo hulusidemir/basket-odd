@@ -30,60 +30,40 @@ async def check_match_result(context, url: str) -> dict:
     page = await context.new_page()
     page.set_default_timeout(30000)
     try:
-        odds_url = url.rstrip("/") + "/odds"
-        await page.goto(odds_url, wait_until="domcontentloaded")
+        # We navigate directly to the match page, not the /odds page
+        await page.goto(url, wait_until="domcontentloaded")
         await page.wait_for_timeout(4000)
-        
         parsed = await page.evaluate(
             r'''
             () => {
-              const text = s => (s || '').replace(/\s+/g, ' ').trim();
-              
               let status = '';
-              const statusCandidates = Array.from(document.querySelectorAll('span, div'))
-                .map(e => ({el: e, txt: text(e.innerText)}))
-                .filter(({txt}) => txt.length > 0 && txt.length < 30);
-                
-              const periodOnly = statusCandidates
-                  .map(({txt}) => txt)
-                  .find(v => /^(Q[1-4]|[1-4]Q|OT|HT|FT|1st|2nd|3rd|4th|Finished|Ended)$/i.test(v.trim()));
-              if (periodOnly) status = periodOnly.trim();
-              
-              let isFinished = /\b(FT|Finished|Ended)\b/i.test(status);
-              if (!isFinished) {
-                const finishedBadge = document.querySelector(
-                  '[class*="finished"], [class*="Finished"], [class*="ended"], [class*="final-score"]'
-                );
-                if (finishedBadge) isFinished = true;
-              }
-              
               let score = '';
-              const scoreEls = Array.from(document.querySelectorAll('span, div'))
-                .map(e => ({el: e, txt: text(e.innerText)}))
-                .filter(({txt}) => {
-                  if (!/^\d{1,3}\s*[-–]\s*\d{1,3}$/.test(txt.trim())) return false;
-                  const parts = txt.trim().split(/\s*[-–]\s*/);
-                  return parts.length === 2 && parseInt(parts[0]) <= 300 && parseInt(parts[1]) <= 300;
-                });
-              if (scoreEls.length > 0) {
-                score = scoreEls[0].txt.trim();
+              
+              // 1. Try DOM elements typically present on match detail pages
+              const statusNode = document.querySelector('.status, .period, .match-status, .time, .state, .V3MatchHeader_matchStatus__Gj\\+5j');
+              if (statusNode) status = statusNode.innerText.trim();
+              
+              const scoreNode = document.querySelector('.score, .match-score, .points, .V3MatchHeader_scorebox__k5vF\\+');
+              if (scoreNode) score = scoreNode.innerText.trim();
+              
+              let isFinished = /\b(FT|Finished|Ended|End|O\.T\.)\b/i.test(status);
+              
+              // 2. Fallback: Parse the raw text of the entire document
+              if (!isFinished || !score || !/\d/.test(score)) {
+                  const txt = document.body.innerText;
+                  
+                  if (/\b(FT|Finished|Ended|End)\b/i.test(txt)) {
+                      isFinished = true;
+                  }
+                  
+                  // Usually the score is near the top; look for anything like "85 - 90"
+                  const match = txt.match(/(?:\n|^|\s)(\d{2,3})\s*[-:–]\s*(\d{2,3})(?:\n|$|\s)/);
+                  if (match) {
+                      score = match[1] + '-' + match[2];
+                  }
               }
-              if (!score) {
-                 const scoreContainer = document.querySelector(
-                   '[class*="score" i], [class*="Score"], [class*="matchScore"], [class*="match-score"]'
-                 );
-                 if (scoreContainer) {
-                   const nums = [];
-                   scoreContainer.querySelectorAll('*').forEach(el => {
-                     if (el.children.length === 0) {
-                       const t = text(el.innerText).trim();
-                       if (/^\d{1,3}$/.test(t) && parseInt(t) <= 300) nums.push(t);
-                     }
-                   });
-                   if (nums.length >= 2) score = nums[0] + ' - ' + nums[1];
-                 }
-              }
-              return { isFinished, score: score };
+              
+              return { isFinished, score: score, status: status };
             }
             '''
         )

@@ -127,7 +127,8 @@ def api_trigger_check():
         "-c", 
         "import asyncio; from result_checker import check_all_pending; asyncio.run(check_all_pending(older_than_minutes=0))"
     ]
-    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    log_file = open("checker_manual.log", "a")
+    subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
     
     return jsonify({"status": "started"})
 
