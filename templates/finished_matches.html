@@ -706,6 +706,17 @@
         .trim() || name;
     }
 
+    function getMatchColor(id) {
+      const colors = [
+        '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#10b981', 
+        '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', 
+        '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#ff00ff', '#00ffff'
+      ];
+      // Generate pseudo-random deterministic color based on ID
+      const numId = parseInt(id) || Array.from(String(id)).reduce((a,b)=>a+b.charCodeAt(0), 0);
+      return colors[numId % colors.length];
+    }
+
     function escapeHtml(text) {
       const d = document.createElement('div');
       d.textContent = text;
@@ -867,8 +878,17 @@
         else if (a.result === 'Başarısız') resultBadge = '<span class="badge badge-alt">❌ Başarısız</span>';
         else resultBadge = '<span class="badge" style="background:#555;color:#fff">Bilinmiyor</span>';
 
+        const matchTotal = allAlerts.filter(x => x.match_id === a.match_id).length;
+        let multiBadge = '';
+        let firstTdStyle = '';
+        if (matchTotal > 1) {
+          const mColor = getMatchColor(a.match_id || a.match_name);
+          multiBadge = `<span class="badge" style="background: ${mColor}20; color: ${mColor}; border: 1px solid ${mColor}; margin-left: 6px;">🔗 ${matchTotal} Sinyal</span>`;
+          firstTdStyle = `box-shadow: inset 4px 0 0 0 ${mColor};`;
+        }
+
         return `<tr class="${classes.join(' ')}">
-          <td><input type="checkbox" class="row-check" data-id="${a.id}" onchange="updateSelectedCount()"></td>
+          <td style="${firstTdStyle}"><input type="checkbox" class="row-check" data-id="${a.id}" onchange="updateSelectedCount()"></td>
           <td class="time-col">${time}</td>
           <td class="col-direction" style="display:flex;align-items:center;gap:4px;">
             <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
@@ -876,7 +896,7 @@
             ${riskIconHtml(a)}
             ${recBadgeHtml(a)}
           </td>
-          <td class="col-match">${matchDisplay}</td>
+          <td class="col-match">${matchDisplay} ${multiBadge}</td>
           <td class="col-tournament">${escapeHtml(a.tournament || '-')}</td>
           <td>${escapeHtml(a.status || '-')}</td>
           <td><b>${escapeHtml(a.final_score || '-')}</b></td>
@@ -927,9 +947,18 @@
         else if (a.result === 'Başarısız') resultBadge = '<span class="badge badge-alt">❌ Başarısız</span>';
         else resultBadge = '<span class="badge" style="background:#555;color:#fff">Bilinmiyor</span>';
 
-        return `<div class="${classes.join(' ')}">
+        const matchTotal = allAlerts.filter(x => x.match_id === a.match_id).length;
+        let multiBadge = '';
+        let cardStyle = '';
+        if (matchTotal > 1) {
+          const mColor = getMatchColor(a.match_id || a.match_name);
+          multiBadge = `<span class="badge" style="background: ${mColor}20; color: ${mColor}; border: 1px solid ${mColor}; margin-top: 4px; display: inline-block;">🔗 Aynı Maç - Toplam ${matchTotal} Sinyal</span>`;
+          cardStyle = `box-shadow: inset 4px 0 0 0 ${mColor};`;
+        }
+
+        return `<div class="${classes.join(' ')}" style="${cardStyle}">
           <div class="card-top">
-            <div class="card-match">${matchDisplay}</div>
+            <div class="card-match">${matchDisplay} <br/> ${multiBadge}</div>
             <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
             ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
             ${riskIconHtml(a)}
