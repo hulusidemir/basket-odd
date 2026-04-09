@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="tr">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,10 +19,16 @@
       --accent-follow: #fbbf24;
       --bet-bg: rgba(59, 130, 246, 0.08);
       --follow-bg: rgba(255, 226, 120, 0.28);
-      --ignored-bg: rgba(255,255,255,0.03);
+      --ignored-bg: rgba(255, 255, 255, 0.03);
       --radius: 12px;
     }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: var(--bg);
@@ -35,6 +42,7 @@
       padding: 20px;
       border-bottom: 1px solid var(--border);
     }
+
     .header-top {
       display: flex;
       align-items: center;
@@ -42,17 +50,24 @@
       flex-wrap: wrap;
       gap: 12px;
     }
+
     .header h1 {
       font-size: 20px;
       font-weight: 700;
     }
-    .header h1 .subtitle { opacity: 0.5; font-weight: 400; font-size: 14px; }
+
+    .header h1 .subtitle {
+      opacity: 0.5;
+      font-weight: 400;
+      font-size: 14px;
+    }
 
     .stats {
       display: flex;
       gap: 6px;
       flex-wrap: wrap;
     }
+
     .stat-chip {
       display: flex;
       align-items: center;
@@ -65,8 +80,10 @@
       font-weight: 600;
       white-space: nowrap;
     }
+
     .stat-dot {
-      width: 7px; height: 7px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       flex-shrink: 0;
     }
@@ -81,7 +98,11 @@
       border-bottom: 1px solid var(--border);
       scrollbar-width: none;
     }
-    .filters::-webkit-scrollbar { display: none; }
+
+    .filters::-webkit-scrollbar {
+      display: none;
+    }
+
     .filter-btn {
       padding: 7px 14px;
       border-radius: 20px;
@@ -94,14 +115,20 @@
       white-space: nowrap;
       flex-shrink: 0;
     }
-    .filter-btn:hover { border-color: var(--accent-blue); color: var(--text); }
+
+    .filter-btn:hover {
+      border-color: var(--accent-blue);
+      color: var(--text);
+    }
+
     .filter-btn.active {
       background: var(--accent-blue);
       border-color: var(--accent-blue);
       color: #fff;
     }
+
     #deleteSelectedBtn {
-      background: rgba(239,68,68,0.15);
+      background: rgba(239, 68, 68, 0.15);
       border-color: #ef4444;
       color: #ef4444;
     }
@@ -114,6 +141,7 @@
       gap: 10px;
       border-bottom: 1px solid var(--border);
     }
+
     .search-box {
       flex: 1;
       min-width: 0;
@@ -125,8 +153,15 @@
       font-size: 14px;
       outline: none;
     }
-    .search-box::placeholder { color: var(--text-dim); }
-    .search-box:focus { border-color: var(--accent-blue); }
+
+    .search-box::placeholder {
+      color: var(--text-dim);
+    }
+
+    .search-box:focus {
+      border-color: var(--accent-blue);
+    }
+
     .refresh-info {
       color: var(--text-dim);
       font-size: 11px;
@@ -139,11 +174,13 @@
       padding: 0 20px;
       overflow-x: auto;
     }
+
     table {
       width: 100%;
       border-collapse: collapse;
       font-size: 13px;
     }
+
     thead th {
       text-align: left;
       padding: 10px 12px;
@@ -161,25 +198,49 @@
       background: var(--bg);
       z-index: 2;
     }
-    thead th:hover { color: var(--text); }
+
+    thead th:hover {
+      color: var(--text);
+    }
+
     tbody tr {
       border-bottom: 1px solid var(--border);
       transition: background 0.15s;
     }
-    tbody tr:hover { background: rgba(255,255,255,0.03); }
-    tbody td { padding: 10px 12px; white-space: nowrap; }
-    tr.bet-placed { background: var(--bet-bg); opacity: 0.55; }
-    tr.bet-placed:hover { opacity: 0.7; }
-    tr.is-followed { background: var(--follow-bg); }
+
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    tbody td {
+      padding: 10px 12px;
+      white-space: nowrap;
+    }
+
+    tr.bet-placed {
+      background: var(--bet-bg);
+    }
+
+    tr.bet-placed:hover {
+      background: rgba(59, 130, 246, 0.12);
+    }
+
+    tr.is-followed {
+      background: var(--follow-bg);
+    }
+
     tr.is-followed td {
       border-top: 1px solid rgba(255, 226, 120, 0.28);
       border-bottom: 1px solid rgba(255, 226, 120, 0.28);
     }
-    tr.is-ignored { background: var(--ignored-bg); opacity: 0.55; }
-    tr.is-ignored:hover { opacity: 0.7; }
-    tr.is-ignored td.col-match,
-    tr.is-ignored td.col-tournament,
-    tr.is-ignored td.col-direction { text-decoration: line-through; }
+
+    tr.is-ignored {
+      background: var(--ignored-bg);
+    }
+
+    tr.is-ignored:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
 
     /* ── Mobile Cards ────────────────────────────────── */
     .cards-wrap {
@@ -188,6 +249,7 @@
       gap: 10px;
       flex-direction: column;
     }
+
     .alert-card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -195,12 +257,22 @@
       padding: 14px;
       transition: background 0.15s;
     }
-    .alert-card.bet-placed { background: var(--bet-bg); opacity: 0.6; }
-    .alert-card.is-followed { background: var(--follow-bg); }
-    .alert-card.is-ignored { opacity: 0.55; }
-    .alert-card.is-ignored:hover { opacity: 0.7; }
-    .alert-card.is-ignored .card-match,
-    .alert-card.is-ignored .card-tournament { text-decoration: line-through; }
+
+    .alert-card.bet-placed {
+      background: var(--bet-bg);
+    }
+
+    .alert-card.is-followed {
+      background: var(--follow-bg);
+    }
+
+    .alert-card.is-ignored {
+      background: var(--ignored-bg);
+    }
+
+    .alert-card.is-ignored:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
 
     .card-top {
       display: flex;
@@ -209,6 +281,7 @@
       gap: 8px;
       margin-bottom: 10px;
     }
+
     .card-match {
       font-weight: 600;
       font-size: 14px;
@@ -217,11 +290,15 @@
       flex: 1;
       min-width: 0;
     }
+
     .card-match a {
       color: var(--text);
       text-decoration: none;
     }
-    .card-match a:hover { color: var(--accent-blue); }
+
+    .card-match a:hover {
+      color: var(--accent-blue);
+    }
 
     .card-meta {
       display: flex;
@@ -231,46 +308,58 @@
       color: var(--text-dim);
       margin-bottom: 10px;
     }
-    .card-meta-item { display: flex; align-items: center; gap: 4px; }
+
+    .card-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
 
     .card-odds {
       display: flex;
       align-items: center;
       gap: 8px;
       padding: 10px 12px;
-      background: rgba(255,255,255,0.03);
+      background: rgba(255, 255, 255, 0.03);
       border-radius: 8px;
       margin-bottom: 10px;
     }
+
     .card-odds-value {
       text-align: center;
       flex: 1;
     }
+
     .card-odds-label {
       font-size: 10px;
       text-transform: uppercase;
       color: var(--text-dim);
       letter-spacing: 0.5px;
     }
+
     .card-odds-num {
       font-size: 18px;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
     }
+
     .card-odds-arrow {
       font-size: 18px;
       color: var(--text-dim);
     }
+
     .card-diff {
       text-align: center;
       flex: 1;
     }
+
     .card-diff-label {
       font-size: 10px;
       text-transform: uppercase;
       color: var(--text-dim);
       letter-spacing: 0.5px;
     }
+
     .card-diff-value {
       font-size: 20px;
       font-weight: 800;
@@ -282,7 +371,11 @@
       gap: 8px;
       align-items: stretch;
     }
-    .card-actions .action-btn { width: 100%; text-align: center; }
+
+    .card-actions .action-btn {
+      width: 100%;
+      text-align: center;
+    }
 
     /* ── Shared Components ────────────────────────────── */
     .badge {
@@ -294,12 +387,29 @@
       white-space: nowrap;
       flex-shrink: 0;
     }
-    .badge-alt { background: rgba(239,68,68,0.15); color: var(--accent-alt); }
-    .badge-ust { background: rgba(34,197,94,0.15); color: var(--accent-ust); }
 
-    .diff-val { font-weight: 700; font-variant-numeric: tabular-nums; }
-    .diff-positive { color: var(--accent-alt); }
-    .diff-negative { color: var(--accent-ust); }
+    .badge-alt {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--accent-alt);
+    }
+
+    .badge-ust {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--accent-ust);
+    }
+
+    .diff-val {
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .diff-positive {
+      color: var(--accent-alt);
+    }
+
+    .diff-negative {
+      color: var(--accent-ust);
+    }
 
     .action-btn {
       padding: 6px 12px;
@@ -313,18 +423,28 @@
       min-width: 98px;
       font-weight: 600;
     }
-    .action-btn:hover { border-color: var(--accent-blue); color: var(--text); }
-    .action-btn:active { transform: scale(0.97); }
+
+    .action-btn:hover {
+      border-color: var(--accent-blue);
+      color: var(--text);
+    }
+
+    .action-btn:active {
+      transform: scale(0.97);
+    }
+
     .action-btn.active-bet {
       background: var(--accent-blue);
       border-color: var(--accent-blue);
       color: #fff;
     }
+
     .action-btn.active-ignore {
       background: #6b7280;
       border-color: #6b7280;
       color: #fff;
     }
+
     .action-btn.active-follow {
       background: #475569;
       border-color: #475569;
@@ -348,8 +468,15 @@
       color: var(--accent-blue);
       text-decoration: none;
     }
-    .match-link:hover { text-decoration: underline; }
-    .time-col { color: var(--text-dim); font-size: 12px; }
+
+    .match-link:hover {
+      text-decoration: underline;
+    }
+
+    .time-col {
+      color: var(--text-dim);
+      font-size: 12px;
+    }
 
     .signal-badge {
       display: inline-block;
@@ -379,6 +506,7 @@
       padding: 16px 20px;
       flex-wrap: wrap;
     }
+
     .page-btn {
       padding: 8px 16px;
       border-radius: 8px;
@@ -389,15 +517,32 @@
       font-size: 13px;
       transition: all 0.15s;
     }
-    .page-btn:hover:not(:disabled) { border-color: var(--accent-blue); color: var(--text); }
-    .page-btn:active:not(:disabled) { transform: scale(0.97); }
-    .page-btn:disabled { opacity: 0.3; cursor: default; }
+
+    .page-btn:hover:not(:disabled) {
+      border-color: var(--accent-blue);
+      color: var(--text);
+    }
+
+    .page-btn:active:not(:disabled) {
+      transform: scale(0.97);
+    }
+
+    .page-btn:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+
     .page-btn.active-page {
       background: var(--accent-blue);
       border-color: var(--accent-blue);
       color: #fff;
     }
-    .page-info { color: var(--text-dim); font-size: 13px; }
+
+    .page-info {
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+
     .page-size-select {
       padding: 6px 10px;
       border-radius: 8px;
@@ -410,17 +555,42 @@
 
     /* ── Responsive ───────────────────────────────────── */
     @media (max-width: 768px) {
-      .header { padding: 16px; }
-      .header h1 { font-size: 17px; }
-      .header h1 .subtitle { display: none; }
-      .stats { width: 100%; justify-content: space-between; }
+      .header {
+        padding: 16px;
+      }
 
-      .table-wrap { display: none; }
-      .cards-wrap { display: flex; }
+      .header h1 {
+        font-size: 17px;
+      }
 
-      .toolbar { padding: 10px 16px; }
-      .filters { padding: 10px 16px; }
-      .pagination { padding: 12px 16px; }
+      .header h1 .subtitle {
+        display: none;
+      }
+
+      .stats {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .table-wrap {
+        display: none;
+      }
+
+      .cards-wrap {
+        display: flex;
+      }
+
+      .toolbar {
+        padding: 10px 16px;
+      }
+
+      .filters {
+        padding: 10px 16px;
+      }
+
+      .pagination {
+        padding: 12px 16px;
+      }
     }
 
     /* ── AI Analysis Modal ────────────────────────────── */
@@ -428,13 +598,17 @@
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.7);
+      background: rgba(0, 0, 0, 0.7);
       z-index: 100;
       justify-content: center;
       align-items: center;
       padding: 20px;
     }
-    .modal-overlay.active { display: flex; }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
     .modal-box {
       background: var(--card);
       border: 1px solid var(--border);
@@ -446,6 +620,7 @@
       flex-direction: column;
       overflow: hidden;
     }
+
     .modal-header {
       display: flex;
       align-items: center;
@@ -453,7 +628,12 @@
       padding: 16px 20px;
       border-bottom: 1px solid var(--border);
     }
-    .modal-header h3 { font-size: 15px; font-weight: 700; }
+
+    .modal-header h3 {
+      font-size: 15px;
+      font-weight: 700;
+    }
+
     .modal-close {
       background: none;
       border: none;
@@ -463,7 +643,11 @@
       padding: 0 4px;
       line-height: 1;
     }
-    .modal-close:hover { color: var(--text); }
+
+    .modal-close:hover {
+      color: var(--text);
+    }
+
     .modal-body {
       padding: 20px;
       overflow-y: auto;
@@ -472,30 +656,41 @@
       color: var(--text);
       white-space: pre-wrap;
     }
+
     .modal-body .loading {
       text-align: center;
       color: var(--text-dim);
       padding: 30px;
     }
+
     .ai-btn {
       padding: 4px 8px;
       border-radius: 6px;
       border: 1px solid var(--border);
-      background: rgba(139,92,246,0.1);
+      background: rgba(139, 92, 246, 0.1);
       color: #a78bfa;
       cursor: pointer;
       font-size: 12px;
       transition: all 0.15s;
     }
-    .ai-btn:hover { border-color: #a78bfa; background: rgba(139,92,246,0.2); }
-    .ai-btn.no-analysis { opacity: 0.3; cursor: default; }
+
+    .ai-btn:hover {
+      border-color: #a78bfa;
+      background: rgba(139, 92, 246, 0.2);
+    }
+
+    .ai-btn.no-analysis {
+      opacity: 0.3;
+      cursor: default;
+    }
 
     /* ── Risk Icons ────────────────────────────────────── */
     .risk-icon {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 22px; height: 22px;
+      width: 22px;
+      height: 22px;
       border-radius: 50%;
       font-size: 13px;
       font-weight: 800;
@@ -505,24 +700,31 @@
       transition: transform 0.15s;
       flex-shrink: 0;
     }
-    .risk-icon:hover { transform: scale(1.15); }
+
+    .risk-icon:hover {
+      transform: scale(1.15);
+    }
+
     .risk-icon-high {
-      background: rgba(239,68,68,0.2);
+      background: rgba(239, 68, 68, 0.2);
       color: #ef4444;
       border: 1.5px solid #ef4444;
     }
+
     .risk-icon-medium {
-      background: rgba(245,158,11,0.2);
+      background: rgba(245, 158, 11, 0.2);
       color: #f59e0b;
       border: 1.5px solid #f59e0b;
     }
+
     .risk-icon-low {
-      background: rgba(34,197,94,0.15);
+      background: rgba(34, 197, 94, 0.15);
       color: #22c55e;
       border: 1.5px solid #22c55e;
     }
+
     .risk-icon-unknown {
-      background: rgba(139,143,163,0.15);
+      background: rgba(139, 143, 163, 0.15);
       color: #8b8fa3;
       border: 1.5px solid #8b8fa3;
     }
@@ -539,16 +741,19 @@
       vertical-align: middle;
       letter-spacing: 0.3px;
     }
+
     .rec-oyna {
       background: rgba(34, 197, 94, 0.2);
       color: #22c55e;
       border: 1px solid rgba(34, 197, 94, 0.4);
     }
+
     .rec-dikkat {
       background: rgba(245, 158, 11, 0.2);
       color: #f59e0b;
       border: 1px solid rgba(245, 158, 11, 0.4);
     }
+
     .rec-pas {
       background: rgba(239, 68, 68, 0.2);
       color: #ef4444;
@@ -556,17 +761,25 @@
     }
 
     @media (min-width: 769px) {
-      .cards-wrap { display: none !important; }
-      .table-wrap { display: block !important; }
+      .cards-wrap {
+        display: none !important;
+      }
+
+      .table-wrap {
+        display: block !important;
+      }
     }
   </style>
 </head>
+
 <body>
   <div class="header">
     <div class="header-top">
       <h1>✔️ Biten Maçlar <span class="subtitle">— Sonuçlanan Sinyaller</span></h1>
       <div style="display: flex; gap: 8px;">
-        <a href="/" style="padding:5px 12px;border-radius:16px;border:1px solid var(--border);background:rgba(59,130,246,0.1);color:var(--accent-blue);font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;transition:all 0.2s;">⬅️ Dashboard'a Dön</a>
+        <a href="/"
+          style="padding:5px 12px;border-radius:16px;border:1px solid var(--border);background:rgba(59,130,246,0.1);color:var(--accent-blue);font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;transition:all 0.2s;">⬅️
+          Dashboard'a Dön</a>
       </div>
       <div class="stats">
         <div class="stat-chip">
@@ -590,14 +803,20 @@
           <span id="stat-total">0</span> Toplam
         </div>
       </div>
-      <div class="stats" style="margin-top: 10px; width: 100%; border-top: 1px dotted var(--border); padding-top: 10px;">
-        <div class="stat-chip" style="background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.3); color: #22c55e;">
+      <div class="stats"
+        style="margin-top: 10px; width: 100%; border-top: 1px dotted var(--border); padding-top: 10px;">
+        <div class="stat-chip"
+          style="background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.3); color: #22c55e;">
           ✅ Benzersiz Başarılı: <b id="stat-unique-success" style="margin-left: 4px;">0</b>
         </div>
-        <div class="stat-chip" style="background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #ef4444;">
+        <div class="stat-chip"
+          style="background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #ef4444;">
           ❌ Benzersiz Başarısız: <b id="stat-unique-fail" style="margin-left: 4px;">0</b>
         </div>
-        <button onclick="showUniqueResultsModal(); return false;" style="margin-left: auto; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); padding: 5px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 5px;" onmouseover="this.style.background='rgba(59, 130, 246, 0.25)';" onmouseout="this.style.background='rgba(59, 130, 246, 0.15)';">
+        <button onclick="showUniqueResultsModal(); return false;"
+          style="margin-left: auto; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); padding: 5px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 5px;"
+          onmouseover="this.style.background='rgba(59, 130, 246, 0.25)';"
+          onmouseout="this.style.background='rgba(59, 130, 246, 0.15)';">
           🔎 Detaylı Liste
         </button>
       </div>
@@ -607,25 +826,41 @@
   <div class="filters">
     <button class="filter-btn active" data-filter="all">Tümü</button>
     <button class="filter-btn" data-filter="pending">Bekleyen</button>
+    <button class="filter-btn" data-filter="basarili" style="background:rgba(34,197,94,0.15); color:#22c55e; border-color:rgba(34,197,94,0.3);">✅ Başarılı</button>
+    <button class="filter-btn" data-filter="basarisiz" style="background:rgba(239,68,68,0.15); color:#ef4444; border-color:rgba(239,68,68,0.3);">❌ Başarısız</button>
+    <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
     <button class="filter-btn" data-filter="bet">Bahis</button>
     <button class="filter-btn" data-filter="follow">Takip</button>
     <button class="filter-btn" data-filter="ignored">Gözardı</button>
+    <button class="filter-btn" data-filter="unprocessed">İşlem Yapılmadı</button>
+    <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
     <button class="filter-btn" data-filter="alt">🔻 ALT</button>
     <button class="filter-btn" data-filter="ust">🔺 ÜST</button>
-    <button class="filter-btn" data-filter="oyna" style="background:rgba(34,197,94,0.12); color:#22c55e; border-color:rgba(34,197,94,0.3);">✅ OYNA</button>
-    <button class="filter-btn" data-filter="dikkat" style="background:rgba(245,158,11,0.12); color:#f59e0b; border-color:rgba(245,158,11,0.3);">⚠️ DİKKAT</button>
-    <button class="filter-btn" data-filter="pasgec" style="background:rgba(239,68,68,0.12); color:#ef4444; border-color:rgba(239,68,68,0.3);">⛔ PAS GEÇ</button>
-    <button class="filter-btn" id="deleteSelectedBtn" onclick="deleteSelected()" style="display:none">🗑️ Sil (<span id="selectedCount">0</span>)</button>
-    <button class="filter-btn" onclick="clearDatabase()" style="margin-left:auto; background:rgba(239,68,68,0.15); color:#ef4444; border-color:rgba(239,68,68,0.3);">🧹 Veritabanını Temizle</button>
+    <button class="filter-btn" data-filter="oyna"
+      style="background:rgba(34,197,94,0.12); color:#22c55e; border-color:rgba(34,197,94,0.3);">✅ OYNA</button>
+    <button class="filter-btn" data-filter="dikkat"
+      style="background:rgba(245,158,11,0.12); color:#f59e0b; border-color:rgba(245,158,11,0.3);">⚠️ DİKKAT</button>
+    <button class="filter-btn" data-filter="pasgec"
+      style="background:rgba(239,68,68,0.12); color:#ef4444; border-color:rgba(239,68,68,0.3);">⛔ PAS GEÇ</button>
+    <button class="filter-btn" id="deleteSelectedBtn" onclick="deleteSelected()" style="display:none">🗑️ Sil (<span
+        id="selectedCount">0</span>)</button>
+    <button class="filter-btn" onclick="clearDatabase()"
+      style="margin-left:auto; background:rgba(239,68,68,0.15); color:#ef4444; border-color:rgba(239,68,68,0.3);">🧹
+      Veritabanını Temizle</button>
   </div>
 
   <div class="toolbar">
     <input class="search-box" type="text" placeholder="Takım veya turnuva ara..." id="searchInput">
-    <button class="filter-btn" onclick="triggerCheck()" style="background: rgba(139, 92, 246, 0.15); color: #a78bfa; border-color: rgba(139, 92, 246, 0.3);">
+    <button class="filter-btn" onclick="triggerCheck()"
+      style="background: rgba(139, 92, 246, 0.15); color: #a78bfa; border-color: rgba(139, 92, 246, 0.3);">
       🚀 Sonucu Çek
     </button>
     <button class="filter-btn" onclick="manualRefresh()" style="display: flex; align-items: center; gap: 5px;">
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+        <path d="M3 3v5h5" />
+      </svg>
       Yenile
     </button>
     <span class="refresh-info"><span id="countdown">15</span>s | <span id="lastUpdate">-</span></span>
@@ -636,7 +871,8 @@
     <table>
       <thead>
         <tr>
-          <th style="width:32px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this.checked)" title="Tümünü seç"></th>
+          <th style="width:32px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this.checked)"
+              title="Tümünü seç"></th>
           <th data-sort="alerted_at">Zaman ▼</th>
           <th data-sort="direction">Sinyal</th>
           <th data-sort="match_name">Maç</th>
@@ -708,14 +944,20 @@
         <button class="modal-close" onclick="closeUniqueResultsModal()">&times;</button>
       </div>
       <div class="modal-body" id="uniqueResultsModalBody" style="display: flex; gap: 20px;">
-         <div style="flex: 1;">
-           <h4 style="color: #22c55e; margin-bottom: 10px; border-bottom: 1px solid rgba(34,197,94,0.3); padding-bottom: 5px;">✅ Başarılı Olanlar</h4>
-           <div id="uniqueSuccessListDiv" style="display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto;"></div>
-         </div>
-         <div style="flex: 1;">
-           <h4 style="color: #ef4444; margin-bottom: 10px; border-bottom: 1px solid rgba(239,68,68,0.3); padding-bottom: 5px;">❌ Başarısız Olanlar</h4>
-           <div id="uniqueFailListDiv" style="display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto;"></div>
-         </div>
+        <div style="flex: 1;">
+          <h4
+            style="color: #22c55e; margin-bottom: 10px; border-bottom: 1px solid rgba(34,197,94,0.3); padding-bottom: 5px;">
+            ✅ Başarılı Olanlar</h4>
+          <div id="uniqueSuccessListDiv"
+            style="display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto;"></div>
+        </div>
+        <div style="flex: 1;">
+          <h4
+            style="color: #ef4444; margin-bottom: 10px; border-bottom: 1px solid rgba(239,68,68,0.3); padding-bottom: 5px;">
+            ❌ Başarısız Olanlar</h4>
+          <div id="uniqueFailListDiv"
+            style="display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto;"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -742,12 +984,12 @@
 
     function getMatchColor(id) {
       const colors = [
-        '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#10b981', 
-        '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', 
+        '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#10b981',
+        '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6',
         '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#ff00ff', '#00ffff'
       ];
       // Generate pseudo-random deterministic color based on ID
-      const numId = parseInt(id) || Array.from(String(id)).reduce((a,b)=>a+b.charCodeAt(0), 0);
+      const numId = parseInt(id) || Array.from(String(id)).reduce((a, b) => a + b.charCodeAt(0), 0);
       return colors[numId % colors.length];
     }
 
@@ -813,15 +1055,15 @@
     }
 
     function renderUniqueItem(m, isSuccess) {
-        const linkHtml = m.url ? `<a href="${m.url}" target="_blank" style="color:var(--text);text-decoration:none;">${escapeHtml(m.name)}</a>` : escapeHtml(m.name);
-        const signals = isSuccess ? Array.from(m.successSignals) : Array.from(m.failSignals);
-        const signalsStr = signals.map(s => {
-            const badgeColor = s === 'ALT' ? '#ef4444' : '#22c55e';
-            const sIcon = s === 'ALT' ? '🔻' : '🔺';
-            return `<span style="background:${badgeColor}20; color:${badgeColor}; border:1px solid ${badgeColor}; border-radius:4px; padding:2px 6px; font-size:10px; font-weight:700; display:inline-flex; align-items:center; gap:2px;">${sIcon} ${escapeHtml(s)}</span>`;
-        }).join(' ');
-        
-        return `
+      const linkHtml = m.url ? `<a href="${m.url}" target="_blank" style="color:var(--text);text-decoration:none;">${escapeHtml(m.name)}</a>` : escapeHtml(m.name);
+      const signals = isSuccess ? Array.from(m.successSignals) : Array.from(m.failSignals);
+      const signalsStr = signals.map(s => {
+        const badgeColor = s === 'ALT' ? '#ef4444' : '#22c55e';
+        const sIcon = s === 'ALT' ? '🔻' : '🔺';
+        return `<span style="background:${badgeColor}20; color:${badgeColor}; border:1px solid ${badgeColor}; border-radius:4px; padding:2px 6px; font-size:10px; font-weight:700; display:inline-flex; align-items:center; gap:2px;">${sIcon} ${escapeHtml(s)}</span>`;
+      }).join(' ');
+
+      return `
         <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 12px; transition: background 0.2s; display: flex; flex-direction: column; gap: 6px;" onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background='rgba(255,255,255,0.03)'">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
                 <div style="font-weight: 600; font-size: 13px; line-height: 1.4;">${linkHtml}</div>
@@ -836,8 +1078,8 @@
       const fDiv = document.getElementById('uniqueFailListDiv');
       sDiv.innerHTML = uniqueSuccessList.map(m => renderUniqueItem(m, true)).join('');
       fDiv.innerHTML = uniqueFailList.map(m => renderUniqueItem(m, false)).join('');
-      if(uniqueSuccessList.length === 0) sDiv.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding: 20px;">Kayıt yok</div>';
-      if(uniqueFailList.length === 0) fDiv.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding: 20px;">Kayıt yok</div>';
+      if (uniqueSuccessList.length === 0) sDiv.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding: 20px;">Kayıt yok</div>';
+      if (uniqueFailList.length === 0) fDiv.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding: 20px;">Kayıt yok</div>';
       document.getElementById('uniqueResultsModal').style.display = 'flex';
     }
 
@@ -873,23 +1115,23 @@
         const m_id = a.match_id || a.match_name;
         if (!m_id) return;
         if (!matchMap[m_id]) {
-            matchMap[m_id] = { 
-                name: cleanMatchName(a.match_name), 
-                url: a.url, 
-                tournament: a.tournament || '-', 
-                success: false, 
-                fail: false,
-                successSignals: new Set(),
-                failSignals: new Set()
-            };
+          matchMap[m_id] = {
+            name: cleanMatchName(a.match_name),
+            url: a.url,
+            tournament: a.tournament || '-',
+            success: false,
+            fail: false,
+            successSignals: new Set(),
+            failSignals: new Set()
+          };
         }
         if (a.result === 'Başarılı') {
-            matchMap[m_id].success = true;
-            matchMap[m_id].successSignals.add(a.direction);
+          matchMap[m_id].success = true;
+          matchMap[m_id].successSignals.add(a.direction);
         }
         if (a.result === 'Başarısız') {
-            matchMap[m_id].fail = true;
-            matchMap[m_id].failSignals.add(a.direction);
+          matchMap[m_id].fail = true;
+          matchMap[m_id].failSignals.add(a.direction);
         }
       });
 
@@ -905,6 +1147,9 @@
     function filterAlerts() {
       let filtered = [...allAlerts];
       if (currentFilter === 'pending') filtered = filtered.filter(a => !a.bet_placed && !a.ignored && !a.followed);
+      else if (currentFilter === 'unprocessed') filtered = filtered.filter(a => !a.bet_placed && !a.ignored && !a.followed);
+      else if (currentFilter === 'basarili') filtered = filtered.filter(a => a.result === 'Başarılı');
+      else if (currentFilter === 'basarisiz') filtered = filtered.filter(a => a.result === 'Başarısız');
       else if (currentFilter === 'bet') filtered = filtered.filter(a => a.bet_placed);
       else if (currentFilter === 'follow') filtered = filtered.filter(a => a.followed);
       else if (currentFilter === 'ignored') filtered = filtered.filter(a => a.ignored);
@@ -972,7 +1217,7 @@
         const matchDisplay = a.url
           ? `<a class="match-link" href="${escapeHtml(a.url)}" target="_blank">${escapeHtml(cleanMatchName(a.match_name))}</a>`
           : escapeHtml(cleanMatchName(a.match_name));
-        
+
         let resultBadge = '';
         if (a.result === 'Başarılı') resultBadge = '<span class="badge badge-ust">✅ Başarılı</span>';
         else if (a.result === 'Başarısız') resultBadge = '<span class="badge badge-alt">❌ Başarısız</span>';
@@ -989,7 +1234,7 @@
         let firstTdStyle = '';
         if (matchTotal > 1) {
           const mColor = getMatchColor(a.match_id || a.match_name);
-          multiBadge = `<span class="badge" style="background: ${mColor}20; color: ${mColor}; border: 1px solid ${mColor}; margin-left: 6px;">🔗 ${matchTotal} Sinyal</span>`;
+          multiBadge = `<span class="badge" style="background: ${mColor}20; color: ${mColor}; border: 1px solid ${mColor}; margin-left: 6px;">🔗 ${matchTotal}</span>`;
           firstTdStyle = `box-shadow: inset 4px 0 0 0 ${mColor};`;
         }
 
@@ -1048,7 +1293,7 @@
         const matchDisplay = a.url
           ? `<a href="${escapeHtml(a.url)}" target="_blank">${escapeHtml(matchName)}</a>`
           : escapeHtml(matchName);
-        
+
         let resultBadge = '';
         if (a.result === 'Başarılı') resultBadge = '<span class="badge badge-ust">✅ Başarılı</span>';
         else if (a.result === 'Başarısız') resultBadge = '<span class="badge badge-alt">❌ Başarısız</span>';
@@ -1065,7 +1310,7 @@
         let cardStyle = '';
         if (matchTotal > 1) {
           const mColor = getMatchColor(a.match_id || a.match_name);
-          multiBadge = `<span class="badge" style="background: ${mColor}20; color: ${mColor}; border: 1px solid ${mColor}; margin-top: 4px; display: inline-block;">🔗 Aynı Maç - Toplam ${matchTotal} Sinyal</span>`;
+          multiBadge = `<span class="badge" style="background: ${mColor}20; color: ${mColor}; border: 1px solid ${mColor}; margin-top: 4px; display: inline-block;">🔗 ${matchTotal}</span>`;
           cardStyle = `box-shadow: inset 4px 0 0 0 ${mColor};`;
         }
 
@@ -1130,7 +1375,7 @@
         } else {
           body.innerHTML = '<p style="color:#aaa;text-align:center">Henüz AI analizi yok. Analiz arka planda çalışıyor olabilir.</p>';
         }
-      } catch(e) {
+      } catch (e) {
         body.innerHTML = '<p style="color:#ff6b6b;text-align:center">Analiz yüklenemedi.</p>';
       }
     }
@@ -1139,7 +1384,7 @@
       document.getElementById('aiModal').style.display = 'none';
     }
 
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeRiskModal(); if(typeof closeUniqueResultsModal === 'function') closeUniqueResultsModal(); } });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeRiskModal(); if (typeof closeUniqueResultsModal === 'function') closeUniqueResultsModal(); } });
 
     function applyMatchStatusUpdate(payload) {
       if (!payload || !payload.match_id) return;
@@ -1274,4 +1519,5 @@
     }, 1000);
   </script>
 </body>
+
 </html>
