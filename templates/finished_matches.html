@@ -590,6 +590,15 @@
           <span id="stat-total">0</span> Toplam
         </div>
       </div>
+      <div class="stats" style="margin-top: 10px; width: 100%; border-top: 1px dotted var(--border); padding-top: 10px;">
+        <div class="stat-chip" style="background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.3); color: #22c55e;">
+          ✅ Benzersiz Başarılı: <b id="stat-unique-success" style="margin-left: 4px;">0</b>
+        </div>
+        <div class="stat-chip" style="background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #ef4444;">
+          ❌ Benzersiz Başarısız: <b id="stat-unique-fail" style="margin-left: 4px;">0</b>
+        </div>
+        <a href="#" onclick="showUniqueResultsModal(); return false;" style="font-size: 13px; color: var(--accent-blue); text-decoration: underline; margin-left: auto;">Detayları Gör</a>
+      </div>
     </div>
   </div>
 
@@ -689,8 +698,30 @@
     </div>
   </div>
 
+  <!-- Unique Results Modal -->
+  <div class="modal-overlay" id="uniqueResultsModal" onclick="if(event.target===this)closeUniqueResultsModal()">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="uniqueResultsModalTitle">📌 Benzersiz Sonuçlar (Maç Bazlı)</h3>
+        <button class="modal-close" onclick="closeUniqueResultsModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="uniqueResultsModalBody" style="display: flex; gap: 20px;">
+         <div style="flex: 1;">
+           <h4 style="color: #22c55e; margin-bottom: 10px; border-bottom: 1px solid rgba(34,197,94,0.3); padding-bottom: 5px;">✅ Başarılı Olanlar</h4>
+           <ul id="uniqueSuccessListUl" style="list-style: none; padding: 0; font-size: 13px; line-height: 1.6; max-height: 400px; overflow-y: auto;"></ul>
+         </div>
+         <div style="flex: 1;">
+           <h4 style="color: #ef4444; margin-bottom: 10px; border-bottom: 1px solid rgba(239,68,68,0.3); padding-bottom: 5px;">❌ Başarısız Olanlar</h4>
+           <ul id="uniqueFailListUl" style="list-style: none; padding: 0; font-size: 13px; line-height: 1.6; max-height: 400px; overflow-y: auto;"></ul>
+         </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     let allAlerts = [];
+    let uniqueSuccessList = [];
+    let uniqueFailList = [];
     let currentFilter = 'all';
     let searchQuery = '';
     let sortField = 'alerted_at';
@@ -779,6 +810,20 @@
       document.getElementById('riskModal').style.display = 'none';
     }
 
+    function showUniqueResultsModal() {
+      const sList = document.getElementById('uniqueSuccessListUl');
+      const fList = document.getElementById('uniqueFailListUl');
+      sList.innerHTML = uniqueSuccessList.map(m => `<li>${m.url ? `<a href="${m.url}" target="_blank" style="color:var(--text);text-decoration:none;">${escapeHtml(m.name)}</a>` : escapeHtml(m.name)}</li>`).join('');
+      fList.innerHTML = uniqueFailList.map(m => `<li>${m.url ? `<a href="${m.url}" target="_blank" style="color:var(--text);text-decoration:none;">${escapeHtml(m.name)}</a>` : escapeHtml(m.name)}</li>`).join('');
+      if(uniqueSuccessList.length === 0) sList.innerHTML = '<li style="color:var(--text-dim)">Kayıt yok</li>';
+      if(uniqueFailList.length === 0) fList.innerHTML = '<li style="color:var(--text-dim)">Kayıt yok</li>';
+      document.getElementById('uniqueResultsModal').style.display = 'flex';
+    }
+
+    function closeUniqueResultsModal() {
+      document.getElementById('uniqueResultsModal').style.display = 'none';
+    }
+
     async function fetchAlerts() {
       try {
         const res = await fetch('/api/finished-alerts');
@@ -801,6 +846,23 @@
       document.getElementById('stat-bet').textContent = bet;
       document.getElementById('stat-follow').textContent = follow;
       document.getElementById('stat-total').textContent = allAlerts.length;
+
+      const matchMap = {};
+      allAlerts.forEach(a => {
+        const m_id = a.match_id || a.match_name;
+        if (!m_id) return;
+        if (!matchMap[m_id]) matchMap[m_id] = { name: cleanMatchName(a.match_name), url: a.url, success: false, fail: false };
+        if (a.result === 'Başarılı') matchMap[m_id].success = true;
+        if (a.result === 'Başarısız') matchMap[m_id].fail = true;
+      });
+
+      uniqueSuccessList = Object.values(matchMap).filter(m => m.success);
+      uniqueFailList = Object.values(matchMap).filter(m => m.fail);
+
+      const succEl = document.getElementById('stat-unique-success');
+      const failEl = document.getElementById('stat-unique-fail');
+      if (succEl) succEl.textContent = uniqueSuccessList.length;
+      if (failEl) failEl.textContent = uniqueFailList.length;
     }
 
     function filterAlerts() {
@@ -1040,7 +1102,7 @@
       document.getElementById('aiModal').style.display = 'none';
     }
 
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeRiskModal(); } });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeRiskModal(); if(typeof closeUniqueResultsModal === 'function') closeUniqueResultsModal(); } });
 
     function applyMatchStatusUpdate(payload) {
       if (!payload || !payload.match_id) return;
