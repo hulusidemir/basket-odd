@@ -44,10 +44,8 @@ async def check_match_result(context, url: str) -> dict:
               const statusNode = document.querySelector('.status, .period, .match-status, .time, .state, .V3MatchHeader_matchStatus__Gj\\+5j');
               if (statusNode) status = text(statusNode.innerText);
               
-              let isFinished = /\b(FT|Finished|Ended|End|O\.T\.)\b/i.test(status);
+              let isFinished = /\b(FT|Full Time|Finished|Ended|End|O\.T\.)\b/i.test(status);
               if (!isFinished) {
-                  const txt = document.body.innerText;
-                  if (/\b(FT|Finished|Ended|End)\b/i.test(txt)) isFinished = true;
                   const finishedBadge = document.querySelector('[class*="finished"], [class*="Finished"], [class*="ended"], [class*="final-score"]');
                   if (finishedBadge) isFinished = true;
               }

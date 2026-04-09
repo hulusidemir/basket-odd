@@ -22,14 +22,16 @@ async def check_match_result(context, url: str) -> dict:
             const scoreNode = document.querySelector('.score, .match-score, .points');
             if (scoreNode) score = scoreNode.innerText.trim();
 
-            let isFinished = /\\b(FT|Finished|Ended|End|O\\.T\\.)\\b/i.test(status);
+            let isFinished = /\\b(FT|Full Time|Finished|Ended|End|O\\.T\\.)\\b/i.test(status);
             
-            // Fallback: search the entire page text for "FT" and a score
-            if (!isFinished || !score) {
-               const txt = document.body.innerText;
-               if (/\\b(FT|Finished|Ended|End)\\b/i.test(txt)) {
-                   isFinished = true;
-               }
+            // Check for finished badge element only
+            if (!isFinished) {
+               const finishedBadge = document.querySelector('[class*="finished"], [class*="Finished"], [class*="ended"], [class*="final-score"]');
+               if (finishedBadge) isFinished = true;
+            }
+            
+            // try to extract score if not found
+            if (!score) {
                // guess score by looking at big headings or specific format
                const match = txt.match(/(\\d{2,3})\\s*[-:–]\\s*(\\d{2,3})/);
                if (match && !score) {
