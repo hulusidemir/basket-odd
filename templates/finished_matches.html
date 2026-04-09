@@ -1066,11 +1066,9 @@
 
       return `
         <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 12px; transition: background 0.2s; display: flex; flex-direction: column; gap: 6px;" onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background='rgba(255,255,255,0.03)'">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-                <div style="font-weight: 600; font-size: 13px; line-height: 1.4;">${linkHtml}</div>
-                <div style="display:flex; gap:4px; flex-shrink:0;">${signalsStr}</div>
-            </div>
-            <div style="font-size: 11px; color: var(--text-dim);">🏆 ${escapeHtml(m.tournament)}</div>
+            <div style="font-weight: 600; font-size: 13px; line-height: 1.4;">${linkHtml}</div>
+            <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 4px;">🏆 ${escapeHtml(m.tournament)}</div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">${signalsStr}</div>
         </div>`;
     }
 
