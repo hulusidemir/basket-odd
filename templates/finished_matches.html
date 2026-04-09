@@ -613,7 +613,7 @@
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 16px;
-      max-width: 700px;
+      max-width: 1100px;
       width: 100%;
       max-height: 80vh;
       display: flex;
@@ -1058,9 +1058,10 @@
       const linkHtml = m.url ? `<a href="${m.url}" target="_blank" style="color:var(--text);text-decoration:none;">${escapeHtml(m.name)}</a>` : escapeHtml(m.name);
       const signals = isSuccess ? Array.from(m.successSignals) : Array.from(m.failSignals);
       const signalsStr = signals.map(s => {
-        const badgeColor = s === 'ALT' ? '#ef4444' : '#22c55e';
-        const sIcon = s === 'ALT' ? '🔻' : '🔺';
-        return `<span style="background:${badgeColor}20; color:${badgeColor}; border:1px solid ${badgeColor}; border-radius:4px; padding:2px 6px; font-size:10px; font-weight:700; display:inline-flex; align-items:center; gap:2px;">${sIcon} ${escapeHtml(s)}</span>`;
+        const isAlt = s.toUpperCase().includes('ALT');
+        const badgeColor = isAlt ? '#ef4444' : '#22c55e';
+        const sIcon = isAlt ? '🔻' : '🔺';
+        return `<span style="background:${badgeColor}20; color:${badgeColor}; border:1px solid ${badgeColor}; border-radius:4px; padding:2px 6px; font-size:11px; font-weight:700; display:inline-flex; align-items:center; gap:2px; margin-right: 4px;">${sIcon} ${escapeHtml(s)}</span>`;
       }).join(' ');
 
       return `
@@ -1125,13 +1126,15 @@
             failSignals: new Set()
           };
         }
+        const sigText = a.signal_count > 1 ? `${a.signal_count}. Sinyal (${a.direction})` : a.direction;
+
         if (a.result === 'Başarılı') {
           matchMap[m_id].success = true;
-          matchMap[m_id].successSignals.add(a.direction);
+          matchMap[m_id].successSignals.add(sigText);
         }
         if (a.result === 'Başarısız') {
           matchMap[m_id].fail = true;
-          matchMap[m_id].failSignals.add(a.direction);
+          matchMap[m_id].failSignals.add(sigText);
         }
       });
 
