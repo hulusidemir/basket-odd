@@ -274,6 +274,14 @@ class Database:
             cursor = conn.execute("DELETE FROM alerts WHERE id = ?",(alert_id,))
         return cursor.rowcount > 0
 
+    def delete_match_data(self, match_id: str) -> int:
+        """Delete all alert/state records belonging to the same match."""
+        with self._conn() as conn:
+            cursor = conn.execute("DELETE FROM alerts WHERE match_id = ?", (match_id,))
+            conn.execute("DELETE FROM match_actions WHERE match_id = ?", (match_id,))
+            conn.execute("DELETE FROM opening_lines WHERE match_id = ?", (match_id,))
+        return cursor.rowcount
+
     def clear_all(self):
         with self._conn() as conn:
             conn.execute("DELETE FROM alerts")

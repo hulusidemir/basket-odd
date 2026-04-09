@@ -166,10 +166,17 @@ def api_toggle_follow(alert_id: int):
 
 @app.route("/api/alerts/<int:alert_id>", methods=["DELETE"])
 def api_delete_alert(alert_id: int):
-    """Delete a record."""
-    if not db.delete_alert(alert_id):
+    """Delete all records belonging to the same match."""
+    alert = db.get_alert(alert_id)
+    if not alert:
         return jsonify({"error": "not found"}), 404
-    return jsonify({"id": alert_id, "deleted": True})
+    deleted_count = db.delete_match_data(alert["match_id"])
+    return jsonify({
+        "id": alert_id,
+        "match_id": alert["match_id"],
+        "deleted": True,
+        "affected": deleted_count,
+    })
 
 
 @app.route("/api/clear", methods=["POST"])
@@ -177,15 +184,6 @@ def api_clear_db():
     """Wipe all alerts, match_actions and opening_lines."""
     db.clear_all()
     return jsonify({"cleared": True})
-
-
-@app.route("/api/alerts/<int:alert_id>/analysis")
-def api_get_analysis(alert_id: int):
-    """Returns AI analysis for a specific alert."""
-    alert = db.get_alert(alert_id)
-    if not alert:
-        return jsonify({"error": "not found"}), 404
-    return jsonify({"id": alert_id, "ai_analysis": alert.get("ai_analysis", "")})
 
 
 if __name__ == "__main__":

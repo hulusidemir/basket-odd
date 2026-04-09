@@ -278,7 +278,7 @@
 
     .card-actions {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
       align-items: stretch;
     }
@@ -329,6 +329,16 @@
       background: #475569;
       border-color: #475569;
       color: #fff;
+    }
+    .action-btn.delete-btn {
+      border-color: rgba(239,68,68,0.35);
+      color: #ef4444;
+      background: rgba(239,68,68,0.12);
+    }
+    .action-btn.delete-btn:hover {
+      border-color: #ef4444;
+      color: #fff;
+      background: rgba(239,68,68,0.85);
     }
 
     .actions-wrap {
@@ -423,7 +433,7 @@
       .pagination { padding: 12px 16px; }
     }
 
-    /* ── AI Analysis Modal ────────────────────────────── */
+    /* ── Shared Modal ─────────────────────────────────── */
     .modal-overlay {
       display: none;
       position: fixed;
@@ -477,18 +487,6 @@
       color: var(--text-dim);
       padding: 30px;
     }
-    .ai-btn {
-      padding: 4px 8px;
-      border-radius: 6px;
-      border: 1px solid var(--border);
-      background: rgba(139,92,246,0.1);
-      color: #a78bfa;
-      cursor: pointer;
-      font-size: 12px;
-      transition: all 0.15s;
-    }
-    .ai-btn:hover { border-color: #a78bfa; background: rgba(139,92,246,0.2); }
-    .ai-btn.no-analysis { opacity: 0.3; cursor: default; }
 
     /* ── Risk Icons ────────────────────────────────────── */
     .risk-icon {
@@ -659,19 +657,6 @@
       <option value="50">50</option>
       <option value="100">100</option>
     </select>
-  </div>
-
-  <!-- AI Analysis Modal -->
-  <div class="modal-overlay" id="aiModal" onclick="if(event.target===this)closeModal()">
-    <div class="modal-box">
-      <div class="modal-header">
-        <h3 id="aiModalTitle">🤖 AI Analiz</h3>
-        <button class="modal-close" onclick="closeModal()">&times;</button>
-      </div>
-      <div class="modal-body" id="aiModalBody">
-        <div class="loading">Yükleniyor...</div>
-      </div>
-    </div>
   </div>
 
   <!-- Risk Assessment Modal -->
@@ -888,7 +873,7 @@
               <button class="action-btn ${betBtnClass}" onclick="toggleBet(${a.id})">${betBtnText}</button>
               <button class="action-btn follow-btn ${followBtnClass}" onclick="toggleFollow(${a.id})">${followBtnText}</button>
               <button class="action-btn ${ignoreBtnClass}" onclick="toggleIgnore(${a.id})">${ignoreBtnText}</button>
-              <button class="ai-btn${a.ai_analysis ? '' : ' no-analysis'}" onclick="showAnalysis(${a.id})" title="AI Analiz">🤖</button>
+              <button class="action-btn delete-btn" onclick="deleteMatch(${a.id})">🗑 Sil</button>
             </div>
           </td>
         </tr>`;
@@ -974,38 +959,13 @@
             <button class="action-btn ${betBtnClass}" onclick="toggleBet(${a.id})">${betBtnText}</button>
             <button class="action-btn follow-btn ${followBtnClass}" onclick="toggleFollow(${a.id})">${followBtnText}</button>
             <button class="action-btn ${ignoreBtnClass}" onclick="toggleIgnore(${a.id})">${ignoreBtnText}</button>
-            <button class="ai-btn${a.ai_analysis ? '' : ' no-analysis'}" onclick="showAnalysis(${a.id})" title="AI Analiz">🤖</button>
+            <button class="action-btn delete-btn" onclick="deleteMatch(${a.id})">🗑 Sil</button>
           </div>
         </div>`;
       }).join('');
     }
 
-    async function showAnalysis(id) {
-      const modal = document.getElementById('aiModal');
-      const body = document.getElementById('aiModalBody');
-      const a = allAlerts.find(x => x.id === id);
-      const title = a ? cleanMatchName(a.match_name) : 'Analiz';
-      document.getElementById('aiModalTitle').textContent = '🤖 ' + title;
-      body.innerHTML = '<div class="loading">Yükleniyor...</div>';
-      modal.style.display = 'flex';
-      try {
-        const resp = await fetch(`/api/alerts/${id}/analysis`);
-        const data = await resp.json();
-        if (data.ai_analysis) {
-          body.innerHTML = '<pre style="white-space:pre-wrap;word-wrap:break-word;margin:0;font-family:inherit;font-size:0.95rem;line-height:1.6">' + escapeHtml(data.ai_analysis) + '</pre>';
-        } else {
-          body.innerHTML = '<p style="color:#aaa;text-align:center">Henüz AI analizi yok. Analiz arka planda çalışıyor olabilir.</p>';
-        }
-      } catch(e) {
-        body.innerHTML = '<p style="color:#ff6b6b;text-align:center">Analiz yüklenemedi.</p>';
-      }
-    }
-
-    function closeModal() {
-      document.getElementById('aiModal').style.display = 'none';
-    }
-
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeRiskModal(); } });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeRiskModal(); } });
 
     function applyMatchStatusUpdate(payload) {
       if (!payload || !payload.match_id) return;
@@ -1040,16 +1000,36 @@
       updateStats();
     }
 
+    async function deleteMatch(id) {
+      const alertItem = allAlerts.find(a => a.id === id);
+      if (!alertItem) return;
+      const matchName = cleanMatchName(alertItem.match_name);
+      if (!confirm(`"${matchName}" maçına ait tüm uyarılar silinsin mi?`)) return;
+      const resp = await fetch(`/api/alerts/${id}`, { method: 'DELETE' });
+      const payload = await resp.json();
+      if (!resp.ok) {
+        alert('Maç silinirken hata oluştu.');
+        return;
+      }
+      allAlerts = allAlerts.filter(a => a.match_id !== payload.match_id);
+      render();
+      updateStats();
+      updateSelectedCount();
+    }
+
     function getSelectedIds() {
       return Array.from(document.querySelectorAll('.row-check:checked')).map(cb => parseInt(cb.dataset.id));
     }
 
     function updateSelectedCount() {
       const ids = getSelectedIds();
+      const selectedMatchCount = new Set(
+        allAlerts.filter(a => ids.includes(a.id)).map(a => a.match_id)
+      ).size;
       const btn = document.getElementById('deleteSelectedBtn');
       const cnt = document.getElementById('selectedCount');
-      cnt.textContent = ids.length;
-      btn.style.display = ids.length > 0 ? 'inline-block' : 'none';
+      cnt.textContent = selectedMatchCount;
+      btn.style.display = selectedMatchCount > 0 ? 'inline-block' : 'none';
       const all = document.querySelectorAll('.row-check');
       document.getElementById('selectAll').checked = all.length > 0 && ids.length === all.length;
     }
@@ -1062,12 +1042,21 @@
     async function deleteSelected() {
       const ids = getSelectedIds();
       if (!ids.length) return;
-      if (!confirm(`${ids.length} kayıt silinecek. Emin misiniz?`)) return;
-      await Promise.all(ids.map(id => fetch(`/api/alerts/${id}`, { method: 'DELETE' })));
-      allAlerts = allAlerts.filter(a => !ids.includes(a.id));
+      const selectedAlerts = allAlerts.filter(a => ids.includes(a.id));
+      const matchIds = [...new Set(selectedAlerts.map(a => a.match_id))];
+      const requestIds = matchIds.map(matchId => selectedAlerts.find(a => a.match_id === matchId)?.id).filter(Boolean);
+      if (!confirm(`${matchIds.length} maça ait tüm uyarılar silinecek. Emin misiniz?`)) return;
+      const responses = await Promise.all(requestIds.map(id => fetch(`/api/alerts/${id}`, { method: 'DELETE' })));
+      const deletedMatchIds = [];
+      for (const resp of responses) {
+        if (!resp.ok) continue;
+        const payload = await resp.json();
+        if (payload.match_id) deletedMatchIds.push(payload.match_id);
+      }
+      allAlerts = allAlerts.filter(a => !deletedMatchIds.includes(a.match_id));
       render();
       updateStats();
-      document.getElementById('deleteSelectedBtn').style.display = 'none';
+      updateSelectedCount();
     }
 
     async function clearDatabase() {
