@@ -8,8 +8,8 @@ Usage:
 
 import os
 import re
-from typing import Optional, Tuple
-from flask import Flask, jsonify, render_template, request
+from typing import Optional
+from flask import Flask, jsonify, render_template
 from db import Database
 from config import Config
 
@@ -77,11 +77,6 @@ def index():
     return render_template("dashboard.html")
 
 
-@app.route("/finished")
-def finished():
-    return render_template("finished_matches.html")
-
-
 @app.route("/api/alerts")
 def api_alerts():
     """Returns all anomaly records with projected scores."""
@@ -98,39 +93,6 @@ def api_alerts():
         alert["projected"] = projected
     
     return jsonify(alerts)
-
-
-@app.route("/api/finished-alerts")
-def api_finished_alerts():
-    """Returns alerts that have finished and have a result."""
-    alerts = db.get_finished_alerts()
-    for alert in alerts:
-        projected = calculate_projected_score(
-            score=alert.get("score", ""),
-            status=alert.get("status", ""),
-            match_name=alert.get("match_name", ""),
-            tournament=alert.get("tournament", "")
-        )
-        alert["projected"] = projected
-    return jsonify(alerts)
-
-
-@app.route("/api/trigger-check", methods=["POST"])
-def api_trigger_check():
-    """Manually triggers the result_checker script in detached mode to check pending matches."""
-    import subprocess
-    import sys
-    
-    # Run the check_all_pending once, asynchronously in background
-    cmd = [
-        sys.executable, 
-        "-c", 
-        "import asyncio; from result_checker import check_all_pending; asyncio.run(check_all_pending(older_than_minutes=0))"
-    ]
-    log_file = open("checker_manual.log", "a")
-    subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
-    
-    return jsonify({"status": "started"})
 
 
 @app.route("/api/alerts/<int:alert_id>/bet", methods=["POST"])
