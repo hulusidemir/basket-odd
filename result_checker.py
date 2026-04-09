@@ -36,33 +36,63 @@ async def check_match_result(context, url: str) -> dict:
         parsed = await page.evaluate(
             r'''
             () => {
+              const text = s => (s || '').replace(/\s+/g, ' ').trim();
               let status = '';
               let score = '';
               
-              // 1. Try DOM elements typically present on match detail pages
+              // Find status
               const statusNode = document.querySelector('.status, .period, .match-status, .time, .state, .V3MatchHeader_matchStatus__Gj\\+5j');
-              if (statusNode) status = statusNode.innerText.trim();
-              
-              const scoreNode = document.querySelector('.score, .match-score, .points, .V3MatchHeader_scorebox__k5vF\\+');
-              if (scoreNode) score = scoreNode.innerText.trim();
+              if (statusNode) status = text(statusNode.innerText);
               
               let isFinished = /\b(FT|Finished|Ended|End|O\.T\.)\b/i.test(status);
-              
-              // 2. Fallback: Parse the raw text of the entire document
-              if (!isFinished || !score || !/\d/.test(score)) {
+              if (!isFinished) {
                   const txt = document.body.innerText;
-                  
-                  if (/\b(FT|Finished|Ended|End)\b/i.test(txt)) {
-                      isFinished = true;
-                  }
-                  
-                  // Usually the score is near the top; look for anything like "85 - 90"
-                  const match = txt.match(/(?:\n|^|\s)(\d{2,3})\s*[-:–]\s*(\d{2,3})(?:\n|$|\s)/);
-                  if (match) {
-                      score = match[1] + '-' + match[2];
-                  }
+                  if (/\b(FT|Finished|Ended|End)\b/i.test(txt)) isFinished = true;
+                  const finishedBadge = document.querySelector('[class*="finished"], [class*="Finished"], [class*="ended"], [class*="final-score"]');
+                  if (finishedBadge) isFinished = true;
               }
+
+              // Evaluate safe full score
+              // Strategy 1: Look for big standalone numbers near the top of the page (Aiscore layout)
+              const topEls = Array.from(document.querySelectorAll('span, div, b, strong'))
+                .filter(el => {
+                  const rect = el.getBoundingClientRect();
+                  return rect.top < 300 && el.children.length === 0;
+                })
+                .map(el => ({el, txt: text(el.innerText).trim()}))
+                .filter(({txt}) => /^\d{1,3}$/.test(txt));
               
+              if (topEls.length >= 2) {
+                const withSize = topEls.map(({el, txt}) => ({
+                  txt,
+                  size: parseFloat(window.getComputedStyle(el).fontSize) || 0
+                })).sort((a, b) => b.size - a.size);
+                if (withSize.length >= 2 && withSize[0].size >= 16) {
+                  score = withSize[0].txt + '-' + withSize[1].txt;
+                }
+              }
+
+              // Strategy 2: class score wrapper
+              if (!score) {
+                 const scoreContainer = document.querySelector('[class*="score" i], [class*="Score"], [class*="matchScore"], .V3MatchHeader_scorebox__k5vF\\+');
+                 if (scoreContainer) {
+                   const nums = [];
+                   scoreContainer.querySelectorAll('*').forEach(el => {
+                     if (el.children.length === 0) {
+                       const t = text(el.innerText).trim();
+                       if (/^\d{1,3}$/.test(t) && parseInt(t) <= 300) nums.push(t);
+                     }
+                   });
+                   if (nums.length >= 2) score = nums[0] + '-' + nums[1];
+                 }
+              }
+
+              // Fallback match: avoid numbers under 50 to not match quarter scores randomly
+              if (!score && isFinished) {
+                  const match = document.body.innerText.match(/(?:\n|^|\s)((?:\d{3})|[4-9]\d)\s*[-:–]\s*((?:\d{3})|[4-9]\d)(?:\n|$|\s)/);
+                  if (match) score = match[1] + '-' + match[2];
+              }
+
               return { isFinished, score: score, status: status };
             }
             '''
