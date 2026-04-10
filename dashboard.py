@@ -12,12 +12,14 @@ from typing import Optional
 from flask import Flask, jsonify, render_template
 from db import Database
 from config import Config
+from finished_matches import finished_matches_bp
 
 config = Config()
 db = Database(config.DB_PATH)
 db.init()
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
+app.register_blueprint(finished_matches_bp)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

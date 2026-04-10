@@ -49,6 +49,39 @@ class Database:
                     ignored     INTEGER NOT NULL DEFAULT 0,
                     followed    INTEGER NOT NULL DEFAULT 0
                 );
+
+                CREATE TABLE IF NOT EXISTS finished_matches (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_alert_id INTEGER NOT NULL UNIQUE,
+                    match_id        TEXT NOT NULL,
+                    match_name      TEXT NOT NULL,
+                    tournament      TEXT NOT NULL DEFAULT '',
+                    status          TEXT NOT NULL DEFAULT '',
+                    final_status    TEXT NOT NULL DEFAULT '',
+                    opening         REAL NOT NULL,
+                    live            REAL NOT NULL,
+                    direction       TEXT NOT NULL,
+                    diff            REAL NOT NULL,
+                    url             TEXT NOT NULL DEFAULT '',
+                    bet_placed      INTEGER NOT NULL DEFAULT 0,
+                    ignored         INTEGER NOT NULL DEFAULT 0,
+                    followed        INTEGER NOT NULL DEFAULT 0,
+                    alerted_at      TIMESTAMP,
+                    score           TEXT NOT NULL DEFAULT '',
+                    signal_count    INTEGER NOT NULL DEFAULT 1,
+                    risk_note       TEXT NOT NULL DEFAULT '',
+                    recommendation  TEXT NOT NULL DEFAULT '',
+                    final_score     TEXT NOT NULL DEFAULT '',
+                    final_total     REAL,
+                    result          TEXT NOT NULL DEFAULT '',
+                    finished_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_finished_matches_match_id
+                ON finished_matches(match_id);
+
+                CREATE INDEX IF NOT EXISTS idx_finished_matches_finished_at
+                ON finished_matches(finished_at DESC);
             """)
             # Migrate: add new columns if they don't exist yet
             try:
@@ -93,6 +126,22 @@ class Database:
                 pass
             try:
                 conn.execute("ALTER TABLE alerts ADD COLUMN recommendation TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN final_status TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN final_score TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN final_total REAL")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN result TEXT NOT NULL DEFAULT ''")
             except Exception:
                 pass
             # Ensure match_actions table exists for action inheritance
@@ -287,3 +336,105 @@ class Database:
             conn.execute("DELETE FROM alerts")
             conn.execute("DELETE FROM match_actions")
             conn.execute("DELETE FROM opening_lines")
+
+    # ---------- finished matches ----------
+
+    def recent_finished_matches(self, limit: int = 500) -> list:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM finished_matches ORDER BY finished_at DESC, id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_tracked_live_matches(self, limit: int = 200) -> list:
+        """
+        Return one latest alert row per match where at least one signal
+        has not been copied into finished_matches yet.
+        """
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT a.match_id, a.match_name, a.tournament, a.url, a.status, a.score, a.alerted_at
+                FROM alerts a
+                INNER JOIN (
+                    SELECT match_id, MAX(id) AS latest_alert_id
+                    FROM alerts
+                    WHERE url != ''
+                    GROUP BY match_id
+                ) latest ON latest.latest_alert_id = a.id
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM alerts pending
+                    LEFT JOIN finished_matches fm ON fm.source_alert_id = pending.id
+                    WHERE pending.match_id = a.match_id
+                      AND fm.id IS NULL
+                )
+                ORDER BY a.alerted_at DESC, a.id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_pending_alerts_for_match(self, match_id: str) -> list:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT a.*
+                FROM alerts a
+                LEFT JOIN finished_matches fm ON fm.source_alert_id = a.id
+                WHERE a.match_id = ?
+                  AND fm.id IS NULL
+                ORDER BY a.alerted_at ASC, a.id ASC
+                """,
+                (match_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def archive_finished_alert(
+        self,
+        alert: dict,
+        *,
+        final_status: str,
+        final_score: str,
+        final_total: float | None,
+        result: str,
+    ) -> int:
+        with self._conn() as conn:
+            cursor = conn.execute(
+                """
+                INSERT OR IGNORE INTO finished_matches (
+                    source_alert_id, match_id, match_name, tournament, status, final_status,
+                    opening, live, direction, diff, url, bet_placed, ignored, followed,
+                    alerted_at, score, signal_count, risk_note, recommendation,
+                    final_score, final_total, result
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    alert["id"],
+                    alert["match_id"],
+                    alert["match_name"],
+                    alert.get("tournament", ""),
+                    alert.get("status", ""),
+                    final_status,
+                    alert["opening"],
+                    alert["live"],
+                    alert["direction"],
+                    alert["diff"],
+                    alert.get("url", ""),
+                    alert.get("bet_placed", 0),
+                    alert.get("ignored", 0),
+                    alert.get("followed", 0),
+                    alert.get("alerted_at"),
+                    alert.get("score", ""),
+                    alert.get("signal_count", 1),
+                    alert.get("risk_note", ""),
+                    alert.get("recommendation", ""),
+                    final_score,
+                    final_total,
+                    result,
+                ),
+            )
+        return cursor.lastrowid if cursor.rowcount > 0 else 0

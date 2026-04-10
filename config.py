@@ -20,6 +20,8 @@ class Config:
     AISCORE_URL: str = os.getenv("AISCORE_URL", "https://www.aiscore.com/basketball")
     MAX_MATCHES_PER_CYCLE: int = int(os.getenv("MAX_MATCHES_PER_CYCLE", "80"))
     PAGE_TIMEOUT_MS: int = int(os.getenv("PAGE_TIMEOUT_MS", "30000"))
+    FINISHED_MATCH_POLL_SECONDS: int = int(os.getenv("FINISHED_MATCH_POLL_SECONDS", "120"))
+    FINISHED_MATCH_BATCH_SIZE: int = int(os.getenv("FINISHED_MATCH_BATCH_SIZE", "40"))
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     BLACKLIST: list = [b.strip().lower() for b in os.getenv("BLACKLIST", "").split(",") if b.strip()]
