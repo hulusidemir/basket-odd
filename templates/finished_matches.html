@@ -362,11 +362,22 @@
     .badge-push { background: rgba(245,158,11,0.15); color: #fcd34d; }
     .badge-alt { background: rgba(239,68,68,0.12); color: #f87171; }
     .badge-ust { background: rgba(34,197,94,0.12); color: #4ade80; }
+    .badge-action-play { background: rgba(34,197,94,0.15); color: #86efac; }
+    .badge-action-watch { background: rgba(245,158,11,0.15); color: #fcd34d; }
+    .badge-action-pass { background: rgba(239,68,68,0.15); color: #fca5a5; }
+    .badge-action-none { background: rgba(148,163,184,0.14); color: #cbd5e1; }
 
     .stack {
       display: flex;
       flex-direction: column;
       gap: 6px;
+    }
+
+    .inline-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
     }
 
     .mono {
@@ -761,6 +772,10 @@
     <button class="filter-btn" data-filter="push">↔ İade</button>
     <button class="filter-btn" data-filter="alt">🔻 ALT</button>
     <button class="filter-btn" data-filter="ust">🔺 ÜST</button>
+    <button class="filter-btn" data-filter="play" style="background:rgba(34,197,94,0.12); color:#86efac; border-color:rgba(34,197,94,0.24);">✅ Oyna</button>
+    <button class="filter-btn" data-filter="watch" style="background:rgba(245,158,11,0.12); color:#fcd34d; border-color:rgba(245,158,11,0.24);">⚠️ Dikkat</button>
+    <button class="filter-btn" data-filter="pass" style="background:rgba(239,68,68,0.12); color:#fca5a5; border-color:rgba(239,68,68,0.24);">⛔ Pas Geç</button>
+    <button class="filter-btn" data-filter="none" style="background:rgba(148,163,184,0.12); color:#cbd5e1; border-color:rgba(148,163,184,0.24);">• İşlem Yapılmadı</button>
   </div>
 
   <div class="toolbar">
@@ -780,6 +795,7 @@
         <tr>
           <th class="sortable" data-sort="result" data-label="Sonuç">Sonuç</th>
           <th class="sortable" data-sort="direction" data-label="Sinyal">Sinyal</th>
+          <th class="sortable" data-sort="action" data-label="İşlem">İşlem</th>
           <th class="sortable" data-sort="match_name" data-label="Maç">Maç</th>
           <th class="sortable" data-sort="tournament" data-label="Turnuva">Turnuva</th>
           <th class="sortable" data-sort="score" data-label="Sinyal Skoru">Sinyal Skoru</th>
@@ -869,6 +885,13 @@
       return { label: 'ÜST', className: 'badge badge-ust', order: 1 };
     }
 
+    function actionMeta(match) {
+      if (match.bet_placed) return { label: 'Oyna', className: 'badge badge-action-play', order: 0 };
+      if (match.followed) return { label: 'Dikkat', className: 'badge badge-action-watch', order: 1 };
+      if (match.ignored) return { label: 'Pas Geç', className: 'badge badge-action-pass', order: 2 };
+      return { label: 'İşlem Yapılmadı', className: 'badge badge-action-none', order: 3 };
+    }
+
     function matchLinkHtml(match, className = 'match-name') {
       const label = escapeHtml(match.match_name || '-');
       if (!match.url) return `<span class="${className}">${label}</span>`;
@@ -884,6 +907,10 @@
       else if (activeFilter === 'push') filtered = filtered.filter(match => canonicalResult(match.result) === 'iade');
       else if (activeFilter === 'alt') filtered = filtered.filter(match => normalize(match.direction) === 'alt');
       else if (activeFilter === 'ust') filtered = filtered.filter(match => ['üst', 'ust'].includes(normalize(match.direction)));
+      else if (activeFilter === 'play') filtered = filtered.filter(match => !!match.bet_placed);
+      else if (activeFilter === 'watch') filtered = filtered.filter(match => !!match.followed);
+      else if (activeFilter === 'pass') filtered = filtered.filter(match => !!match.ignored);
+      else if (activeFilter === 'none') filtered = filtered.filter(match => !match.bet_placed && !match.followed && !match.ignored);
 
       if (query) {
         filtered = filtered.filter(match => {
@@ -907,6 +934,7 @@
     function sortValue(match, field) {
       if (field === 'result') return resultMeta(match.result).order;
       if (field === 'direction') return directionMeta(match.direction).order;
+      if (field === 'action') return actionMeta(match).order;
       if (field === 'live' || field === 'final_total') return Number(match[field] ?? -1);
       if (field === 'alerted_at' || field === 'finished_at') return new Date(String(match[field] || '').replace(' ', 'T')).getTime() || 0;
       return normalize(match[field] || '');
@@ -975,16 +1003,20 @@
       tbody.innerHTML = matches.map(match => {
         const result = resultMeta(match.result);
         const direction = directionMeta(match.direction);
+        const action = actionMeta(match);
         return `
           <tr>
             <td><span class="${result.className}">${result.label}</span></td>
             <td>
               <div class="stack">
-                <span class="${direction.className}">${direction.label}</span>
+                <div class="inline-badges">
+                  <span class="${direction.className}">${direction.label}</span>
+                </div>
                 <span class="meta-line mono">Canlı barem ${formatLine(match.live)}</span>
                 <span class="meta-line mono">Sinyal #${escapeHtml(match.signal_count || 1)}</span>
               </div>
             </td>
+            <td><span class="${action.className}">${action.label}</span></td>
             <td class="match-cell">
               ${matchLinkHtml(match)}
               <span class="meta-line">${escapeHtml(match.final_status || '-')}</span>
@@ -1011,6 +1043,7 @@
       cardsWrap.innerHTML = matches.map(match => {
         const result = resultMeta(match.result);
         const direction = directionMeta(match.direction);
+        const action = actionMeta(match);
         return `
           <article class="match-card">
             <div class="card-top">
@@ -1031,6 +1064,10 @@
               <div class="card-box">
                 <div class="card-box-label">Sinyal</div>
                 <div class="card-box-value"><span class="${direction.className}">${direction.label}</span></div>
+              </div>
+              <div class="card-box">
+                <div class="card-box-label">İşlem</div>
+                <div class="card-box-value"><span class="${action.className}">${action.label}</span></div>
               </div>
               <div class="card-box">
                 <div class="card-box-label">Canlı Barem</div>
@@ -1166,6 +1203,7 @@
               <div class="group-signal">
                 <span class="signal-num-badge">${escapeHtml(signal.signal_count || 1)}</span>
                 <strong>${escapeHtml(signal.direction)}</strong>
+                <span class="${actionMeta(signal).className}" style="margin-left:8px;">${actionMeta(signal).label}</span>
                 <span class="mono"> | Canlı ${formatLine(signal.live)} | Final ${formatLine(signal.final_total)} | Skor ${escapeHtml(signal.final_score || '-')}</span>
                 <br>
                 <span>Sinyal zamanı: ${formatDate(signal.alerted_at)} | Bitiş: ${formatDate(signal.finished_at)}</span>
@@ -1315,7 +1353,7 @@
         if (sortField === field) sortAsc = !sortAsc;
         else {
           sortField = field;
-          sortAsc = field === 'match_name' || field === 'tournament' || field === 'direction' || field === 'result';
+          sortAsc = field === 'match_name' || field === 'tournament' || field === 'direction' || field === 'result' || field === 'action';
         }
         render();
       });
