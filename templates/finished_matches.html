@@ -653,6 +653,23 @@
       color: var(--text);
     }
 
+    .signal-num-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 28px;
+      height: 28px;
+      padding: 0 9px;
+      border-radius: 999px;
+      background: rgba(59,130,246,0.18);
+      border: 1px solid rgba(59,130,246,0.28);
+      color: #dbeafe;
+      font-size: 12px;
+      font-weight: 800;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
     .detail-empty {
       color: var(--text-dim);
       font-size: 13px;
@@ -727,12 +744,12 @@
       <div class="stat-card stat-alt">
         <div class="stat-label">ALT</div>
         <div class="stat-value" id="statAlt">0</div>
-        <div class="stat-detail">Toplam ALT sinyali</div>
+        <div class="stat-detail">Benzersiz maç: <span id="statAltUnique">0</span></div>
       </div>
       <div class="stat-card stat-ust">
         <div class="stat-label">ÜST</div>
         <div class="stat-value" id="statUst">0</div>
-        <div class="stat-detail">Toplam ÜST sinyali</div>
+        <div class="stat-detail">Benzersiz maç: <span id="statUstUnique">0</span></div>
       </div>
     </div>
   </div>
@@ -937,6 +954,8 @@
       document.getElementById('statUst').textContent = ustMatches.length;
       document.getElementById('statSuccessUnique').textContent = new Set(successMatches.map(match => match.match_id)).size;
       document.getElementById('statFailUnique').textContent = new Set(failMatches.map(match => match.match_id)).size;
+      document.getElementById('statAltUnique').textContent = new Set(altMatches.map(match => match.match_id)).size;
+      document.getElementById('statUstUnique').textContent = new Set(ustMatches.map(match => match.match_id)).size;
     }
 
     function renderTable(matches) {
@@ -1145,6 +1164,7 @@
           <div class="group-signals">
             ${group.signals.map(signal => `
               <div class="group-signal">
+                <span class="signal-num-badge">${escapeHtml(signal.signal_count || 1)}</span>
                 <strong>${escapeHtml(signal.direction)}</strong>
                 <span class="mono"> | Canlı ${formatLine(signal.live)} | Final ${formatLine(signal.final_total)} | Skor ${escapeHtml(signal.final_score || '-')}</span>
                 <br>
