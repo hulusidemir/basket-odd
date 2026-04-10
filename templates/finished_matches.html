@@ -224,6 +224,66 @@
       cursor: pointer;
     }
 
+    .ghost-btn.primary {
+      color: #fff;
+      border-color: transparent;
+      background: linear-gradient(135deg, #2e7a68, #bf613f);
+      box-shadow: 0 12px 28px rgba(72, 95, 81, 0.2);
+    }
+
+    .ghost-btn:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    .status-banner {
+      display: none;
+      margin-bottom: 14px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.62);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .status-banner.visible {
+      display: block;
+      animation: fadeUp 0.28s ease;
+    }
+
+    .status-banner.success {
+      border-color: rgba(23, 114, 69, 0.18);
+      background: rgba(23, 114, 69, 0.08);
+    }
+
+    .status-banner.warn {
+      border-color: rgba(154, 108, 20, 0.2);
+      background: rgba(154, 108, 20, 0.08);
+    }
+
+    .status-banner.error {
+      border-color: rgba(182, 76, 47, 0.2);
+      background: rgba(182, 76, 47, 0.08);
+    }
+
+    .status-banner strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
     .filters {
       display: flex;
       gap: 10px;
@@ -523,10 +583,13 @@
       <div class="toolbar">
         <div class="search-wrap">
           <input id="searchInput" class="search-box" type="text" placeholder="Takım, turnuva veya skor ara...">
+          <button id="checkNowBtn" class="ghost-btn primary" onclick="checkNow()">Şimdi Kontrol Et</button>
           <button class="ghost-btn" onclick="loadFinishedMatches()">Yenile</button>
         </div>
         <div class="meta-text">Son güncelleme: <span id="lastUpdated">-</span></div>
       </div>
+
+      <div id="statusBanner" class="status-banner"></div>
 
       <div class="filters">
         <button class="filter-btn active" data-filter="all">Tümü</button>
@@ -759,6 +822,12 @@
       renderTable(getFilteredMatches());
     }
 
+    function showBanner(kind, title, message) {
+      const banner = document.getElementById('statusBanner');
+      banner.className = `status-banner visible ${kind}`;
+      banner.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(message)}</span>`;
+    }
+
     async function loadFinishedMatches() {
       try {
         const response = await fetch('/api/finished-matches');
@@ -769,6 +838,55 @@
         console.error(error);
         document.getElementById('emptyState').style.display = 'block';
         document.getElementById('emptyState').textContent = 'Biten maç verileri yüklenemedi.';
+      }
+    }
+
+    async function checkNow() {
+      const button = document.getElementById('checkNowBtn');
+      button.disabled = true;
+      const originalText = button.textContent;
+      button.textContent = 'Kontrol Ediliyor...';
+      showBanner('warn', 'Kontrol başladı', 'Dashboard sinyalleri şimdi AIScore üzerinden tek tek kontrol ediliyor.');
+
+      try {
+        const response = await fetch('/api/finished-matches/check-now', { method: 'POST' });
+        if (response.status === 409) {
+          showBanner('warn', 'Zaten çalışıyor', 'Şu anda başka bir manuel kontrol isteği işleniyor. Birkaç saniye sonra tekrar deneyin.');
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const summary = await response.json();
+        await loadFinishedMatches();
+
+        if (summary.archived_count > 0) {
+          showBanner(
+            'success',
+            'Biten maçlar eklendi',
+            `${summary.checked_count} maç kontrol edildi. ${summary.archived_count} sinyal arşive taşındı. Başarılı: ${summary.successful_count}, Başarısız: ${summary.failed_count}, İade: ${summary.push_count}.`
+          );
+        } else if (summary.finished_match_count > 0) {
+          showBanner(
+            'warn',
+            'Biten maç bulundu',
+            `${summary.checked_count} maç kontrol edildi ancak final skor okunamadığı için yeni kayıt eklenmedi.`
+          );
+        } else {
+          showBanner(
+            'warn',
+            'Yeni biten maç yok',
+            `${summary.checked_count} maç kontrol edildi. Henüz bitip arşive taşınacak yeni sinyal bulunmadı.`
+          );
+        }
+      } catch (error) {
+        console.error(error);
+        showBanner('error', 'Kontrol başarısız', 'Anlık biten maç kontrolü sırasında bir hata oluştu.');
+      } finally {
+        button.disabled = false;
+        button.textContent = originalText;
       }
     }
 
