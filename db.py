@@ -347,6 +347,19 @@ class Database:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def delete_finished_match(self, finished_match_id: int) -> bool:
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "DELETE FROM finished_matches WHERE id = ?",
+                (finished_match_id,),
+            )
+        return cursor.rowcount > 0
+
+    def clear_finished_matches(self) -> int:
+        with self._conn() as conn:
+            cursor = conn.execute("DELETE FROM finished_matches")
+        return cursor.rowcount
+
     def get_tracked_live_matches(self, limit: int = 200) -> list:
         """
         Return one latest alert row per match where at least one signal

@@ -44,3 +44,17 @@ def api_finished_matches_check_now():
         return jsonify(summary)
     finally:
         manual_check_lock.release()
+
+
+@finished_matches_bp.route("/api/finished-matches/<int:finished_match_id>", methods=["DELETE"])
+def api_delete_finished_match(finished_match_id: int):
+    deleted = db.delete_finished_match(finished_match_id)
+    if not deleted:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"id": finished_match_id, "deleted": True})
+
+
+@finished_matches_bp.route("/api/finished-matches/clear", methods=["POST"])
+def api_clear_finished_matches():
+    deleted_count = db.clear_finished_matches()
+    return jsonify({"cleared": True, "deleted_count": deleted_count})
