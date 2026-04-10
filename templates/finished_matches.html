@@ -885,10 +885,14 @@
       return { label: 'ÜST', className: 'badge badge-ust', order: 1 };
     }
 
+    function isActionSet(value) {
+      return Number(value) === 1;
+    }
+
     function actionMeta(match) {
-      if (match.bet_placed) return { label: 'Oyna', className: 'badge badge-action-play', order: 0 };
-      if (match.followed) return { label: 'Dikkat', className: 'badge badge-action-watch', order: 1 };
-      if (match.ignored) return { label: 'Pas Geç', className: 'badge badge-action-pass', order: 2 };
+      if (isActionSet(match.bet_placed)) return { label: 'Oyna', className: 'badge badge-action-play', order: 0 };
+      if (isActionSet(match.followed)) return { label: 'Dikkat', className: 'badge badge-action-watch', order: 1 };
+      if (isActionSet(match.ignored)) return { label: 'Pas Geç', className: 'badge badge-action-pass', order: 2 };
       return { label: 'İşlem Yapılmadı', className: 'badge badge-action-none', order: 3 };
     }
 
@@ -907,10 +911,14 @@
       else if (activeFilter === 'push') filtered = filtered.filter(match => canonicalResult(match.result) === 'iade');
       else if (activeFilter === 'alt') filtered = filtered.filter(match => normalize(match.direction) === 'alt');
       else if (activeFilter === 'ust') filtered = filtered.filter(match => ['üst', 'ust'].includes(normalize(match.direction)));
-      else if (activeFilter === 'play') filtered = filtered.filter(match => !!match.bet_placed);
-      else if (activeFilter === 'watch') filtered = filtered.filter(match => !!match.followed);
-      else if (activeFilter === 'pass') filtered = filtered.filter(match => !!match.ignored);
-      else if (activeFilter === 'none') filtered = filtered.filter(match => !match.bet_placed && !match.followed && !match.ignored);
+      else if (activeFilter === 'play') filtered = filtered.filter(match => isActionSet(match.bet_placed));
+      else if (activeFilter === 'watch') filtered = filtered.filter(match => isActionSet(match.followed));
+      else if (activeFilter === 'pass') filtered = filtered.filter(match => isActionSet(match.ignored));
+      else if (activeFilter === 'none') filtered = filtered.filter(match =>
+        !isActionSet(match.bet_placed) &&
+        !isActionSet(match.followed) &&
+        !isActionSet(match.ignored)
+      );
 
       if (query) {
         filtered = filtered.filter(match => {
