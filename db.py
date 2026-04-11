@@ -69,8 +69,6 @@ class Database:
                     alerted_at      TIMESTAMP,
                     score           TEXT NOT NULL DEFAULT '',
                     signal_count    INTEGER NOT NULL DEFAULT 1,
-                    risk_note       TEXT NOT NULL DEFAULT '',
-                    recommendation  TEXT NOT NULL DEFAULT '',
                     final_score     TEXT NOT NULL DEFAULT '',
                     final_total     REAL,
                     result          TEXT NOT NULL DEFAULT '',
@@ -118,14 +116,6 @@ class Database:
                 pass
             try:
                 conn.execute("ALTER TABLE alerts ADD COLUMN signal_count INTEGER NOT NULL DEFAULT 1")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN risk_note TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN recommendation TEXT NOT NULL DEFAULT ''")
             except Exception:
                 pass
             try:
@@ -213,8 +203,6 @@ class Database:
         url: str = "",
         score: str = "",
         signal_count: int = 1,
-        risk_note: str = "",
-        recommendation: str = "",
     ) -> int:
         with self._conn() as conn:
             # Inherit match-level actions if previously set
@@ -227,10 +215,10 @@ class Database:
             fol = action["followed"] if action else 0
             cursor = conn.execute(
                 """
-                INSERT INTO alerts (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count, risk_note, recommendation, bet_placed, ignored, followed)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO alerts (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count, bet_placed, ignored, followed)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count, risk_note, recommendation, bet, ign, fol),
+                (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count, bet, ign, fol),
             )
             return cursor.lastrowid
 
@@ -420,10 +408,10 @@ class Database:
                 INSERT OR IGNORE INTO finished_matches (
                     source_alert_id, match_id, match_name, tournament, status, final_status,
                     opening, live, direction, diff, url, bet_placed, ignored, followed,
-                    alerted_at, score, signal_count, risk_note, recommendation,
+                    alerted_at, score, signal_count,
                     final_score, final_total, result
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     alert["id"],
@@ -443,8 +431,6 @@ class Database:
                     alert.get("alerted_at"),
                     alert.get("score", ""),
                     alert.get("signal_count", 1),
-                    alert.get("risk_note", ""),
-                    alert.get("recommendation", ""),
                     final_score,
                     final_total,
                     result,
