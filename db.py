@@ -37,9 +37,17 @@ class Database:
                     direction   TEXT NOT NULL,
                     diff        REAL NOT NULL,
                     url         TEXT NOT NULL DEFAULT '',
+                    score       TEXT NOT NULL DEFAULT '',
+                    ai_analysis TEXT NOT NULL DEFAULT '',
+                    signal_count INTEGER NOT NULL DEFAULT 1,
                     bet_placed  INTEGER NOT NULL DEFAULT 0,
                     ignored     INTEGER NOT NULL DEFAULT 0,
                     followed    INTEGER NOT NULL DEFAULT 0,
+                    quality_grade TEXT NOT NULL DEFAULT '',
+                    quality_score REAL NOT NULL DEFAULT 0,
+                    quality_setup TEXT NOT NULL DEFAULT '',
+                    quality_summary TEXT NOT NULL DEFAULT '',
+                    quality_reasons TEXT NOT NULL DEFAULT '',
                     alerted_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
@@ -69,6 +77,11 @@ class Database:
                     alerted_at      TIMESTAMP,
                     score           TEXT NOT NULL DEFAULT '',
                     signal_count    INTEGER NOT NULL DEFAULT 1,
+                    quality_grade   TEXT NOT NULL DEFAULT '',
+                    quality_score   REAL NOT NULL DEFAULT 0,
+                    quality_setup   TEXT NOT NULL DEFAULT '',
+                    quality_summary TEXT NOT NULL DEFAULT '',
+                    quality_reasons TEXT NOT NULL DEFAULT '',
                     final_score     TEXT NOT NULL DEFAULT '',
                     final_total     REAL,
                     result          TEXT NOT NULL DEFAULT '',
@@ -119,6 +132,26 @@ class Database:
             except Exception:
                 pass
             try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN quality_grade TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN quality_score REAL NOT NULL DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN quality_setup TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN quality_summary TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN quality_reasons TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
                 conn.execute("ALTER TABLE finished_matches ADD COLUMN final_status TEXT NOT NULL DEFAULT ''")
             except Exception:
                 pass
@@ -132,6 +165,26 @@ class Database:
                 pass
             try:
                 conn.execute("ALTER TABLE finished_matches ADD COLUMN result TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN quality_grade TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN quality_score REAL NOT NULL DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN quality_setup TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN quality_summary TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN quality_reasons TEXT NOT NULL DEFAULT ''")
             except Exception:
                 pass
             # Ensure match_actions table exists for action inheritance
@@ -203,6 +256,11 @@ class Database:
         url: str = "",
         score: str = "",
         signal_count: int = 1,
+        quality_grade: str = "",
+        quality_score: float = 0.0,
+        quality_setup: str = "",
+        quality_summary: str = "",
+        quality_reasons: str = "",
     ) -> int:
         with self._conn() as conn:
             # Inherit match-level actions if previously set
@@ -215,10 +273,18 @@ class Database:
             fol = action["followed"] if action else 0
             cursor = conn.execute(
                 """
-                INSERT INTO alerts (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count, bet_placed, ignored, followed)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO alerts (
+                    match_id, match_name, opening, live, direction, diff, tournament, status, url, score,
+                    signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
+                    bet_placed, ignored, followed
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (match_id, match_name, opening, live, direction, diff, tournament, status, url, score, signal_count, bet, ign, fol),
+                (
+                    match_id, match_name, opening, live, direction, diff, tournament, status, url, score,
+                    signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
+                    bet, ign, fol,
+                ),
             )
             return cursor.lastrowid
 
@@ -408,10 +474,10 @@ class Database:
                 INSERT OR IGNORE INTO finished_matches (
                     source_alert_id, match_id, match_name, tournament, status, final_status,
                     opening, live, direction, diff, url, bet_placed, ignored, followed,
-                    alerted_at, score, signal_count,
+                    alerted_at, score, signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
                     final_score, final_total, result
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     alert["id"],
@@ -431,6 +497,11 @@ class Database:
                     alert.get("alerted_at"),
                     alert.get("score", ""),
                     alert.get("signal_count", 1),
+                    alert.get("quality_grade", ""),
+                    alert.get("quality_score", 0),
+                    alert.get("quality_setup", ""),
+                    alert.get("quality_summary", ""),
+                    alert.get("quality_reasons", ""),
                     final_score,
                     final_total,
                     result,

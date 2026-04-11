@@ -15,6 +15,7 @@ from aiscore_opera_scraper import AiscoreOperaScraper
 from config import Config
 from db import Database
 from notifier import TelegramNotifier
+from signal_quality import assess_signal_quality
 
 
 def setup_logging(level: str):
@@ -29,6 +30,7 @@ async def process_match(
     match: dict,
     db: Database,
     notifier: TelegramNotifier,
+    scraper: AiscoreOperaScraper,
     config: Config,
 ) -> None:
     """
@@ -90,21 +92,41 @@ async def process_match(
     # 1) Count previous alerts for this match (signal number)
     signal_count = db.count_match_alerts(match_id) + 1
 
+    try:
+        insights = await scraper.get_match_insights(url)
+    except Exception as exc:
+        log.debug("Could not fetch AIScore insights for %s: %s", match_name, exc)
+        insights = {}
+
+    quality = assess_signal_quality(
+        {
+            **match,
+            "direction": direction,
+        },
+        insights,
+        config.THRESHOLD,
+    )
+
     # 2) Send instant Telegram alert
     await notifier.send_alert(
         match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
-        score=score, signal_count=signal_count,
+        score=score, signal_count=signal_count, quality=quality,
     )
 
     # 3) Save to database
     db.save_alert(
         match_id, match_name, opening_total, inplay_total, direction, abs_diff,
         tournament=tournament, status=status, url=url, score=score, signal_count=signal_count,
+        quality_grade=quality["grade"],
+        quality_score=quality["score"],
+        quality_setup=quality["setup"],
+        quality_summary=quality["summary"],
+        quality_reasons=quality["reasons_text"],
     )
 
     log.info(
-        "Alert sent: id=%s | name=%s | direction=%s | diff=%.2f",
-        match_id, match_name, direction, abs_diff,
+        "Alert sent: id=%s | name=%s | direction=%s | diff=%.2f | kalite=%s %.1f",
+        match_id, match_name, direction, abs_diff, quality["grade"], quality["score"],
     )
 
     # Yapay zeka analizi devredışı bırakıldı
@@ -152,7 +174,7 @@ async def run():
             log.info("Captured opening/in-play totals for %s matches.", len(matches))
 
             for match in matches:
-                await process_match(match, db, notifier, config)
+                await process_match(match, db, notifier, scraper, config)
 
             consecutive_errors = 0
 

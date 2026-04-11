@@ -1,0 +1,579 @@
+import re
+from statistics import mean
+
+
+def _split_match_name(match_name: str) -> tuple[str, str]:
+    parts = [part.strip() for part in (match_name or "").split(" - ", 1)]
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return match_name or "Home", "Away"
+
+
+def _parse_score(score: str) -> tuple[int, int] | tuple[None, None]:
+    match = re.search(r"(\d+)\s*[-–]\s*(\d+)", score or "")
+    if not match:
+        return None, None
+    return int(match.group(1)), int(match.group(2))
+
+
+def _parse_status(status: str, match_name: str = "", tournament: str = "") -> tuple[int | None, float | None, int]:
+    status_clean = (status or "").strip()
+    if not status_clean or re.match(r"^OT", status_clean, re.IGNORECASE):
+        return None, None, 40
+
+    text_to_check = f"{match_name} {tournament}".upper()
+    if "NBA" in text_to_check:
+        quarter_length = 12
+        total_game_min = 48
+    elif "NCAA" in text_to_check:
+        quarter_length = 20
+        total_game_min = 40
+    else:
+        quarter_length = 10
+        total_game_min = 40
+
+    period = None
+    remaining_min = None
+
+    if re.match(r"^HT$", status_clean, re.IGNORECASE):
+        period = 2
+        remaining_min = 0.0
+
+    if period is None:
+        q_match = re.match(
+            r"(?:Q(\d)|(\d)Q)\s*[-\s]?\s*(\d{1,2}):(\d{2})",
+            status_clean,
+            re.IGNORECASE,
+        )
+        if q_match:
+            period = int(q_match.group(1) or q_match.group(2))
+            remaining_min = int(q_match.group(3)) + int(q_match.group(4)) / 60.0
+
+    if period is None:
+        ord_match = re.match(
+            r"(\d)(?:st|nd|rd|th)\s*[-\s]?\s*(?:(\d{1,2}):(\d{2}))?",
+            status_clean,
+            re.IGNORECASE,
+        )
+        if ord_match:
+            period = int(ord_match.group(1))
+            if ord_match.group(2) and ord_match.group(3):
+                remaining_min = int(ord_match.group(2)) + int(ord_match.group(3)) / 60.0
+            else:
+                remaining_min = 5.0
+
+    if period is None:
+        q_only = re.match(r"^(?:Q(\d)|(\d)Q)$", status_clean, re.IGNORECASE)
+        if q_only:
+            period = int(q_only.group(1) or q_only.group(2))
+            remaining_min = 5.0
+
+    if period is None:
+        h_match = re.match(r"^(\d)H$", status_clean, re.IGNORECASE)
+        if h_match:
+            half = int(h_match.group(1))
+            period = 2 if half == 1 else 4
+            remaining_min = 5.0
+
+    if period is None:
+        d_match = re.match(r"^([1-4])$", status_clean)
+        if d_match:
+            period = int(d_match.group(1))
+            remaining_min = 5.0
+
+    if period is None:
+        nt_match = re.match(r"(\d{1,2})[-:](\d{1,2}):(\d{2})", status_clean)
+        if nt_match:
+            p = int(nt_match.group(1))
+            if 1 <= p <= 4:
+                period = p
+                remaining_min = int(nt_match.group(2)) + int(nt_match.group(3)) / 60.0
+
+    return period, remaining_min, total_game_min
+
+
+def calculate_projected_total(score: str, status: str, match_name: str = "", tournament: str = "") -> float | None:
+    home_score, away_score = _parse_score(score)
+    if home_score is None or away_score is None:
+        return None
+
+    period, remaining_min, total_game_min = _parse_status(status, match_name, tournament)
+    if period is None or remaining_min is None:
+        return None
+
+    quarter_length = 20 if total_game_min == 40 and "NCAA" in f"{match_name} {tournament}".upper() else (12 if total_game_min == 48 else 10)
+    if quarter_length == 20:
+        elapsed_min = (period - 1) * 20 + (20 - remaining_min)
+    else:
+        elapsed_min = (period - 1) * quarter_length + (quarter_length - remaining_min)
+
+    if elapsed_min <= 1:
+        return None
+
+    return round(((home_score + away_score) / elapsed_min) * total_game_min, 1)
+
+
+def _safe_float(value) -> float | None:
+    if value is None:
+        return None
+    match = re.search(r"-?\d+(?:\.\d+)?", str(value).replace(",", "."))
+    if not match:
+        return None
+    try:
+        return float(match.group(0))
+    except ValueError:
+        return None
+
+
+def _parse_stat_pair(raw_value: str) -> dict:
+    text = str(raw_value or "").strip()
+    data = {"raw": text, "value": _safe_float(text), "made": None, "attempts": None, "pct": None}
+
+    slash = re.match(r"\s*(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)\s*$", text)
+    if slash:
+        data["made"] = float(slash.group(1))
+        data["attempts"] = float(slash.group(2))
+        return data
+
+    pct = re.match(r"\s*(\d+(?:\.\d+)?)\s*%\s*$", text)
+    if pct:
+        data["pct"] = float(pct.group(1))
+        return data
+
+    return data
+
+
+def _canonical_stat_label(label: str) -> str | None:
+    value = (label or "").strip().lower()
+    mappings = {
+        "fg_pct": ["field goal", "fg%"],
+        "fg": ["field goals", "fg made"],
+        "three_pct": ["3-point", "three-point", "3 pt", "3pts", "three points %"],
+        "three": ["3-point field goals", "three-point field goals", "3-pointers", "3 pointers"],
+        "two_pct": ["2-point", "two-point"],
+        "two": ["2-point field goals", "two-point field goals"],
+        "ft_pct": ["free throw %", "ft%"],
+        "ft": ["free throws", "free-throws"],
+        "rebounds": ["rebounds", "total rebounds"],
+        "off_rebounds": ["offensive rebounds"],
+        "def_rebounds": ["defensive rebounds"],
+        "assists": ["assists"],
+        "turnovers": ["turnovers", "turnover"],
+        "steals": ["steals"],
+        "blocks": ["blocks"],
+        "fouls": ["personal fouls", "fouls", "personal foul"],
+        "timeouts": ["timeouts", "time outs"],
+    }
+    for canonical, keywords in mappings.items():
+        if any(keyword in value for keyword in keywords):
+            return canonical
+    return None
+
+
+def _build_stat_metrics(rows: list[dict]) -> dict:
+    parsed = {}
+    for row in rows or []:
+        canonical = _canonical_stat_label(row.get("label", ""))
+        if not canonical or canonical in parsed:
+            continue
+        parsed[canonical] = {
+            "home": _parse_stat_pair(row.get("home")),
+            "away": _parse_stat_pair(row.get("away")),
+            "label": row.get("label", canonical),
+        }
+
+    def pct_average(key: str) -> float | None:
+        item = parsed.get(key)
+        if not item:
+            return None
+        values = [item["home"].get("pct") or item["home"].get("value"), item["away"].get("pct") or item["away"].get("value")]
+        values = [v for v in values if v is not None]
+        return round(mean(values), 1) if values else None
+
+    def attempts_total(key: str) -> float | None:
+        item = parsed.get(key)
+        if not item:
+            return None
+        attempts = [item["home"].get("attempts"), item["away"].get("attempts")]
+        attempts = [v for v in attempts if v is not None]
+        return round(sum(attempts), 1) if attempts else None
+
+    def values_total(key: str) -> float | None:
+        item = parsed.get(key)
+        if not item:
+            return None
+        values = [item["home"].get("value"), item["away"].get("value")]
+        values = [v for v in values if v is not None]
+        return round(sum(values), 1) if values else None
+
+    return {
+        "rows_found": len(parsed),
+        "fg_pct_avg": pct_average("fg_pct"),
+        "three_pct_avg": pct_average("three_pct"),
+        "ft_pct_avg": pct_average("ft_pct"),
+        "total_fga": attempts_total("fg"),
+        "total_three_pa": attempts_total("three"),
+        "total_fta": attempts_total("ft"),
+        "total_rebounds": values_total("rebounds"),
+        "total_turnovers": values_total("turnovers"),
+        "total_fouls": values_total("fouls"),
+        "total_assists": values_total("assists"),
+        "raw": parsed,
+    }
+
+
+def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
+    text = re.sub(r"\s+", " ", body_text or "").strip()
+    home_team, away_team = _split_match_name(match_name)
+
+    def team_metrics(team_name: str) -> dict:
+        escaped = re.escape(team_name)
+        pattern = (
+            rf"Last 5[, ]+{escaped}.*?"
+            rf"(\d+(?:\.\d+)?) points per macth,\s*"
+            rf"(\d+(?:\.\d+)?) opponent points per game,.*?"
+            rf"Total points over%:\s*(\d+(?:\.\d+)?)%"
+        )
+        match = re.search(pattern, text, re.IGNORECASE)
+        if not match:
+            return {}
+        return {
+            "ppg": float(match.group(1)),
+            "oppg": float(match.group(2)),
+            "over_pct": float(match.group(3)),
+        }
+
+    h2h_over = None
+    h2h_games = None
+    h2h_match = re.search(
+        r"Past H2H Results.*?Total Points Over%:\s*(\d+(?:\.\d+)?)%",
+        text,
+        re.IGNORECASE,
+    )
+    if h2h_match:
+        h2h_over = float(h2h_match.group(1))
+
+    total_games_match = re.search(r"Total Matches\s+(\d+)", text, re.IGNORECASE)
+    if total_games_match:
+        h2h_games = int(total_games_match.group(1))
+
+    home_metrics = team_metrics(home_team)
+    away_metrics = team_metrics(away_team)
+
+    expected_total = None
+    if home_metrics and away_metrics:
+        expected_total = round(mean([
+            home_metrics["ppg"] + home_metrics["oppg"],
+            away_metrics["ppg"] + away_metrics["oppg"],
+        ]), 1)
+
+    return {
+        "home_last5": home_metrics,
+        "away_last5": away_metrics,
+        "h2h_over_pct": h2h_over,
+        "h2h_games": h2h_games,
+        "expected_total": expected_total,
+    }
+
+
+def _derive_setup_name(direction: str, tags: set[str]) -> str:
+    if direction == "ALT":
+        if "hot_shooting" in tags:
+            return "Sicak Sut Regresyonu ALT"
+        if "blowout" in tags:
+            return "Blowout Game Script ALT"
+        if "low_foul" in tags:
+            return "Durgun Tempo ALT"
+        return "Market Sapmasi ALT"
+
+    if "clutch_over" in tags:
+        return "Faul Oyunu UST"
+    if "cold_shooting" in tags and "shot_volume" in tags:
+        return "Tempo Destekli UST"
+    if "history_over" in tags:
+        return "Profil Destekli UST"
+    return "Market Sapmasi UST"
+
+
+def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
+    direction = match["direction"]
+    opening = float(match["opening_total"])
+    live = float(match["inplay_total"])
+    diff = abs(live - opening)
+    match_name = match.get("match_name", "")
+    tournament = match.get("tournament", "")
+    status = match.get("status", "")
+    score = match.get("score", "")
+    locked = bool(match.get("market_locked"))
+
+    period, remaining_min, _ = _parse_status(status, match_name, tournament)
+    home_score, away_score = _parse_score(score)
+    score_gap = abs(home_score - away_score) if home_score is not None and away_score is not None else None
+
+    stat_metrics = _build_stat_metrics((context.get("stats") or {}).get("rows", []))
+    h2h_metrics = _extract_h2h_metrics((context.get("h2h") or {}).get("body_text", ""), match_name)
+    projected_total = calculate_projected_total(score, status, match_name, tournament)
+
+    score_value = 50.0
+    reasons = []
+    risks = []
+    tags = set()
+    source_count = 1
+
+    diff_ratio = diff / max(float(threshold or 1), 1.0)
+    if diff_ratio >= 1.7:
+        score_value += 14
+        reasons.append(f"Market sapmasi cok guclu: acilis-canli farki {diff:.1f}")
+    elif diff_ratio >= 1.4:
+        score_value += 10
+        reasons.append(f"Market sapmasi guclu: fark {diff:.1f}")
+    elif diff_ratio >= 1.15:
+        score_value += 6
+        reasons.append(f"Market sapmasi esitigin ustunde: fark {diff:.1f}")
+
+    if period == 2:
+        score_value += 7
+        reasons.append("Q2 veri penceresi saglikli")
+    elif period == 3:
+        score_value += 10
+        reasons.append("Q3 ana fiyatlama penceresi")
+    elif period == 1:
+        score_value -= 7
+        risks.append("Q1 sinyali daha oynak")
+    elif period == 4:
+        score_value -= 4
+        risks.append("Q4 sonu varyansi yuksek")
+        if remaining_min is not None and remaining_min <= 6:
+            score_value -= 5
+            risks.append("Son bolum faul ve clock management etkisi artiyor")
+    else:
+        score_value -= 8
+        risks.append("Periyot/sure bilgisi net degil")
+
+    if locked:
+        score_value -= 4
+        risks.append("Market satirlari kilitli/suspended gorundu")
+
+    if projected_total is not None:
+        source_count += 1
+        if direction == "ALT":
+            projected_edge = live - projected_total
+            if projected_edge >= 8:
+                score_value += 12
+                reasons.append(f"Tempo projeksiyonu ALTi guclu destekliyor ({projected_total:.1f} < {live:.1f})")
+            elif projected_edge >= 4:
+                score_value += 8
+                reasons.append(f"Projeksiyon ALT yonunde ({projected_total:.1f})")
+            elif projected_edge >= 1:
+                score_value += 4
+            else:
+                score_value -= 10
+                risks.append(f"Projeksiyon ALT ile ayni hizada degil ({projected_total:.1f})")
+        else:
+            projected_edge = projected_total - live
+            if projected_edge >= 8:
+                score_value += 12
+                reasons.append(f"Tempo projeksiyonu USTu guclu destekliyor ({projected_total:.1f} > {live:.1f})")
+            elif projected_edge >= 4:
+                score_value += 8
+                reasons.append(f"Projeksiyon UST yonunde ({projected_total:.1f})")
+            elif projected_edge >= 1:
+                score_value += 4
+            else:
+                score_value -= 10
+                risks.append(f"Projeksiyon UST ile ayni hizada degil ({projected_total:.1f})")
+    else:
+        risks.append("Tempo projeksiyonu hesaplanamadi")
+
+    if score_gap is not None:
+        if direction == "ALT" and score_gap >= 15:
+            score_value += 6
+            reasons.append(f"Skor farki {score_gap} puan, tempo dusme riski var")
+            tags.add("blowout")
+        if direction == "UST" and period == 4 and score_gap <= 8:
+            score_value += 7
+            reasons.append("Mac yakin, son bolum faul oyunu USTu destekleyebilir")
+            tags.add("clutch_over")
+        if direction == "UST" and score_gap >= 18:
+            score_value -= 7
+            risks.append(f"Skor farki {score_gap} puan, blowout UST icin negatif")
+        if direction == "ALT" and period == 4 and score_gap <= 6:
+            score_value -= 6
+            risks.append("Mac cok yakin, gec oyun ALT icin riskli")
+
+    if stat_metrics["rows_found"] >= 3:
+        source_count += 1
+        total_fga = stat_metrics.get("total_fga")
+        total_three_pa = stat_metrics.get("total_three_pa")
+        total_fta = stat_metrics.get("total_fta")
+        total_turnovers = stat_metrics.get("total_turnovers")
+        total_fouls = stat_metrics.get("total_fouls")
+        fg_pct_avg = stat_metrics.get("fg_pct_avg")
+        three_pct_avg = stat_metrics.get("three_pct_avg")
+
+        if total_fga and total_fga >= 100:
+            tags.add("shot_volume")
+            if direction == "UST":
+                score_value += 4
+                reasons.append(f"Sut hacmi yuksek ({int(total_fga)} FGA)")
+            else:
+                score_value += 1
+
+        if total_three_pa and total_three_pa >= 45 and direction == "UST":
+            score_value += 3
+            reasons.append(f"Uc sayi hacmi yuksek ({int(total_three_pa)} deneme)")
+            tags.add("shot_volume")
+
+        if total_fta and total_fta >= 32:
+            if direction == "UST":
+                score_value += 5
+                reasons.append(f"Serbest atis hacmi UST lehine ({int(total_fta)} FTA)")
+            else:
+                score_value -= 2
+                risks.append("Yuksek serbest atis hacmi ALT icin negatif")
+        elif total_fta and total_fta <= 22:
+            if direction == "ALT":
+                score_value += 3
+                reasons.append(f"Serbest atis hacmi dusuk ({int(total_fta)} FTA)")
+                tags.add("low_foul")
+
+        if total_fouls and total_fouls >= 28 and direction == "UST":
+            score_value += 3
+            reasons.append(f"Faul yogunlugu UST lehine ({int(total_fouls)} faul)")
+        elif total_fouls and total_fouls <= 20 and direction == "ALT":
+            score_value += 2
+            reasons.append("Faul akisi sakin, ALT lehine")
+            tags.add("low_foul")
+
+        if total_turnovers and total_turnovers >= 28:
+            if direction == "ALT":
+                score_value += 3
+                reasons.append(f"Top kaybi yuksek ({int(total_turnovers)}), hucum verimi dusuyor")
+            else:
+                score_value -= 2
+                risks.append("Top kaybi akisi UST ivmesini bozabilir")
+
+        if fg_pct_avg is not None:
+            if direction == "ALT" and fg_pct_avg >= 51:
+                score_value += 7
+                reasons.append(f"Sut verimliligi sicak ({fg_pct_avg:.1f}% FG), regresyon adayi")
+                tags.add("hot_shooting")
+            elif direction == "UST" and fg_pct_avg <= 43:
+                score_value += 7
+                reasons.append(f"Sut verimliligi dusuk ({fg_pct_avg:.1f}% FG), yukari regresyon adayi")
+                tags.add("cold_shooting")
+            elif direction == "UST" and fg_pct_avg >= 52:
+                score_value -= 3
+                risks.append("Verimlilik zaten cok yuksek, USTte marj daraliyor")
+
+        if three_pct_avg is not None:
+            if direction == "ALT" and three_pct_avg >= 39:
+                score_value += 3
+                reasons.append(f"Uc sayi isabeti sicak ({three_pct_avg:.1f}%)")
+                tags.add("hot_shooting")
+            elif direction == "UST" and three_pct_avg <= 31:
+                score_value += 3
+                reasons.append(f"Uc sayi isabeti dusuk ({three_pct_avg:.1f}%), pozitif regresyon adayi")
+                tags.add("cold_shooting")
+    else:
+        risks.append("Canli istatistik verisi zayif veya eksik")
+
+    home_last5 = (h2h_metrics.get("home_last5") or {}).get("over_pct")
+    away_last5 = (h2h_metrics.get("away_last5") or {}).get("over_pct")
+    expected_total = h2h_metrics.get("expected_total")
+    h2h_over_pct = h2h_metrics.get("h2h_over_pct")
+
+    if home_last5 is not None and away_last5 is not None:
+        source_count += 1
+        avg_over = (home_last5 + away_last5) / 2
+        if direction == "UST":
+            if avg_over >= 60:
+                score_value += 6
+                reasons.append(f"Son 5 total profili UST lehine ({avg_over:.0f}% over)")
+                tags.add("history_over")
+            elif avg_over <= 40:
+                score_value -= 5
+                risks.append(f"Son 5 total profili USTu desteklemiyor ({avg_over:.0f}% over)")
+        else:
+            if avg_over <= 40:
+                score_value += 6
+                reasons.append(f"Son 5 total profili ALT lehine ({avg_over:.0f}% over)")
+            elif avg_over >= 60:
+                score_value -= 5
+                risks.append(f"Son 5 total profili ALTi desteklemiyor ({avg_over:.0f}% over)")
+
+    if expected_total is not None:
+        if direction == "UST" and expected_total >= live + 4:
+            score_value += 5
+            reasons.append(f"Tarihsel total profili yukarida ({expected_total:.1f})")
+            tags.add("history_over")
+        elif direction == "ALT" and expected_total <= live - 4:
+            score_value += 5
+            reasons.append(f"Tarihsel total profili asagida ({expected_total:.1f})")
+        elif direction == "UST" and expected_total < live - 6:
+            score_value -= 4
+            risks.append(f"Tarihsel total profili UST ile celisiyor ({expected_total:.1f})")
+        elif direction == "ALT" and expected_total > live + 6:
+            score_value -= 4
+            risks.append(f"Tarihsel total profili ALT ile celisiyor ({expected_total:.1f})")
+
+    if h2h_over_pct is not None:
+        if direction == "UST" and h2h_over_pct >= 60:
+            score_value += 2
+        elif direction == "ALT" and h2h_over_pct <= 40:
+            score_value += 2
+
+    lineup_page = context.get("lineups") or {}
+    standings_page = context.get("standings") or {}
+    if lineup_page.get("available"):
+        source_count += 0.5
+    if standings_page.get("available"):
+        source_count += 0.5
+
+    if source_count >= 4:
+        score_value += 4
+        reasons.append("Veri kapsamı guclu, birden fazla kaynak teyidi var")
+    elif source_count <= 2:
+        score_value -= 6
+        risks.append("Kalite puani sinirli veriyle hesaplandi")
+
+    score_value = max(30.0, min(99.0, score_value))
+
+    if score_value >= 88:
+        grade = "A++"
+    elif score_value >= 80:
+        grade = "A+"
+    elif score_value >= 72:
+        grade = "A"
+    elif score_value >= 62:
+        grade = "B"
+    else:
+        grade = "C"
+
+    setup = _derive_setup_name(direction, tags)
+
+    reasons = reasons[:4]
+    risks = risks[:3]
+
+    summary_parts = []
+    if reasons:
+        summary_parts.append(reasons[0])
+    if risks:
+        summary_parts.append(f"Risk: {risks[0]}")
+    summary = " | ".join(summary_parts) if summary_parts else "Kalite puani temel market verisinden hesaplandi"
+
+    lines = []
+    for item in reasons:
+        lines.append(f"+ {item}")
+    for item in risks:
+        lines.append(f"- {item}")
+
+    return {
+        "grade": grade,
+        "score": round(score_value, 1),
+        "setup": setup,
+        "summary": summary,
+        "reasons_text": "\n".join(lines),
+        "projected_total": projected_total,
+        "data_sources": source_count,
+    }

@@ -46,6 +46,7 @@ class TelegramNotifier:
         status: str,
         score: str = "",
         signal_count: int = 1,
+        quality: dict | None = None,
     ) -> dict:
         """
         Sends a single alert notification.
@@ -60,9 +61,25 @@ class TelegramNotifier:
 
         score_line = f"📊 Skor: <b>{score}</b>\n" if score else ""
         signal_line = f"🔁 <b>{signal_count}. sinyal</b>\n" if signal_count > 1 else ""
+        quality_line = ""
+        summary_line = ""
+        reasons_line = ""
+        if quality:
+            quality_line = (
+                f"🏅 <b>Kalite: {quality.get('grade', '-')}</b>"
+                f" <i>({quality.get('score', 0):.1f}/100)</i>\n"
+            )
+            if quality.get("setup"):
+                summary_line += f"🧩 <b>Setup:</b> {quality['setup']}\n"
+            if quality.get("summary"):
+                summary_line += f"📝 {quality['summary']}\n"
+            raw_reasons = [line.strip() for line in str(quality.get("reasons_text", "")).splitlines() if line.strip()]
+            if raw_reasons:
+                reasons_line = "🔎 <b>Gerekceler</b>\n" + "\n".join(raw_reasons[:4]) + "\n"
 
         text = (
             f"{emoji} <b>Sinyal: {direction}</b>\n"
+            f"{quality_line}"
             f"{signal_line}\n"
             f"🏀 <b>{match_name}</b>\n"
             f"🏆 {tournament} | {status}\n"
@@ -70,6 +87,8 @@ class TelegramNotifier:
             f"Açılış Baremi: <b>{opening:.1f}</b>\n"
             f"Güncel Barem:  <b>{live:.1f}</b>\n"
             f"Fark: <b>{diff:+.1f}</b> puan\n\n"
+            f"{summary_line}"
+            f"{reasons_line}"
             f"💡 <i>{tip}</i>"
             f"\n"
         )
