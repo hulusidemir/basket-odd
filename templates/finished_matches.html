@@ -6,66 +6,80 @@
   <title>🏁 Biten Maçlar | Basket Anomali</title>
   <style>
     :root {
-      --bg: #0f1117;
-      --card: #1a1d27;
-      --card-hover: #1f2230;
-      --border: #2a2d3a;
-      --text: #e4e6eb;
-      --text-dim: #8b8fa3;
-      --accent-alt: #ef4444;
-      --accent-ust: #22c55e;
-      --accent-blue: #3b82f6;
-      --accent-follow: #fbbf24;
-      --success: #22c55e;
-      --danger: #ef4444;
-      --push: #f59e0b;
-      --hero: radial-gradient(circle at top right, rgba(59,130,246,0.18), transparent 32%), radial-gradient(circle at top left, rgba(34,197,94,0.12), transparent 26%), linear-gradient(180deg, #10141d 0%, #0f1117 100%);
-      --radius: 14px;
+      --bg: #0d1118;
+      --panel: #141a24;
+      --panel-2: #1a2230;
+      --border: rgba(148, 163, 184, 0.18);
+      --border-strong: rgba(148, 163, 184, 0.28);
+      --text: #edf2f7;
+      --text-soft: #a7b1c2;
+      --text-muted: #7d8798;
+      --blue: #4f9cf9;
+      --blue-soft: rgba(79, 156, 249, 0.18);
+      --green: #34d399;
+      --green-soft: rgba(52, 211, 153, 0.14);
+      --red: #f87171;
+      --red-soft: rgba(248, 113, 113, 0.14);
+      --amber: #fbbf24;
+      --amber-soft: rgba(251, 191, 36, 0.14);
+      --slate-soft: rgba(148, 163, 184, 0.12);
+      --shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+      --radius: 18px;
     }
 
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(79, 156, 249, 0.12), transparent 30%),
+        radial-gradient(circle at top left, rgba(52, 211, 153, 0.08), transparent 24%),
+        linear-gradient(180deg, #0d1118 0%, #0a0e14 100%);
       color: var(--text);
       min-height: 100vh;
       -webkit-tap-highlight-color: transparent;
     }
 
-    .header {
-      padding: 22px 20px 18px;
-      border-bottom: 1px solid var(--border);
-      background: var(--hero);
+    a { color: inherit; }
+
+    .page {
+      width: min(1440px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 40px;
     }
 
-    .header-top {
+    .hero {
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(20, 26, 36, 0.96), rgba(13, 17, 24, 0.96));
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+
+    .hero-top {
+      padding: 26px 26px 18px;
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
-      gap: 16px;
+      gap: 18px;
       flex-wrap: wrap;
-      margin-bottom: 16px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.1);
     }
 
-    .header h1 {
-      font-size: 24px;
-      font-weight: 800;
-      line-height: 1.15;
-      margin-bottom: 8px;
+    .hero-copy h1 {
+      font-size: 30px;
+      line-height: 1.08;
+      font-weight: 850;
+      letter-spacing: -0.03em;
+      margin-bottom: 10px;
     }
 
-    .header h1 .subtitle {
-      opacity: 0.55;
-      font-weight: 500;
+    .hero-copy p {
+      max-width: 880px;
+      color: var(--text-soft);
+      line-height: 1.7;
       font-size: 14px;
-    }
-
-    .header-copy {
-      max-width: 720px;
-      color: var(--text-dim);
-      font-size: 14px;
-      line-height: 1.65;
     }
 
     .nav-links {
@@ -78,182 +92,322 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 7px 14px;
+      min-height: 38px;
+      padding: 0 14px;
       border-radius: 999px;
       border: 1px solid var(--border);
-      background: rgba(255,255,255,0.04);
-      color: var(--text-dim);
       text-decoration: none;
+      color: var(--text-soft);
+      background: rgba(255, 255, 255, 0.03);
       font-size: 12px;
       font-weight: 700;
-      transition: all 0.18s ease;
+      transition: 0.16s ease;
       white-space: nowrap;
     }
 
     .nav-link:hover {
       color: var(--text);
-      border-color: var(--accent-blue);
+      border-color: rgba(79, 156, 249, 0.4);
     }
 
     .nav-link.active {
-      background: rgba(59,130,246,0.16);
-      border-color: rgba(59,130,246,0.32);
       color: #dbeafe;
+      background: rgba(79, 156, 249, 0.18);
+      border-color: rgba(79, 156, 249, 0.36);
     }
 
-    .stats {
+    .trust-strip {
+      padding: 18px 26px 26px;
       display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-      gap: 10px;
+      grid-template-columns: 1.45fr 1fr;
+      gap: 14px;
     }
 
-    .stat-card {
-      background: rgba(255,255,255,0.03);
+    .trust-card,
+    .summary-card,
+    .panel,
+    .match-card,
+    .modal-box {
+      background: rgba(255, 255, 255, 0.03);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 14px 15px;
-      min-height: 96px;
     }
 
-    .stat-label {
-      color: var(--text-dim);
+    .trust-card {
+      padding: 18px 18px 16px;
+    }
+
+    .trust-kicker,
+    .section-kicker,
+    .card-kicker {
+      color: var(--text-muted);
       font-size: 11px;
-      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.08em;
+      font-weight: 800;
     }
 
-    .stat-value {
-      margin-top: 8px;
+    .trust-score {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-top: 10px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .trust-score strong {
+      font-size: 40px;
+      line-height: 1;
+      font-weight: 850;
+      letter-spacing: -0.05em;
+    }
+
+    .trust-tone {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .tone-caution {
+      color: #fef3c7;
+      background: rgba(245, 158, 11, 0.16);
+      border: 1px solid rgba(245, 158, 11, 0.32);
+    }
+
+    .tone-good {
+      color: #bbf7d0;
+      background: rgba(52, 211, 153, 0.16);
+      border: 1px solid rgba(52, 211, 153, 0.32);
+    }
+
+    .tone-bad {
+      color: #fecaca;
+      background: rgba(248, 113, 113, 0.16);
+      border: 1px solid rgba(248, 113, 113, 0.32);
+    }
+
+    .trust-text {
+      color: var(--text-soft);
+      line-height: 1.75;
+      font-size: 14px;
+    }
+
+    .trust-points {
+      margin-top: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .point-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 0 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-soft);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+    }
+
+    .direction-panel {
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .direction-box {
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    .direction-box.top-alt { box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.16); }
+    .direction-box.top-ust { box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.16); }
+
+    .direction-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .direction-name {
+      font-weight: 800;
+      font-size: 15px;
+    }
+
+    .direction-value {
+      font-weight: 850;
+      font-size: 22px;
+      letter-spacing: -0.04em;
+    }
+
+    .direction-detail {
+      color: var(--text-soft);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .summary-card {
+      padding: 16px;
+      min-height: 136px;
+    }
+
+    .summary-card strong {
+      display: block;
+      margin-top: 10px;
       font-size: 28px;
       line-height: 1;
-      font-weight: 800;
+      font-weight: 850;
+      letter-spacing: -0.05em;
       font-variant-numeric: tabular-nums;
     }
 
-    .stat-detail {
+    .summary-card p {
       margin-top: 10px;
-      color: var(--text-dim);
-      font-size: 12px;
-      line-height: 1.5;
+      color: var(--text-soft);
+      font-size: 13px;
+      line-height: 1.65;
     }
 
-    .stat-success .stat-value { color: var(--success); }
-    .stat-fail .stat-value { color: var(--danger); }
-    .stat-push .stat-value { color: var(--push); }
-    .stat-alt .stat-value { color: var(--accent-alt); }
-    .stat-ust .stat-value { color: var(--accent-ust); }
+    .summary-card.warning strong { color: #fbbf24; }
+    .summary-card.success strong { color: var(--green); }
+    .summary-card.fail strong { color: var(--red); }
+    .summary-card.accent strong { color: var(--blue); }
+
+    .toolbar {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .search-box,
+    .toolbar-btn {
+      min-height: 44px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .search-box {
+      flex: 1;
+      min-width: 240px;
+      padding: 0 14px;
+      outline: none;
+    }
+
+    .search-box::placeholder { color: var(--text-muted); }
+    .search-box:focus { border-color: rgba(79, 156, 249, 0.42); }
+
+    .toolbar-btn {
+      padding: 0 14px;
+      cursor: pointer;
+      font-weight: 800;
+      transition: 0.16s ease;
+      white-space: nowrap;
+    }
+
+    .toolbar-btn:hover {
+      border-color: rgba(79, 156, 249, 0.42);
+    }
+
+    .toolbar-btn:disabled {
+      opacity: 0.55;
+      cursor: wait;
+    }
+
+    .toolbar-btn.primary {
+      color: #dbeafe;
+      background: rgba(79, 156, 249, 0.15);
+      border-color: rgba(79, 156, 249, 0.28);
+    }
+
+    .toolbar-btn.success {
+      color: #bbf7d0;
+      background: rgba(52, 211, 153, 0.15);
+      border-color: rgba(52, 211, 153, 0.26);
+    }
+
+    .toolbar-btn.danger {
+      color: #fecaca;
+      background: rgba(248, 113, 113, 0.14);
+      border-color: rgba(248, 113, 113, 0.26);
+    }
+
+    .toolbar-note {
+      margin-left: auto;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.6;
+      text-align: right;
+    }
 
     .filters {
-      padding: 12px 20px;
       display: flex;
-      gap: 6px;
+      gap: 8px;
       overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      border-bottom: 1px solid var(--border);
       scrollbar-width: none;
+      margin-bottom: 18px;
     }
 
     .filters::-webkit-scrollbar { display: none; }
 
     .filter-btn {
-      padding: 7px 14px;
-      border-radius: 20px;
+      min-height: 40px;
+      padding: 0 14px;
+      border-radius: 999px;
       border: 1px solid var(--border);
-      background: transparent;
-      color: var(--text-dim);
-      cursor: pointer;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-soft);
       font-size: 13px;
-      transition: all 0.2s;
+      font-weight: 800;
+      cursor: pointer;
+      transition: 0.16s ease;
       white-space: nowrap;
       flex-shrink: 0;
-      font-weight: 700;
     }
 
     .filter-btn:hover {
-      border-color: var(--accent-blue);
       color: var(--text);
+      border-color: rgba(79, 156, 249, 0.42);
     }
 
     .filter-btn.active {
-      background: var(--accent-blue);
-      border-color: var(--accent-blue);
-      color: #fff;
-    }
-
-    .toolbar {
-      padding: 12px 20px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      border-bottom: 1px solid var(--border);
-      flex-wrap: wrap;
-    }
-
-    .search-box {
-      flex: 1;
-      min-width: 220px;
-      padding: 10px 14px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: var(--card);
-      color: var(--text);
-      font-size: 14px;
-      outline: none;
-    }
-
-    .search-box::placeholder { color: var(--text-dim); }
-    .search-box:focus { border-color: var(--accent-blue); }
-
-    .toolbar-btn {
-      padding: 8px 14px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--text-dim);
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 700;
-      transition: all 0.18s ease;
-      white-space: nowrap;
-    }
-
-    .toolbar-btn:hover { border-color: var(--accent-blue); color: var(--text); }
-    .toolbar-btn:disabled { opacity: 0.55; cursor: wait; }
-
-    .toolbar-btn.primary {
-      background: rgba(59,130,246,0.16);
       color: #dbeafe;
-      border-color: rgba(59,130,246,0.32);
-    }
-
-    .toolbar-btn.success {
-      background: rgba(34,197,94,0.14);
-      color: #bbf7d0;
-      border-color: rgba(34,197,94,0.28);
-    }
-
-    .toolbar-btn.danger {
-      background: rgba(239,68,68,0.14);
-      color: #fecaca;
-      border-color: rgba(239,68,68,0.28);
-    }
-
-    .refresh-info {
-      color: var(--text-dim);
-      font-size: 12px;
-      white-space: nowrap;
-      margin-left: auto;
+      background: rgba(79, 156, 249, 0.18);
+      border-color: rgba(79, 156, 249, 0.34);
     }
 
     .status-banner {
       display: none;
-      margin: 14px 20px 0;
-      padding: 14px 16px;
-      border-radius: 12px;
+      margin-bottom: 18px;
+      padding: 15px 16px;
+      border-radius: 16px;
       border: 1px solid var(--border);
+      line-height: 1.65;
       font-size: 13px;
-      line-height: 1.6;
     }
 
     .status-banner strong {
@@ -263,121 +417,417 @@
     }
 
     .status-banner.visible { display: block; }
-    .status-banner.success { background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.22); color: #d1fae5; }
-    .status-banner.warn { background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.22); color: #fde68a; }
-    .status-banner.error { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.22); color: #fecaca; }
-
-    .table-wrap {
-      padding: 0 20px;
-      overflow-x: auto;
+    .status-banner.success {
+      background: rgba(52, 211, 153, 0.08);
+      border-color: rgba(52, 211, 153, 0.22);
+      color: #d1fae5;
     }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-      min-width: 1220px;
+    .status-banner.warn {
+      background: rgba(245, 158, 11, 0.08);
+      border-color: rgba(245, 158, 11, 0.22);
+      color: #fef3c7;
     }
 
-    thead th {
-      text-align: left;
-      padding: 12px;
-      color: var(--text-dim);
-      font-weight: 600;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      border-bottom: 1px solid var(--border);
-      white-space: nowrap;
-      user-select: none;
-      background: var(--bg);
-      position: sticky;
-      top: 0;
-      z-index: 2;
+    .status-banner.error {
+      background: rgba(248, 113, 113, 0.08);
+      border-color: rgba(248, 113, 113, 0.22);
+      color: #fecaca;
     }
 
-    thead th.sortable {
-      cursor: pointer;
+    .panel {
+      padding: 16px;
+      margin-bottom: 18px;
     }
 
-    thead th.sortable:hover {
-      color: var(--text);
+    .insight-grid {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
     }
 
-    tbody tr {
-      border-bottom: 1px solid var(--border);
-      transition: background 0.15s ease;
+    .insight-box {
+      border-radius: 14px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(148, 163, 184, 0.12);
     }
 
-    tbody tr:hover {
-      background: rgba(255,255,255,0.03);
-    }
-
-    tbody td {
-      padding: 12px;
-      vertical-align: top;
-      white-space: nowrap;
-    }
-
-    .match-cell {
-      min-width: 280px;
-      white-space: normal;
-    }
-
-    .match-name {
-      display: inline-block;
-      color: var(--text);
-      text-decoration: none;
-      font-weight: 700;
-      line-height: 1.45;
-    }
-
-    .match-name:hover {
-      color: var(--accent-blue);
-      text-decoration: underline;
-    }
-
-    .meta-line {
+    .insight-box strong {
       display: block;
-      color: var(--text-dim);
-      margin-top: 5px;
-      line-height: 1.45;
-      white-space: normal;
+      margin-top: 8px;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .insight-box span {
+      color: var(--text-soft);
+      font-size: 13px;
+      line-height: 1.6;
+      display: block;
+      margin-top: 8px;
+    }
+
+    .match-list {
+      display: grid;
+      gap: 14px;
+    }
+
+    .match-card {
+      padding: 18px;
+      transition: 0.18s ease;
+    }
+
+    .match-card:hover {
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
+    }
+
+    .match-card.state-mixed {
+      box-shadow: inset 0 0 0 1px rgba(79, 156, 249, 0.16);
+    }
+
+    .match-card.state-suspicious {
+      box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.18);
+    }
+
+    .match-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .match-title {
+      display: inline-block;
+      text-decoration: none;
+      font-size: 20px;
+      line-height: 1.2;
+      font-weight: 850;
+      letter-spacing: -0.03em;
+    }
+
+    .match-title:hover {
+      color: #dbeafe;
+    }
+
+    .match-subtitle {
+      margin-top: 8px;
+      color: var(--text-soft);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .head-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
     }
 
     .badge {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 5px;
-      padding: 4px 10px;
-      border-radius: 12px;
-      font-weight: 700;
-      font-size: 11px;
+      min-height: 34px;
+      padding: 0 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
       white-space: nowrap;
+      border: 1px solid transparent;
     }
 
-    .badge-success { background: rgba(34,197,94,0.15); color: #86efac; }
-    .badge-fail { background: rgba(239,68,68,0.15); color: #fca5a5; }
-    .badge-push { background: rgba(245,158,11,0.15); color: #fcd34d; }
-    .badge-alt { background: rgba(239,68,68,0.12); color: #f87171; }
-    .badge-ust { background: rgba(34,197,94,0.12); color: #4ade80; }
-    .badge-quality-a2 { background: rgba(34,197,94,0.18); color: #86efac; border: 1px solid rgba(34,197,94,0.35); }
-    .badge-quality-a1 { background: rgba(59,130,246,0.18); color: #93c5fd; border: 1px solid rgba(59,130,246,0.35); }
-    .badge-quality-a { background: rgba(56,189,248,0.16); color: #7dd3fc; border: 1px solid rgba(56,189,248,0.32); }
-    .badge-quality-b { background: rgba(245,158,11,0.16); color: #fcd34d; border: 1px solid rgba(245,158,11,0.32); }
-    .badge-quality-c { background: rgba(148,163,184,0.16); color: #cbd5e1; border: 1px solid rgba(148,163,184,0.32); }
-    .stack {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+    .badge-success {
+      color: #bbf7d0;
+      background: var(--green-soft);
+      border-color: rgba(52, 211, 153, 0.24);
     }
 
-    .inline-badges {
+    .badge-fail {
+      color: #fecaca;
+      background: var(--red-soft);
+      border-color: rgba(248, 113, 113, 0.24);
+    }
+
+    .badge-push {
+      color: #fde68a;
+      background: var(--amber-soft);
+      border-color: rgba(245, 158, 11, 0.24);
+    }
+
+    .badge-alt {
+      color: #fecaca;
+      background: rgba(248, 113, 113, 0.1);
+      border-color: rgba(248, 113, 113, 0.2);
+    }
+
+    .badge-ust {
+      color: #bbf7d0;
+      background: rgba(52, 211, 153, 0.1);
+      border-color: rgba(52, 211, 153, 0.2);
+    }
+
+    .badge-neutral {
+      color: #dbeafe;
+      background: rgba(79, 156, 249, 0.12);
+      border-color: rgba(79, 156, 249, 0.24);
+    }
+
+    .badge-warning {
+      color: #fef3c7;
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.24);
+    }
+
+    .summary-row {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .mini-box {
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    .mini-box span {
+      display: block;
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 800;
+    }
+
+    .mini-box strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 20px;
+      font-weight: 850;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+    }
+
+    .match-note {
+      padding: 14px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      color: var(--text-soft);
+      font-size: 14px;
+      line-height: 1.7;
+      margin-bottom: 12px;
+    }
+
+    .sequence-wrap {
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .signal-pill {
+      display: inline-flex;
       align-items: center;
+      gap: 8px;
+      min-height: 38px;
+      padding: 0 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      background: rgba(255, 255, 255, 0.03);
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-soft);
+    }
+
+    .signal-pill.success {
+      border-color: rgba(52, 211, 153, 0.22);
+      background: rgba(52, 211, 153, 0.08);
+      color: #d1fae5;
+    }
+
+    .signal-pill.fail {
+      border-color: rgba(248, 113, 113, 0.22);
+      background: rgba(248, 113, 113, 0.08);
+      color: #fee2e2;
+    }
+
+    .signal-pill.push {
+      border-color: rgba(245, 158, 11, 0.24);
+      background: rgba(245, 158, 11, 0.09);
+      color: #fef3c7;
+    }
+
+    details.signal-details {
+      border-radius: 16px;
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      background: rgba(255, 255, 255, 0.025);
+      overflow: hidden;
+    }
+
+    details.signal-details > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 15px 16px;
+      font-weight: 800;
+      font-size: 14px;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    details.signal-details > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .summary-hint {
+      color: var(--text-muted);
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .signal-list {
+      padding: 0 16px 16px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .signal-row {
+      border-radius: 14px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    .signal-row-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .signal-row-title {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .signal-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 34px;
+      height: 34px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: rgba(79, 156, 249, 0.14);
+      border: 1px solid rgba(79, 156, 249, 0.24);
+      color: #dbeafe;
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .signal-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .quality-btn,
+    .delete-btn {
+      min-height: 34px;
+      padding: 0 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-soft);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+      transition: 0.16s ease;
+    }
+
+    .quality-btn:hover,
+    .delete-btn:hover {
+      border-color: rgba(79, 156, 249, 0.34);
+      color: var(--text);
+    }
+
+    .delete-btn {
+      color: #fecaca;
+      border-color: rgba(248, 113, 113, 0.22);
+      background: rgba(248, 113, 113, 0.1);
+    }
+
+    .delete-btn:hover {
+      border-color: rgba(248, 113, 113, 0.4);
+    }
+
+    .signal-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .signal-box {
+      border-radius: 12px;
+      padding: 12px;
+      background: rgba(13, 17, 24, 0.36);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+    .signal-box span {
+      display: block;
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 800;
+    }
+
+    .signal-box strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text);
+      font-weight: 800;
+    }
+
+    .signal-warning {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.22);
+      color: #fef3c7;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .empty-state {
+      display: none;
+      padding: 52px 20px;
+      text-align: center;
+      color: var(--text-soft);
+      font-size: 15px;
+      line-height: 1.7;
+      border: 1px dashed rgba(148, 163, 184, 0.2);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.02);
     }
 
     .mono {
@@ -385,161 +835,15 @@
       font-feature-settings: "tnum";
     }
 
-    .note-cell {
-      max-width: 280px;
-      white-space: normal;
-      color: var(--text-dim);
-      line-height: 1.55;
-    }
-
-    .quality-cell {
-      min-width: 190px;
-      white-space: normal;
-    }
-
-    .quality-badge {
-      cursor: pointer;
-      transition: transform 0.15s ease;
-    }
-
-    .quality-badge:hover {
-      transform: translateY(-1px);
-    }
-
-    .quality-setup {
-      display: block;
-      margin-top: 6px;
-      color: var(--text-dim);
-      font-size: 11px;
-      line-height: 1.45;
-    }
-
-    .counter-warning {
-      margin-top: 8px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      background: rgba(239,68,68,0.12);
-      border: 1px solid rgba(239,68,68,0.28);
-      color: #fca5a5;
-      line-height: 1.55;
-      font-size: 12px;
-      white-space: normal;
-    }
-
-    .counter-warning strong {
-      color: #fecaca;
-    }
-
-    .action-group {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 8px;
-    }
-
-    .delete-btn {
-      padding: 7px 12px;
-      border-radius: 8px;
-      border: 1px solid rgba(239,68,68,0.35);
-      color: #ef4444;
-      background: rgba(239,68,68,0.12);
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 700;
-      transition: all 0.15s ease;
-    }
-
-    .delete-btn:hover {
-      border-color: #ef4444;
-      background: rgba(239,68,68,0.85);
-      color: #fff;
-    }
-
-    .cards-wrap {
-      display: none;
-      padding: 12px 16px 20px;
-      gap: 10px;
-      flex-direction: column;
-    }
-
-    .match-card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 14px;
-    }
-
-    .card-top {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 10px;
-    }
-
-    .card-match {
-      min-width: 0;
-      flex: 1;
-    }
-
-    .card-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px 14px;
-      font-size: 12px;
-      color: var(--text-dim);
-      margin-bottom: 10px;
-    }
-
-    .card-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-
-    .card-box {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px 12px;
-    }
-
-    .card-box-label {
-      color: var(--text-dim);
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 4px;
-    }
-
-    .card-box-value {
-      font-size: 15px;
-      font-weight: 700;
-      line-height: 1.4;
-    }
-
-    .card-actions {
-      display: flex;
-      justify-content: flex-end;
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 60px 20px;
-      color: var(--text-dim);
-      font-size: 15px;
-    }
-
     .modal-overlay {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(2, 6, 23, 0.8);
       z-index: 100;
       justify-content: center;
       align-items: center;
       padding: 20px;
+      background: rgba(3, 7, 18, 0.82);
     }
 
     .modal-overlay.active {
@@ -547,324 +851,359 @@
     }
 
     .modal-box {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      width: min(1180px, 100%);
+      width: min(820px, 100%);
       max-height: 88vh;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+      box-shadow: var(--shadow);
+      background: linear-gradient(180deg, #17202d 0%, #111722 100%);
     }
 
     .modal-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--border);
+      gap: 12px;
+      padding: 18px 20px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
     }
 
     .modal-header h3 {
-      font-size: 17px;
-      font-weight: 800;
+      font-size: 18px;
+      font-weight: 850;
+      letter-spacing: -0.02em;
     }
 
     .modal-close {
-      background: none;
       border: none;
-      color: var(--text-dim);
-      font-size: 24px;
+      background: transparent;
+      color: var(--text-soft);
+      font-size: 26px;
       cursor: pointer;
       line-height: 1;
     }
 
-    .modal-close:hover {
-      color: var(--text);
-    }
+    .modal-close:hover { color: var(--text); }
 
     .modal-body {
-      padding: 18px 20px 22px;
+      padding: 20px;
       overflow-y: auto;
+      color: var(--text-soft);
+      line-height: 1.75;
+      font-size: 14px;
     }
 
-    .modal-summary {
+    .modal-body strong { color: var(--text); }
+
+    .modal-metrics {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
-      margin-bottom: 18px;
+      margin-bottom: 16px;
     }
 
-    .summary-box {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: rgba(255,255,255,0.03);
-      padding: 14px;
-    }
-
-    .summary-box strong {
-      display: block;
-      font-size: 24px;
-      line-height: 1;
-      margin-top: 8px;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .summary-box span {
-      color: var(--text-dim);
-      font-size: 12px;
-      line-height: 1.5;
-    }
-
-    .detail-columns {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 16px;
-    }
-
-    .detail-column {
-      border: 1px solid var(--border);
+    .modal-metric {
       border-radius: 14px;
-      background: rgba(255,255,255,0.02);
-      min-height: 200px;
-      overflow: hidden;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid rgba(148, 163, 184, 0.12);
     }
 
-    .detail-column-header {
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--border);
-      font-size: 14px;
+    .modal-metric span {
+      display: block;
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
       font-weight: 800;
     }
 
-    .detail-column-header.success { color: #86efac; }
-    .detail-column-header.fail { color: #fca5a5; }
-
-    .detail-list {
-      padding: 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
+    .modal-metric strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 22px;
+      font-weight: 850;
+      line-height: 1.1;
     }
 
-    .group-card {
-      border: 1px solid var(--border);
-      background: rgba(255,255,255,0.03);
-      border-radius: 12px;
-      padding: 12px;
+    .modal-section {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(148, 163, 184, 0.12);
     }
 
-    .group-card-top {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
+    .report-headline {
+      font-size: 18px;
+      line-height: 1.55;
+      color: var(--text);
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .report-summary {
+      color: var(--text-soft);
+      font-size: 14px;
+      line-height: 1.75;
+    }
+
+    .report-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
+      margin-top: 16px;
+    }
+
+    .report-card {
+      border-radius: 14px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    .report-card span {
+      display: block;
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 800;
+    }
+
+    .report-card strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 22px;
+      font-weight: 850;
+      line-height: 1.1;
+      color: var(--text);
+    }
+
+    .report-card p {
+      margin-top: 8px;
+      color: var(--text-soft);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .report-section-title {
+      font-size: 15px;
+      color: var(--text);
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .report-highlight-list,
+    .report-example-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .report-highlight,
+    .report-example {
+      border-radius: 14px;
+      padding: 13px 14px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    .report-highlight {
+      color: var(--text-soft);
+      line-height: 1.7;
+    }
+
+    .report-example strong {
+      display: block;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.55;
+      margin-bottom: 6px;
+    }
+
+    .report-example p {
+      color: var(--text-soft);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .report-loading {
+      padding: 28px 8px;
+      text-align: center;
+      color: var(--text-soft);
+      font-size: 14px;
+      line-height: 1.8;
+    }
+
+    .modal-list {
+      margin-top: 10px;
+      padding-left: 18px;
+    }
+
+    .modal-list li {
       margin-bottom: 8px;
     }
 
-    .group-card-title {
-      font-weight: 700;
-      line-height: 1.45;
-      color: var(--text);
-      text-decoration: none;
+    @media (max-width: 1180px) {
+      .trust-strip,
+      .summary-grid,
+      .summary-row,
+      .signal-grid,
+      .modal-metrics,
+      .report-grid,
+      .insight-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
     }
 
-    .group-card-title:hover {
-      color: var(--accent-blue);
-      text-decoration: underline;
-    }
-
-    .group-subtitle {
-      color: var(--text-dim);
-      font-size: 12px;
-      line-height: 1.5;
-      margin-top: 4px;
-    }
-
-    .group-signals {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: 10px;
-    }
-
-    .group-signal {
-      border-radius: 10px;
-      background: rgba(255,255,255,0.025);
-      padding: 10px;
-      font-size: 12px;
-      line-height: 1.6;
-      color: var(--text-dim);
-    }
-
-    .group-signal strong {
-      color: var(--text);
-    }
-
-    .signal-num-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 28px;
-      height: 28px;
-      padding: 0 9px;
-      border-radius: 999px;
-      background: rgba(59,130,246,0.18);
-      border: 1px solid rgba(59,130,246,0.28);
-      color: #dbeafe;
-      font-size: 12px;
-      font-weight: 800;
-      margin-right: 8px;
-      vertical-align: middle;
-    }
-
-    .detail-empty {
-      color: var(--text-dim);
-      font-size: 13px;
-      line-height: 1.6;
-    }
-
-    @media (max-width: 1080px) {
-      .stats {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+    @media (max-width: 900px) {
+      .page {
+        width: min(100%, calc(100% - 20px));
+        padding-top: 14px;
       }
 
-      .modal-summary,
-      .detail-columns {
+      .hero-top,
+      .trust-strip,
+      .toolbar,
+      .panel,
+      .match-card,
+      .summary-card,
+      .trust-card,
+      .direction-panel {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      .hero-copy h1 { font-size: 24px; }
+      .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .summary-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .signal-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .report-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 640px) {
+      .hero-top {
+        padding-top: 18px;
+        padding-bottom: 14px;
+      }
+
+      .trust-strip,
+      .summary-grid,
+      .summary-row,
+      .signal-grid,
+      .modal-metrics,
+      .report-grid,
+      .insight-grid {
         grid-template-columns: 1fr;
       }
-    }
 
-    @media (max-width: 768px) {
-      .header { padding: 16px; }
-      .header h1 { font-size: 19px; }
-      .header h1 .subtitle { display: none; }
-      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .table-wrap { display: none; }
-      .cards-wrap { display: flex; }
-      .toolbar { padding: 10px 16px; }
-      .filters { padding: 10px 16px; }
-      .status-banner { margin: 12px 16px 0; }
-      .refresh-info { width: 100%; margin-left: 0; }
-    }
+      .toolbar-note {
+        width: 100%;
+        margin-left: 0;
+        text-align: left;
+      }
 
-    @media (max-width: 520px) {
-      .stats { grid-template-columns: 1fr; }
-      .card-grid { grid-template-columns: 1fr; }
+      .match-title { font-size: 18px; }
+      .trust-score strong { font-size: 32px; }
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="header-top">
-      <div>
-        <h1>🏁 Biten Maçlar <span class="subtitle">— Sinyal Sonuç Arşivi</span></h1>
-        <p class="header-copy">Bu ekran dashboard’dan bağımsız kalıcı arşivdir. Sinyal düşmüş canlı maçlar bittiğinde burada saklanır; dashboard’dan silinse bile bu ekranın kayıtları korunur.</p>
+  <div class="page">
+    <section class="hero">
+      <div class="hero-top">
+        <div class="hero-copy">
+          <h1>🏁 Biten Maçlar</h1>
+          <p>Bu ekran artık sinyalleri tek tek dökmek yerine maç bazlı düşünür: önce uygulamaya ne kadar güvenilebileceğini gösterir, sonra aynı maç içindeki tüm sinyalleri tek kartta toplar. Böylece “ALT mı daha iyi, ÜST mü daha iyi, aynı maçta hangi sinyaller tuttu, hangileri patladı?” sorularını doğrudan okuyabilirsin.</p>
+        </div>
+        <div class="nav-links">
+          <a class="nav-link" href="/">Canlı Dashboard</a>
+          <a class="nav-link active" href="/finished-matches">Biten Maçlar</a>
+          <a class="nav-link" href="/bankroll">Bankroll</a>
+        </div>
       </div>
-      <div class="nav-links">
-        <a class="nav-link" href="/">Canlı Dashboard</a>
-        <a class="nav-link active" href="/finished-matches">Biten Maçlar</a>
-        <a class="nav-link" href="/bankroll">Bankroll</a>
+
+      <div class="trust-strip">
+        <div class="trust-card">
+          <div class="trust-kicker">Genel Güven Özeti</div>
+          <div class="trust-score">
+            <strong id="trustScore">0%</strong>
+            <span class="trust-tone tone-caution" id="trustTone">Veri bekleniyor</span>
+          </div>
+          <div class="trust-text" id="trustText">Arşiv yüklendiğinde burada ALT / ÜST başarısı, karışık maç oranı ve şüpheli kayıt uyarısı tek cümlede özetlenir.</div>
+          <div class="trust-points" id="trustPoints"></div>
+        </div>
+
+        <div class="direction-panel">
+          <div class="direction-box top-alt">
+            <div class="direction-head">
+              <div class="direction-name">ALT tarafı</div>
+              <div class="direction-value mono" id="altSuccessRate">0%</div>
+            </div>
+            <div class="direction-detail" id="altDirectionText">Başarılı ALT sinyalleri, benzersiz maç sayısı ve tekrar eden kayıt farkı burada görünür.</div>
+          </div>
+
+          <div class="direction-box top-ust">
+            <div class="direction-head">
+              <div class="direction-name">ÜST tarafı</div>
+              <div class="direction-value mono" id="ustSuccessRate">0%</div>
+            </div>
+            <div class="direction-detail" id="ustDirectionText">Başarılı ÜST sinyalleri, benzersiz maç sayısı ve tekrar eden kayıt farkı burada görünür.</div>
+          </div>
+        </div>
       </div>
+    </section>
+
+    <section class="summary-grid" id="summaryGrid">
+      <article class="summary-card accent">
+        <div class="card-kicker">Toplam Sinyal</div>
+        <strong>0</strong>
+        <p>Ham kayıtlar yüklendiğinde burada toplam sinyal sayısı gösterilir.</p>
+      </article>
+    </section>
+
+    <section class="panel toolbar">
+      <input class="search-box" id="searchInput" type="text" placeholder="Takım, turnuva, sinyal no veya final skor ara...">
+      <button class="toolbar-btn success" id="checkNowBtn" onclick="checkNow()">Şimdi Kontrol Et</button>
+      <button class="toolbar-btn primary" id="reportBtn" onclick="openReportModal()">Rapor</button>
+      <button class="toolbar-btn primary" onclick="loadFinishedMatches()">Yenile</button>
+      <button class="toolbar-btn danger" id="clearAllBtn" onclick="clearAllFinishedMatches()">Tümünü Sil</button>
+      <div class="toolbar-note">
+        Listeleme: karışık ve şüpheli maçlar öne alınır.
+        <br>
+        Son güncelleme: <span id="lastUpdated">-</span>
+      </div>
+    </section>
+
+    <div class="filters">
+      <button class="filter-btn active" data-filter="all">Tümü</button>
+      <button class="filter-btn" data-filter="mixed">Karışık Maçlar</button>
+      <button class="filter-btn" data-filter="only-success">Tam Başarılı</button>
+      <button class="filter-btn" data-filter="only-fail">Tam Başarısız</button>
+      <button class="filter-btn" data-filter="repeated">Tekrarlı Maçlar</button>
+      <button class="filter-btn" data-filter="suspicious">Şüpheli Veri</button>
+      <button class="filter-btn" data-filter="alt-success">ALT Başarısı Olan</button>
+      <button class="filter-btn" data-filter="ust-success">ÜST Başarısı Olan</button>
     </div>
 
-    <div class="stats">
-      <div class="stat-card">
-        <div class="stat-label">Toplam Sinyal</div>
-        <div class="stat-value" id="statTotal">0</div>
-        <div class="stat-detail">Arşivdeki toplam kayıt</div>
-      </div>
-      <div class="stat-card stat-success">
-        <div class="stat-label">Başarılı</div>
-        <div class="stat-value" id="statSuccess">0</div>
-        <div class="stat-detail">Benzersiz maç: <span id="statSuccessUnique">0</span></div>
-      </div>
-      <div class="stat-card stat-fail">
-        <div class="stat-label">Başarısız</div>
-        <div class="stat-value" id="statFail">0</div>
-        <div class="stat-detail">Benzersiz maç: <span id="statFailUnique">0</span></div>
-      </div>
-      <div class="stat-card stat-push">
-        <div class="stat-label">İade</div>
-        <div class="stat-value" id="statPush">0</div>
-        <div class="stat-detail">Eşleşen barem sonuçları</div>
-      </div>
-      <div class="stat-card stat-alt">
-        <div class="stat-label">ALT</div>
-        <div class="stat-value" id="statAlt">0</div>
-        <div class="stat-detail">Benzersiz maç: <span id="statAltUnique">0</span></div>
-      </div>
-      <div class="stat-card stat-ust">
-        <div class="stat-label">ÜST</div>
-        <div class="stat-value" id="statUst">0</div>
-        <div class="stat-detail">Benzersiz maç: <span id="statUstUnique">0</span></div>
-      </div>
-    </div>
-  </div>
+    <div id="statusBanner" class="status-banner"></div>
 
-  <div class="filters">
-    <button class="filter-btn active" data-filter="all">Tümü</button>
-    <button class="filter-btn" data-filter="success">✅ Başarılı</button>
-    <button class="filter-btn" data-filter="fail">❌ Başarısız</button>
-    <button class="filter-btn" data-filter="push">↔ İade</button>
-    <button class="filter-btn" data-filter="alt">🔻 ALT</button>
-    <button class="filter-btn" data-filter="ust">🔺 ÜST</button>
-    <button class="filter-btn" data-filter="a2">A++</button>
-    <button class="filter-btn" data-filter="a1">A+</button>
-    <button class="filter-btn" data-filter="a">A</button>
-    <button class="filter-btn" data-filter="b">B</button>
-    <button class="filter-btn" data-filter="c">C</button>
-  </div>
-
-  <div class="toolbar">
-    <input class="search-box" type="text" placeholder="Takım, turnuva veya skor ara..." id="searchInput">
-    <button class="toolbar-btn primary" id="detailBtn" onclick="openDetailModal()">📊 Detaylar</button>
-    <button class="toolbar-btn success" id="checkNowBtn" onclick="checkNow()">Şimdi Kontrol Et</button>
-    <button class="toolbar-btn" onclick="loadFinishedMatches()">Yenile</button>
-    <button class="toolbar-btn danger" id="clearAllBtn" onclick="clearAllFinishedMatches()">Tümünü Sil</button>
-    <span class="refresh-info">Sıralama: <span id="sortInfo">Bitiş Zamanı ↓</span> | Son güncelleme: <span id="lastUpdated">-</span></span>
-  </div>
-
-  <div id="statusBanner" class="status-banner"></div>
-
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th class="sortable" data-sort="result" data-label="Sonuç">Sonuç</th>
-          <th class="sortable" data-sort="direction" data-label="Sinyal">Sinyal</th>
-          <th class="sortable" data-sort="quality_score" data-label="Kalite">Kalite</th>
-          <th class="sortable" data-sort="match_name" data-label="Maç">Maç</th>
-          <th class="sortable" data-sort="tournament" data-label="Turnuva">Turnuva</th>
-          <th class="sortable" data-sort="score" data-label="Sinyal Skoru">Sinyal Skoru</th>
-          <th class="sortable" data-sort="final_score" data-label="Final Skoru">Final Skoru</th>
-          <th class="sortable" data-sort="final_total" data-label="Final Total">Final Total</th>
-          <th class="sortable" data-sort="live" data-label="Canlı Barem">Canlı Barem</th>
-          <th class="sortable" data-sort="alerted_at" data-label="Sinyal Zamanı">Sinyal Zamanı</th>
-          <th class="sortable" data-sort="finished_at" data-label="Bitiş Zamanı">Bitiş Zamanı</th>
-          <th data-label="İşlem">İşlem</th>
-        </tr>
-      </thead>
-      <tbody id="tableBody"></tbody>
-    </table>
-  </div>
-
-  <div class="cards-wrap" id="cardsWrap"></div>
-  <div class="empty-state" id="emptyState" style="display:none;">Henüz arşivlenmiş biten maç kaydı yok.</div>
-
-  <div class="modal-overlay" id="detailModal" onclick="if(event.target===this)closeDetailModal()">
-    <div class="modal-box">
-      <div class="modal-header">
-        <h3>Başarılı / Başarısız Sinyal Detayı</h3>
-        <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+    <section class="panel">
+      <div class="section-kicker">Hızlı Okuma</div>
+      <div class="insight-grid" id="insightGrid">
+        <div class="insight-box">
+          <div class="card-kicker">Benzersiz Maçlar</div>
+          <strong>0</strong>
+          <span>Arşiv yüklenince burada “sadece başarılı / sadece başarısız / karışık” dağılımı görünür.</span>
+        </div>
       </div>
-      <div class="modal-body" id="detailModalBody"></div>
-    </div>
+    </section>
+
+    <section class="match-list" id="matchList"></section>
+    <div class="empty-state" id="emptyState">Filtreye uygun maç bulunamadı. Arşiv boşsa önce manuel kontrol çalıştırabilir ya da filtreleri temizleyebilirsin.</div>
   </div>
 
   <div class="modal-overlay" id="qualityModal" onclick="if(event.target===this)closeQualityModal()">
-    <div class="modal-box" style="width:min(760px,100%);">
+    <div class="modal-box">
       <div class="modal-header">
         <h3 id="qualityModalTitle">Sinyal Kalitesi</h3>
         <button class="modal-close" onclick="closeQualityModal()">&times;</button>
@@ -873,11 +1212,20 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="reportModal" onclick="if(event.target===this)closeReportModal()">
+    <div class="modal-box" style="width:min(980px,100%);">
+      <div class="modal-header">
+        <h3>Veritabanı Analiz Raporu</h3>
+        <button class="modal-close" onclick="closeReportModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="reportModalBody"></div>
+    </div>
+  </div>
+
   <script>
-    let allMatches = [];
+    let allSignals = [];
+    let groupedMatches = [];
     let activeFilter = 'all';
-    let sortField = 'finished_at';
-    let sortAsc = false;
 
     function escapeHtml(value) {
       return String(value ?? '')
@@ -888,31 +1236,12 @@
         .replace(/'/g, '&#39;');
     }
 
-    function formatDate(value) {
-      if (!value) return '-';
-      const date = new Date(String(value).replace(' ', 'T'));
-      if (Number.isNaN(date.getTime())) return value;
-      return date.toLocaleString('tr-TR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    }
-
-    function formatLine(value) {
-      if (value === null || value === undefined || value === '') return '-';
-      const num = Number(value);
-      return Number.isFinite(num) ? num.toFixed(1) : value;
-    }
-
     function normalize(value) {
-      return String(value || '').toLocaleLowerCase('tr-TR');
+      return String(value || '').toLocaleLowerCase('tr-TR').trim();
     }
 
-    function canonicalResult(result) {
-      return normalize(result)
+    function foldText(value) {
+      return normalize(value)
         .replace(/ı/g, 'i')
         .replace(/ş/g, 's')
         .replace(/ğ/g, 'g')
@@ -921,415 +1250,584 @@
         .replace(/ç/g, 'c');
     }
 
+    function canonicalResult(value) {
+      return foldText(value);
+    }
+
+    function directionKey(value) {
+      const text = foldText(value);
+      return text === 'alt' ? 'alt' : 'ust';
+    }
+
+    function formatDate(value) {
+      if (!value) return '-';
+      const raw = typeof value === 'number' ? new Date(value) : new Date(String(value).replace(' ', 'T'));
+      if (Number.isNaN(raw.getTime())) return String(value);
+      return raw.toLocaleString('tr-TR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    function toTime(value) {
+      if (!value) return 0;
+      const raw = typeof value === 'number' ? new Date(value) : new Date(String(value).replace(' ', 'T'));
+      return Number.isNaN(raw.getTime()) ? 0 : raw.getTime();
+    }
+
+    function formatLine(value) {
+      if (value === null || value === undefined || value === '') return '-';
+      const num = Number(value);
+      return Number.isFinite(num) ? num.toFixed(1) : String(value);
+    }
+
+    function formatPercent(value) {
+      if (!Number.isFinite(value)) return '-';
+      return `${value.toFixed(1)}%`;
+    }
+
     function resultMeta(result) {
-      const normalized = canonicalResult(result);
-      if (normalized === 'basarili') return { label: 'Başarılı', className: 'badge badge-success', order: 0 };
-      if (normalized === 'basarisiz') return { label: 'Başarısız', className: 'badge badge-fail', order: 1 };
-      return { label: 'İade', className: 'badge badge-push', order: 2 };
+      const key = canonicalResult(result);
+      if (key === 'basarili') return { key, label: 'Başarılı', className: 'badge badge-success', pillClass: 'signal-pill success' };
+      if (key === 'basarisiz') return { key, label: 'Başarısız', className: 'badge badge-fail', pillClass: 'signal-pill fail' };
+      return { key: 'iade', label: 'İade', className: 'badge badge-push', pillClass: 'signal-pill push' };
     }
 
     function directionMeta(direction) {
-      const normalized = normalize(direction);
-      if (normalized === 'alt') return { label: 'ALT', className: 'badge badge-alt', order: 0 };
-      return { label: 'ÜST', className: 'badge badge-ust', order: 1 };
+      const key = directionKey(direction);
+      return key === 'alt'
+        ? { key, label: 'ALT', className: 'badge badge-alt' }
+        : { key, label: 'ÜST', className: 'badge badge-ust' };
     }
 
-    function qualityMeta(match) {
-      const grade = normalize(match.quality_grade).toUpperCase();
-      if (grade === 'A++') return { label: 'A++', className: 'badge badge-quality-a2 quality-badge', order: 0, key: 'a2' };
-      if (grade === 'A+') return { label: 'A+', className: 'badge badge-quality-a1 quality-badge', order: 1, key: 'a1' };
-      if (grade === 'A') return { label: 'A', className: 'badge badge-quality-a quality-badge', order: 2, key: 'a' };
-      if (grade === 'B') return { label: 'B', className: 'badge badge-quality-b quality-badge', order: 3, key: 'b' };
-      return { label: grade || 'C', className: 'badge badge-quality-c quality-badge', order: 4, key: 'c' };
+    function qualityMeta(signal) {
+      const grade = String(signal.quality_grade || '').toUpperCase() || 'C';
+      if (grade === 'A++') return { label: 'A++', key: 'a2' };
+      if (grade === 'A+') return { label: 'A+', key: 'a1' };
+      if (grade === 'A') return { label: 'A', key: 'a' };
+      if (grade === 'B') return { label: 'B', key: 'b' };
+      return { label: grade, key: 'c' };
     }
 
-    function qualityBadgeHtml(match) {
-      const meta = qualityMeta(match);
-      const score = Number(match.quality_score || 0);
-      const setup = match.quality_setup ? `<span class="quality-setup">${escapeHtml(match.quality_setup)}</span>` : '';
-      return `
-        <div class="quality-cell">
-          <span class="${meta.className}" onclick="showQuality(${Number(match.id)})">${escapeHtml(meta.label)} (${score.toFixed(1)})</span>
-          ${setup}
+    function matchLinkHtml(group) {
+      const label = escapeHtml(group.match_name || '-');
+      if (!group.url) return `<span class="match-title">${label}</span>`;
+      return `<a class="match-title" href="${escapeHtml(group.url)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    }
+
+    function isSuspiciousSignal(signal) {
+      const total = Number(signal.final_total);
+      return normalize(signal.final_status) === 'ft' && Number.isFinite(total) && total < 100;
+    }
+
+    function average(numbers) {
+      const valid = numbers.filter(value => Number.isFinite(value));
+      if (!valid.length) return 0;
+      return valid.reduce((sum, value) => sum + value, 0) / valid.length;
+    }
+
+    function pct(success, total) {
+      if (!total) return 0;
+      return (success / total) * 100;
+    }
+
+    function safeMatchKey(signal) {
+      return signal.match_id || `${signal.match_name || '-'}__${signal.tournament || '-'}__${signal.id}`;
+    }
+
+    function buildSequenceNote(group) {
+      const successPart = group.successNumbers.length ? `Başarılı: ${group.successNumbers.map(num => `#${num}`).join(', ')}` : '';
+      const failPart = group.failNumbers.length ? `Başarısız: ${group.failNumbers.map(num => `#${num}`).join(', ')}` : '';
+      const pushPart = group.pushNumbers.length ? `İade: ${group.pushNumbers.map(num => `#${num}`).join(', ')}` : '';
+
+      if (group.successCount > 0 && group.failCount === 0) {
+        return `Bu maçta gelen ${group.totalSignals} sinyalin tamamı başarılı oldu.`;
+      }
+      if (group.failCount > 0 && group.successCount === 0) {
+        return `Bu maçta gelen ${group.totalSignals} sinyalin tamamı başarısız oldu.`;
+      }
+
+      return [failPart, successPart, pushPart].filter(Boolean).join(' | ');
+    }
+
+    function buildGroups(signals) {
+      const map = new Map();
+
+      signals.forEach(signal => {
+        const key = safeMatchKey(signal);
+        if (!map.has(key)) {
+          map.set(key, {
+            key,
+            match_id: signal.match_id,
+            match_name: signal.match_name,
+            tournament: signal.tournament,
+            url: signal.url,
+            signals: []
+          });
+        }
+        map.get(key).signals.push(signal);
+      });
+
+      return Array.from(map.values()).map(group => {
+        const signalsSorted = [...group.signals].sort((a, b) => {
+          const signalDiff = Number(a.signal_count || 0) - Number(b.signal_count || 0);
+          if (signalDiff !== 0) return signalDiff;
+          return toTime(a.alerted_at) - toTime(b.alerted_at);
+        });
+
+        const successNumbers = [];
+        const failNumbers = [];
+        const pushNumbers = [];
+        let successCount = 0;
+        let failCount = 0;
+        let pushCount = 0;
+        let altSignals = 0;
+        let altSuccess = 0;
+        let ustSignals = 0;
+        let ustSuccess = 0;
+        let altFail = 0;
+        let ustFail = 0;
+        let suspiciousCount = 0;
+
+        signalsSorted.forEach(signal => {
+          const result = canonicalResult(signal.result);
+          const direction = directionKey(signal.direction);
+          const signalNo = Number(signal.signal_count || 0);
+
+          if (direction === 'alt') altSignals += 1;
+          else ustSignals += 1;
+
+          if (result === 'basarili') {
+            successCount += 1;
+            successNumbers.push(signalNo);
+            if (direction === 'alt') altSuccess += 1;
+            else ustSuccess += 1;
+          } else if (result === 'basarisiz') {
+            failCount += 1;
+            failNumbers.push(signalNo);
+            if (direction === 'alt') altFail += 1;
+            else ustFail += 1;
+          } else {
+            pushCount += 1;
+            pushNumbers.push(signalNo);
+          }
+
+          if (isSuspiciousSignal(signal)) suspiciousCount += 1;
+        });
+
+        const latestSignal = [...signalsSorted].sort((a, b) => toTime(b.finished_at) - toTime(a.finished_at))[0] || signalsSorted[signalsSorted.length - 1];
+        const avgQualityScore = average(signalsSorted.map(signal => Number(signal.quality_score || 0)));
+        const repeated = signalsSorted.length > 1;
+        const mixed = successCount > 0 && failCount > 0;
+
+        return {
+          ...group,
+          signals: signalsSorted,
+          totalSignals: signalsSorted.length,
+          successCount,
+          failCount,
+          pushCount,
+          altSignals,
+          altSuccess,
+          ustSignals,
+          ustSuccess,
+          altFail,
+          ustFail,
+          avgQualityScore,
+          repeated,
+          mixed,
+          suspiciousCount,
+          successNumbers,
+          failNumbers,
+          pushNumbers,
+          latestSignal,
+          sequenceNote: buildSequenceNote({
+            totalSignals: signalsSorted.length,
+            successCount,
+            failCount,
+            successNumbers,
+            failNumbers,
+            pushNumbers
+          })
+        };
+      }).sort((a, b) => {
+        if (a.mixed !== b.mixed) return a.mixed ? -1 : 1;
+        if ((a.suspiciousCount > 0) !== (b.suspiciousCount > 0)) return a.suspiciousCount > 0 ? -1 : 1;
+        if (a.totalSignals !== b.totalSignals) return b.totalSignals - a.totalSignals;
+        return toTime(b.latestSignal?.finished_at) - toTime(a.latestSignal?.finished_at);
+      });
+    }
+
+    function directionStats(signals, key) {
+      const scoped = signals.filter(signal => directionKey(signal.direction) === key);
+      const successSignals = scoped.filter(signal => canonicalResult(signal.result) === 'basarili');
+      const failSignals = scoped.filter(signal => canonicalResult(signal.result) === 'basarisiz');
+      const uniqueSuccessfulMatches = new Set(successSignals.map(safeMatchKey)).size;
+      return {
+        total: scoped.length,
+        success: successSignals.length,
+        fail: failSignals.length,
+        successRate: pct(successSignals.length, successSignals.length + failSignals.length),
+        uniqueSuccessfulMatches,
+        repeatedSuccessfulSignals: successSignals.length - uniqueSuccessfulMatches
+      };
+    }
+
+    function computeStats(signals, groups) {
+      const successSignals = signals.filter(signal => canonicalResult(signal.result) === 'basarili');
+      const failSignals = signals.filter(signal => canonicalResult(signal.result) === 'basarisiz');
+      const pushSignals = signals.filter(signal => canonicalResult(signal.result) === 'iade');
+      const alt = directionStats(signals, 'alt');
+      const ust = directionStats(signals, 'ust');
+      const uniqueMatches = groups.length;
+      const repeatedMatches = groups.filter(group => group.repeated).length;
+      const mixedMatches = groups.filter(group => group.mixed).length;
+      const onlySuccessMatches = groups.filter(group => group.successCount > 0 && group.failCount === 0).length;
+      const onlyFailMatches = groups.filter(group => group.failCount > 0 && group.successCount === 0).length;
+      const suspiciousSignals = signals.filter(isSuspiciousSignal).length;
+      const suspiciousMatches = groups.filter(group => group.suspiciousCount > 0).length;
+      const extraSignalsOnSameMatch = signals.length - uniqueMatches;
+      const highNumberSignals = signals.filter(signal => Number(signal.signal_count || 0) >= 4);
+      const highNumberSuccess = highNumberSignals.filter(signal => canonicalResult(signal.result) === 'basarili').length;
+      const gradeBOrBetter = signals.filter(signal => ['A++', 'A+', 'A', 'B'].includes(String(signal.quality_grade || '').toUpperCase()));
+      const gradeBOrBetterSuccess = gradeBOrBetter.filter(signal => canonicalResult(signal.result) === 'basarili').length;
+
+      return {
+        totalSignals: signals.length,
+        uniqueMatches,
+        repeatedMatches,
+        mixedMatches,
+        onlySuccessMatches,
+        onlyFailMatches,
+        extraSignalsOnSameMatch,
+        suspiciousSignals,
+        suspiciousMatches,
+        successSignals: successSignals.length,
+        failSignals: failSignals.length,
+        pushSignals: pushSignals.length,
+        overallSuccessRate: pct(successSignals.length, successSignals.length + failSignals.length),
+        alt,
+        ust,
+        highNumberSignals: highNumberSignals.length,
+        highNumberSignalSuccessRate: pct(highNumberSuccess, highNumberSignals.length),
+        gradeBOrBetterSignals: gradeBOrBetter.length,
+        gradeBOrBetterSuccessRate: pct(gradeBOrBetterSuccess, gradeBOrBetter.length)
+      };
+    }
+
+    function trustTone(stats) {
+      if (stats.suspiciousSignals > 0) {
+        return { label: 'Temkinli yaklaş', className: 'trust-tone tone-caution' };
+      }
+      if (stats.overallSuccessRate >= 65) {
+        return { label: 'Görece olumlu', className: 'trust-tone tone-good' };
+      }
+      if (stats.overallSuccessRate >= 55) {
+        return { label: 'Sınırlı avantaj', className: 'trust-tone tone-caution' };
+      }
+      return { label: 'Net avantaj yok', className: 'trust-tone tone-bad' };
+    }
+
+    function buildTrustText(stats) {
+      const diff = Math.abs(stats.alt.successRate - stats.ust.successRate);
+      let directionSentence = 'ALT ve ÜST tarafı birbirine çok yakın.';
+
+      if (diff >= 5) {
+        directionSentence = stats.alt.successRate > stats.ust.successRate
+          ? `ALT tarafı ${diff.toFixed(1)} puan önde.`
+          : `ÜST tarafı ${diff.toFixed(1)} puan önde.`;
+      }
+
+      let reliabilitySentence = stats.overallSuccessRate >= 65
+        ? 'Genel tablo umut verici görünüyor.'
+        : stats.overallSuccessRate >= 55
+          ? 'Genel tablo sınırlı bir avantaj gösteriyor.'
+          : 'Genel tabloda net bir üstünlük görünmüyor.';
+
+      if (stats.mixedMatches > 0) {
+        reliabilitySentence += ` ${stats.mixedMatches} maçta aynı maç içinde hem başarılı hem başarısız sinyal var.`;
+      }
+
+      if (stats.suspiciousSignals > 0) {
+        reliabilitySentence += ` Ayrıca ${stats.suspiciousSignals} sinyalde düşük total ile işaretlenmiş şüpheli FT kaydı bulunuyor.`;
+      }
+
+      return `${reliabilitySentence} ${directionSentence}`;
+    }
+
+    function renderTrust(stats) {
+      const tone = trustTone(stats);
+      document.getElementById('trustScore').textContent = formatPercent(stats.overallSuccessRate);
+      const trustToneEl = document.getElementById('trustTone');
+      trustToneEl.className = tone.className;
+      trustToneEl.textContent = tone.label;
+      document.getElementById('trustText').textContent = buildTrustText(stats);
+
+      const leaderText = Math.abs(stats.alt.successRate - stats.ust.successRate) < 5
+        ? 'ALT ve ÜST arasında belirgin fark yok'
+        : stats.alt.successRate > stats.ust.successRate
+          ? 'Şu an ALT daha iyi çalışıyor'
+          : 'Şu an ÜST daha iyi çalışıyor';
+
+      document.getElementById('trustPoints').innerHTML = [
+        `<span class="point-chip">${escapeHtml(leaderText)}</span>`,
+        `<span class="point-chip">${stats.mixedMatches} karışık maç</span>`,
+        `<span class="point-chip">${stats.repeatedMatches} tekrarlı maç</span>`,
+        `<span class="point-chip">${stats.suspiciousSignals} şüpheli kayıt</span>`
+      ].join('');
+
+      document.getElementById('altSuccessRate').textContent = formatPercent(stats.alt.successRate);
+      document.getElementById('altDirectionText').textContent =
+        `${stats.alt.success} başarılı / ${stats.alt.fail} başarısız. Benzersiz başarılı maç: ${stats.alt.uniqueSuccessfulMatches}. Aynı maçtaki ekstra başarılı kayıt: ${stats.alt.repeatedSuccessfulSignals}.`;
+
+      document.getElementById('ustSuccessRate').textContent = formatPercent(stats.ust.successRate);
+      document.getElementById('ustDirectionText').textContent =
+        `${stats.ust.success} başarılı / ${stats.ust.fail} başarısız. Benzersiz başarılı maç: ${stats.ust.uniqueSuccessfulMatches}. Aynı maçtaki ekstra başarılı kayıt: ${stats.ust.repeatedSuccessfulSignals}.`;
+    }
+
+    function renderSummary(stats) {
+      document.getElementById('summaryGrid').innerHTML = `
+        <article class="summary-card accent">
+          <div class="card-kicker">Toplam Sinyal</div>
+          <strong class="mono">${stats.totalSignals}</strong>
+          <p>${stats.uniqueMatches} benzersiz maça dağılmış toplam arşiv kaydı. Aynı maç için tekrar eden ekstra kayıt sayısı ${stats.extraSignalsOnSameMatch}.</p>
+        </article>
+        <article class="summary-card success">
+          <div class="card-kicker">Benzersiz Maç</div>
+          <strong class="mono">${stats.uniqueMatches}</strong>
+          <p>${stats.onlySuccessMatches} maç sadece başarılı, ${stats.onlyFailMatches} maç sadece başarısız, ${stats.mixedMatches} maç karışık sonuç verdi.</p>
+        </article>
+        <article class="summary-card warning">
+          <div class="card-kicker">Tekrarlı Maç</div>
+          <strong class="mono">${stats.repeatedMatches}</strong>
+          <p>Birden fazla sinyal üreten maç sayısı. Bu alan, aynı maça tekrar tekrar düşen sinyallerin etkisini ayrı görmen için var.</p>
+        </article>
+        <article class="summary-card ${stats.suspiciousSignals > 0 ? 'warning' : 'success'}">
+          <div class="card-kicker">Şüpheli Veri</div>
+          <strong class="mono">${stats.suspiciousSignals}</strong>
+          <p>${stats.suspiciousSignals > 0 ? `${stats.suspiciousMatches} maçta düşük total ile işaretlenmiş FT kaydı var. Bunları veri sorunu olarak düşünmek daha güvenli.` : 'Şu an şüpheli FT kaydı görünmüyor.'}</p>
+        </article>
+      `;
+    }
+
+    function renderInsights(stats) {
+      document.getElementById('insightGrid').innerHTML = `
+        <div class="insight-box">
+          <div class="card-kicker">ALT Başarı Dağılımı</div>
+          <strong class="mono">${stats.alt.success} / ${stats.alt.total}</strong>
+          <span>ALT tarafında başarı oranı ${formatPercent(stats.alt.successRate)}. Başarılı ALT kayıtlarının ${stats.alt.uniqueSuccessfulMatches} tanesi benzersiz maç, ${stats.alt.repeatedSuccessfulSignals} tanesi aynı maç tekrarından geliyor.</span>
+        </div>
+        <div class="insight-box">
+          <div class="card-kicker">ÜST Başarı Dağılımı</div>
+          <strong class="mono">${stats.ust.success} / ${stats.ust.total}</strong>
+          <span>ÜST tarafında başarı oranı ${formatPercent(stats.ust.successRate)}. Başarılı ÜST kayıtlarının ${stats.ust.uniqueSuccessfulMatches} tanesi benzersiz maç, ${stats.ust.repeatedSuccessfulSignals} tanesi aynı maç tekrarından geliyor.</span>
+        </div>
+        <div class="insight-box">
+          <div class="card-kicker">İleri Sinyaller</div>
+          <strong class="mono">${stats.highNumberSignals}</strong>
+          <span>#4 ve sonrası sinyallerin başarı oranı ${formatPercent(stats.highNumberSignalSuccessRate)}. Kalite notu B ve üzeri olan ${stats.gradeBOrBetterSignals} sinyalin başarı oranı ${formatPercent(stats.gradeBOrBetterSuccessRate)}.</span>
         </div>
       `;
     }
 
-    function counterWarningHtml(match) {
-      if (!match.counter_level || match.counter_level === 'YOK' || !match.counter_note) return '';
-      return `
-        <div class="counter-warning">
-          <strong>${escapeHtml(match.counter_direction || '')} tarafı daha baskın (${escapeHtml(match.counter_level)})</strong><br>
-          ${escapeHtml(match.counter_note)}
-        </div>
-      `;
-    }
+    function matchesByFilter(groups) {
+      const query = foldText(document.getElementById('searchInput').value);
+      let filtered = [...groups];
 
-    function matchLinkHtml(match, className = 'match-name') {
-      const label = escapeHtml(match.match_name || '-');
-      if (!match.url) return `<span class="${className}">${label}</span>`;
-      return `<a class="${className}" href="${escapeHtml(match.url)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
-    }
-
-    function matchesByFilter(items) {
-      const query = normalize(document.getElementById('searchInput').value);
-      let filtered = [...items];
-
-      if (activeFilter === 'success') filtered = filtered.filter(match => canonicalResult(match.result) === 'basarili');
-      else if (activeFilter === 'fail') filtered = filtered.filter(match => canonicalResult(match.result) === 'basarisiz');
-      else if (activeFilter === 'push') filtered = filtered.filter(match => canonicalResult(match.result) === 'iade');
-      else if (activeFilter === 'alt') filtered = filtered.filter(match => normalize(match.direction) === 'alt');
-      else if (activeFilter === 'ust') filtered = filtered.filter(match => ['üst', 'ust'].includes(normalize(match.direction)));
-      else if (activeFilter === 'a2') filtered = filtered.filter(match => String(match.quality_grade || '').toUpperCase() === 'A++');
-      else if (activeFilter === 'a1') filtered = filtered.filter(match => String(match.quality_grade || '').toUpperCase() === 'A+');
-      else if (activeFilter === 'a') filtered = filtered.filter(match => String(match.quality_grade || '').toUpperCase() === 'A');
-      else if (activeFilter === 'b') filtered = filtered.filter(match => String(match.quality_grade || '').toUpperCase() === 'B');
-      else if (activeFilter === 'c') filtered = filtered.filter(match => !match.quality_grade || String(match.quality_grade || '').toUpperCase() === 'C');
+      if (activeFilter === 'mixed') filtered = filtered.filter(group => group.mixed);
+      else if (activeFilter === 'only-success') filtered = filtered.filter(group => group.successCount > 0 && group.failCount === 0);
+      else if (activeFilter === 'only-fail') filtered = filtered.filter(group => group.failCount > 0 && group.successCount === 0);
+      else if (activeFilter === 'repeated') filtered = filtered.filter(group => group.repeated);
+      else if (activeFilter === 'suspicious') filtered = filtered.filter(group => group.suspiciousCount > 0);
+      else if (activeFilter === 'alt-success') filtered = filtered.filter(group => group.altSuccess > 0);
+      else if (activeFilter === 'ust-success') filtered = filtered.filter(group => group.ustSuccess > 0);
 
       if (query) {
-        filtered = filtered.filter(match => {
+        filtered = filtered.filter(group => {
           const haystack = [
-            match.match_name,
-            match.tournament,
-            match.score,
-            match.final_score,
-            match.result,
-            match.direction,
-            match.quality_grade,
-            match.quality_setup,
-            match.quality_summary,
-            match.counter_note
-          ].map(normalize).join(' ');
-          return haystack.includes(query);
+            group.match_name,
+            group.tournament,
+            group.sequenceNote,
+            group.latestSignal?.final_score,
+            group.latestSignal?.final_status,
+            ...group.signals.map(signal => [
+              signal.direction,
+              signal.result,
+              signal.signal_count,
+              signal.score,
+              signal.final_score,
+              signal.live
+            ].join(' '))
+          ].join(' ');
+          return foldText(haystack).includes(query);
         });
       }
 
       return filtered;
     }
 
-    function sortValue(match, field) {
-      if (field === 'result') return resultMeta(match.result).order;
-      if (field === 'direction') return directionMeta(match.direction).order;
-      if (field === 'quality_score') return Number(match[field] ?? -1);
-      if (field === 'live' || field === 'final_total') return Number(match[field] ?? -1);
-      if (field === 'alerted_at' || field === 'finished_at') return new Date(String(match[field] || '').replace(' ', 'T')).getTime() || 0;
-      return normalize(match[field] || '');
-    }
-
-    function showQuality(id) {
-      const match = allMatches.find(item => Number(item.id) === Number(id));
-      if (!match) return;
-
-      const title = `${match.match_name || '-'} | ${qualityMeta(match).label}`;
-      const setup = match.quality_setup ? `<p><strong>Setup:</strong> ${escapeHtml(match.quality_setup)}</p>` : '';
-      const summary = match.quality_summary ? `<p><strong>Özet:</strong> ${escapeHtml(match.quality_summary)}</p>` : '';
-      const reasons = String(match.quality_reasons || '')
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean)
-        .map(line => `<li>${escapeHtml(line)}</li>`)
-        .join('');
-      const counterReasons = String(match.counter_reasons || '')
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean)
-        .map(line => `<li>${escapeHtml(line)}</li>`)
-        .join('');
-
-      document.getElementById('qualityModalTitle').textContent = title;
-      document.getElementById('qualityModalBody').innerHTML = `
-        <p><strong>Kalite skoru:</strong> ${Number(match.quality_score || 0).toFixed(1)} / 100</p>
-        ${setup}
-        ${summary}
-        ${counterWarningHtml(match)}
-        ${reasons ? `<p style="margin-top:14px;"><strong>Analist notları:</strong></p><ul style="padding-left:18px; margin:0;">${reasons}</ul>` : '<p style="margin-top:14px;">Analist notu bulunmuyor.</p>'}
-        ${counterReasons ? `<p style="margin-top:14px;"><strong>Karşı taraf gerekçeleri:</strong></p><ul style="padding-left:18px; margin:0;">${counterReasons}</ul>` : ''}
+    function sequencePillHtml(signal) {
+      const result = resultMeta(signal.result);
+      const direction = directionMeta(signal.direction);
+      return `
+        <span class="${result.pillClass}">
+          #${escapeHtml(signal.signal_count || 0)}
+          <span>${escapeHtml(direction.label)}</span>
+          <span>${escapeHtml(result.label)}</span>
+        </span>
       `;
-      document.getElementById('qualityModal').classList.add('active');
     }
 
-    function closeQualityModal() {
-      document.getElementById('qualityModal').classList.remove('active');
+    function qualityButtonHtml(signal) {
+      const quality = qualityMeta(signal);
+      const score = Number(signal.quality_score || 0);
+      return `<button class="quality-btn" onclick="showQuality(${Number(signal.id)})">Kalite: ${escapeHtml(quality.label)} ${score.toFixed(1)}</button>`;
     }
 
-    function getVisibleMatches() {
-      const filtered = matchesByFilter(allMatches);
-      filtered.sort((a, b) => {
-        const va = sortValue(a, sortField);
-        const vb = sortValue(b, sortField);
-        if (va < vb) return sortAsc ? -1 : 1;
-        if (va > vb) return sortAsc ? 1 : -1;
-        return 0;
-      });
-      return filtered;
+    function signalRowHtml(signal) {
+      const result = resultMeta(signal.result);
+      const direction = directionMeta(signal.direction);
+      const suspicious = isSuspiciousSignal(signal);
+      return `
+        <div class="signal-row">
+          <div class="signal-row-top">
+            <div class="signal-row-title">
+              <span class="signal-number">#${escapeHtml(signal.signal_count || 0)}</span>
+              <span class="${direction.className}">${escapeHtml(direction.label)}</span>
+              <span class="${result.className}">${escapeHtml(result.label)}</span>
+            </div>
+            <div class="signal-actions">
+              ${qualityButtonHtml(signal)}
+              <button class="delete-btn" onclick="deleteFinishedMatch(${Number(signal.id)})">Sinyali Sil</button>
+            </div>
+          </div>
+
+          <div class="signal-grid">
+            <div class="signal-box">
+              <span>Canlı Barem</span>
+              <strong class="mono">${formatLine(signal.live)}</strong>
+            </div>
+            <div class="signal-box">
+              <span>Sinyal Skoru</span>
+              <strong class="mono">${escapeHtml(signal.score || '-')}</strong>
+            </div>
+            <div class="signal-box">
+              <span>Final Skoru</span>
+              <strong class="mono">${escapeHtml(signal.final_score || '-')}</strong>
+            </div>
+            <div class="signal-box">
+              <span>Final Total</span>
+              <strong class="mono">${formatLine(signal.final_total)}</strong>
+            </div>
+            <div class="signal-box">
+              <span>Sinyal Zamanı</span>
+              <strong class="mono">${formatDate(signal.alerted_at)}</strong>
+            </div>
+            <div class="signal-box">
+              <span>Bitiş Durumu</span>
+              <strong>${escapeHtml(signal.final_status || '-')}</strong>
+            </div>
+          </div>
+
+          ${suspicious ? `<div class="signal-warning">Bu kayıt <strong>FT</strong> olmasına rağmen final total <strong>${formatLine(signal.final_total)}</strong>. Basketbol maçı için anormal düşük olduğu için güvenmeden önce veri kaynağını kontrol etmek daha doğru olur.</div>` : ''}
+        </div>
+      `;
     }
 
-    function updateSortHeaders() {
-      document.querySelectorAll('thead th.sortable').forEach(th => {
-        const label = th.dataset.label;
-        if (th.dataset.sort === sortField) {
-          th.textContent = `${label} ${sortAsc ? '▲' : '▼'}`;
-        } else {
-          th.textContent = label;
-        }
-      });
-
-      const activeHeader = document.querySelector(`thead th[data-sort="${sortField}"]`);
-      const activeLabel = activeHeader ? activeHeader.dataset.label : 'Bitiş Zamanı';
-      document.getElementById('sortInfo').textContent = `${activeLabel} ${sortAsc ? '↑' : '↓'}`;
+    function groupStatusBadge(group) {
+      if (group.mixed) return '<span class="badge badge-neutral">Karışık maç</span>';
+      if (group.successCount > 0 && group.failCount === 0) return '<span class="badge badge-success">Tüm sinyaller başarılı</span>';
+      if (group.failCount > 0 && group.successCount === 0) return '<span class="badge badge-fail">Tüm sinyaller başarısız</span>';
+      return '<span class="badge badge-push">Sadece iade</span>';
     }
 
-    function updateStats() {
-      const successMatches = allMatches.filter(match => canonicalResult(match.result) === 'basarili');
-      const failMatches = allMatches.filter(match => canonicalResult(match.result) === 'basarisiz');
-      const pushMatches = allMatches.filter(match => canonicalResult(match.result) === 'iade');
-      const altMatches = allMatches.filter(match => normalize(match.direction) === 'alt');
-      const ustMatches = allMatches.filter(match => ['üst', 'ust'].includes(normalize(match.direction)));
+    function renderMatchCard(group) {
+      const finalSignal = group.latestSignal || {};
+      const directionSummary = [];
+      if (group.altSignals > 0) directionSummary.push(`ALT ${group.altSuccess}/${group.altSignals}`);
+      if (group.ustSignals > 0) directionSummary.push(`ÜST ${group.ustSuccess}/${group.ustSignals}`);
 
-      document.getElementById('statTotal').textContent = allMatches.length;
-      document.getElementById('statSuccess').textContent = successMatches.length;
-      document.getElementById('statFail').textContent = failMatches.length;
-      document.getElementById('statPush').textContent = pushMatches.length;
-      document.getElementById('statAlt').textContent = altMatches.length;
-      document.getElementById('statUst').textContent = ustMatches.length;
-      document.getElementById('statSuccessUnique').textContent = new Set(successMatches.map(match => match.match_id)).size;
-      document.getElementById('statFailUnique').textContent = new Set(failMatches.map(match => match.match_id)).size;
-      document.getElementById('statAltUnique').textContent = new Set(altMatches.map(match => match.match_id)).size;
-      document.getElementById('statUstUnique').textContent = new Set(ustMatches.map(match => match.match_id)).size;
+      return `
+        <article class="match-card ${group.mixed ? 'state-mixed' : ''} ${group.suspiciousCount > 0 ? 'state-suspicious' : ''}">
+          <div class="match-head">
+            <div>
+              ${matchLinkHtml(group)}
+              <div class="match-subtitle">
+                ${escapeHtml(group.tournament || '-')}
+                • Final skor: <span class="mono">${escapeHtml(finalSignal.final_score || '-')}</span>
+                • Final total: <span class="mono">${formatLine(finalSignal.final_total)}</span>
+                • Durum: ${escapeHtml(finalSignal.final_status || '-')}
+              </div>
+            </div>
+            <div class="head-badges">
+              ${groupStatusBadge(group)}
+              <span class="badge badge-neutral">${group.totalSignals} sinyal</span>
+              ${group.suspiciousCount > 0 ? `<span class="badge badge-warning">${group.suspiciousCount} şüpheli kayıt</span>` : ''}
+            </div>
+          </div>
+
+          <div class="summary-row">
+            <div class="mini-box">
+              <span>Başarılı / Başarısız</span>
+              <strong class="mono">${group.successCount} / ${group.failCount}</strong>
+            </div>
+            <div class="mini-box">
+              <span>ALT Başarı</span>
+              <strong class="mono">${group.altSuccess} / ${group.altSignals}</strong>
+            </div>
+            <div class="mini-box">
+              <span>ÜST Başarı</span>
+              <strong class="mono">${group.ustSuccess} / ${group.ustSignals}</strong>
+            </div>
+            <div class="mini-box">
+              <span>İade</span>
+              <strong class="mono">${group.pushCount}</strong>
+            </div>
+            <div class="mini-box">
+              <span>Ort. Kalite</span>
+              <strong class="mono">${group.avgQualityScore.toFixed(1)}</strong>
+            </div>
+            <div class="mini-box">
+              <span>Yön Özeti</span>
+              <strong>${escapeHtml(directionSummary.join(' • ') || '-')}</strong>
+            </div>
+          </div>
+
+          <div class="match-note">${escapeHtml(group.sequenceNote)}</div>
+
+          <div class="sequence-wrap">
+            ${group.signals.map(sequencePillHtml).join('')}
+          </div>
+
+          <details class="signal-details" ${group.mixed || group.suspiciousCount > 0 ? 'open' : ''}>
+            <summary>
+              <span>Maçın sinyallerini aç / kapat</span>
+              <span class="summary-hint">${group.totalSignals} kayıt</span>
+            </summary>
+            <div class="signal-list">
+              ${group.signals.map(signalRowHtml).join('')}
+            </div>
+          </details>
+        </article>
+      `;
     }
 
-    function renderTable(matches) {
-      const tbody = document.getElementById('tableBody');
+    function renderMatches() {
+      const visibleGroups = matchesByFilter(groupedMatches);
+      const list = document.getElementById('matchList');
       const emptyState = document.getElementById('emptyState');
-      const cardsWrap = document.getElementById('cardsWrap');
 
-      if (!matches.length) {
-        tbody.innerHTML = '';
-        cardsWrap.innerHTML = '';
+      if (!visibleGroups.length) {
+        list.innerHTML = '';
         emptyState.style.display = 'block';
         return;
       }
 
       emptyState.style.display = 'none';
-
-      tbody.innerHTML = matches.map(match => {
-        const result = resultMeta(match.result);
-        const direction = directionMeta(match.direction);
-        return `
-          <tr>
-            <td><span class="${result.className}">${result.label}</span></td>
-            <td>
-              <div class="stack">
-                <div class="inline-badges">
-                  <span class="${direction.className}">${direction.label}</span>
-                </div>
-                <span class="meta-line mono">Canlı barem ${formatLine(match.live)}</span>
-                <span class="meta-line mono">Sinyal #${escapeHtml(match.signal_count || 1)}</span>
-              </div>
-            </td>
-            <td>${qualityBadgeHtml(match)}</td>
-            <td class="match-cell">
-              ${matchLinkHtml(match)}
-              <span class="meta-line">${escapeHtml(match.final_status || '-')}</span>
-              ${counterWarningHtml(match)}
-            </td>
-            <td class="match-cell">
-              <span>${escapeHtml(match.tournament || '-')}</span>
-            </td>
-            <td class="mono">${escapeHtml(match.score || '-')}</td>
-            <td class="mono">${escapeHtml(match.final_score || '-')}</td>
-            <td class="mono">${formatLine(match.final_total)}</td>
-            <td class="mono">${formatLine(match.live)}</td>
-            <td class="mono">${formatDate(match.alerted_at)}</td>
-            <td class="mono">${formatDate(match.finished_at)}</td>
-            <td>
-              <div class="action-group">
-                <button class="delete-btn" onclick="deleteFinishedMatch(${Number(match.id)})">Sil</button>
-              </div>
-            </td>
-          </tr>
-        `;
-      }).join('');
-
-      cardsWrap.innerHTML = matches.map(match => {
-        const result = resultMeta(match.result);
-        const direction = directionMeta(match.direction);
-        return `
-          <article class="match-card">
-            <div class="card-top">
-              <div class="card-match">
-                ${matchLinkHtml(match)}
-                <div class="meta-line">${escapeHtml(match.tournament || '-')}</div>
-              </div>
-              <span class="${result.className}">${result.label}</span>
-            </div>
-
-            <div class="card-meta">
-              <span>${escapeHtml(match.final_status || '-')}</span>
-              <span>Sinyal ${formatDate(match.alerted_at)}</span>
-              <span>Bitiş ${formatDate(match.finished_at)}</span>
-            </div>
-
-            <div style="margin-bottom:10px;">
-              ${qualityBadgeHtml(match)}
-              ${counterWarningHtml(match)}
-            </div>
-
-            <div class="card-grid">
-              <div class="card-box">
-                <div class="card-box-label">Sinyal</div>
-                <div class="card-box-value"><span class="${direction.className}">${direction.label}</span></div>
-              </div>
-              <div class="card-box">
-                <div class="card-box-label">Canlı Barem</div>
-                <div class="card-box-value mono">${formatLine(match.live)}</div>
-              </div>
-              <div class="card-box">
-                <div class="card-box-label">Sinyal Skoru</div>
-                <div class="card-box-value mono">${escapeHtml(match.score || '-')}</div>
-              </div>
-              <div class="card-box">
-                <div class="card-box-label">Final Skoru</div>
-                <div class="card-box-value mono">${escapeHtml(match.final_score || '-')}</div>
-              </div>
-              <div class="card-box">
-                <div class="card-box-label">Final Total</div>
-                <div class="card-box-value mono">${formatLine(match.final_total)}</div>
-              </div>
-              <div class="card-box">
-                <div class="card-box-label">Sinyal No</div>
-                <div class="card-box-value mono">${escapeHtml(match.signal_count || 1)}</div>
-              </div>
-            </div>
-
-            <div class="card-actions">
-              <button class="delete-btn" onclick="deleteFinishedMatch(${Number(match.id)})">Sil</button>
-            </div>
-          </article>
-        `;
-      }).join('');
-    }
-
-    function renderDetailModal() {
-      const body = document.getElementById('detailModalBody');
-      const successGroups = groupMatchesByResult('basarili');
-      const failGroups = groupMatchesByResult('basarisiz');
-      const pushCount = allMatches.filter(match => canonicalResult(match.result) === 'iade').length;
-
-      body.innerHTML = `
-        <div class="modal-summary">
-          <div class="summary-box">
-            <span>Başarılı sinyal</span>
-            <strong>${successGroups.totalSignals}</strong>
-            <span>Benzersiz maç: ${successGroups.totalGroups}</span>
-          </div>
-          <div class="summary-box">
-            <span>Başarısız sinyal</span>
-            <strong>${failGroups.totalSignals}</strong>
-            <span>Benzersiz maç: ${failGroups.totalGroups}</span>
-          </div>
-          <div class="summary-box">
-            <span>İade</span>
-            <strong>${pushCount}</strong>
-            <span>Eşit barem kapanışları</span>
-          </div>
-        </div>
-        <div class="detail-columns">
-          <div class="detail-column">
-            <div class="detail-column-header success">Başarılı Gruplar</div>
-            <div class="detail-list">
-              ${renderGroupCards(successGroups.groups, 'Başarılı sinyal bulunmuyor.')}
-            </div>
-          </div>
-          <div class="detail-column">
-            <div class="detail-column-header fail">Başarısız Gruplar</div>
-            <div class="detail-list">
-              ${renderGroupCards(failGroups.groups, 'Başarısız sinyal bulunmuyor.')}
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    function groupMatchesByResult(resultKey) {
-      const grouped = new Map();
-      const items = allMatches.filter(match => canonicalResult(match.result) === resultKey);
-
-      items.forEach(match => {
-        const key = match.match_id || `${match.match_name}-${match.tournament}`;
-        if (!grouped.has(key)) {
-          grouped.set(key, {
-            match_id: match.match_id,
-            match_name: match.match_name,
-            tournament: match.tournament,
-            url: match.url,
-            directionSet: new Set(),
-            signals: []
-          });
-        }
-
-        const group = grouped.get(key);
-        group.directionSet.add(match.direction);
-        group.signals.push(match);
-      });
-
-      const groups = Array.from(grouped.values()).map(group => ({
-        ...group,
-        signalCount: group.signals.length,
-        directions: Array.from(group.directionSet),
-        signals: group.signals.sort((a, b) => {
-          const va = new Date(String(a.finished_at || '').replace(' ', 'T')).getTime() || 0;
-          const vb = new Date(String(b.finished_at || '').replace(' ', 'T')).getTime() || 0;
-          return vb - va;
-        })
-      })).sort((a, b) => {
-        if (b.signalCount !== a.signalCount) return b.signalCount - a.signalCount;
-        return normalize(a.match_name).localeCompare(normalize(b.match_name), 'tr');
-      });
-
-      return {
-        groups,
-        totalSignals: items.length,
-        totalGroups: groups.length
-      };
-    }
-
-    function renderGroupCards(groups, emptyText) {
-      if (!groups.length) return `<div class="detail-empty">${escapeHtml(emptyText)}</div>`;
-      return groups.map(group => `
-        <div class="group-card">
-          <div class="group-card-top">
-            <div>
-              ${group.url
-                ? `<a class="group-card-title" href="${escapeHtml(group.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(group.match_name || '-')}</a>`
-                : `<span class="group-card-title">${escapeHtml(group.match_name || '-')}</span>`}
-              <div class="group-subtitle">${escapeHtml(group.tournament || '-')} | ${group.signalCount} sinyal | ${group.directions.map(direction => escapeHtml(direction)).join(', ')}</div>
-            </div>
-            <span class="badge ${canonicalResult(group.signals[0].result) === 'basarili' ? 'badge-success' : 'badge-fail'}">${group.signalCount} kayıt</span>
-          </div>
-          <div class="group-signals">
-            ${group.signals.map(signal => `
-              <div class="group-signal">
-                <span class="signal-num-badge">${escapeHtml(signal.signal_count || 1)}</span>
-                <strong>${escapeHtml(signal.direction)}</strong>
-                <span class="mono"> | Canlı ${formatLine(signal.live)} | Final ${formatLine(signal.final_total)} | Skor ${escapeHtml(signal.final_score || '-')}</span>
-                <br>
-                ${qualityBadgeHtml(signal)}
-                ${counterWarningHtml(signal)}
-                <br>
-                <span>Sinyal zamanı: ${formatDate(signal.alerted_at)} | Bitiş: ${formatDate(signal.finished_at)}</span>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      `).join('');
-    }
-
-    function render() {
-      const visibleMatches = getVisibleMatches();
-      updateStats();
-      updateSortHeaders();
-      renderTable(visibleMatches);
+      list.innerHTML = visibleGroups.map(renderMatchCard).join('');
     }
 
     function showBanner(kind, title, message) {
@@ -1338,23 +1836,188 @@
       banner.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(message)}</span>`;
     }
 
-    function openDetailModal() {
-      renderDetailModal();
-      document.getElementById('detailModal').classList.add('active');
+    function showQuality(id) {
+      const signal = allSignals.find(item => Number(item.id) === Number(id));
+      if (!signal) return;
+
+      const quality = qualityMeta(signal);
+      const reasons = String(signal.quality_reasons || '')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map(line => `<li>${escapeHtml(line)}</li>`)
+        .join('');
+      const counterReasons = String(signal.counter_reasons || '')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map(line => `<li>${escapeHtml(line)}</li>`)
+        .join('');
+
+      document.getElementById('qualityModalTitle').textContent = `${signal.match_name || '-'} | Sinyal #${signal.signal_count || 0}`;
+      document.getElementById('qualityModalBody').innerHTML = `
+        <div class="modal-metrics">
+          <div class="modal-metric">
+            <span>Kalite Notu</span>
+            <strong>${escapeHtml(quality.label)}</strong>
+          </div>
+          <div class="modal-metric">
+            <span>Kalite Skoru</span>
+            <strong class="mono">${Number(signal.quality_score || 0).toFixed(1)}</strong>
+          </div>
+          <div class="modal-metric">
+            <span>Karşı Yön Uyarısı</span>
+            <strong>${escapeHtml(signal.counter_level || 'YOK')}</strong>
+          </div>
+        </div>
+
+        <p><strong>Yön:</strong> ${escapeHtml(signal.direction || '-')} | <strong>Canlı barem:</strong> <span class="mono">${formatLine(signal.live)}</span> | <strong>Sonuç:</strong> ${escapeHtml(signal.result || '-')}</p>
+        <p><strong>Setup:</strong> ${escapeHtml(signal.quality_setup || '-')}</p>
+        <p><strong>Özet:</strong> ${escapeHtml(signal.quality_summary || '-')}</p>
+        <p><strong>Karşı not:</strong> ${escapeHtml(signal.counter_note || '-')}</p>
+
+        <div class="modal-section">
+          <strong>Kalite gerekçeleri</strong>
+          ${reasons ? `<ul class="modal-list">${reasons}</ul>` : '<p>Ek kalite gerekçesi yok.</p>'}
+        </div>
+
+        <div class="modal-section">
+          <strong>Karşı taraf gerekçeleri</strong>
+          ${counterReasons ? `<ul class="modal-list">${counterReasons}</ul>` : '<p>Karşı taraf gerekçesi yok.</p>'}
+        </div>
+      `;
+      document.getElementById('qualityModal').classList.add('active');
     }
 
-    function closeDetailModal() {
-      document.getElementById('detailModal').classList.remove('active');
+    function closeQualityModal() {
+      document.getElementById('qualityModal').classList.remove('active');
+    }
+
+    function renderReport(payload) {
+      const cards = Array.isArray(payload.cards) ? payload.cards : [];
+      const highlights = Array.isArray(payload.highlights) ? payload.highlights : [];
+      const mixedExamples = Array.isArray(payload.mixed_examples) ? payload.mixed_examples : [];
+      const suspiciousExamples = Array.isArray(payload.suspicious_examples) ? payload.suspicious_examples : [];
+
+      const cardHtml = cards.length
+        ? `<div class="report-grid">${cards.map(card => `
+            <div class="report-card">
+              <span>${escapeHtml(card.title || '-')}</span>
+              <strong class="mono">${escapeHtml(card.value ?? '-')}</strong>
+              <p>${escapeHtml(card.detail || '-')}</p>
+            </div>
+          `).join('')}</div>`
+        : '';
+
+      const highlightHtml = highlights.length
+        ? `
+          <div class="modal-section">
+            <div class="report-section-title">Öne Çıkan Bulgular</div>
+            <div class="report-highlight-list">
+              ${highlights.map(item => `<div class="report-highlight">${escapeHtml(item)}</div>`).join('')}
+            </div>
+          </div>
+        `
+        : '';
+
+      const mixedHtml = mixedExamples.length
+        ? `
+          <div class="modal-section">
+            <div class="report-section-title">Karışık Maç Örnekleri</div>
+            <div class="report-example-list">
+              ${mixedExamples.map(item => `
+                <div class="report-example">
+                  <strong>${escapeHtml(item.match_name || '-')}</strong>
+                  <p>${escapeHtml(item.tournament || '-')} • ${escapeHtml(String(item.signal_count || 0))} sinyal</p>
+                  <p>${escapeHtml(item.summary || '-')}</p>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `
+        : '';
+
+      const suspiciousHtml = suspiciousExamples.length
+        ? `
+          <div class="modal-section">
+            <div class="report-section-title">Şüpheli Kayıtlar</div>
+            <div class="report-example-list">
+              ${suspiciousExamples.map(item => `
+                <div class="report-example">
+                  <strong>${escapeHtml(item.match_name || '-')}</strong>
+                  <p>${escapeHtml(item.tournament || '-')}</p>
+                  <p>${escapeHtml(item.direction || '-')} • ${escapeHtml(item.final_status || '-')} • Final skor ${escapeHtml(item.final_score || '-')} • Total ${escapeHtml(formatLine(item.final_total))}</p>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `
+        : '';
+
+      document.getElementById('reportModalBody').innerHTML = `
+        <div class="report-headline">${escapeHtml(payload.headline || '-')}</div>
+        <div class="report-summary">${escapeHtml(payload.summary || '-')}</div>
+        <div class="modal-section" style="margin-top:12px; padding-top:12px;">
+          <div class="card-kicker">Rapor zamanı</div>
+          <div class="report-summary mono">${escapeHtml(formatDate(payload.generated_at || ''))}</div>
+        </div>
+        ${cardHtml}
+        ${highlightHtml}
+        ${mixedHtml}
+        ${suspiciousHtml}
+      `;
+    }
+
+    async function openReportModal() {
+      const modal = document.getElementById('reportModal');
+      const body = document.getElementById('reportModalBody');
+      const button = document.getElementById('reportBtn');
+      const originalText = button.textContent;
+
+      modal.classList.add('active');
+      body.innerHTML = `<div class="report-loading">Veritabanı şimdi analiz ediliyor.<br>ALT / ÜST başarısı, karışık maçlar ve şüpheli kayıtlar rapora dökülüyor...</div>`;
+      button.disabled = true;
+      button.textContent = 'Analiz Ediliyor...';
+
+      try {
+        const response = await fetch('/api/finished-matches/report');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        renderReport(payload);
+      } catch (error) {
+        console.error(error);
+        body.innerHTML = `<div class="report-loading">Rapor oluşturulurken bir hata oluştu.</div>`;
+      } finally {
+        button.disabled = false;
+        button.textContent = originalText;
+      }
+    }
+
+    function closeReportModal() {
+      document.getElementById('reportModal').classList.remove('active');
+    }
+
+    function render() {
+      const stats = computeStats(allSignals, groupedMatches);
+      renderTrust(stats);
+      renderSummary(stats);
+      renderInsights(stats);
+      renderMatches();
     }
 
     async function loadFinishedMatches() {
       try {
         const response = await fetch('/api/finished-matches');
-        allMatches = await response.json();
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        allSignals = await response.json();
+        groupedMatches = buildGroups(allSignals);
         document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString('tr-TR');
         render();
       } catch (error) {
         console.error(error);
+        allSignals = [];
+        groupedMatches = [];
+        render();
         document.getElementById('emptyState').style.display = 'block';
         document.getElementById('emptyState').textContent = 'Biten maç verileri yüklenemedi.';
       }
@@ -1362,15 +2025,15 @@
 
     async function checkNow() {
       const button = document.getElementById('checkNowBtn');
-      button.disabled = true;
       const originalText = button.textContent;
+      button.disabled = true;
       button.textContent = 'Kontrol Ediliyor...';
-      showBanner('warn', 'Kontrol başladı', 'Dashboard sinyalleri şimdi AIScore üzerinden tek tek kontrol ediliyor.');
+      showBanner('warn', 'Kontrol başladı', 'Maçlar şimdi tek tek kontrol ediliyor. Final skor bulunan yeni sinyaller arşive eklenecek.');
 
       try {
         const response = await fetch('/api/finished-matches/check-now', { method: 'POST' });
         if (response.status === 409) {
-          showBanner('warn', 'Zaten çalışıyor', 'Şu anda başka bir manuel kontrol isteği işleniyor. Birkaç saniye sonra tekrar deneyin.');
+          showBanner('warn', 'Zaten çalışıyor', 'Şu anda başka bir manuel kontrol isteği işleniyor. Birkaç saniye sonra tekrar deneyebilirsin.');
           return;
         }
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -1381,8 +2044,8 @@
         if (summary.archived_count > 0) {
           showBanner(
             'success',
-            'Biten maçlar eklendi',
-            `${summary.checked_count} maç kontrol edildi. ${summary.archived_count} sinyal arşive taşındı. Başarılı: ${summary.successful_count}, Başarısız: ${summary.failed_count}, İade: ${summary.push_count}.`
+            'Yeni arşiv kaydı eklendi',
+            `${summary.archived_count} sinyal arşive taşındı. Başarılı: ${summary.successful_count}, Başarısız: ${summary.failed_count}, İade: ${summary.push_count}.`
           );
         } else if (summary.finished_match_count > 0) {
           showBanner(
@@ -1407,37 +2070,39 @@
     }
 
     async function deleteFinishedMatch(id) {
-      if (!confirm('Bu biten maç kaydını silmek istediğinize emin misiniz?')) return;
+      if (!confirm('Bu sinyal kaydını arşivden silmek istediğine emin misin?')) return;
 
       try {
         const response = await fetch(`/api/finished-matches/${id}`, { method: 'DELETE' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        allMatches = allMatches.filter(match => Number(match.id) !== Number(id));
+        allSignals = allSignals.filter(signal => Number(signal.id) !== Number(id));
+        groupedMatches = buildGroups(allSignals);
         document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString('tr-TR');
         render();
-        showBanner('success', 'Kayıt silindi', 'Seçilen biten maç kaydı arşivden kaldırıldı.');
+        showBanner('success', 'Sinyal silindi', 'Seçilen arşiv kaydı kaldırıldı.');
       } catch (error) {
         console.error(error);
-        showBanner('error', 'Silme başarısız', 'Biten maç kaydı silinirken bir hata oluştu.');
+        showBanner('error', 'Silme başarısız', 'Arşiv kaydı silinirken bir hata oluştu.');
       }
     }
 
     async function clearAllFinishedMatches() {
-      if (!confirm('Biten maçlar arşivindeki tüm kayıtları silmek istediğinize emin misiniz?')) return;
+      if (!confirm('Biten maç arşivindeki tüm kayıtları silmek istediğine emin misin?')) return;
 
       const button = document.getElementById('clearAllBtn');
-      button.disabled = true;
       const originalText = button.textContent;
+      button.disabled = true;
       button.textContent = 'Siliniyor...';
 
       try {
         const response = await fetch('/api/finished-matches/clear', { method: 'POST' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const payload = await response.json();
-        allMatches = [];
+        allSignals = [];
+        groupedMatches = [];
         document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString('tr-TR');
         render();
-        showBanner('success', 'Arşiv temizlendi', `${payload.deleted_count} biten maç kaydı silindi.`);
+        showBanner('success', 'Arşiv temizlendi', `${payload.deleted_count} kayıt silindi.`);
       } catch (error) {
         console.error(error);
         showBanner('error', 'Toplu silme başarısız', 'Biten maç arşivi temizlenirken bir hata oluştu.');
@@ -1447,33 +2112,21 @@
       }
     }
 
-    document.getElementById('searchInput').addEventListener('input', render);
+    document.getElementById('searchInput').addEventListener('input', renderMatches);
 
     document.querySelectorAll('.filter-btn[data-filter]').forEach(button => {
       button.addEventListener('click', () => {
         document.querySelectorAll('.filter-btn[data-filter]').forEach(item => item.classList.remove('active'));
         button.classList.add('active');
         activeFilter = button.dataset.filter;
-        render();
-      });
-    });
-
-    document.querySelectorAll('thead th.sortable').forEach(th => {
-      th.addEventListener('click', () => {
-        const field = th.dataset.sort;
-        if (sortField === field) sortAsc = !sortAsc;
-        else {
-          sortField = field;
-          sortAsc = field === 'match_name' || field === 'tournament' || field === 'direction' || field === 'result' || field === 'action';
-        }
-        render();
+        renderMatches();
       });
     });
 
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape') {
-        closeDetailModal();
         closeQualityModal();
+        closeReportModal();
       }
     });
 

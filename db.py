@@ -450,12 +450,17 @@ class Database:
 
     # ---------- finished matches ----------
 
-    def recent_finished_matches(self, limit: int = 500) -> list:
+    def recent_finished_matches(self, limit: int | None = 500) -> list:
         with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT * FROM finished_matches ORDER BY finished_at DESC, id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+            if limit is None:
+                rows = conn.execute(
+                    "SELECT * FROM finished_matches ORDER BY finished_at DESC, id DESC"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM finished_matches ORDER BY finished_at DESC, id DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
         return [dict(r) for r in rows]
 
     def delete_finished_match(self, finished_match_id: int) -> bool:
