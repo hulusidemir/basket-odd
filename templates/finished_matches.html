@@ -362,6 +362,11 @@
     .badge-push { background: rgba(245,158,11,0.15); color: #fcd34d; }
     .badge-alt { background: rgba(239,68,68,0.12); color: #f87171; }
     .badge-ust { background: rgba(34,197,94,0.12); color: #4ade80; }
+    .badge-quality-a2 { background: rgba(34,197,94,0.18); color: #86efac; border: 1px solid rgba(34,197,94,0.35); }
+    .badge-quality-a1 { background: rgba(59,130,246,0.18); color: #93c5fd; border: 1px solid rgba(59,130,246,0.35); }
+    .badge-quality-a { background: rgba(56,189,248,0.16); color: #7dd3fc; border: 1px solid rgba(56,189,248,0.32); }
+    .badge-quality-b { background: rgba(245,158,11,0.16); color: #fcd34d; border: 1px solid rgba(245,158,11,0.32); }
+    .badge-quality-c { background: rgba(148,163,184,0.16); color: #cbd5e1; border: 1px solid rgba(148,163,184,0.32); }
     .stack {
       display: flex;
       flex-direction: column;
@@ -385,6 +390,44 @@
       white-space: normal;
       color: var(--text-dim);
       line-height: 1.55;
+    }
+
+    .quality-cell {
+      min-width: 190px;
+      white-space: normal;
+    }
+
+    .quality-badge {
+      cursor: pointer;
+      transition: transform 0.15s ease;
+    }
+
+    .quality-badge:hover {
+      transform: translateY(-1px);
+    }
+
+    .quality-setup {
+      display: block;
+      margin-top: 6px;
+      color: var(--text-dim);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .counter-warning {
+      margin-top: 8px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(239,68,68,0.12);
+      border: 1px solid rgba(239,68,68,0.28);
+      color: #fca5a5;
+      line-height: 1.55;
+      font-size: 12px;
+      white-space: normal;
+    }
+
+    .counter-warning strong {
+      color: #fecaca;
     }
 
     .action-group {
@@ -767,6 +810,11 @@
     <button class="filter-btn" data-filter="push">↔ İade</button>
     <button class="filter-btn" data-filter="alt">🔻 ALT</button>
     <button class="filter-btn" data-filter="ust">🔺 ÜST</button>
+    <button class="filter-btn" data-filter="a2">A++</button>
+    <button class="filter-btn" data-filter="a1">A+</button>
+    <button class="filter-btn" data-filter="a">A</button>
+    <button class="filter-btn" data-filter="b">B</button>
+    <button class="filter-btn" data-filter="c">C</button>
   </div>
 
   <div class="toolbar">
@@ -786,6 +834,7 @@
         <tr>
           <th class="sortable" data-sort="result" data-label="Sonuç">Sonuç</th>
           <th class="sortable" data-sort="direction" data-label="Sinyal">Sinyal</th>
+          <th class="sortable" data-sort="quality_score" data-label="Kalite">Kalite</th>
           <th class="sortable" data-sort="match_name" data-label="Maç">Maç</th>
           <th class="sortable" data-sort="tournament" data-label="Turnuva">Turnuva</th>
           <th class="sortable" data-sort="score" data-label="Sinyal Skoru">Sinyal Skoru</th>
@@ -811,6 +860,16 @@
         <button class="modal-close" onclick="closeDetailModal()">&times;</button>
       </div>
       <div class="modal-body" id="detailModalBody"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="qualityModal" onclick="if(event.target===this)closeQualityModal()">
+    <div class="modal-box" style="width:min(760px,100%);">
+      <div class="modal-header">
+        <h3 id="qualityModalTitle">Sinyal Kalitesi</h3>
+        <button class="modal-close" onclick="closeQualityModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="qualityModalBody"></div>
     </div>
   </div>
 
@@ -875,6 +934,37 @@
       return { label: 'ÜST', className: 'badge badge-ust', order: 1 };
     }
 
+    function qualityMeta(match) {
+      const grade = normalize(match.quality_grade).toUpperCase();
+      if (grade === 'A++') return { label: 'A++', className: 'badge badge-quality-a2 quality-badge', order: 0, key: 'a2' };
+      if (grade === 'A+') return { label: 'A+', className: 'badge badge-quality-a1 quality-badge', order: 1, key: 'a1' };
+      if (grade === 'A') return { label: 'A', className: 'badge badge-quality-a quality-badge', order: 2, key: 'a' };
+      if (grade === 'B') return { label: 'B', className: 'badge badge-quality-b quality-badge', order: 3, key: 'b' };
+      return { label: grade || 'C', className: 'badge badge-quality-c quality-badge', order: 4, key: 'c' };
+    }
+
+    function qualityBadgeHtml(match) {
+      const meta = qualityMeta(match);
+      const score = Number(match.quality_score || 0);
+      const setup = match.quality_setup ? `<span class="quality-setup">${escapeHtml(match.quality_setup)}</span>` : '';
+      return `
+        <div class="quality-cell">
+          <span class="${meta.className}" onclick="showQuality(${Number(match.id)})">${escapeHtml(meta.label)} (${score.toFixed(1)})</span>
+          ${setup}
+        </div>
+      `;
+    }
+
+    function counterWarningHtml(match) {
+      if (!match.counter_level || match.counter_level === 'YOK' || !match.counter_note) return '';
+      return `
+        <div class="counter-warning">
+          <strong>${escapeHtml(match.counter_direction || '')} tarafı daha baskın (${escapeHtml(match.counter_level)})</strong><br>
+          ${escapeHtml(match.counter_note)}
+        </div>
+      `;
+    }
+
     function matchLinkHtml(match, className = 'match-name') {
       const label = escapeHtml(match.match_name || '-');
       if (!match.url) return `<span class="${className}">${label}</span>`;
@@ -890,6 +980,11 @@
       else if (activeFilter === 'push') filtered = filtered.filter(match => canonicalResult(match.result) === 'iade');
       else if (activeFilter === 'alt') filtered = filtered.filter(match => normalize(match.direction) === 'alt');
       else if (activeFilter === 'ust') filtered = filtered.filter(match => ['üst', 'ust'].includes(normalize(match.direction)));
+      else if (activeFilter === 'a2') filtered = filtered.filter(match => String(match.quality_grade || '').toUpperCase() === 'A++');
+      else if (activeFilter === 'a1') filtered = filtered.filter(match => String(match.quality_grade || '').toUpperCase() === 'A+');
+      else if (activeFilter === 'a') filtered = filtered.filter(match => String(match.quality_grade || '').toUpperCase() === 'A');
+      else if (activeFilter === 'b') filtered = filtered.filter(match => String(match.quality_grade || '').toUpperCase() === 'B');
+      else if (activeFilter === 'c') filtered = filtered.filter(match => !match.quality_grade || String(match.quality_grade || '').toUpperCase() === 'C');
 
       if (query) {
         filtered = filtered.filter(match => {
@@ -899,7 +994,11 @@
             match.score,
             match.final_score,
             match.result,
-            match.direction
+            match.direction,
+            match.quality_grade,
+            match.quality_setup,
+            match.quality_summary,
+            match.counter_note
           ].map(normalize).join(' ');
           return haystack.includes(query);
         });
@@ -911,9 +1010,46 @@
     function sortValue(match, field) {
       if (field === 'result') return resultMeta(match.result).order;
       if (field === 'direction') return directionMeta(match.direction).order;
+      if (field === 'quality_score') return Number(match[field] ?? -1);
       if (field === 'live' || field === 'final_total') return Number(match[field] ?? -1);
       if (field === 'alerted_at' || field === 'finished_at') return new Date(String(match[field] || '').replace(' ', 'T')).getTime() || 0;
       return normalize(match[field] || '');
+    }
+
+    function showQuality(id) {
+      const match = allMatches.find(item => Number(item.id) === Number(id));
+      if (!match) return;
+
+      const title = `${match.match_name || '-'} | ${qualityMeta(match).label}`;
+      const setup = match.quality_setup ? `<p><strong>Setup:</strong> ${escapeHtml(match.quality_setup)}</p>` : '';
+      const summary = match.quality_summary ? `<p><strong>Özet:</strong> ${escapeHtml(match.quality_summary)}</p>` : '';
+      const reasons = String(match.quality_reasons || '')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map(line => `<li>${escapeHtml(line)}</li>`)
+        .join('');
+      const counterReasons = String(match.counter_reasons || '')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map(line => `<li>${escapeHtml(line)}</li>`)
+        .join('');
+
+      document.getElementById('qualityModalTitle').textContent = title;
+      document.getElementById('qualityModalBody').innerHTML = `
+        <p><strong>Kalite skoru:</strong> ${Number(match.quality_score || 0).toFixed(1)} / 100</p>
+        ${setup}
+        ${summary}
+        ${counterWarningHtml(match)}
+        ${reasons ? `<p style="margin-top:14px;"><strong>Analist notları:</strong></p><ul style="padding-left:18px; margin:0;">${reasons}</ul>` : '<p style="margin-top:14px;">Analist notu bulunmuyor.</p>'}
+        ${counterReasons ? `<p style="margin-top:14px;"><strong>Karşı taraf gerekçeleri:</strong></p><ul style="padding-left:18px; margin:0;">${counterReasons}</ul>` : ''}
+      `;
+      document.getElementById('qualityModal').classList.add('active');
+    }
+
+    function closeQualityModal() {
+      document.getElementById('qualityModal').classList.remove('active');
     }
 
     function getVisibleMatches() {
@@ -991,9 +1127,11 @@
                 <span class="meta-line mono">Sinyal #${escapeHtml(match.signal_count || 1)}</span>
               </div>
             </td>
+            <td>${qualityBadgeHtml(match)}</td>
             <td class="match-cell">
               ${matchLinkHtml(match)}
               <span class="meta-line">${escapeHtml(match.final_status || '-')}</span>
+              ${counterWarningHtml(match)}
             </td>
             <td class="match-cell">
               <span>${escapeHtml(match.tournament || '-')}</span>
@@ -1030,6 +1168,11 @@
               <span>${escapeHtml(match.final_status || '-')}</span>
               <span>Sinyal ${formatDate(match.alerted_at)}</span>
               <span>Bitiş ${formatDate(match.finished_at)}</span>
+            </div>
+
+            <div style="margin-bottom:10px;">
+              ${qualityBadgeHtml(match)}
+              ${counterWarningHtml(match)}
             </div>
 
             <div class="card-grid">
@@ -1170,6 +1313,9 @@
                 <span class="signal-num-badge">${escapeHtml(signal.signal_count || 1)}</span>
                 <strong>${escapeHtml(signal.direction)}</strong>
                 <span class="mono"> | Canlı ${formatLine(signal.live)} | Final ${formatLine(signal.final_total)} | Skor ${escapeHtml(signal.final_score || '-')}</span>
+                <br>
+                ${qualityBadgeHtml(signal)}
+                ${counterWarningHtml(signal)}
                 <br>
                 <span>Sinyal zamanı: ${formatDate(signal.alerted_at)} | Bitiş: ${formatDate(signal.finished_at)}</span>
               </div>
@@ -1325,7 +1471,10 @@
     });
 
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape') closeDetailModal();
+      if (event.key === 'Escape') {
+        closeDetailModal();
+        closeQualityModal();
+      }
     });
 
     loadFinishedMatches();
