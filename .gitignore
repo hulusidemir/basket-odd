@@ -4,3 +4,4 @@ basketball.db
 discovery_output.json
 __pycache__/
 *.pyc
+*.db

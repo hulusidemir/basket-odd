@@ -122,6 +122,11 @@ async def process_match(
         quality_setup=quality["setup"],
         quality_summary=quality["summary"],
         quality_reasons=quality["reasons_text"],
+        counter_direction=quality["counter_direction"],
+        counter_level=quality["counter_level"],
+        counter_score=quality["counter_score"],
+        counter_note=quality["counter_note"],
+        counter_reasons=quality["counter_reasons_text"],
     )
 
     log.info(

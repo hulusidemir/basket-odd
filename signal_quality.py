@@ -295,6 +295,102 @@ def _derive_setup_name(direction: str, tags: set[str]) -> str:
     return "Market Sapmasi UST"
 
 
+def _build_counter_signal(
+    direction: str,
+    live: float,
+    projected_total: float | None,
+    period: int | None,
+    remaining_min: float | None,
+    score_gap: int | None,
+    avg_over: float | None,
+    expected_total: float | None,
+    h2h_over_pct: float | None,
+) -> dict:
+    counter_direction = "ÜST" if direction == "ALT" else "ALT"
+    pressure_score = 0.0
+    reasons = []
+
+    if projected_total is not None:
+        if counter_direction == "ALT":
+            projection_edge = live - projected_total
+            if projection_edge >= 8:
+                pressure_score += 4
+                reasons.append(f"Projeksiyon canlı baremin belirgin altında ({projected_total:.1f})")
+            elif projection_edge >= 4:
+                pressure_score += 3
+                reasons.append(f"Projeksiyon ALT tarafına kayıyor ({projected_total:.1f})")
+            elif projection_edge >= 1:
+                pressure_score += 1.5
+        else:
+            projection_edge = projected_total - live
+            if projection_edge >= 8:
+                pressure_score += 4
+                reasons.append(f"Projeksiyon canlı baremin belirgin üstünde ({projected_total:.1f})")
+            elif projection_edge >= 4:
+                pressure_score += 3
+                reasons.append(f"Projeksiyon ÜST tarafına kayıyor ({projected_total:.1f})")
+            elif projection_edge >= 1:
+                pressure_score += 1.5
+
+    if counter_direction == "ALT":
+        if score_gap is not None and score_gap >= 15:
+            pressure_score += 2
+            reasons.append(f"Skor farki {score_gap} puan, oyun kopma riski var")
+        if period == 4 and remaining_min is not None and remaining_min <= 6:
+            pressure_score += 1.5
+            reasons.append("Son bolumde tempo dususu ALT lehine olabilir")
+    else:
+        if period == 4 and score_gap is not None and score_gap <= 8:
+            pressure_score += 2.5
+            reasons.append("Mac yakin, son bolum faul oyunu USTe donebilir")
+        if period == 4 and remaining_min is not None and remaining_min <= 6:
+            pressure_score += 1.5
+            reasons.append("Son bolum ekstra pozisyon ve faul riski var")
+
+    if avg_over is not None:
+        if counter_direction == "ALT" and avg_over <= 40:
+            pressure_score += 1.5
+            reasons.append(f"Son 5 total profili daha dusuk skorlu ({avg_over:.0f}% over)")
+        elif counter_direction == "ÜST" and avg_over >= 60:
+            pressure_score += 1.5
+            reasons.append(f"Son 5 total profili daha yuksek skorlu ({avg_over:.0f}% over)")
+
+    if expected_total is not None:
+        if counter_direction == "ALT" and expected_total <= live - 4:
+            pressure_score += 1.5
+            reasons.append(f"Tarihsel total profili daha asagida ({expected_total:.1f})")
+        elif counter_direction == "ÜST" and expected_total >= live + 4:
+            pressure_score += 1.5
+            reasons.append(f"Tarihsel total profili daha yukarida ({expected_total:.1f})")
+
+    if h2h_over_pct is not None:
+        if counter_direction == "ALT" and h2h_over_pct <= 40:
+            pressure_score += 1
+        elif counter_direction == "ÜST" and h2h_over_pct >= 60:
+            pressure_score += 1
+
+    if pressure_score >= 6:
+        level = "YÜKSEK"
+    elif pressure_score >= 3:
+        level = "ORTA"
+    elif pressure_score >= 1.5:
+        level = "DÜŞÜK"
+    else:
+        level = "YOK"
+
+    note = ""
+    if level != "YOK" and reasons:
+        note = f"{counter_direction} tarafi daha mantikli olabilir: {reasons[0]}"
+
+    return {
+        "direction": counter_direction,
+        "level": level,
+        "score": round(pressure_score, 1),
+        "note": note,
+        "reasons": reasons[:3],
+    }
+
+
 def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
     direction = match["direction"]
     opening = float(match["opening_total"])
@@ -310,7 +406,6 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
     home_score, away_score = _parse_score(score)
     score_gap = abs(home_score - away_score) if home_score is not None and away_score is not None else None
 
-    stat_metrics = _build_stat_metrics((context.get("stats") or {}).get("rows", []))
     h2h_metrics = _extract_h2h_metrics((context.get("h2h") or {}).get("body_text", ""), match_name)
     projected_total = calculate_projected_total(score, status, match_name, tournament)
 
@@ -401,88 +496,12 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
             score_value -= 6
             risks.append("Mac cok yakin, gec oyun ALT icin riskli")
 
-    if stat_metrics["rows_found"] >= 3:
-        source_count += 1
-        total_fga = stat_metrics.get("total_fga")
-        total_three_pa = stat_metrics.get("total_three_pa")
-        total_fta = stat_metrics.get("total_fta")
-        total_turnovers = stat_metrics.get("total_turnovers")
-        total_fouls = stat_metrics.get("total_fouls")
-        fg_pct_avg = stat_metrics.get("fg_pct_avg")
-        three_pct_avg = stat_metrics.get("three_pct_avg")
-
-        if total_fga and total_fga >= 100:
-            tags.add("shot_volume")
-            if direction == "UST":
-                score_value += 4
-                reasons.append(f"Sut hacmi yuksek ({int(total_fga)} FGA)")
-            else:
-                score_value += 1
-
-        if total_three_pa and total_three_pa >= 45 and direction == "UST":
-            score_value += 3
-            reasons.append(f"Uc sayi hacmi yuksek ({int(total_three_pa)} deneme)")
-            tags.add("shot_volume")
-
-        if total_fta and total_fta >= 32:
-            if direction == "UST":
-                score_value += 5
-                reasons.append(f"Serbest atis hacmi UST lehine ({int(total_fta)} FTA)")
-            else:
-                score_value -= 2
-                risks.append("Yuksek serbest atis hacmi ALT icin negatif")
-        elif total_fta and total_fta <= 22:
-            if direction == "ALT":
-                score_value += 3
-                reasons.append(f"Serbest atis hacmi dusuk ({int(total_fta)} FTA)")
-                tags.add("low_foul")
-
-        if total_fouls and total_fouls >= 28 and direction == "UST":
-            score_value += 3
-            reasons.append(f"Faul yogunlugu UST lehine ({int(total_fouls)} faul)")
-        elif total_fouls and total_fouls <= 20 and direction == "ALT":
-            score_value += 2
-            reasons.append("Faul akisi sakin, ALT lehine")
-            tags.add("low_foul")
-
-        if total_turnovers and total_turnovers >= 28:
-            if direction == "ALT":
-                score_value += 3
-                reasons.append(f"Top kaybi yuksek ({int(total_turnovers)}), hucum verimi dusuyor")
-            else:
-                score_value -= 2
-                risks.append("Top kaybi akisi UST ivmesini bozabilir")
-
-        if fg_pct_avg is not None:
-            if direction == "ALT" and fg_pct_avg >= 51:
-                score_value += 7
-                reasons.append(f"Sut verimliligi sicak ({fg_pct_avg:.1f}% FG), regresyon adayi")
-                tags.add("hot_shooting")
-            elif direction == "UST" and fg_pct_avg <= 43:
-                score_value += 7
-                reasons.append(f"Sut verimliligi dusuk ({fg_pct_avg:.1f}% FG), yukari regresyon adayi")
-                tags.add("cold_shooting")
-            elif direction == "UST" and fg_pct_avg >= 52:
-                score_value -= 3
-                risks.append("Verimlilik zaten cok yuksek, USTte marj daraliyor")
-
-        if three_pct_avg is not None:
-            if direction == "ALT" and three_pct_avg >= 39:
-                score_value += 3
-                reasons.append(f"Uc sayi isabeti sicak ({three_pct_avg:.1f}%)")
-                tags.add("hot_shooting")
-            elif direction == "UST" and three_pct_avg <= 31:
-                score_value += 3
-                reasons.append(f"Uc sayi isabeti dusuk ({three_pct_avg:.1f}%), pozitif regresyon adayi")
-                tags.add("cold_shooting")
-    else:
-        risks.append("Canli istatistik verisi zayif veya eksik")
-
     home_last5 = (h2h_metrics.get("home_last5") or {}).get("over_pct")
     away_last5 = (h2h_metrics.get("away_last5") or {}).get("over_pct")
     expected_total = h2h_metrics.get("expected_total")
     h2h_over_pct = h2h_metrics.get("h2h_over_pct")
 
+    avg_over = None
     if home_last5 is not None and away_last5 is not None:
         source_count += 1
         avg_over = (home_last5 + away_last5) / 2
@@ -530,10 +549,10 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
     if standings_page.get("available"):
         source_count += 0.5
 
-    if source_count >= 4:
+    if source_count >= 3:
         score_value += 4
         reasons.append("Veri kapsamı guclu, birden fazla kaynak teyidi var")
-    elif source_count <= 2:
+    elif source_count <= 1.5:
         score_value -= 6
         risks.append("Kalite puani sinirli veriyle hesaplandi")
 
@@ -549,6 +568,18 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
         grade = "B"
     else:
         grade = "C"
+
+    counter_signal = _build_counter_signal(
+        direction=direction,
+        live=live,
+        projected_total=projected_total,
+        period=period,
+        remaining_min=remaining_min,
+        score_gap=score_gap,
+        avg_over=avg_over,
+        expected_total=expected_total,
+        h2h_over_pct=h2h_over_pct,
+    )
 
     setup = _derive_setup_name(direction, tags)
 
@@ -576,4 +607,9 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
         "reasons_text": "\n".join(lines),
         "projected_total": projected_total,
         "data_sources": source_count,
+        "counter_direction": counter_signal["direction"],
+        "counter_level": counter_signal["level"],
+        "counter_score": counter_signal["score"],
+        "counter_note": counter_signal["note"],
+        "counter_reasons_text": "\n".join(counter_signal["reasons"]),
     }

@@ -275,7 +275,6 @@ class AiscoreOperaScraper:
         base_url = re.sub(r'/(h2h|odds|stats|lineups|standings|summary)/?$', '', url.rstrip('/'))
         page_urls = {
             "summary": base_url + "/summary",
-            "stats": base_url + "/stats",
             "h2h": base_url + "/h2h",
             "lineups": base_url + "/lineups",
             "standings": base_url + "/standings",
@@ -286,7 +285,6 @@ class AiscoreOperaScraper:
             try:
                 results = await asyncio.gather(
                     self._read_text_page(context, page_urls["summary"], "summary"),
-                    self._read_stats_page(context, page_urls["stats"]),
                     self._read_text_page(context, page_urls["h2h"], "h2h"),
                     self._read_text_page(context, page_urls["lineups"], "lineups"),
                     self._read_text_page(context, page_urls["standings"], "standings"),
@@ -297,12 +295,11 @@ class AiscoreOperaScraper:
 
         merged = {
             "summary": {},
-            "stats": {"rows": []},
             "h2h": {},
             "lineups": {},
             "standings": {},
         }
-        keys = ["summary", "stats", "h2h", "lineups", "standings"]
+        keys = ["summary", "h2h", "lineups", "standings"]
         for key, result in zip(keys, results):
             if isinstance(result, dict):
                 merged[key] = result
@@ -341,63 +338,6 @@ class AiscoreOperaScraper:
         except Exception as exc:
             logger.debug("Text page scrape failed (%s): %s", url, exc)
             return {"url": url, "kind": page_kind, "body_text": "", "available": False, "no_data": True}
-        finally:
-            await page.close()
-
-    async def _read_stats_page(self, context, url: str) -> dict:
-        page = await context.new_page()
-        page.set_default_timeout(self.page_timeout_ms)
-        try:
-            await page.goto(url, wait_until="domcontentloaded")
-            await page.wait_for_timeout(2600)
-            parsed = await page.evaluate(
-                r"""
-                () => {
-                  const text = s => (s || '').replace(/\s+/g, ' ').trim();
-                  const numericLike = value => /^(\d+(\.\d+)?%?|\d+\/\d+)$/.test(value);
-                  const rows = [];
-                  const seen = new Set();
-
-                  const nodes = Array.from(document.querySelectorAll('tr, [role="row"], div'));
-                  for (const node of nodes) {
-                    const children = Array.from(node.children || [])
-                      .map(child => text(child.innerText))
-                      .filter(Boolean)
-                      .filter(value => value.length < 40);
-                    if (children.length < 3 || children.length > 6) continue;
-
-                    const numeric = children.filter(numericLike);
-                    const labels = children.filter(value => /[a-zA-Z]/.test(value) && !numericLike(value));
-                    if (numeric.length < 2 || labels.length < 1) continue;
-
-                    const label = labels.reduce((best, current) => current.length > best.length ? current : best, labels[0]);
-                    const home = numeric[0];
-                    const away = numeric[numeric.length - 1];
-                    const key = `${label}|${home}|${away}`;
-                    if (seen.has(key)) continue;
-                    seen.add(key);
-                    rows.push({label, home, away});
-                    if (rows.length >= 60) break;
-                  }
-
-                  return {
-                    title: text(document.title || ''),
-                    bodyText: text(document.body ? document.body.innerText : ''),
-                    rows
-                  };
-                }
-                """
-            )
-            return {
-                "url": url,
-                "title": parsed.get("title", ""),
-                "body_text": parsed.get("bodyText", ""),
-                "rows": parsed.get("rows", []),
-                "available": len(parsed.get("rows", [])) > 0,
-            }
-        except Exception as exc:
-            logger.debug("Stats page scrape failed (%s): %s", url, exc)
-            return {"url": url, "rows": [], "body_text": "", "available": False}
         finally:
             await page.close()
 

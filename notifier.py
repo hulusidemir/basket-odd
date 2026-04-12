@@ -64,6 +64,7 @@ class TelegramNotifier:
         quality_line = ""
         summary_line = ""
         reasons_line = ""
+        counter_line = ""
         if quality:
             quality_line = (
                 f"🏅 <b>Kalite: {quality.get('grade', '-')}</b>"
@@ -76,6 +77,12 @@ class TelegramNotifier:
             raw_reasons = [line.strip() for line in str(quality.get("reasons_text", "")).splitlines() if line.strip()]
             if raw_reasons:
                 reasons_line = "🔎 <b>Gerekceler</b>\n" + "\n".join(raw_reasons[:4]) + "\n"
+            if quality.get("counter_level") and quality.get("counter_level") != "YOK" and quality.get("counter_note"):
+                counter_line = (
+                    f"🟥 <b>{quality['counter_direction']} tarafi daha baskin "
+                    f"({quality['counter_level']})</b>\n"
+                    f"{quality['counter_note']}\n"
+                )
 
         text = (
             f"{emoji} <b>Sinyal: {direction}</b>\n"
@@ -88,6 +95,7 @@ class TelegramNotifier:
             f"Güncel Barem:  <b>{live:.1f}</b>\n"
             f"Fark: <b>{diff:+.1f}</b> puan\n\n"
             f"{summary_line}"
+            f"{counter_line}"
             f"{reasons_line}"
             f"💡 <i>{tip}</i>"
             f"\n"
