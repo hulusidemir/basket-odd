@@ -6,444 +6,403 @@
   <title>🏀 Basket Anomali Dashboard</title>
   <style>
     :root {
-      --bg: #f3ebde;
-      --bg-ink: #1a1611;
-      --panel: rgba(255, 251, 244, 0.94);
-      --panel-strong: rgba(255, 255, 255, 0.92);
-      --panel-muted: rgba(120, 85, 44, 0.08);
-      --line: rgba(86, 61, 35, 0.14);
-      --line-strong: rgba(86, 61, 35, 0.24);
-      --text: #221a13;
-      --text-dim: #786657;
-      --accent-alt: #d94841;
-      --accent-ust: #1f9d63;
-      --accent-blue: #2557d6;
-      --accent-follow: #c58a12;
-      --accent-ink: #3f2f22;
-      --bet-bg: rgba(37, 87, 214, 0.08);
-      --follow-bg: rgba(255, 211, 84, 0.22);
-      --ignored-bg: rgba(104, 86, 67, 0.1);
-      --radius: 22px;
-      --shadow-soft: 0 22px 55px rgba(89, 61, 25, 0.08);
-      --shadow-card: 0 10px 24px rgba(89, 61, 25, 0.07);
+      --bg: #07131f;
+      --surface: #0b1726;
+      --surface-2: #0f1d2f;
+      --surface-3: #13253a;
+      --surface-4: #182c44;
+      --line: rgba(110, 146, 187, 0.18);
+      --line-strong: rgba(110, 146, 187, 0.28);
+      --text: #edf4ff;
+      --text-dim: #8ea2ba;
+      --accent: #ff9e64;
+      --accent-soft: rgba(255, 158, 100, 0.16);
+      --accent-alt: #ff6a63;
+      --accent-ust: #34d399;
+      --accent-blue: #5fa7ff;
+      --accent-follow: #fbbf24;
+      --bet-bg: rgba(95, 167, 255, 0.08);
+      --follow-bg: rgba(251, 191, 36, 0.10);
+      --ignored-bg: rgba(120, 138, 160, 0.10);
+      --shadow: 0 24px 60px rgba(0, 0, 0, 0.26);
+      --radius-xl: 26px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 12px;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      font-family: "Avenir Next Condensed", "Trebuchet MS", "Segoe UI", sans-serif;
+      font-family: "Inter", "Segoe UI", sans-serif;
       background:
-        radial-gradient(circle at top left, rgba(227, 103, 28, 0.16), transparent 28%),
-        radial-gradient(circle at top right, rgba(37, 87, 214, 0.14), transparent 26%),
-        linear-gradient(180deg, #f7f0e5 0%, #efe5d6 42%, #eadfce 100%);
+        radial-gradient(circle at top right, rgba(20, 184, 166, 0.12), transparent 22%),
+        radial-gradient(circle at top left, rgba(255, 158, 100, 0.10), transparent 18%),
+        linear-gradient(180deg, #07131f 0%, #091423 46%, #08111d 100%);
       color: var(--text);
       min-height: 100vh;
       -webkit-tap-highlight-color: transparent;
     }
 
-    body::before,
-    body::after {
-      content: "";
-      position: fixed;
-      border-radius: 999px;
-      pointer-events: none;
-      z-index: 0;
-      filter: blur(18px);
-      opacity: 0.6;
-    }
-
-    body::before {
-      width: 280px;
-      height: 280px;
-      top: 72px;
-      left: -70px;
-      background: rgba(217, 72, 65, 0.12);
-    }
-
-    body::after {
-      width: 360px;
-      height: 360px;
-      right: -110px;
-      bottom: 90px;
-      background: rgba(31, 157, 99, 0.12);
-    }
-
     .app-shell {
-      position: relative;
-      z-index: 1;
-      width: min(1540px, calc(100% - 28px));
-      margin: 22px auto 38px;
+      width: min(1480px, calc(100% - 32px));
+      margin: 18px auto 28px;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 16px;
+      padding: 16px;
+      border-radius: var(--radius-xl);
+      background: rgba(10, 22, 36, 0.94);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      margin-bottom: 14px;
+    }
+
+    .topbar-left,
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .topbar-center {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .brand-badge {
+      width: 44px;
+      height: 44px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, #ffb37c, #ff9960);
+      color: #161d27;
+      font-weight: 900;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      letter-spacing: -0.04em;
+      box-shadow: 0 10px 22px rgba(255, 158, 100, 0.24);
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(17, 31, 48, 0.95);
+      border: 1px solid var(--line);
+    }
+
+    .status-pill::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #4ade80;
+      box-shadow: 0 0 0 6px rgba(74, 222, 128, 0.12);
+    }
+
+    .top-action,
+    .filter-btn,
+    .action-btn,
+    .page-btn {
+      border: 1px solid var(--line-strong);
+      background: rgba(19, 37, 58, 0.94);
+      color: var(--text);
+      cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .top-action {
+      padding: 12px 18px;
+      border-radius: 16px;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .top-action:hover,
+    .filter-btn:hover,
+    .action-btn:hover,
+    .page-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      border-color: rgba(95, 167, 255, 0.45);
+      box-shadow: 0 14px 24px rgba(0, 0, 0, 0.18);
+    }
+
+    .top-action.primary {
+      background: rgba(25, 52, 81, 0.96);
+    }
+
+    .top-action.danger {
+      background: rgba(84, 38, 51, 0.95);
+      border-color: rgba(255, 126, 126, 0.24);
+    }
+
+    .section-shell {
+      background: rgba(10, 22, 36, 0.96);
+      border: 1px solid var(--line);
+      border-radius: 30px;
+      box-shadow: var(--shadow);
+      padding: 18px;
     }
 
     .header {
-      position: relative;
-      padding: 28px;
-      border: 1px solid rgba(95, 66, 35, 0.2);
-      border-radius: 34px;
-      background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.85), rgba(255, 246, 232, 0.88)),
-        linear-gradient(120deg, rgba(217, 72, 65, 0.06), rgba(37, 87, 214, 0.06));
-      box-shadow: var(--shadow-soft);
-      overflow: hidden;
-    }
-
-    .header::before {
-      content: "";
-      position: absolute;
-      inset: auto -70px -90px auto;
-      width: 280px;
-      height: 280px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(217, 72, 65, 0.18), transparent 70%);
-      pointer-events: none;
+      margin-bottom: 18px;
     }
 
     .header-top {
       display: grid;
-      grid-template-columns: minmax(0, 1.6fr) auto;
-      gap: 18px 24px;
-      align-items: start;
-      position: relative;
-      z-index: 1;
+      gap: 16px;
     }
 
-    .header-copy {
-      max-width: 860px;
-    }
-
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 12px;
-      padding: 7px 12px;
-      border-radius: 999px;
-      background: rgba(37, 87, 214, 0.08);
-      border: 1px solid rgba(37, 87, 214, 0.18);
-      color: var(--accent-blue);
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-    }
-
-    .header h1 {
-      font-size: clamp(32px, 4.4vw, 54px);
-      line-height: 0.96;
-      letter-spacing: -0.04em;
-      color: var(--bg-ink);
-      max-width: 12ch;
-    }
-
-    .header h1 .subtitle {
-      display: block;
-      margin-top: 12px;
-      font-size: clamp(15px, 1.7vw, 20px);
-      line-height: 1.35;
-      letter-spacing: 0;
-      font-weight: 500;
-      color: var(--text-dim);
-      max-width: 38ch;
-    }
-
-    .hero-text {
-      margin-top: 16px;
-      max-width: 62ch;
-      color: var(--accent-ink);
-      font-size: 15px;
-      line-height: 1.65;
-    }
-
+    .header-copy,
     .header-side {
-      display: flex;
-      align-items: flex-start;
-      justify-content: flex-end;
-    }
-
-    .hero-links {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-      gap: 10px;
-    }
-
-    .hero-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 14px;
-      border-radius: 16px;
-      border: 1px solid var(--line-strong);
-      background: rgba(255, 255, 255, 0.75);
-      color: var(--accent-ink);
-      text-decoration: none;
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-      box-shadow: 0 8px 18px rgba(89, 61, 25, 0.06);
-    }
-
-    .hero-link:hover {
-      transform: translateY(-1px);
-      border-color: rgba(37, 87, 214, 0.35);
-      box-shadow: 0 14px 28px rgba(89, 61, 25, 0.08);
-    }
-
-    .hero-link-finished {
-      color: #0b8a62;
-      border-color: rgba(11, 138, 98, 0.24);
-      background: rgba(22, 163, 74, 0.08);
-    }
-
-    .hero-link-bankroll {
-      color: var(--accent-blue);
-      border-color: rgba(37, 87, 214, 0.22);
-      background: rgba(37, 87, 214, 0.08);
+      display: none;
     }
 
     .stats {
-      grid-column: 1 / -1;
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 14px;
-      margin-top: 24px;
-      position: relative;
-      z-index: 1;
+      gap: 10px;
     }
 
     .stat-chip {
-      min-height: 112px;
-      padding: 16px 18px;
-      border-radius: 22px;
-      border: 1px solid rgba(86, 61, 35, 0.12);
-      background: rgba(255, 255, 255, 0.76);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
+      background: rgba(13, 28, 44, 0.98);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px 16px;
+      min-height: 86px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      gap: 12px;
     }
 
     .stat-label {
       display: inline-flex;
       align-items: center;
       gap: 8px;
+      font-size: 11px;
       color: var(--text-dim);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
       text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
     }
 
     .stat-value {
-      font-size: clamp(26px, 3vw, 38px);
+      font-size: 28px;
       font-weight: 900;
+      letter-spacing: -0.04em;
       line-height: 1;
-      letter-spacing: -0.05em;
-      color: var(--bg-ink);
     }
 
     .stat-dot {
-      width: 10px;
-      height: 10px;
+      width: 9px;
+      height: 9px;
       border-radius: 50%;
       flex-shrink: 0;
-      box-shadow: 0 0 0 4px rgba(0,0,0,0.04);
+    }
+
+    .nav-tabs {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    .nav-tab {
+      padding: 14px 18px;
+      border-radius: 18px;
+      background: rgba(18, 31, 48, 0.95);
+      border: 1px solid transparent;
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .nav-tab.active {
+      background: linear-gradient(180deg, #ffb37c, #ff9960);
+      color: #1a1b22;
+      box-shadow: 0 14px 24px rgba(255, 158, 100, 0.18);
     }
 
     .filters,
     .toolbar,
     .table-wrap,
     .pagination {
+      background: rgba(18, 30, 47, 0.94);
       border: 1px solid var(--line);
-      background: var(--panel);
-      box-shadow: var(--shadow-card);
+      border-radius: 24px;
     }
 
     .filters {
-      margin-top: 18px;
-      padding: 14px 16px;
+      padding: 14px;
       display: flex;
       gap: 8px;
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
-      border-radius: 24px;
       scrollbar-width: none;
+      margin-bottom: 12px;
     }
 
     .filters::-webkit-scrollbar { display: none; }
 
-    .filter-btn,
-    .action-btn,
-    .page-btn {
-      border: 1px solid var(--line-strong);
-      background: rgba(255, 255, 255, 0.72);
-      color: var(--accent-ink);
-      cursor: pointer;
-      transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease;
-    }
-
     .filter-btn {
-      padding: 10px 16px;
-      border-radius: 999px;
+      padding: 10px 14px;
+      border-radius: 14px;
       font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
+      font-weight: 700;
       white-space: nowrap;
       flex-shrink: 0;
-    }
-
-    .filter-btn:hover,
-    .action-btn:hover,
-    .page-btn:hover:not(:disabled) {
-      transform: translateY(-1px);
-      border-color: rgba(37, 87, 214, 0.35);
-      box-shadow: 0 12px 24px rgba(89, 61, 25, 0.08);
+      color: var(--text-dim);
+      background: rgba(15, 29, 46, 0.98);
     }
 
     .filter-btn.active {
-      background: linear-gradient(135deg, var(--accent-blue), #466ff0);
-      border-color: var(--accent-blue);
-      color: #fff;
+      color: #141a22;
+      border-color: transparent;
+      background: linear-gradient(180deg, #ffb37c, #ff9960);
     }
 
     #deleteSelectedBtn {
-      background: rgba(217, 72, 65, 0.1);
-      border-color: rgba(217, 72, 65, 0.3);
-      color: var(--accent-alt);
+      color: #ffc0c0;
+      border-color: rgba(255, 126, 126, 0.24);
+      background: rgba(88, 36, 48, 0.92);
     }
 
     .toolbar {
-      margin-top: 14px;
       padding: 16px;
-      border-radius: 24px;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto auto;
-      gap: 10px;
+      display: flex;
       align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
     }
 
     .search-box {
-      width: 100%;
-      min-width: 0;
-      padding: 14px 16px;
-      border-radius: 18px;
+      flex: 1;
+      min-width: 260px;
+      padding: 12px 16px;
+      border-radius: 14px;
       border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.82);
+      background: rgba(11, 24, 38, 1);
       color: var(--text);
-      font-size: 15px;
+      font-size: 14px;
       outline: none;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.75);
     }
 
-    .search-box::placeholder { color: #9a8671; }
+    .search-box::placeholder { color: var(--text-dim); }
 
     .search-box:focus {
-      border-color: rgba(37, 87, 214, 0.3);
-      box-shadow: 0 0 0 4px rgba(37, 87, 214, 0.08);
+      border-color: rgba(95, 167, 255, 0.45);
+      box-shadow: 0 0 0 3px rgba(95, 167, 255, 0.10);
     }
 
     .refresh-info {
+      margin-left: auto;
       color: var(--text-dim);
       font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.03em;
+      font-weight: 600;
       white-space: nowrap;
-      flex-shrink: 0;
     }
 
     .table-wrap {
-      margin-top: 18px;
-      padding: 14px 14px 8px;
-      border-radius: 28px;
+      padding: 0;
       overflow-x: auto;
     }
 
     table {
       width: 100%;
       min-width: 1220px;
-      border-collapse: separate;
-      border-spacing: 0 10px;
-      font-size: 13px;
+      border-collapse: collapse;
+      font-size: 14px;
     }
 
     thead th {
       text-align: left;
-      padding: 0 14px 8px;
+      padding: 16px 18px;
       color: var(--text-dim);
-      font-weight: 800;
-      font-size: 11px;
+      font-weight: 700;
+      font-size: 12px;
       text-transform: uppercase;
-      letter-spacing: 0.09em;
+      letter-spacing: 0.08em;
       white-space: nowrap;
       cursor: pointer;
       user-select: none;
+      border-bottom: 1px solid rgba(110, 146, 187, 0.12);
+      background: rgba(11, 23, 38, 0.98);
       position: sticky;
       top: 0;
-      background: var(--panel);
       z-index: 2;
     }
 
     thead th:hover { color: var(--text); }
 
+    tbody tr {
+      border-bottom: 1px solid rgba(110, 146, 187, 0.1);
+    }
+
+    tbody tr:last-child {
+      border-bottom: none;
+    }
+
+    tbody tr:hover {
+      background: rgba(17, 32, 49, 0.72);
+    }
+
     tbody td {
-      padding: 14px;
+      padding: 18px;
       white-space: nowrap;
-      background: var(--panel-strong);
-      border-top: 1px solid rgba(86, 61, 35, 0.09);
-      border-bottom: 1px solid rgba(86, 61, 35, 0.09);
-      transition: transform 0.14s ease, background 0.14s ease;
+      vertical-align: middle;
     }
 
-    tbody td:first-child {
-      border-left: 1px solid rgba(86, 61, 35, 0.09);
-      border-radius: 18px 0 0 18px;
+    tr.bet-placed {
+      background: var(--bet-bg);
     }
 
-    tbody td:last-child {
-      border-right: 1px solid rgba(86, 61, 35, 0.09);
-      border-radius: 0 18px 18px 0;
+    tr.is-followed {
+      background: var(--follow-bg);
     }
 
-    tbody tr:hover td {
-      transform: translateY(-1px);
-      background: #fffdfa;
+    tr.is-ignored {
+      background: var(--ignored-bg);
+      opacity: 0.72;
     }
 
-    tr.bet-placed td { background: #edf4ff; }
-    tr.is-followed td { background: #fff2cf; }
-    tr.is-ignored td { background: #ede4d9; opacity: 0.78; }
     tr.is-ignored td.col-match,
     tr.is-ignored td.col-tournament,
-    tr.is-ignored td.col-direction { text-decoration: line-through; }
+    tr.is-ignored td.col-direction {
+      text-decoration: line-through;
+    }
 
     .cards-wrap {
       display: none;
-      padding: 16px 0 0;
-      gap: 14px;
+      padding: 0;
+      gap: 12px;
       flex-direction: column;
     }
 
     .alert-card {
-      background: var(--panel);
+      background: rgba(18, 30, 47, 0.94);
       border: 1px solid var(--line);
-      border-radius: 24px;
-      padding: 18px;
-      box-shadow: var(--shadow-card);
-      transition: transform 0.14s ease, box-shadow 0.14s ease;
+      border-radius: 22px;
+      padding: 16px;
     }
 
-    .alert-card:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 18px 28px rgba(89, 61, 25, 0.08);
-    }
-
-    .alert-card.bet-placed { background: #edf4ff; }
-    .alert-card.is-followed { background: #fff2cf; }
-    .alert-card.is-ignored { background: #ede4d9; opacity: 0.78; }
+    .alert-card.bet-placed { background: var(--bet-bg); }
+    .alert-card.is-followed { background: var(--follow-bg); }
+    .alert-card.is-ignored { background: var(--ignored-bg); opacity: 0.72; }
     .alert-card.is-ignored .card-match,
     .alert-card.is-ignored .card-tournament { text-decoration: line-through; }
 
@@ -456,16 +415,16 @@
     }
 
     .card-match {
-      font-weight: 800;
+      font-weight: 700;
       font-size: 18px;
-      line-height: 1.15;
+      line-height: 1.25;
       word-break: break-word;
       flex: 1;
       min-width: 0;
     }
 
     .card-match a {
-      color: var(--bg-ink);
+      color: var(--text);
       text-decoration: none;
     }
 
@@ -474,22 +433,22 @@
     .card-meta {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px 16px;
+      gap: 8px 14px;
       font-size: 12px;
       color: var(--text-dim);
       margin-bottom: 12px;
     }
 
-    .card-meta-item { display: flex; align-items: center; gap: 5px; }
+    .card-meta-item { display: flex; align-items: center; gap: 4px; }
 
     .card-odds {
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 14px;
-      background: rgba(109, 79, 47, 0.05);
-      border: 1px solid rgba(86, 61, 35, 0.08);
-      border-radius: 18px;
+      gap: 8px;
+      padding: 12px;
+      border-radius: 16px;
+      background: rgba(11, 24, 38, 0.95);
+      border: 1px solid rgba(110, 146, 187, 0.12);
       margin-bottom: 12px;
     }
 
@@ -504,27 +463,25 @@
       font-size: 10px;
       text-transform: uppercase;
       color: var(--text-dim);
-      letter-spacing: 0.12em;
-      font-weight: 800;
+      letter-spacing: 0.08em;
+      font-weight: 700;
     }
 
     .card-odds-num {
       margin-top: 4px;
-      font-size: 21px;
-      font-weight: 900;
+      font-size: 18px;
+      font-weight: 800;
       font-variant-numeric: tabular-nums;
-      color: var(--bg-ink);
     }
 
     .card-odds-arrow {
-      font-size: 18px;
-      color: #b08d69;
-      font-weight: 900;
+      font-size: 17px;
+      color: var(--text-dim);
     }
 
     .card-diff-value {
       margin-top: 4px;
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 900;
     }
 
@@ -537,8 +494,8 @@
 
     .card-actions .action-btn {
       width: 100%;
-      text-align: center;
       min-width: 0;
+      text-align: center;
     }
 
     .badge {
@@ -546,34 +503,29 @@
       align-items: center;
       justify-content: center;
       gap: 5px;
-      padding: 5px 11px;
+      padding: 5px 10px;
       border-radius: 999px;
-      font-weight: 800;
+      font-weight: 700;
       font-size: 11px;
-      letter-spacing: 0.05em;
       white-space: nowrap;
       flex-shrink: 0;
-      text-transform: uppercase;
       border: 1px solid transparent;
     }
 
-    .badge-alt { background: rgba(217, 72, 65, 0.12); color: var(--accent-alt); border-color: rgba(217, 72, 65, 0.2); }
-    .badge-ust { background: rgba(31, 157, 99, 0.12); color: var(--accent-ust); border-color: rgba(31, 157, 99, 0.2); }
-    .badge-quality-a2 { background: rgba(31, 157, 99, 0.14); color: #117a4f; border-color: rgba(31, 157, 99, 0.28); }
-    .badge-quality-a1 { background: rgba(37, 87, 214, 0.13); color: var(--accent-blue); border-color: rgba(37, 87, 214, 0.26); }
-    .badge-quality-a { background: rgba(80, 119, 236, 0.12); color: #4461c8; border-color: rgba(80, 119, 236, 0.22); }
-    .badge-quality-b { background: rgba(197, 138, 18, 0.14); color: #9a6504; border-color: rgba(197, 138, 18, 0.25); }
-    .badge-quality-c { background: rgba(120, 102, 87, 0.14); color: #6e5d4f; border-color: rgba(120, 102, 87, 0.22); }
+    .badge-alt { background: rgba(255, 106, 99, 0.12); color: var(--accent-alt); border-color: rgba(255, 106, 99, 0.18); }
+    .badge-ust { background: rgba(52, 211, 153, 0.12); color: var(--accent-ust); border-color: rgba(52, 211, 153, 0.18); }
+    .badge-quality-a2 { background: rgba(52, 211, 153, 0.14); color: #8af0c9; border-color: rgba(52, 211, 153, 0.22); }
+    .badge-quality-a1 { background: rgba(95, 167, 255, 0.14); color: #9dccff; border-color: rgba(95, 167, 255, 0.24); }
+    .badge-quality-a { background: rgba(79, 139, 223, 0.14); color: #86b7ff; border-color: rgba(79, 139, 223, 0.24); }
+    .badge-quality-b { background: rgba(251, 191, 36, 0.14); color: #f8d06f; border-color: rgba(251, 191, 36, 0.24); }
+    .badge-quality-c { background: rgba(148, 163, 184, 0.14); color: #c0cbda; border-color: rgba(148, 163, 184, 0.22); }
 
     .quality-badge {
       cursor: pointer;
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      transition: transform 0.15s ease, border-color 0.15s ease;
     }
 
-    .quality-badge:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 8px 16px rgba(89, 61, 25, 0.08);
-    }
+    .quality-badge:hover { transform: translateY(-1px); }
 
     .quality-cell {
       min-width: 180px;
@@ -582,7 +534,7 @@
 
     .quality-setup {
       display: block;
-      margin-top: 8px;
+      margin-top: 6px;
       color: var(--text-dim);
       font-size: 11px;
       line-height: 1.45;
@@ -590,32 +542,31 @@
 
     .quality-summary {
       margin-top: 10px;
-      padding: 12px 14px;
+      padding: 10px 12px;
       font-size: 12px;
-      color: var(--accent-ink);
+      color: var(--text-dim);
       line-height: 1.55;
       border-radius: 14px;
-      background: rgba(109, 79, 47, 0.05);
-      border: 1px solid rgba(86, 61, 35, 0.08);
+      background: rgba(11, 24, 38, 0.92);
+      border: 1px solid rgba(110, 146, 187, 0.12);
     }
 
     .counter-warning {
       margin-top: 10px;
-      padding: 12px 14px;
+      padding: 10px 12px;
       border-radius: 14px;
-      background: rgba(217, 72, 65, 0.09);
-      border: 1px solid rgba(217, 72, 65, 0.2);
-      color: #8e3832;
+      background: rgba(255, 106, 99, 0.08);
+      border: 1px solid rgba(255, 106, 99, 0.14);
+      color: #ffb4b0;
       line-height: 1.55;
       font-size: 13px;
     }
 
-    .counter-warning strong { color: #7a241f; }
+    .counter-warning strong { color: #ffd2cf; }
 
     .diff-val {
       font-weight: 900;
       font-variant-numeric: tabular-nums;
-      font-size: 15px;
     }
 
     .diff-positive { color: var(--accent-alt); }
@@ -623,44 +574,37 @@
 
     .action-btn {
       padding: 10px 12px;
-      border-radius: 14px;
+      border-radius: 12px;
       font-size: 12px;
       min-width: 96px;
-      font-weight: 800;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--text-dim);
     }
 
     .action-btn:active { transform: scale(0.98); }
 
     .action-btn.active-bet {
-      background: linear-gradient(135deg, var(--accent-blue), #4d75ea);
-      border-color: var(--accent-blue);
-      color: #fff;
+      color: var(--text);
+      background: rgba(36, 74, 111, 0.98);
+      border-color: rgba(95, 167, 255, 0.26);
     }
 
     .action-btn.active-ignore {
-      background: linear-gradient(135deg, #7d7166, #988778);
-      border-color: #7d7166;
-      color: #fff;
+      color: var(--text);
+      background: rgba(88, 36, 48, 0.95);
+      border-color: rgba(255, 126, 126, 0.18);
     }
 
     .action-btn.active-follow {
-      background: linear-gradient(135deg, #c58a12, #dbab3b);
-      border-color: #c58a12;
-      color: #fff;
+      color: var(--text);
+      background: rgba(52, 69, 39, 0.95);
+      border-color: rgba(251, 191, 36, 0.18);
     }
 
     .action-btn.delete-btn {
-      border-color: rgba(217, 72, 65, 0.26);
-      color: var(--accent-alt);
-      background: rgba(217, 72, 65, 0.08);
-    }
-
-    .action-btn.delete-btn:hover {
-      border-color: var(--accent-alt);
-      color: #fff;
-      background: rgba(217, 72, 65, 0.9);
+      color: #ffb4b0;
+      border-color: rgba(255, 126, 126, 0.18);
+      background: rgba(88, 36, 48, 0.72);
     }
 
     .actions-wrap {
@@ -672,91 +616,76 @@
     }
 
     .action-btn.follow-btn:not(.active-follow) {
-      color: #8c670f;
-      background: rgba(197, 138, 18, 0.08);
-      border-color: rgba(197, 138, 18, 0.18);
+      background: rgba(19, 37, 58, 0.94);
     }
 
     .match-link {
-      color: var(--accent-blue);
+      color: var(--text);
       text-decoration: none;
-      text-decoration-thickness: 1px;
-      text-underline-offset: 3px;
     }
 
-    .match-link:hover { text-decoration: underline; }
+    .match-link:hover { color: var(--accent-blue); }
 
     .time-col {
       color: var(--text-dim);
       font-size: 12px;
-      font-weight: 700;
     }
 
     .signal-badge {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: rgba(197, 138, 18, 0.14);
-      color: #915f04;
+      background: rgba(251, 191, 36, 0.16);
+      color: #f8d06f;
       font-size: 10px;
-      font-weight: 900;
-      padding: 3px 7px;
+      font-weight: 800;
+      padding: 2px 6px;
       border-radius: 999px;
       margin-left: 4px;
       vertical-align: middle;
-      border: 1px solid rgba(197, 138, 18, 0.24);
     }
 
     .empty-state {
       text-align: center;
-      padding: 80px 20px;
+      padding: 60px 20px;
       color: var(--text-dim);
       font-size: 15px;
     }
 
     .pagination {
-      margin-top: 16px;
-      padding: 16px 18px;
-      border-radius: 24px;
+      margin-top: 14px;
+      padding: 16px;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 10px;
+      gap: 8px;
       flex-wrap: wrap;
     }
 
     .page-btn {
       padding: 10px 16px;
-      border-radius: 14px;
+      border-radius: 12px;
       font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--text);
     }
 
     .page-btn:disabled { opacity: 0.35; cursor: default; }
 
-    .page-btn.active-page {
-      background: linear-gradient(135deg, var(--accent-blue), #4d75ea);
-      border-color: var(--accent-blue);
-      color: #fff;
-    }
-
     .page-info {
       color: var(--text-dim);
       font-size: 13px;
-      font-weight: 700;
+      font-weight: 600;
     }
 
     .page-size-select,
     .bet-builder-toolbar select {
       padding: 10px 12px;
-      border-radius: 14px;
+      border-radius: 12px;
       border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.84);
+      background: rgba(11, 24, 38, 1);
       color: var(--text);
       font-size: 12px;
-      font-weight: 700;
       cursor: pointer;
     }
 
@@ -764,48 +693,46 @@
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(29, 20, 12, 0.46);
+      background: rgba(5, 10, 18, 0.72);
       backdrop-filter: blur(8px);
       z-index: 100;
       justify-content: center;
       align-items: center;
-      padding: 22px;
+      padding: 20px;
     }
 
     .modal-overlay.active { display: flex; }
 
     .modal-box {
-      background: linear-gradient(180deg, rgba(255, 252, 246, 0.98), rgba(255, 247, 236, 0.96));
+      background: rgba(10, 22, 36, 0.98);
       border: 1px solid var(--line);
-      border-radius: 24px;
+      border-radius: 22px;
       max-width: 760px;
       width: 100%;
       max-height: 84vh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      box-shadow: 0 24px 70px rgba(43, 30, 16, 0.18);
+      box-shadow: var(--shadow);
     }
 
     .modal-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 18px 22px;
-      border-bottom: 1px solid rgba(86, 61, 35, 0.1);
-      background: rgba(255,255,255,0.52);
+      padding: 18px 20px;
+      border-bottom: 1px solid rgba(110, 146, 187, 0.12);
+      background: rgba(11, 24, 38, 0.98);
     }
 
     .modal-header h3 {
-      font-size: 18px;
-      font-weight: 900;
-      letter-spacing: -0.02em;
-      color: var(--bg-ink);
+      font-size: 16px;
+      font-weight: 800;
     }
 
     .modal-close {
-      background: rgba(109, 79, 47, 0.08);
-      border: 1px solid rgba(86, 61, 35, 0.1);
+      background: rgba(19, 37, 58, 0.96);
+      border: 1px solid var(--line);
       color: var(--text-dim);
       font-size: 18px;
       width: 34px;
@@ -818,7 +745,7 @@
     .modal-close:hover { color: var(--text); }
 
     .modal-body {
-      padding: 22px;
+      padding: 20px;
       overflow-y: auto;
       font-size: 14px;
       line-height: 1.7;
@@ -831,7 +758,7 @@
       color: var(--text-dim);
       padding: 30px;
       border-radius: 16px;
-      background: rgba(109, 79, 47, 0.05);
+      background: rgba(11, 24, 38, 0.92);
     }
 
     .bet-builder-toolbar {
@@ -845,40 +772,38 @@
     .bet-builder-toolbar label {
       color: var(--text-dim);
       font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
+      font-weight: 700;
     }
 
     .builder-summary {
       margin-bottom: 14px;
-      padding: 14px 16px;
-      border-radius: 18px;
-      border: 1px solid rgba(37, 87, 214, 0.16);
-      background: rgba(37, 87, 214, 0.07);
-      color: #29438f;
+      padding: 12px 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(95, 167, 255, 0.14);
+      background: rgba(22, 49, 78, 0.68);
+      color: #cce0ff;
       line-height: 1.6;
     }
 
     .builder-empty {
-      padding: 20px;
-      border-radius: 18px;
-      border: 1px dashed rgba(86, 61, 35, 0.18);
+      padding: 18px;
+      border-radius: 16px;
+      border: 1px dashed var(--line);
       color: var(--text-dim);
       text-align: center;
-      background: rgba(109, 79, 47, 0.03);
+      background: rgba(11, 24, 38, 0.92);
     }
 
     .bet-slip-list {
       display: grid;
-      gap: 12px;
+      gap: 10px;
     }
 
     .bet-slip-card {
-      border: 1px solid rgba(86, 61, 35, 0.1);
-      border-radius: 18px;
+      border: 1px solid rgba(110, 146, 187, 0.12);
+      border-radius: 16px;
       padding: 16px;
-      background: rgba(255, 255, 255, 0.72);
+      background: rgba(14, 26, 42, 0.95);
     }
 
     .bet-slip-head {
@@ -891,7 +816,7 @@
 
     .bet-slip-title {
       font-size: 15px;
-      font-weight: 900;
+      font-weight: 800;
       line-height: 1.25;
     }
 
@@ -904,90 +829,79 @@
     .bet-slip-confidence {
       padding: 7px 11px;
       border-radius: 999px;
-      font-weight: 800;
-      font-size: 11px;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      background: rgba(31, 157, 99, 0.12);
-      border: 1px solid rgba(31, 157, 99, 0.24);
-      color: #106a46;
+      font-weight: 700;
+      font-size: 12px;
+      background: rgba(52, 211, 153, 0.12);
+      border: 1px solid rgba(52, 211, 153, 0.18);
+      color: #9df0d2;
       white-space: nowrap;
     }
 
     .bet-slip-line {
       color: var(--text);
       font-size: 13px;
-      line-height: 1.75;
+      line-height: 1.7;
     }
 
-    .bet-slip-line strong { color: var(--bg-ink); }
+    .bet-slip-line strong { color: #ffffff; }
 
     @media (max-width: 1100px) {
-      .header-top {
-        grid-template-columns: 1fr;
-      }
-
-      .header-side {
-        justify-content: flex-start;
-      }
-
-      .hero-links {
-        justify-content: flex-start;
-      }
-
       .stats {
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
 
-      .toolbar {
-        grid-template-columns: minmax(0, 1fr) repeat(2, auto);
+      .topbar {
+        grid-template-columns: auto auto;
+        justify-content: space-between;
+      }
+
+      .topbar-center {
+        display: none;
       }
 
       .refresh-info {
-        grid-column: 1 / -1;
+        margin-left: 0;
       }
     }
 
     @media (max-width: 768px) {
       .app-shell {
         width: min(100% - 16px, 100%);
-        margin: 10px auto 24px;
+        margin: 10px auto 22px;
       }
 
-      .header {
-        padding: 18px;
-        border-radius: 26px;
-      }
-
-      .header h1 {
-        max-width: 100%;
-        font-size: 34px;
-      }
-
-      .header h1 .subtitle {
-        font-size: 15px;
-      }
-
-      .hero-text {
-        font-size: 14px;
-      }
-
-      .stats {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .stat-chip {
-        min-height: 96px;
-      }
-
+      .topbar,
+      .section-shell,
       .filters,
       .toolbar,
       .pagination {
         border-radius: 20px;
       }
 
-      .toolbar {
+      .topbar {
         grid-template-columns: 1fr;
+      }
+
+      .topbar-left,
+      .topbar-right {
+        justify-content: space-between;
+      }
+
+      .stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .toolbar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .search-box {
+        min-width: 0;
+      }
+
+      .refresh-info {
+        margin-left: 0;
       }
 
       .table-wrap { display: none; }
@@ -1000,15 +914,6 @@
       .card-odds {
         flex-wrap: wrap;
       }
-
-      .modal-overlay {
-        padding: 12px;
-      }
-
-      .modal-box {
-        border-radius: 20px;
-        max-height: 88vh;
-      }
     }
 
     @media (min-width: 769px) {
@@ -1019,19 +924,28 @@
 </head>
 <body>
   <div class="app-shell">
-  <div class="header">
-    <div class="header-top">
-      <div class="header-copy">
-        <span class="eyebrow">Live Totals Radar</span>
-        <h1>Basket Anomali Merkezi <span class="subtitle">Canlı barem, projeksiyon ve yön baskısını aynı masada toplayan daha güçlü bir görünüm.</span></h1>
-        <p class="hero-text">Mevcut verileri değiştirmeden canlı sinyalleri daha okunur, daha editoryal ve daha güçlü bir hiyerarşiyle gösterir. Filtreler, kupon üretici, kalite notu ve maç akışları aynı kalır.</p>
+    <div class="topbar">
+      <div class="topbar-left">
+        <span class="brand-badge">BA</span>
       </div>
-      <div class="header-side">
-        <div class="hero-links">
-          <a class="hero-link hero-link-finished" href="/finished-matches">🏁 Biten Maçlar</a>
-          <a class="hero-link hero-link-bankroll" href="/bankroll">💰 Bankroll</a>
-        </div>
+      <div class="topbar-center">
+        <span class="status-pill"></span>
       </div>
+      <div class="topbar-right">
+        <button class="top-action primary" onclick="manualRefresh()">Tümünü Yenile</button>
+        <button class="top-action danger" onclick="clearDatabase()">Veritabanını Temizle</button>
+      </div>
+    </div>
+
+    <div class="section-shell">
+    <div class="nav-tabs">
+      <span class="nav-tab active">Anomaliler</span>
+      <a class="nav-tab" href="/finished-matches">Biten Maçlar</a>
+      <a class="nav-tab" href="/bankroll">Bankroll</a>
+    </div>
+
+    <div class="header">
+      <div class="header-top">
       <div class="stats">
         <div class="stat-chip">
           <span class="stat-label"><span class="stat-dot" style="background:var(--accent-alt)"></span>ALT Tarafı</span>
@@ -1054,82 +968,77 @@
           <strong class="stat-value" id="stat-total">0</strong>
         </div>
       </div>
+      </div>
     </div>
-  </div>
 
-  <div class="filters">
-    <button class="filter-btn active" data-filter="all">Tümü</button>
-    <button class="filter-btn" data-filter="pending">Bekleyen</button>
-    <button class="filter-btn" data-filter="bet">Bahis</button>
-    <button class="filter-btn" data-filter="follow">Takip</button>
-    <button class="filter-btn" data-filter="ignored">Gözardı</button>
-    <button class="filter-btn" data-filter="alt">🔻 ALT</button>
-    <button class="filter-btn" data-filter="ust">🔺 ÜST</button>
-    <button class="filter-btn" data-filter="a2">A++</button>
-    <button class="filter-btn" data-filter="a1">A+</button>
-    <button class="filter-btn" data-filter="a">A</button>
-    <button class="filter-btn" data-filter="b">B</button>
-    <button class="filter-btn" data-filter="c">C</button>
-    <button class="filter-btn" id="deleteSelectedBtn" onclick="deleteSelected()" style="display:none">🗑️ Sil (<span id="selectedCount">0</span>)</button>
-    <button class="filter-btn" onclick="clearDatabase()" style="margin-left:auto; background:rgba(239,68,68,0.15); color:#ef4444; border-color:rgba(239,68,68,0.3);">🧹 Veritabanını Temizle</button>
-  </div>
-
-  <div class="toolbar">
-    <input class="search-box" type="text" placeholder="Takım veya turnuva ara..." id="searchInput">
-    <button class="filter-btn" onclick="openBetBuilder()" style="display: flex; align-items: center; gap: 5px; border-color: rgba(16,185,129,0.28); color: #34d399;">
-      🎯 Bahis Oluşturucu
-    </button>
-    <button class="filter-btn" onclick="manualRefresh()" style="display: flex; align-items: center; gap: 5px;">
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-      Yenile
-    </button>
-    <span class="refresh-info"><span id="countdown">15</span>s | <span id="lastUpdate">-</span></span>
-  </div>
-
-  <!-- Desktop: Table -->
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th style="width:32px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this.checked)" title="Tümünü seç"></th>
-          <th data-sort="alerted_at">Zaman ▼</th>
-          <th data-sort="direction">Sinyal</th>
-          <th data-sort="quality_score">Kalite</th>
-          <th data-sort="match_name">Maç</th>
-          <th data-sort="tournament">Turnuva</th>
-          <th data-sort="status">Durum</th>
-          <th data-sort="score">Skor</th>
-          <th data-sort="opening">Açılış</th>
-          <th data-sort="live">Canlı</th>
-          <th data-sort="projected">Proj</th>
-          <th data-sort="diff">Fark</th>
-          <th>Aksiyon</th>
-        </tr>
-      </thead>
-      <tbody id="alertsBody"></tbody>
-    </table>
-    <div class="empty-state" id="emptyState" style="display:none;">
-      Henüz anomali tespiti yok. Bot çalışırken otomatik olarak güncellenecek.
+    <div class="filters">
+      <button class="filter-btn active" data-filter="all">Tümü</button>
+      <button class="filter-btn" data-filter="pending">Bekleyen</button>
+      <button class="filter-btn" data-filter="bet">Bahis</button>
+      <button class="filter-btn" data-filter="follow">Takip</button>
+      <button class="filter-btn" data-filter="ignored">Gözardı</button>
+      <button class="filter-btn" data-filter="alt">ALT</button>
+      <button class="filter-btn" data-filter="ust">ÜST</button>
+      <button class="filter-btn" data-filter="a2">A++</button>
+      <button class="filter-btn" data-filter="a1">A+</button>
+      <button class="filter-btn" data-filter="a">A</button>
+      <button class="filter-btn" data-filter="b">B</button>
+      <button class="filter-btn" data-filter="c">C</button>
+      <button class="filter-btn" id="deleteSelectedBtn" onclick="deleteSelected()" style="display:none">Seçilileri Sil (<span id="selectedCount">0</span>)</button>
     </div>
-  </div>
 
-  <!-- Mobile: Cards -->
-  <div class="cards-wrap" id="cardsWrap"></div>
-  <div class="empty-state" id="emptyStateMobile" style="display:none;">
-    Henüz anomali tespiti yok. Bot çalışırken otomatik güncellenecek.
-  </div>
+    <div class="toolbar">
+      <input class="search-box" type="text" placeholder="Takım, lig veya maç ara" id="searchInput">
+      <button class="filter-btn" onclick="openBetBuilder()">Bahis Oluşturucu</button>
+      <button class="filter-btn" onclick="manualRefresh()">Listeyi Yenile</button>
+      <span class="refresh-info"><span id="countdown">15</span>s | <span id="lastUpdate">-</span></span>
+    </div>
 
-  <div class="pagination" id="paginationBar">
-    <button class="page-btn" id="prevPage" onclick="changePage(-1)">← Önceki</button>
-    <span class="page-info" id="pageInfo">1 / 1</span>
-    <button class="page-btn" id="nextPage" onclick="changePage(1)">Sonraki →</button>
-    <select class="page-size-select" id="pageSizeSelect" onchange="changePageSize(this.value)">
-      <option value="15">15</option>
-      <option value="25" selected>25</option>
-      <option value="50">50</option>
-      <option value="100">100</option>
-    </select>
-  </div>
+    <!-- Desktop: Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:32px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this.checked)" title="Tümünü seç"></th>
+            <th data-sort="alerted_at">Zaman ▼</th>
+            <th data-sort="direction">Sinyal</th>
+            <th data-sort="quality_score">Kalite</th>
+            <th data-sort="match_name">Maç</th>
+            <th data-sort="tournament">Turnuva</th>
+            <th data-sort="status">Durum</th>
+            <th data-sort="score">Skor</th>
+            <th data-sort="opening">Açılış</th>
+            <th data-sort="live">Canlı</th>
+            <th data-sort="projected">Proj</th>
+            <th data-sort="diff">Fark</th>
+            <th>Aksiyon</th>
+          </tr>
+        </thead>
+        <tbody id="alertsBody"></tbody>
+      </table>
+      <div class="empty-state" id="emptyState" style="display:none;">
+        Henüz anomali tespiti yok. Bot çalışırken otomatik olarak güncellenecek.
+      </div>
+    </div>
+
+    <!-- Mobile: Cards -->
+    <div class="cards-wrap" id="cardsWrap"></div>
+    <div class="empty-state" id="emptyStateMobile" style="display:none;">
+      Henüz anomali tespiti yok. Bot çalışırken otomatik güncellenecek.
+    </div>
+
+    <div class="pagination" id="paginationBar">
+      <button class="page-btn" id="prevPage" onclick="changePage(-1)">← Önceki</button>
+      <span class="page-info" id="pageInfo">1 / 1</span>
+      <button class="page-btn" id="nextPage" onclick="changePage(1)">Sonraki →</button>
+      <select class="page-size-select" id="pageSizeSelect" onchange="changePageSize(this.value)">
+        <option value="15">15</option>
+        <option value="25" selected>25</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+    </div>
+    </div>
   </div>
 
   <div class="modal-overlay" id="qualityModal" onclick="if(event.target===this)closeQualityModal()">
