@@ -12,7 +12,6 @@ import shutil
 import subprocess
 import time
 
-from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
 
@@ -53,6 +52,34 @@ class AiscoreFinishedMatchChecker:
         self.page_timeout_ms = page_timeout_ms
         self.concurrency = concurrency
         self._opera_process = None
+
+    async def _launch_headless_context(self, playwright):
+        try:
+            browser = await playwright.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                ],
+            )
+            context = await browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1600, "height": 1000},
+                locale="en-US",
+            )
+            await context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            """)
+            return browser, context, True
+        except Exception as exc:
+            raise RuntimeError(
+                "Headless Chromium could not be started. "
+                "Run 'playwright install chromium' on the server or configure a working Opera CDP target."
+            ) from exc
 
     def _find_opera_binary(self) -> str:
         if self.opera_binary:
@@ -141,37 +168,19 @@ class AiscoreFinishedMatchChecker:
 
     async def _build_context(self, playwright):
         if self.browser_mode == "headless":
-            browser = await playwright.chromium.launch(
-                headless=True,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                ],
-            )
-            context = await browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-                ),
-                viewport={"width": 1600, "height": 1000},
-                locale="en-US",
-            )
-            await context.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            """)
-            return browser, context
+            return await self._launch_headless_context(playwright)
 
-        self._launch_opera()
         try:
+            self._launch_opera()
             browser = await playwright.chromium.connect_over_cdp(self.cdp_url)
-        except PlaywrightError as exc:
-            raise RuntimeError(
-                f"Could not connect to Opera CDP at {self.cdp_url}"
-            ) from exc
-
-        context = browser.contexts[0] if browser.contexts else await browser.new_context()
-        return browser, context
+            context = browser.contexts[0] if browser.contexts else await browser.new_context()
+            return browser, context, False
+        except Exception as exc:
+            logger.warning(
+                "Opera/CDP finished-match check is unavailable, falling back to headless Chromium: %s",
+                exc,
+            )
+            return await self._launch_headless_context(playwright)
 
     async def check_matches(self, tracked_matches: list[dict]) -> list[dict]:
         if not tracked_matches:
@@ -179,7 +188,7 @@ class AiscoreFinishedMatchChecker:
 
         results = []
         async with async_playwright() as playwright:
-            browser, context = await self._build_context(playwright)
+            browser, context, should_close_browser = await self._build_context(playwright)
             try:
                 for index in range(0, len(tracked_matches), self.concurrency):
                     batch = tracked_matches[index:index + self.concurrency]
@@ -193,7 +202,7 @@ class AiscoreFinishedMatchChecker:
                         elif isinstance(item, Exception):
                             logger.debug("Finished check skipped due to error: %s", item)
             finally:
-                if self.browser_mode == "headless":
+                if should_close_browser:
                     await browser.close()
         return results
 

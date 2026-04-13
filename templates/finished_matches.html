@@ -2036,7 +2036,16 @@
           showBanner('warn', 'Zaten çalışıyor', 'Şu anda başka bir manuel kontrol isteği işleniyor. Birkaç saniye sonra tekrar deneyebilirsin.');
           return;
         }
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+          let message = `HTTP ${response.status}`;
+          try {
+            const payload = await response.json();
+            if (payload && payload.message) message = payload.message;
+          } catch (parseError) {
+            console.error(parseError);
+          }
+          throw new Error(message);
+        }
 
         const summary = await response.json();
         await loadFinishedMatches();
@@ -2062,7 +2071,11 @@
         }
       } catch (error) {
         console.error(error);
-        showBanner('error', 'Kontrol başarısız', 'Anlık biten maç kontrolü sırasında bir hata oluştu.');
+        showBanner(
+          'error',
+          'Kontrol başarısız',
+          error?.message || 'Anlık biten maç kontrolü sırasında bir hata oluştu.'
+        );
       } finally {
         button.disabled = false;
         button.textContent = originalText;

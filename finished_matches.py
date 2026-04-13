@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime
 import threading
 
-from flask import Blueprint, jsonify, render_template
+from flask import Blueprint, current_app, jsonify, render_template
 
 from config import Config
 from db import Database
@@ -342,6 +342,14 @@ def api_finished_matches_check_now():
 
         summary = asyncio.run(run_finished_match_cycle(db, config))
         return jsonify(summary)
+    except Exception as exc:
+        current_app.logger.exception("Manual finished match check failed")
+        return jsonify(
+            {
+                "error": "check_failed",
+                "message": str(exc) or "Biten maç kontrolü çalıştırılamadı.",
+            }
+        ), 500
     finally:
         manual_check_lock.release()
 
