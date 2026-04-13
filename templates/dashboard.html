@@ -51,9 +51,9 @@
     }
 
     .topbar {
-      display: grid;
-      grid-template-columns: auto 1fr auto;
+      display: flex;
       align-items: center;
+      justify-content: space-between;
       gap: 16px;
       padding: 16px;
       border-radius: var(--radius-xl);
@@ -69,26 +69,6 @@
       align-items: center;
       gap: 10px;
       flex-wrap: wrap;
-    }
-
-    .topbar-center {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-
-    .brand-badge {
-      width: 44px;
-      height: 44px;
-      border-radius: 16px;
-      background: linear-gradient(180deg, #ffb37c, #ff9960);
-      color: #161d27;
-      font-weight: 900;
-      font-size: 24px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 10px 22px rgba(255, 158, 100, 0.24);
     }
 
     .status-pill {
@@ -906,15 +886,6 @@
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
 
-      .topbar {
-        grid-template-columns: auto auto;
-        justify-content: space-between;
-      }
-
-      .topbar-center {
-        display: none;
-      }
-
       .refresh-info {
         margin-left: 0;
       }
@@ -935,7 +906,8 @@
       }
 
       .topbar {
-        grid-template-columns: 1fr;
+        flex-direction: column;
+        align-items: stretch;
       }
 
       .topbar-left,
@@ -980,11 +952,8 @@
 </head>
 <body>
   <div class="app-shell">
-      <div class="topbar">
+    <div class="topbar">
       <div class="topbar-left">
-        <span class="brand-badge" title="Basket Anomali">🏀</span>
-      </div>
-      <div class="topbar-center">
         <span class="status-pill"></span>
       </div>
       <div class="topbar-right">
