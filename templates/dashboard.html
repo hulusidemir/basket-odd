@@ -45,9 +45,9 @@
     }
 
     .app-shell {
-      width: calc(100% - 20px);
-      max-width: 1680px;
-      margin: 10px auto 24px;
+      width: calc(100% - 10px);
+      max-width: none;
+      margin: 5px auto 18px;
     }
 
     .topbar {
@@ -84,10 +84,10 @@
       background: linear-gradient(180deg, #ffb37c, #ff9960);
       color: #161d27;
       font-weight: 900;
+      font-size: 24px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      letter-spacing: -0.04em;
       box-shadow: 0 10px 22px rgba(255, 158, 100, 0.24);
     }
 
@@ -154,7 +154,7 @@
       border: 1px solid var(--line);
       border-radius: 30px;
       box-shadow: var(--shadow);
-      padding: 18px;
+      padding: 12px;
     }
 
     .header {
@@ -922,8 +922,8 @@
 
     @media (max-width: 768px) {
       .app-shell {
-        width: calc(100% - 12px);
-        margin: 10px auto 22px;
+        width: calc(100% - 10px);
+        margin: 5px auto 18px;
       }
 
       .topbar,
@@ -980,9 +980,9 @@
 </head>
 <body>
   <div class="app-shell">
-    <div class="topbar">
+      <div class="topbar">
       <div class="topbar-left">
-        <span class="brand-badge">Basket Anomali Takip</span>
+        <span class="brand-badge" title="Basket Anomali">🏀</span>
       </div>
       <div class="topbar-center">
         <span class="status-pill"></span>
