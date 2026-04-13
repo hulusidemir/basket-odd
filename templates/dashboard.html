@@ -45,8 +45,9 @@
     }
 
     .app-shell {
-      width: min(1480px, calc(100% - 32px));
-      margin: 18px auto 28px;
+      width: calc(100% - 20px);
+      max-width: 1680px;
+      margin: 10px auto 24px;
     }
 
     .topbar {
@@ -319,13 +320,14 @@
 
     .table-wrap {
       padding: 0;
-      overflow-x: auto;
+      overflow-x: hidden;
     }
 
     table {
       width: 100%;
-      min-width: 1220px;
+      min-width: 0;
       border-collapse: collapse;
+      table-layout: fixed;
       font-size: 14px;
     }
 
@@ -363,8 +365,26 @@
 
     tbody td {
       padding: 18px;
-      white-space: nowrap;
       vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    tbody td.col-match,
+    tbody td.col-tournament,
+    tbody td:last-child {
+      white-space: normal;
+    }
+
+    tbody td.col-match {
+      width: 26%;
+    }
+
+    tbody td.col-tournament {
+      width: 24%;
+    }
+
+    .actions-wrap {
+      min-width: 0;
     }
 
     tr.bet-placed {
@@ -622,6 +642,7 @@
     .match-link {
       color: var(--text);
       text-decoration: none;
+      word-break: break-word;
     }
 
     .match-link:hover { color: var(--accent-blue); }
@@ -866,7 +887,7 @@
 
     @media (max-width: 768px) {
       .app-shell {
-        width: min(100% - 16px, 100%);
+        width: calc(100% - 12px);
         margin: 10px auto 22px;
       }
 
@@ -926,7 +947,7 @@
   <div class="app-shell">
     <div class="topbar">
       <div class="topbar-left">
-        <span class="brand-badge">BA</span>
+        <span class="brand-badge">Basket Anomali Takip</span>
       </div>
       <div class="topbar-center">
         <span class="status-pill"></span>
@@ -948,11 +969,11 @@
       <div class="header-top">
       <div class="stats">
         <div class="stat-chip">
-          <span class="stat-label"><span class="stat-dot" style="background:var(--accent-alt)"></span>ALT Tarafı</span>
+          <span class="stat-label"><span class="stat-dot" style="background:var(--accent-alt)"></span>ALT</span>
           <strong class="stat-value" id="stat-alt">0</strong>
         </div>
         <div class="stat-chip">
-          <span class="stat-label"><span class="stat-dot" style="background:var(--accent-ust)"></span>ÜST Tarafı</span>
+          <span class="stat-label"><span class="stat-dot" style="background:var(--accent-ust)"></span>ÜST</span>
           <strong class="stat-value" id="stat-ust">0</strong>
         </div>
         <div class="stat-chip">
