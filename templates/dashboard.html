@@ -331,6 +331,20 @@
       font-size: 14px;
     }
 
+    thead th:nth-child(1) { width: 40px; }
+    thead th:nth-child(2) { width: 130px; }
+    thead th:nth-child(3) { width: 130px; }
+    thead th:nth-child(4) { width: 136px; }
+    thead th:nth-child(5) { width: 19%; }
+    thead th:nth-child(6) { width: 23%; }
+    thead th:nth-child(7) { width: 96px; }
+    thead th:nth-child(8) { width: 104px; }
+    thead th:nth-child(9),
+    thead th:nth-child(10),
+    thead th:nth-child(11),
+    thead th:nth-child(12) { width: 92px; }
+    thead th:nth-child(13) { width: 228px; }
+
     thead th {
       text-align: left;
       padding: 16px 18px;
@@ -364,27 +378,16 @@
     }
 
     tbody td {
-      padding: 18px;
+      padding: 12px 14px;
       vertical-align: middle;
       white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     tbody td.col-match,
-    tbody td.col-tournament,
-    tbody td:last-child {
-      white-space: normal;
-    }
-
-    tbody td.col-match {
-      width: 26%;
-    }
-
     tbody td.col-tournament {
-      width: 24%;
-    }
-
-    .actions-wrap {
-      min-width: 0;
+      white-space: nowrap;
     }
 
     tr.bet-placed {
@@ -593,10 +596,10 @@
     .diff-negative { color: var(--accent-ust); }
 
     .action-btn {
-      padding: 10px 12px;
+      padding: 8px 10px;
       border-radius: 12px;
-      font-size: 12px;
-      min-width: 96px;
+      font-size: 11px;
+      min-width: 0;
       font-weight: 700;
       color: var(--text-dim);
     }
@@ -628,24 +631,45 @@
     }
 
     .actions-wrap {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      justify-content: flex-start;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      align-items: stretch;
+      min-width: 0;
     }
 
     .action-btn.follow-btn:not(.active-follow) {
       background: rgba(19, 37, 58, 0.94);
     }
 
+    .actions-wrap .action-btn {
+      width: 100%;
+      text-align: center;
+      white-space: nowrap;
+    }
+
     .match-link {
+      display: block;
       color: var(--text);
       text-decoration: none;
-      word-break: break-word;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .match-link:hover { color: var(--accent-blue); }
+
+    .col-tournament {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .signal-cell {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 34px;
+    }
 
     .time-col {
       color: var(--text-dim);
@@ -1375,9 +1399,10 @@
         const time = a.alerted_at ? new Date(a.alerted_at + 'Z').toLocaleString('tr-TR', {
           day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
         }) : '-';
+        const cleanName = cleanMatchName(a.match_name);
         const matchDisplay = a.url
-          ? `<a class="match-link" href="${escapeHtml(a.url)}" target="_blank">${escapeHtml(cleanMatchName(a.match_name))}</a>`
-          : escapeHtml(cleanMatchName(a.match_name));
+          ? `<a class="match-link" href="${escapeHtml(a.url)}" target="_blank" title="${escapeHtml(cleanName)}">${escapeHtml(cleanName)}</a>`
+          : `<span class="match-link" title="${escapeHtml(cleanName)}">${escapeHtml(cleanName)}</span>`;
         const betBtnClass = a.bet_placed ? 'active-bet' : '';
         const betBtnText = a.bet_placed ? '✓ Bahis' : '💰 Bahis';
         const ignoreBtnClass = a.ignored ? 'active-ignore' : '';
@@ -1388,13 +1413,13 @@
         return `<tr class="${classes.join(' ')}">
           <td><input type="checkbox" class="row-check" data-id="${a.id}" onchange="updateSelectedCount()"></td>
           <td class="time-col">${time}</td>
-          <td class="col-direction" style="display:flex;align-items:center;gap:4px;">
+          <td class="col-direction signal-cell">
             <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
             ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
           </td>
           <td>${qualityBadgeHtml(a)}</td>
           <td class="col-match">${matchDisplay}</td>
-          <td class="col-tournament">${escapeHtml(a.tournament || '-')}</td>
+          <td class="col-tournament" title="${escapeHtml(a.tournament || '-')}">${escapeHtml(a.tournament || '-')}</td>
           <td>${escapeHtml(a.status || '-')}</td>
           <td><b>${escapeHtml(a.score || '-')}</b></td>
           <td>${a.opening.toFixed(1)}</td>
