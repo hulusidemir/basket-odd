@@ -526,6 +526,87 @@
       color: var(--text-dim);
       padding: 30px;
     }
+    .bet-builder-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .bet-builder-toolbar label {
+      color: var(--text-dim);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .bet-builder-toolbar select {
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      font-size: 13px;
+    }
+    .builder-summary {
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(59,130,246,0.22);
+      background: rgba(59,130,246,0.08);
+      color: #dbeafe;
+      line-height: 1.6;
+    }
+    .builder-empty {
+      padding: 18px;
+      border-radius: 12px;
+      border: 1px dashed var(--border);
+      color: var(--text-dim);
+      text-align: center;
+    }
+    .bet-slip-list {
+      display: grid;
+      gap: 10px;
+    }
+    .bet-slip-card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      background: rgba(255,255,255,0.03);
+    }
+    .bet-slip-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .bet-slip-title {
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.4;
+    }
+    .bet-slip-league {
+      color: var(--text-dim);
+      font-size: 12px;
+      margin-top: 4px;
+    }
+    .bet-slip-confidence {
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 12px;
+      background: rgba(34,197,94,0.16);
+      border: 1px solid rgba(34,197,94,0.32);
+      color: #86efac;
+      white-space: nowrap;
+    }
+    .bet-slip-line {
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .bet-slip-line strong {
+      color: #fff;
+    }
 
     @media (min-width: 769px) {
       .cards-wrap { display: none !important; }
@@ -585,6 +666,9 @@
 
   <div class="toolbar">
     <input class="search-box" type="text" placeholder="Takım veya turnuva ara..." id="searchInput">
+    <button class="filter-btn" onclick="openBetBuilder()" style="display: flex; align-items: center; gap: 5px; border-color: rgba(16,185,129,0.28); color: #34d399;">
+      🎯 Bahis Oluşturucu
+    </button>
     <button class="filter-btn" onclick="manualRefresh()" style="display: flex; align-items: center; gap: 5px;">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
       Yenile
@@ -644,6 +728,30 @@
         <button class="modal-close" onclick="closeQualityModal()">&times;</button>
       </div>
       <div class="modal-body" id="qualityModalBody"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="betBuilderModal" onclick="if(event.target===this)closeBetBuilder()">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Bahis Oluşturucu</h3>
+        <button class="modal-close" onclick="closeBetBuilder()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="bet-builder-toolbar">
+          <label for="betBuilderCount">Maksimum maç sayısı</label>
+          <select id="betBuilderCount">
+            <option value="1">1 maç</option>
+            <option value="2">2 maç</option>
+            <option value="3">3 maç</option>
+            <option value="4" selected>4 maç</option>
+            <option value="5">5 maç</option>
+            <option value="6">6 maç</option>
+          </select>
+          <button class="action-btn active-bet" onclick="generateBetSlip()">Kupon Oluştur</button>
+        </div>
+        <div id="betBuilderResult" class="loading">Kupon oluşturmak için butona bas.</div>
+      </div>
     </div>
   </div>
 
@@ -749,6 +857,86 @@
 
     function closeQualityModal() {
       document.getElementById('qualityModal').classList.remove('active');
+    }
+
+    function openBetBuilder() {
+      document.getElementById('betBuilderModal').classList.add('active');
+      generateBetSlip();
+    }
+
+    function closeBetBuilder() {
+      document.getElementById('betBuilderModal').classList.remove('active');
+    }
+
+    function betDirectionMeta(direction) {
+      return direction === 'ALT'
+        ? { icon: '🔻', className: 'badge badge-alt' }
+        : { icon: '🔺', className: 'badge badge-ust' };
+    }
+
+    function renderBetSlip(payload) {
+      const target = document.getElementById('betBuilderResult');
+      if (!payload) {
+        target.innerHTML = '<div class="builder-empty">Bahis oluşturucu verisi alınamadı.</div>';
+        return;
+      }
+
+      const summary = `
+        <div class="builder-summary">
+          <strong>${escapeHtml(payload.message || '')}</strong><br>
+          Uygun maç: ${Number(payload.eligible_count || 0)} | Seçilen: ${Number(payload.selected_count || 0)} | İstenen üst sınır: ${Number(payload.requested_max_count || 0)}
+        </div>
+      `;
+
+      if (!payload.created || !Array.isArray(payload.slip) || payload.slip.length === 0) {
+        target.innerHTML = `${summary}<div class="builder-empty">Şu an projeksiyon ve barem filtresini birlikte geçen yeterli maç yok.</div>`;
+        return;
+      }
+
+      const cards = payload.slip.map(item => {
+        const dir = betDirectionMeta(item.direction);
+        const matchText = cleanMatchName(item.match_name || '-');
+        const matchBlock = item.url
+          ? `<a class="match-link bet-slip-title" href="${escapeHtml(item.url)}" target="_blank">${escapeHtml(matchText)}</a>`
+          : `<div class="bet-slip-title">${escapeHtml(matchText)}</div>`;
+        const diffSign = item.direction === 'ALT' ? '+' : '-';
+        return `
+          <div class="bet-slip-card">
+            <div class="bet-slip-head">
+              <div>
+                ${matchBlock}
+                <div class="bet-slip-league">${escapeHtml(item.tournament || '-')}</div>
+              </div>
+              <div class="bet-slip-confidence">Güven %${Number(item.confidence || 0).toFixed(1)}</div>
+            </div>
+            <div class="bet-slip-line">
+              <strong>Projeksiyon:</strong> ${Number(item.projected || 0).toFixed(1)} |
+              <strong>Bahis yönü:</strong> <span class="${dir.className}">${dir.icon} ${escapeHtml(item.direction || '-')}</span> |
+              <strong>Açılış:</strong> ${Number(item.opening || 0).toFixed(1)} |
+              <strong>Canlı:</strong> ${Number(item.live || 0).toFixed(1)} |
+              <strong>Fark:</strong> ${diffSign}${Number(item.market_edge || 0).toFixed(1)}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      target.innerHTML = `${summary}<div class="bet-slip-list">${cards}</div>`;
+    }
+
+    async function generateBetSlip() {
+      const target = document.getElementById('betBuilderResult');
+      const maxCount = Number(document.getElementById('betBuilderCount').value || 4);
+      target.innerHTML = '<div class="loading">Projeksiyon ve barem farkı birlikte taranıyor...</div>';
+
+      try {
+        const response = await fetch(`/api/bet-builder?max_count=${maxCount}`);
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.error || 'Bahis oluşturucu şu an kullanılamıyor.');
+        renderBetSlip(payload);
+      } catch (error) {
+        console.error(error);
+        target.innerHTML = `<div class="builder-empty">${escapeHtml(error?.message || 'Bahis oluşturulurken hata oluştu.')}</div>`;
+      }
     }
 
     async function fetchAlerts() {
@@ -973,7 +1161,10 @@
     }
 
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') closeQualityModal();
+      if (e.key === 'Escape') {
+        closeQualityModal();
+        closeBetBuilder();
+      }
     });
 
     function applyMatchStatusUpdate(payload) {
