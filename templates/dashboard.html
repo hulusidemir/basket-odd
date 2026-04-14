@@ -1217,6 +1217,11 @@
         : { icon: '🔺', className: 'badge badge-ust' };
     }
 
+    function formatSignedNumber(value) {
+      const num = Number(value || 0);
+      return `${num >= 0 ? '+' : ''}${num.toFixed(1)}`;
+    }
+
     function renderBetSlip(payload) {
       const target = document.getElementById('betBuilderResult');
       if (!payload) {
@@ -1232,7 +1237,7 @@
       `;
 
       if (!payload.created || !Array.isArray(payload.slip) || payload.slip.length === 0) {
-        target.innerHTML = `${summary}<div class="builder-empty">Şu an projeksiyon ve barem filtresini birlikte geçen yeterli maç yok.</div>`;
+        target.innerHTML = `${summary}<div class="builder-empty">Şu an sadece projeksiyon-canlı barem farkı kriterini geçen maç yok.</div>`;
         return;
       }
 
@@ -1242,7 +1247,6 @@
         const matchBlock = item.url
           ? `<a class="match-link bet-slip-title" href="${escapeHtml(item.url)}" target="_blank">${escapeHtml(matchText)}</a>`
           : `<div class="bet-slip-title">${escapeHtml(matchText)}</div>`;
-        const diffSign = item.direction === 'ALT' ? '+' : '-';
         return `
           <div class="bet-slip-card">
             <div class="bet-slip-head">
@@ -1250,14 +1254,20 @@
                 ${matchBlock}
                 <div class="bet-slip-league">${escapeHtml(item.tournament || '-')}</div>
               </div>
-              <div class="bet-slip-confidence">Güven %${Number(item.confidence || 0).toFixed(1)}</div>
+              <div class="bet-slip-confidence">${escapeHtml(item.signal_code || '-')}</div>
             </div>
             <div class="bet-slip-line">
+              <strong>Sinyal:</strong> <span class="${dir.className}">${dir.icon} ${escapeHtml(item.direction || '-')}</span> |
+              <strong>Seviye:</strong> ${escapeHtml(item.signal_tier || '-')} |
               <strong>Projeksiyon:</strong> ${Number(item.projected || 0).toFixed(1)} |
-              <strong>Bahis yönü:</strong> <span class="${dir.className}">${dir.icon} ${escapeHtml(item.direction || '-')}</span> |
-              <strong>Açılış:</strong> ${Number(item.opening || 0).toFixed(1)} |
               <strong>Canlı:</strong> ${Number(item.live || 0).toFixed(1)} |
-              <strong>Fark:</strong> ${diffSign}${Number(item.market_edge || 0).toFixed(1)}
+              <strong>Projeksiyon Farkı:</strong> ${formatSignedNumber(item.projection_gap || 0)}
+            </div>
+            <div class="bet-slip-line">
+              <strong>Açılış:</strong> ${Number(item.opening || 0).toFixed(1)} |
+              <strong>Açılış Farkı:</strong> ${formatSignedNumber(item.opening_gap || 0)} |
+              <strong>Skor:</strong> ${escapeHtml(item.score || '-')} |
+              <strong>Durum:</strong> ${escapeHtml(item.status || '-')}
             </div>
           </div>
         `;
@@ -1269,7 +1279,7 @@
     async function generateBetSlip() {
       const target = document.getElementById('betBuilderResult');
       const maxCount = Number(document.getElementById('betBuilderCount').value || 4);
-      target.innerHTML = '<div class="loading">Projeksiyon ve barem farkı birlikte taranıyor...</div>';
+      target.innerHTML = '<div class="loading">Sadece projeksiyon-canlı barem farkına göre kupon hazırlanıyor...</div>';
 
       try {
         const response = await fetch(`/api/bet-builder?max_count=${maxCount}`);

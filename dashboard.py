@@ -85,26 +85,32 @@ def enrich_alerts_with_projection(alerts: list[dict]) -> list[dict]:
     return alerts
 
 
-def _parse_status_phase(status: str) -> tuple[int | None, float | None]:
-    status_clean = (status or "").strip()
-    if not status_clean:
-        return None, None
+def _classify_projection_signal(projected: float, live: float) -> dict | None:
+    projection_gap = round(live - projected, 1)
+    absolute_gap = abs(projection_gap)
 
-    if re.match(r"^HT$", status_clean, re.IGNORECASE):
-        return 2, 0.0
+    if absolute_gap < 2:
+        return None
 
-    match = re.search(r"(?:Q(\d)|(\d)Q|([1-4]))[-:\s]*(\d{1,2}):(\d{2})", status_clean, re.IGNORECASE)
-    if match:
-        period = int(match.group(1) or match.group(2) or match.group(3))
-        remaining = int(match.group(4)) + int(match.group(5)) / 60.0
-        return period, remaining
+    if absolute_gap >= 10:
+        tier = "A"
+        priority = 3
+    elif absolute_gap >= 5:
+        tier = "B"
+        priority = 2
+    else:
+        tier = "C"
+        priority = 1
 
-    match = re.match(r"^(Q(\d)|(\d)Q|([1-4]))$", status_clean, re.IGNORECASE)
-    if match:
-        period = int(match.group(2) or match.group(3) or match.group(4))
-        return period, None
-
-    return None, None
+    direction = "ALT" if projection_gap > 0 else "ÜST"
+    return {
+        "direction": direction,
+        "tier": tier,
+        "signal_code": f"{direction}-{tier}",
+        "priority": priority,
+        "projection_gap": projection_gap,
+        "projection_edge": round(absolute_gap, 1),
+    }
 
 
 def build_bet_builder(max_count: int) -> dict:
@@ -117,105 +123,66 @@ def build_bet_builder(max_count: int) -> dict:
         latest_by_match[match_id] = alert
 
     candidates = []
-    skipped = []
 
     for alert in latest_by_match.values():
         projected = alert.get("projected")
         if projected is None:
-            skipped.append({"match_id": alert.get("match_id"), "reason": "missing_projection"})
             continue
 
         opening = float(alert.get("opening") or 0)
         live = float(alert.get("live") or 0)
-        direction = str(alert.get("direction") or "").upper()
-        market_edge = abs(live - opening)
-        projection_edge = abs(projected - live)
-        projection_gap = projected - live
-        period, remaining = _parse_status_phase(alert.get("status", ""))
-
-        supports_direction = (
-            (direction == "ALT" and projection_gap <= -3.0) or
-            (direction == "ÜST" and projection_gap >= 3.0)
-        )
-        if not supports_direction:
-            skipped.append({"match_id": alert.get("match_id"), "reason": "projection_disagrees"})
+        signal = _classify_projection_signal(float(projected), live)
+        if signal is None:
             continue
 
-        if market_edge < 10 or projection_edge < 3:
-            skipped.append({"match_id": alert.get("match_id"), "reason": "edge_too_small"})
-            continue
-
-        confidence = 42.0
-        confidence += min((market_edge / 18.0) * 24.0, 24.0)
-        confidence += min((projection_edge / 12.0) * 28.0, 28.0)
-        confidence += min(float(alert.get("quality_score") or 0) * 0.12, 10.0)
-
-        if period == 2:
-            confidence += 4
-        elif period == 3:
-            confidence += 7
-        elif period == 1:
-            confidence -= 4
-        elif period == 4:
-            confidence -= 5
-            if remaining is not None and remaining <= 6:
-                confidence -= 4
-
-        if alert.get("counter_level") == "YÜKSEK":
-            confidence -= 7
-        elif alert.get("counter_level") == "ORTA":
-            confidence -= 4
-        elif alert.get("counter_level") == "DÜŞÜK":
-            confidence -= 2
-
-        confidence = round(max(52.0, min(93.0, confidence)), 1)
+        opening_gap = round(live - opening, 1)
         candidates.append({
             "match_id": alert.get("match_id"),
             "match_name": alert.get("match_name", ""),
             "tournament": alert.get("tournament", ""),
             "url": alert.get("url", ""),
-            "direction": direction,
+            "direction": signal["direction"],
+            "signal_tier": signal["tier"],
+            "signal_code": signal["signal_code"],
             "opening": round(opening, 1),
             "live": round(live, 1),
             "projected": round(float(projected), 1),
             "status": alert.get("status", ""),
             "score": alert.get("score", ""),
-            "quality_score": round(float(alert.get("quality_score") or 0), 1),
-            "market_edge": round(market_edge, 1),
-            "projection_edge": round(projection_edge, 1),
-            "confidence": confidence,
+            "opening_gap": opening_gap,
+            "projection_gap": signal["projection_gap"],
+            "projection_edge": signal["projection_edge"],
+            "signal_priority": signal["priority"],
         })
 
     candidates.sort(
         key=lambda item: (
-            item["confidence"],
+            item["signal_priority"],
             item["projection_edge"],
-            item["market_edge"],
-            item["quality_score"],
         ),
         reverse=True,
     )
 
-    usable_candidates = [item for item in candidates if item["confidence"] >= 64]
-    leg_count = min(max(max_count, 1), len(usable_candidates))
+    eligible_candidates = candidates
+    leg_count = min(max(max_count, 1), len(eligible_candidates))
     can_build = leg_count >= 1
-    slip = usable_candidates[:leg_count] if can_build else []
+    slip = eligible_candidates[:leg_count] if can_build else []
 
     if not can_build:
         message = (
             f"Kupon oluşturulmadı. En az 1 uygun maç gerekiyor; şu an yalnızca "
-            f"{len(usable_candidates)} maç projeksiyon ve barem filtresini geçti."
+            f"{len(eligible_candidates)} maç projeksiyon-canlı barem farkı kriterini geçti."
         )
     else:
         message = (
-            f"Kupon hazır. {len(usable_candidates)} uygun maç içinden en güçlü {leg_count} seçim alındı."
+            f"Kupon hazır. {len(eligible_candidates)} uygun maç içinden en güçlü {leg_count} seçim alındı."
         )
 
     return {
         "created": can_build,
         "requested_max_count": max(max_count, 1),
         "selected_count": leg_count if can_build else 0,
-        "eligible_count": len(usable_candidates),
+        "eligible_count": len(eligible_candidates),
         "total_candidates": len(candidates),
         "message": message,
         "slip": slip,
