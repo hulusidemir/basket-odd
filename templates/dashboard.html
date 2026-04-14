@@ -847,7 +847,7 @@
     .bet-slip-card {
       border: 1px solid rgba(110, 146, 187, 0.12);
       border-radius: 16px;
-      padding: 14px;
+      padding: 12px 14px;
       background: rgba(14, 26, 42, 0.95);
     }
 
@@ -884,17 +884,25 @@
     }
 
     .bet-slip-meta {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
     }
 
     .bet-slip-item {
-      padding: 9px 10px;
-      border-radius: 12px;
-      background: rgba(9, 19, 31, 0.9);
-      border: 1px solid rgba(110, 146, 187, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 7px 0;
+      border-bottom: 1px solid rgba(110, 146, 187, 0.1);
       min-width: 0;
+    }
+
+    .bet-slip-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
     }
 
     .bet-slip-label {
@@ -902,9 +910,10 @@
       font-size: 11px;
       font-weight: 700;
       color: var(--text-dim);
-      margin-bottom: 3px;
+      margin-bottom: 0;
       text-transform: uppercase;
       letter-spacing: 0.04em;
+      flex: 0 0 auto;
     }
 
     .bet-slip-value {
@@ -913,6 +922,9 @@
       font-weight: 700;
       line-height: 1.35;
       word-break: break-word;
+      text-align: right;
+      margin-left: auto;
+      max-width: 65%;
     }
 
     @media (max-width: 1100px) {
@@ -924,8 +936,8 @@
         margin-left: 0;
       }
 
-      .bet-slip-meta {
-        grid-template-columns: 1fr;
+      .bet-slip-head {
+        align-items: flex-start;
       }
     }
 
