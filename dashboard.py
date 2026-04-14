@@ -8,6 +8,7 @@ Usage:
 
 import os
 import re
+from datetime import datetime, timedelta
 from typing import Optional
 from flask import Flask, jsonify, render_template, request
 from db import Database
@@ -20,6 +21,8 @@ db.init()
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.register_blueprint(finished_matches_bp)
+
+BET_BUILDER_ALERT_WINDOW_MINUTES = 240
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -113,11 +116,41 @@ def _classify_projection_signal(projected: float, live: float) -> dict | None:
     }
 
 
+def _is_live_basketball_status(status: str) -> bool:
+    status_clean = (status or "").strip().upper()
+    if not status_clean:
+        return False
+
+    if re.match(r"^HT$", status_clean):
+        return True
+
+    if re.search(r"(?:Q[1-4]|[1-4]Q)(?:[-:\s]+\d{1,2}:\d{2})?$", status_clean):
+        return True
+
+    if re.search(r"^[1-4]\s*[-:\s]+\d{1,2}:\d{2}$", status_clean):
+        return True
+
+    return False
+
+
+def _is_recent_alert(alerted_at: str, window_minutes: int = BET_BUILDER_ALERT_WINDOW_MINUTES) -> bool:
+    if not alerted_at:
+        return False
+
+    try:
+        alert_time = datetime.strptime(alerted_at, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return False
+
+    return alert_time >= (datetime.utcnow() - timedelta(minutes=window_minutes))
+
+
 def build_bet_builder(max_count: int) -> dict:
     alerts = [
         alert
         for alert in enrich_alerts_with_projection(db.recent_alerts(limit=500))
-        if bool(alert.get("followed"))
+        if _is_live_basketball_status(alert.get("status", ""))
+        and _is_recent_alert(alert.get("alerted_at", ""))
     ]
     latest_by_match = {}
     for alert in alerts:
@@ -174,12 +207,12 @@ def build_bet_builder(max_count: int) -> dict:
 
     if not can_build:
         message = (
-            f"Kupon oluşturulmadı. Takip ettiğin maçlar içinde en az 1 uygun maç gerekiyor; şu an yalnızca "
+            f"Kupon oluşturulmadı. Canlı maçlar içinde en az 1 uygun maç gerekiyor; şu an yalnızca "
             f"{len(eligible_candidates)} maç projeksiyon-canlı barem farkı kriterini geçti."
         )
     else:
         message = (
-            f"Kupon hazır. Takip ettiğin {len(eligible_candidates)} uygun maç içinden en güçlü {leg_count} seçim alındı."
+            f"Kupon hazır. Canlı {len(eligible_candidates)} uygun maç içinden en güçlü {leg_count} seçim alındı."
         )
 
     return {

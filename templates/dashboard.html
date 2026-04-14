@@ -1286,12 +1286,12 @@
       const summary = `
         <div class="builder-summary">
           <strong>${escapeHtml(payload.message || '')}</strong><br>
-          Takip edilen uygun maç: ${Number(payload.eligible_count || 0)} | Seçilen: ${Number(payload.selected_count || 0)} | İstenen üst sınır: ${Number(payload.requested_max_count || 0)}
+          Canlı uygun maç: ${Number(payload.eligible_count || 0)} | Seçilen: ${Number(payload.selected_count || 0)} | İstenen üst sınır: ${Number(payload.requested_max_count || 0)}
         </div>
       `;
 
       if (!payload.created || !Array.isArray(payload.slip) || payload.slip.length === 0) {
-        target.innerHTML = `${summary}<div class="builder-empty">Şu an takip ettiğin maçlar içinde projeksiyon-canlı barem farkı kriterini geçen maç yok.</div>`;
+        target.innerHTML = `${summary}<div class="builder-empty">Şu an canlı maçlar içinde projeksiyon-canlı barem farkı kriterini geçen maç yok.</div>`;
         return;
       }
 
