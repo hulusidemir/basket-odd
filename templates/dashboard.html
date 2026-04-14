@@ -752,6 +752,10 @@
       box-shadow: var(--shadow);
     }
 
+    .bet-builder-box {
+      max-width: 640px;
+    }
+
     .modal-header {
       display: flex;
       align-items: center;
@@ -821,6 +825,11 @@
       line-height: 1.6;
     }
 
+    .builder-summary strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
     .builder-empty {
       padding: 18px;
       border-radius: 16px;
@@ -838,22 +847,23 @@
     .bet-slip-card {
       border: 1px solid rgba(110, 146, 187, 0.12);
       border-radius: 16px;
-      padding: 16px;
+      padding: 14px;
       background: rgba(14, 26, 42, 0.95);
     }
 
     .bet-slip-head {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       justify-content: space-between;
       gap: 10px;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
 
     .bet-slip-title {
       font-size: 15px;
       font-weight: 800;
       line-height: 1.25;
+      display: block;
     }
 
     .bet-slip-league {
@@ -873,13 +883,37 @@
       white-space: nowrap;
     }
 
-    .bet-slip-line {
-      color: var(--text);
-      font-size: 13px;
-      line-height: 1.7;
+    .bet-slip-meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
     }
 
-    .bet-slip-line strong { color: #ffffff; }
+    .bet-slip-item {
+      padding: 9px 10px;
+      border-radius: 12px;
+      background: rgba(9, 19, 31, 0.9);
+      border: 1px solid rgba(110, 146, 187, 0.1);
+      min-width: 0;
+    }
+
+    .bet-slip-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-dim);
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .bet-slip-value {
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.35;
+      word-break: break-word;
+    }
 
     @media (max-width: 1100px) {
       .stats {
@@ -888,6 +922,10 @@
 
       .refresh-info {
         margin-left: 0;
+      }
+
+      .bet-slip-meta {
+        grid-template-columns: 1fr;
       }
     }
 
@@ -941,6 +979,10 @@
 
       .card-odds {
         flex-wrap: wrap;
+      }
+
+      .bet-builder-box {
+        max-width: 100%;
       }
     }
 
@@ -1075,7 +1117,7 @@
   </div>
 
   <div class="modal-overlay" id="betBuilderModal" onclick="if(event.target===this)closeBetBuilder()">
-    <div class="modal-box">
+    <div class="modal-box bet-builder-box">
       <div class="modal-header">
         <h3>Bahis Oluşturucu</h3>
         <button class="modal-close" onclick="closeBetBuilder()">&times;</button>
@@ -1232,12 +1274,12 @@
       const summary = `
         <div class="builder-summary">
           <strong>${escapeHtml(payload.message || '')}</strong><br>
-          Uygun maç: ${Number(payload.eligible_count || 0)} | Seçilen: ${Number(payload.selected_count || 0)} | İstenen üst sınır: ${Number(payload.requested_max_count || 0)}
+          Takip edilen uygun maç: ${Number(payload.eligible_count || 0)} | Seçilen: ${Number(payload.selected_count || 0)} | İstenen üst sınır: ${Number(payload.requested_max_count || 0)}
         </div>
       `;
 
       if (!payload.created || !Array.isArray(payload.slip) || payload.slip.length === 0) {
-        target.innerHTML = `${summary}<div class="builder-empty">Şu an sadece projeksiyon-canlı barem farkı kriterini geçen maç yok.</div>`;
+        target.innerHTML = `${summary}<div class="builder-empty">Şu an takip ettiğin maçlar içinde projeksiyon-canlı barem farkı kriterini geçen maç yok.</div>`;
         return;
       }
 
@@ -1256,18 +1298,39 @@
               </div>
               <div class="bet-slip-confidence">${escapeHtml(item.signal_code || '-')}</div>
             </div>
-            <div class="bet-slip-line">
-              <strong>Sinyal:</strong> <span class="${dir.className}">${dir.icon} ${escapeHtml(item.direction || '-')}</span> |
-              <strong>Seviye:</strong> ${escapeHtml(item.signal_tier || '-')} |
-              <strong>Projeksiyon:</strong> ${Number(item.projected || 0).toFixed(1)} |
-              <strong>Canlı:</strong> ${Number(item.live || 0).toFixed(1)} |
-              <strong>Projeksiyon Farkı:</strong> ${formatSignedNumber(item.projection_gap || 0)}
-            </div>
-            <div class="bet-slip-line">
-              <strong>Açılış:</strong> ${Number(item.opening || 0).toFixed(1)} |
-              <strong>Açılış Farkı:</strong> ${formatSignedNumber(item.opening_gap || 0)} |
-              <strong>Skor:</strong> ${escapeHtml(item.score || '-')} |
-              <strong>Durum:</strong> ${escapeHtml(item.status || '-')}
+            <div class="bet-slip-meta">
+              <div class="bet-slip-item">
+                <span class="bet-slip-label">Sinyal</span>
+                <div class="bet-slip-value"><span class="${dir.className}">${dir.icon} ${escapeHtml(item.direction || '-')}</span> / ${escapeHtml(item.signal_tier || '-')}</div>
+              </div>
+              <div class="bet-slip-item">
+                <span class="bet-slip-label">Projeksiyon</span>
+                <div class="bet-slip-value">${Number(item.projected || 0).toFixed(1)}</div>
+              </div>
+              <div class="bet-slip-item">
+                <span class="bet-slip-label">Canlı Barem</span>
+                <div class="bet-slip-value">${Number(item.live || 0).toFixed(1)}</div>
+              </div>
+              <div class="bet-slip-item">
+                <span class="bet-slip-label">Projeksiyon Farkı</span>
+                <div class="bet-slip-value">${formatSignedNumber(item.projection_gap || 0)}</div>
+              </div>
+              <div class="bet-slip-item">
+                <span class="bet-slip-label">Açılış Barem</span>
+                <div class="bet-slip-value">${Number(item.opening || 0).toFixed(1)}</div>
+              </div>
+              <div class="bet-slip-item">
+                <span class="bet-slip-label">Açılış Farkı</span>
+                <div class="bet-slip-value">${formatSignedNumber(item.opening_gap || 0)}</div>
+              </div>
+              <div class="bet-slip-item">
+                <span class="bet-slip-label">Skor</span>
+                <div class="bet-slip-value">${escapeHtml(item.score || '-')}</div>
+              </div>
+              <div class="bet-slip-item">
+                <span class="bet-slip-label">Durum</span>
+                <div class="bet-slip-value">${escapeHtml(item.status || '-')}</div>
+              </div>
             </div>
           </div>
         `;

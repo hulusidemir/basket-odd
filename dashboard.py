@@ -114,7 +114,11 @@ def _classify_projection_signal(projected: float, live: float) -> dict | None:
 
 
 def build_bet_builder(max_count: int) -> dict:
-    alerts = enrich_alerts_with_projection(db.recent_alerts(limit=500))
+    alerts = [
+        alert
+        for alert in enrich_alerts_with_projection(db.recent_alerts(limit=500))
+        if bool(alert.get("followed"))
+    ]
     latest_by_match = {}
     for alert in alerts:
         match_id = alert.get("match_id")
@@ -170,12 +174,12 @@ def build_bet_builder(max_count: int) -> dict:
 
     if not can_build:
         message = (
-            f"Kupon oluşturulmadı. En az 1 uygun maç gerekiyor; şu an yalnızca "
+            f"Kupon oluşturulmadı. Takip ettiğin maçlar içinde en az 1 uygun maç gerekiyor; şu an yalnızca "
             f"{len(eligible_candidates)} maç projeksiyon-canlı barem farkı kriterini geçti."
         )
     else:
         message = (
-            f"Kupon hazır. {len(eligible_candidates)} uygun maç içinden en güçlü {leg_count} seçim alındı."
+            f"Kupon hazır. Takip ettiğin {len(eligible_candidates)} uygun maç içinden en güçlü {leg_count} seçim alındı."
         )
 
     return {
