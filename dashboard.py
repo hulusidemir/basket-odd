@@ -226,6 +226,76 @@ def build_bet_builder(max_count: int) -> dict:
     }
 
 
+def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
+    if not isinstance(raw_payload, dict):
+        return None
+
+    def safe_int(value, default: int = 0) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    raw_slip = raw_payload.get("slip")
+    if not isinstance(raw_slip, list):
+        raw_slip = []
+
+    numeric_float_fields = {
+        "opening",
+        "live",
+        "projected",
+        "opening_gap",
+        "projection_gap",
+        "projection_edge",
+    }
+    numeric_int_fields = {"signal_priority"}
+    keep_fields = {
+        "match_id",
+        "match_name",
+        "tournament",
+        "url",
+        "direction",
+        "signal_tier",
+        "signal_code",
+        "status",
+        "score",
+    }
+
+    slip: list[dict] = []
+    for raw_item in raw_slip:
+        if not isinstance(raw_item, dict):
+            continue
+        item: dict = {}
+        for key in keep_fields:
+            item[key] = str(raw_item.get(key) or "")
+        for key in numeric_float_fields:
+            try:
+                item[key] = round(float(raw_item.get(key) or 0), 1)
+            except (TypeError, ValueError):
+                item[key] = 0.0
+        for key in numeric_int_fields:
+            try:
+                item[key] = int(raw_item.get(key) or 0)
+            except (TypeError, ValueError):
+                item[key] = 0
+        slip.append(item)
+
+    requested_max_count = safe_int(raw_payload.get("requested_max_count") or len(slip) or 1, 1)
+    selected_count = safe_int(raw_payload.get("selected_count") or len(slip), len(slip))
+    eligible_count = safe_int(raw_payload.get("eligible_count") or len(slip), len(slip))
+    total_candidates = safe_int(raw_payload.get("total_candidates") or eligible_count, eligible_count)
+
+    return {
+        "created": bool(raw_payload.get("created")) and len(slip) > 0,
+        "requested_max_count": max(1, min(requested_max_count, 8)),
+        "selected_count": max(0, selected_count),
+        "eligible_count": max(0, eligible_count),
+        "total_candidates": max(0, total_candidates),
+        "message": str(raw_payload.get("message") or ""),
+        "slip": slip,
+    }
+
+
 @app.route("/")
 def index():
     return render_template("dashboard.html")
@@ -242,6 +312,35 @@ def api_bet_builder():
     max_count = request.args.get("max_count", default=4, type=int) or 4
     max_count = max(1, min(max_count, 8))
     return jsonify(build_bet_builder(max_count))
+
+
+@app.route("/api/bet-builder/save", methods=["POST"])
+def api_bet_builder_save():
+    data = request.get_json(silent=True) or {}
+    name = str(data.get("name") or "").strip()
+    payload = normalize_bet_builder_payload(data.get("payload"))
+
+    if not name:
+        return jsonify({"error": "Kupon ismi bos olamaz."}), 400
+    if not payload or not payload.get("slip"):
+        return jsonify({"error": "Kaydedilecek gecerli kupon bulunamadi."}), 400
+
+    saved_id = db.save_bet_slip(name=name, payload=payload)
+    return jsonify({"saved": True, "id": saved_id, "name": name})
+
+
+@app.route("/api/bet-builder/saved")
+def api_saved_bet_builder_list():
+    limit = request.args.get("limit", default=30, type=int) or 30
+    limit = max(1, min(limit, 200))
+    return jsonify(db.list_saved_bet_slips(limit=limit))
+
+
+@app.route("/api/bet-builder/saved/<int:slip_id>", methods=["DELETE"])
+def api_saved_bet_builder_delete(slip_id: int):
+    if not db.delete_saved_bet_slip(slip_id):
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"deleted": True, "id": slip_id})
 
 
 @app.route("/api/alerts/<int:alert_id>/bet", methods=["POST"])

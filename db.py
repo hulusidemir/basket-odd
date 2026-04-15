@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from contextlib import contextmanager
 
@@ -103,6 +104,20 @@ class Database:
 
                 CREATE INDEX IF NOT EXISTS idx_finished_matches_finished_at
                 ON finished_matches(finished_at DESC);
+
+                CREATE TABLE IF NOT EXISTS saved_bet_slips (
+                    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name                TEXT NOT NULL,
+                    requested_max_count INTEGER NOT NULL DEFAULT 1,
+                    selected_count      INTEGER NOT NULL DEFAULT 0,
+                    eligible_count      INTEGER NOT NULL DEFAULT 0,
+                    message             TEXT NOT NULL DEFAULT '',
+                    payload_json        TEXT NOT NULL,
+                    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_saved_bet_slips_created_at
+                ON saved_bet_slips(created_at DESC, id DESC);
             """)
             # Migrate: add new columns if they don't exist yet
             try:
@@ -447,6 +462,60 @@ class Database:
             conn.execute("DELETE FROM alerts")
             conn.execute("DELETE FROM match_actions")
             conn.execute("DELETE FROM opening_lines")
+
+    # ---------- saved bet slips ----------
+
+    def save_bet_slip(self, name: str, payload: dict) -> int:
+        with self._conn() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO saved_bet_slips (
+                    name, requested_max_count, selected_count, eligible_count, message, payload_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    name,
+                    int(payload.get("requested_max_count") or 1),
+                    int(payload.get("selected_count") or 0),
+                    int(payload.get("eligible_count") or 0),
+                    str(payload.get("message") or ""),
+                    json.dumps(payload, ensure_ascii=False),
+                ),
+            )
+        return cursor.lastrowid
+
+    def list_saved_bet_slips(self, limit: int = 50) -> list:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, name, requested_max_count, selected_count, eligible_count, message, payload_json, created_at
+                FROM saved_bet_slips
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (max(1, limit),),
+            ).fetchall()
+
+        items = []
+        for row in rows:
+            item = dict(row)
+            try:
+                payload = json.loads(item.get("payload_json") or "{}")
+            except Exception:
+                payload = {}
+            item["payload"] = payload if isinstance(payload, dict) else {}
+            item.pop("payload_json", None)
+            items.append(item)
+        return items
+
+    def delete_saved_bet_slip(self, slip_id: int) -> bool:
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "DELETE FROM saved_bet_slips WHERE id = ?",
+                (slip_id,),
+            )
+        return cursor.rowcount > 0
 
     # ---------- finished matches ----------
 
