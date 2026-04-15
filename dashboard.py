@@ -540,6 +540,27 @@ def api_saved_bet_builder_check(slip_id: int):
     })
 
 
+@app.route("/api/matches/<path:match_id>/ignore", methods=["POST"])
+def api_ignore_match(match_id: str):
+    match_key = str(match_id or "").strip()
+    if not match_key:
+        return jsonify({"error": "match_id is required"}), 400
+
+    affected = db.set_match_statuses(
+        match_key,
+        ignored=True,
+        bet_placed=False,
+        followed=False,
+    )
+    return jsonify({
+        "match_id": match_key,
+        "ignored": 1,
+        "bet_placed": 0,
+        "followed": 0,
+        "affected": affected,
+    })
+
+
 @app.route("/api/alerts/<int:alert_id>/bet", methods=["POST"])
 def api_toggle_bet(alert_id: int):
     """Toggle bet placed/not placed for all alerts of the same match."""

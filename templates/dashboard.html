@@ -1053,6 +1053,29 @@
     .bet-slip-table th:nth-child(8),
     .bet-slip-table td:nth-child(8) { width: 110px; }
 
+    .bet-slip-table th:nth-child(9),
+    .bet-slip-table td:nth-child(9) { width: 52px; }
+
+    .slip-remove-btn {
+      width: 24px;
+      height: 24px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 126, 126, 0.26);
+      background: rgba(239, 68, 68, 0.10);
+      color: #fecaca;
+      font-size: 12px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .slip-remove-btn:hover {
+      background: rgba(239, 68, 68, 0.18);
+      border-color: rgba(255, 126, 126, 0.4);
+    }
+
     .saved-bets-panel {
       margin-top: 10px;
       border: 1px solid rgba(110, 146, 187, 0.14);
@@ -1905,6 +1928,43 @@
       }
     }
 
+    async function removeSlipMatch(matchId) {
+      const targetMatchId = String(matchId || '').trim();
+      if (!targetMatchId) return;
+
+      try {
+        const response = await fetch(`/api/matches/${encodeURIComponent(targetMatchId)}/ignore`, { method: 'POST' });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.error || 'Maç gözardı edilemedi.');
+
+        allAlerts = allAlerts.map(a => {
+          if (a.match_id !== targetMatchId) return a;
+          return {
+            ...a,
+            ignored: 1,
+            bet_placed: 0,
+            followed: 0,
+          };
+        });
+        render();
+        updateStats();
+
+        if (latestBetBuilderPayload && Array.isArray(latestBetBuilderPayload.slip)) {
+          latestBetBuilderPayload.slip = latestBetBuilderPayload.slip.filter(
+            item => String(item?.match_id || '').trim() !== targetMatchId
+          );
+          latestBetBuilderPayload.selected_count = latestBetBuilderPayload.slip.length;
+          latestBetBuilderPayload.created = latestBetBuilderPayload.slip.length > 0;
+        }
+
+        renderBetSlip(latestBetBuilderPayload);
+        showBetBuilderStatus('Maç kupondan çıkarıldı ve gözardı edildi.', 'success');
+      } catch (error) {
+        console.error(error);
+        showBetBuilderStatus(error?.message || 'Maç kupondan çıkarılamadı.', 'error');
+      }
+    }
+
     function renderBetSlip(payload) {
       const target = document.getElementById('betBuilderResult');
       if (!payload || typeof payload !== 'object') {
@@ -1932,6 +1992,7 @@
         const matchText = cleanMatchName(item.match_name || '-');
         const recommendation = buildBetRecommendation(item.live, item.direction, item.signal_tier);
         const matchStateNote = buildMatchStateNote(item);
+        const matchIdArg = JSON.stringify(String(item.match_id || ''));
         const matchBlock = item.url
           ? `<a class="match-link" href="${escapeHtml(item.url)}" target="_blank">${escapeHtml(matchText)}</a>`
           : `${escapeHtml(matchText)}`;
@@ -1945,6 +2006,7 @@
             <td>${formatSignedNumber(item.opening_gap || 0)}</td>
             <td>${escapeHtml(item.score || '-')}</td>
             <td>${escapeHtml(item.status || '-')}</td>
+            <td><button class="slip-remove-btn" type="button" title="Kupondan çıkar ve gözardı et" onclick='removeSlipMatch(${matchIdArg})'>🗑</button></td>
           </tr>
         `;
       }).join('');
@@ -1963,6 +2025,7 @@
                 <th>A. Fark</th>
                 <th>Skor</th>
                 <th>Durum</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
