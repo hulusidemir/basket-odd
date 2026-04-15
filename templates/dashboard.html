@@ -618,6 +618,13 @@
       white-space: normal;
     }
 
+    .quality-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
     .quality-setup {
       display: block;
       margin-top: 6px;
@@ -1795,7 +1802,10 @@
       const setup = a.quality_setup ? `<span class="quality-setup">${escapeHtml(a.quality_setup)}</span>` : '';
       return `
         <div class="quality-cell">
-          <span class="${meta.className}" onclick="showQuality(${a.id})" title="Detayi ac">${escapeHtml(meta.label)} (${score.toFixed(1)})</span>
+          <div class="quality-row">
+            <span class="${meta.className}" onclick="showQuality(${a.id})" title="Detayi ac">${escapeHtml(meta.label)} (${score.toFixed(1)})</span>
+            ${trustLabelHtml(a)}
+          </div>
           ${setup}
         </div>
       `;
@@ -2460,7 +2470,6 @@
           <td class="time-col">${time}</td>
           <td class="col-direction signal-cell">
             <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
-            ${trustLabelHtml(a)}
             ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
           </td>
           <td>${qualityBadgeHtml(a)}</td>
@@ -2530,9 +2539,9 @@
             <div class="card-match"><div class="card-match-row">${matchFocusButton}${matchDisplay}</div></div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
               <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
-              ${trustLabelHtml(a)}
               ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
               <span class="${qualityMeta(a).className}" onclick="showQuality(${a.id})">${escapeHtml(qualityMeta(a).label)}</span>
+              ${trustLabelHtml(a)}
             </div>
           </div>
           <div class="card-meta">
