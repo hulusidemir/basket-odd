@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime
 import threading
 
-from flask import Blueprint, current_app, jsonify, render_template
+from flask import Blueprint, current_app, jsonify, render_template, request
 
 from config import Config
 from db import Database
@@ -40,6 +40,15 @@ def _fold_text(value) -> str:
 
 def _result_key(value) -> str:
     return _fold_text(value)
+
+
+def _manual_result_label(value: str) -> str:
+    key = _result_key(value)
+    if key == "basarili":
+        return "Başarılı"
+    if key == "basarisiz":
+        return "Başarısız"
+    return ""
 
 
 def _direction_key(value) -> str:
@@ -161,6 +170,7 @@ def build_finished_matches_report(signals: list[dict]) -> dict:
     success_signals = sum(1 for signal in signals if _result_key(signal.get("result")) == "basarili")
     fail_signals = sum(1 for signal in signals if _result_key(signal.get("result")) == "basarisiz")
     push_signals = sum(1 for signal in signals if _result_key(signal.get("result")) == "iade")
+    pending_signals = total_signals - success_signals - fail_signals - push_signals
     unique_matches = len(match_groups)
     repeated_matches = sum(1 for group in match_groups if group["total_signals"] > 1)
     extra_signals = total_signals - unique_matches
@@ -181,11 +191,15 @@ def build_finished_matches_report(signals: list[dict]) -> dict:
     )
 
     diff = abs(alt_stats["success_rate"] - ust_stats["success_rate"])
-    if suspicious_signals:
+    resolved_signals = success_signals + fail_signals
+
+    if resolved_signals == 0 and pending_signals > 0:
+        headline = "Arşiv kayıtları hazır; sonuçlar manuel işaretleme bekliyor."
+    elif suspicious_signals:
         headline = "Temkinli yaklaşmak daha doğru: arşivde veri kalitesi sorunu da var."
-    elif _pct(success_signals, success_signals + fail_signals) >= 65:
+    elif _pct(success_signals, resolved_signals) >= 65:
         headline = "Genel tablo olumlu; sinyaller arşivde avantajlı görünüyor."
-    elif _pct(success_signals, success_signals + fail_signals) >= 55:
+    elif _pct(success_signals, resolved_signals) >= 55:
         headline = "Sınırlı bir avantaj var, ama çok güvenli bir tablo değil."
     else:
         headline = "Net bir üstünlük görünmüyor; sistemi tek başına güvenilir saymak erken."
@@ -199,9 +213,9 @@ def build_finished_matches_report(signals: list[dict]) -> dict:
 
     summary = (
         f"Toplam {total_signals} sinyal, {unique_matches} benzersiz maça dağılmış durumda. "
-        f"Genel başarı oranı %{_pct(success_signals, success_signals + fail_signals):.1f}. "
+        f"Genel başarı oranı %{_pct(success_signals, resolved_signals):.1f}. "
         f"{direction_summary} Karışık maç sayısı {len(mixed_matches)}. "
-        f"Şüpheli FT kaydı {len(suspicious_signals)}."
+        f"Bekleyen manuel sonuç {pending_signals}. Şüpheli FT kaydı {len(suspicious_signals)}."
     )
 
     mixed_examples = []
@@ -251,8 +265,8 @@ def build_finished_matches_report(signals: list[dict]) -> dict:
         },
         {
             "title": "Genel başarı",
-            "value": f"%{_pct(success_signals, success_signals + fail_signals):.1f}",
-            "detail": f"{success_signals} başarılı, {fail_signals} başarısız, {push_signals} iade.",
+            "value": f"%{_pct(success_signals, resolved_signals):.1f}",
+            "detail": f"{success_signals} başarılı, {fail_signals} başarısız, {push_signals} iade, {pending_signals} bekliyor.",
         },
         {
             "title": "ALT vs UST",
@@ -360,6 +374,24 @@ def api_delete_finished_match(finished_match_id: int):
     if not deleted:
         return jsonify({"error": "not found"}), 404
     return jsonify({"id": finished_match_id, "deleted": True})
+
+
+@finished_matches_bp.route("/api/finished-matches/<int:finished_match_id>/result", methods=["POST"])
+def api_update_finished_match_result(finished_match_id: int):
+    payload = request.get_json(silent=True) or {}
+    result = _manual_result_label(payload.get("result", ""))
+    if not result:
+        return jsonify({"error": "invalid_result"}), 400
+
+    updated = db.update_finished_match_result(finished_match_id, result)
+    if not updated:
+        return jsonify({"error": "not found"}), 404
+
+    return jsonify({
+        "id": finished_match_id,
+        "result": result,
+        "updated": True,
+    })
 
 
 @finished_matches_bp.route("/api/finished-matches/clear", methods=["POST"])

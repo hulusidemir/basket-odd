@@ -331,6 +331,29 @@
       white-space: nowrap;
     }
 
+    .match-focus-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      max-width: 280px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(95, 167, 255, 0.24);
+      background: rgba(23, 45, 70, 0.92);
+      color: #dcecff;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .match-focus-status:hover {
+      border-color: rgba(95, 167, 255, 0.45);
+      transform: translateY(-1px);
+    }
+
     .table-wrap {
       padding: 0;
       overflow-x: hidden;
@@ -458,12 +481,14 @@
       min-width: 0;
     }
 
-    .card-match a {
+    .card-match a,
+    .card-match-link {
       color: var(--text);
       text-decoration: none;
     }
 
-    .card-match a:hover { color: var(--accent-blue); }
+    .card-match a:hover,
+    .card-match-link:hover { color: var(--accent-blue); }
 
     .card-meta {
       display: flex;
@@ -688,6 +713,51 @@
     }
 
     .match-link:hover { color: var(--accent-blue); }
+
+    .match-cell-wrap,
+    .card-match-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .match-cell-wrap .match-link,
+    .card-match-row .match-link,
+    .card-match-row .card-match-link {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .match-focus-btn {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      border: 1px solid rgba(110, 146, 187, 0.2);
+      background: rgba(12, 27, 43, 0.95);
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 16px;
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .match-focus-btn:hover {
+      color: var(--text);
+      border-color: rgba(95, 167, 255, 0.45);
+      box-shadow: 0 10px 18px rgba(0, 0, 0, 0.16);
+      transform: translateY(-1px);
+    }
+
+    .match-focus-btn.active {
+      color: #1a1b22;
+      border-color: transparent;
+      background: linear-gradient(180deg, #ffb37c, #ff9960);
+      box-shadow: 0 12px 20px rgba(255, 158, 100, 0.2);
+    }
 
     .col-tournament {
       overflow: hidden;
@@ -1461,6 +1531,7 @@
       </div>
       <button class="filter-btn" onclick="openBetBuilder()">Bahis Oluşturucu</button>
       <button class="filter-btn" onclick="manualRefresh()">Listeyi Yenile</button>
+      <button class="match-focus-status" id="matchFocusStatus" onclick="clearMatchFocus()" style="display:none;"></button>
       <span class="refresh-info"><span id="countdown">15</span>s | <span id="lastUpdate">-</span></span>
     </div>
 
@@ -1568,6 +1639,8 @@
     let savedBetSlips = [];
     let expandedSavedBetSlipId = null;
     let savedBetSlipChecks = {};
+    let focusedMatchId = null;
+    let focusedMatchName = '';
 
     function cleanMatchName(name) {
       return (name || '')
@@ -1581,6 +1654,50 @@
       const d = document.createElement('div');
       d.textContent = text;
       return d.innerHTML;
+    }
+
+    function isFocusedMatch(matchId) {
+      return focusedMatchId !== null && String(matchId || '') === focusedMatchId;
+    }
+
+    function updateMatchFocusStatus() {
+      const el = document.getElementById('matchFocusStatus');
+      if (!el) return;
+      if (!focusedMatchId) {
+        el.style.display = 'none';
+        el.textContent = '';
+        return;
+      }
+      el.style.display = 'inline-flex';
+      el.textContent = `Yalnızca: ${focusedMatchName || 'Seçili maç'} ×`;
+      el.title = 'Maç filtresini kaldır';
+    }
+
+    function clearMatchFocus() {
+      focusedMatchId = null;
+      focusedMatchName = '';
+      currentPage = 1;
+      render();
+    }
+
+    function toggleMatchFocusByAlert(alertId) {
+      const alert = allAlerts.find(item => Number(item.id) === Number(alertId));
+      if (!alert || !alert.match_id) return;
+      const matchId = String(alert.match_id);
+      if (focusedMatchId === matchId) {
+        clearMatchFocus();
+        return;
+      }
+      focusedMatchId = matchId;
+      focusedMatchName = cleanMatchName(alert.match_name || '');
+      currentPage = 1;
+      render();
+    }
+
+    function matchFocusButtonHtml(alert) {
+      const active = isFocusedMatch(alert.match_id);
+      const title = active ? 'Maç filtresini kaldır' : 'Sadece bu maçın sinyallerini göster';
+      return `<button class="match-focus-btn ${active ? 'active' : ''}" onclick="toggleMatchFocusByAlert(${alert.id})" title="${title}" aria-label="${title}">${active ? '◉' : '◎'}</button>`;
     }
 
     function qualityMeta(alert) {
@@ -2096,6 +2213,10 @@
       try {
         const res = await fetch('/api/alerts');
         allAlerts = await res.json();
+        if (focusedMatchId && !allAlerts.some(a => String(a.match_id || '') === focusedMatchId)) {
+          focusedMatchId = null;
+          focusedMatchName = '';
+        }
         render();
         updateStats();
         document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('tr-TR');
@@ -2118,6 +2239,7 @@
 
     function filterAlerts() {
       let filtered = [...allAlerts];
+      if (focusedMatchId !== null) filtered = filtered.filter(a => String(a.match_id || '') === focusedMatchId);
       if (currentFilter === 'pending') filtered = filtered.filter(a => !a.bet_placed && !a.ignored && !a.followed);
       else if (currentFilter === 'bet') filtered = filtered.filter(a => a.bet_placed);
       else if (currentFilter === 'follow') filtered = filtered.filter(a => a.followed);
@@ -2150,6 +2272,7 @@
     }
 
     function render() {
+      updateMatchFocusStatus();
       renderTable();
       renderCards();
     }
@@ -2188,6 +2311,7 @@
           day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
         }) : '-';
         const cleanName = cleanMatchName(a.match_name);
+        const matchFocusButton = matchFocusButtonHtml(a);
         const matchDisplay = a.url
           ? `<a class="match-link" href="${escapeHtml(a.url)}" target="_blank" title="${escapeHtml(cleanName)}">${escapeHtml(cleanName)}</a>`
           : `<span class="match-link" title="${escapeHtml(cleanName)}">${escapeHtml(cleanName)}</span>`;
@@ -2205,7 +2329,7 @@
             ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
           </td>
           <td>${qualityBadgeHtml(a)}</td>
-          <td class="col-match">${matchDisplay}</td>
+          <td class="col-match"><div class="match-cell-wrap">${matchFocusButton}${matchDisplay}</div></td>
           <td class="col-tournament" title="${escapeHtml(a.tournament || '-')}">${escapeHtml(a.tournament || '-')}</td>
           <td>${escapeHtml(a.status || '-')}</td>
           <td><b>${escapeHtml(a.score || '-')}</b></td>
@@ -2255,9 +2379,10 @@
           day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
         }) : '-';
         const matchName = cleanMatchName(a.match_name);
+        const matchFocusButton = matchFocusButtonHtml(a);
         const matchDisplay = a.url
-          ? `<a href="${escapeHtml(a.url)}" target="_blank">${escapeHtml(matchName)}</a>`
-          : escapeHtml(matchName);
+          ? `<a class="card-match-link" href="${escapeHtml(a.url)}" target="_blank">${escapeHtml(matchName)}</a>`
+          : `<span class="card-match-link">${escapeHtml(matchName)}</span>`;
         const betBtnClass = a.bet_placed ? 'active-bet' : '';
         const ignoreBtnClass = a.ignored ? 'active-ignore' : '';
         const followBtnClass = a.followed ? 'active-follow' : '';
@@ -2267,7 +2392,7 @@
 
         return `<div class="${classes.join(' ')}">
           <div class="card-top">
-            <div class="card-match">${matchDisplay}</div>
+            <div class="card-match"><div class="card-match-row">${matchFocusButton}${matchDisplay}</div></div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
               <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
               ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
@@ -2364,6 +2489,10 @@
         alert('Maç silinirken hata oluştu.');
         return;
       }
+      if (isFocusedMatch(payload.match_id)) {
+        focusedMatchId = null;
+        focusedMatchName = '';
+      }
       allAlerts = allAlerts.filter(a => a.match_id !== payload.match_id);
       render();
       updateStats();
@@ -2373,6 +2502,8 @@
       if (!confirm('Tüm veritabanı temizlenecek (alertler, aksiyonlar, açılış çizgileri). Emin misiniz?')) return;
       await fetch('/api/clear', { method: 'POST' });
       allAlerts = [];
+      focusedMatchId = null;
+      focusedMatchName = '';
       render();
       updateStats();
     }

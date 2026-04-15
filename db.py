@@ -634,6 +634,14 @@ class Database:
             cursor = conn.execute("DELETE FROM finished_matches")
         return cursor.rowcount
 
+    def update_finished_match_result(self, finished_match_id: int, result: str) -> bool:
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "UPDATE finished_matches SET result = ? WHERE id = ?",
+                (result, finished_match_id),
+            )
+        return cursor.rowcount > 0
+
     def get_tracked_live_matches(self, limit: int = 200) -> list:
         """
         Return one latest alert row per match where at least one signal

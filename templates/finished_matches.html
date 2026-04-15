@@ -665,6 +665,12 @@
       color: #fef3c7;
     }
 
+    .signal-pill.pending {
+      border-color: rgba(79, 156, 249, 0.22);
+      background: rgba(79, 156, 249, 0.08);
+      color: #dbeafe;
+    }
+
     details.signal-details {
       border-radius: 16px;
       border: 1px solid rgba(148, 163, 184, 0.12);
@@ -739,41 +745,51 @@
       font-weight: 850;
     }
 
-    .signal-actions {
+    .manual-result-actions {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
       justify-content: flex-end;
     }
 
-    .quality-btn,
-    .delete-btn {
-      min-height: 34px;
-      padding: 0 12px;
+    .result-icon-btn {
+      width: 38px;
+      height: 38px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       border-radius: 10px;
       border: 1px solid rgba(148, 163, 184, 0.18);
       background: rgba(255, 255, 255, 0.04);
       color: var(--text-soft);
       cursor: pointer;
-      font-size: 12px;
+      font-size: 18px;
       font-weight: 800;
       transition: 0.16s ease;
     }
 
-    .quality-btn:hover,
-    .delete-btn:hover {
+    .result-icon-btn:hover {
       border-color: rgba(79, 156, 249, 0.34);
       color: var(--text);
+      transform: translateY(-1px);
     }
 
-    .delete-btn {
+    .result-icon-btn.success.is-active {
+      color: #bbf7d0;
+      border-color: rgba(52, 211, 153, 0.34);
+      background: rgba(52, 211, 153, 0.14);
+    }
+
+    .result-icon-btn.fail.is-active {
       color: #fecaca;
       border-color: rgba(248, 113, 113, 0.22);
       background: rgba(248, 113, 113, 0.1);
     }
 
-    .delete-btn:hover {
-      border-color: rgba(248, 113, 113, 0.4);
+    .result-icon-btn:disabled {
+      opacity: 0.55;
+      cursor: wait;
+      transform: none;
     }
 
     .signal-grid {
@@ -1163,7 +1179,6 @@
 
     <section class="panel toolbar">
       <input class="search-box" id="searchInput" type="text" placeholder="Takım, turnuva, sinyal no veya final skor ara...">
-      <button class="toolbar-btn success" id="checkNowBtn" onclick="checkNow()">Şimdi Kontrol Et</button>
       <button class="toolbar-btn primary" id="reportBtn" onclick="openReportModal()">Rapor</button>
       <button class="toolbar-btn primary" onclick="loadFinishedMatches()">Yenile</button>
       <button class="toolbar-btn danger" id="clearAllBtn" onclick="clearAllFinishedMatches()">Tümünü Sil</button>
@@ -1199,7 +1214,7 @@
     </section>
 
     <section class="match-list" id="matchList"></section>
-    <div class="empty-state" id="emptyState">Filtreye uygun maç bulunamadı. Arşiv boşsa önce manuel kontrol çalıştırabilir ya da filtreleri temizleyebilirsin.</div>
+    <div class="empty-state" id="emptyState">Filtreye uygun maç bulunamadı. Arşiv boşsa biraz sonra tekrar yenileyebilir ya da filtreleri temizleyebilirsin.</div>
   </div>
 
   <div class="modal-overlay" id="qualityModal" onclick="if(event.target===this)closeQualityModal()">
@@ -1251,7 +1266,8 @@
     }
 
     function canonicalResult(value) {
-      return foldText(value);
+      const key = foldText(value);
+      return key || 'pending';
     }
 
     function directionKey(value) {
@@ -1293,7 +1309,8 @@
       const key = canonicalResult(result);
       if (key === 'basarili') return { key, label: 'Başarılı', className: 'badge badge-success', pillClass: 'signal-pill success' };
       if (key === 'basarisiz') return { key, label: 'Başarısız', className: 'badge badge-fail', pillClass: 'signal-pill fail' };
-      return { key: 'iade', label: 'İade', className: 'badge badge-push', pillClass: 'signal-pill push' };
+      if (key === 'iade') return { key, label: 'İade', className: 'badge badge-push', pillClass: 'signal-pill push' };
+      return { key: 'pending', label: 'Bekliyor', className: 'badge badge-neutral', pillClass: 'signal-pill pending' };
     }
 
     function directionMeta(direction) {
@@ -1342,6 +1359,11 @@
       const successPart = group.successNumbers.length ? `Başarılı: ${group.successNumbers.map(num => `#${num}`).join(', ')}` : '';
       const failPart = group.failNumbers.length ? `Başarısız: ${group.failNumbers.map(num => `#${num}`).join(', ')}` : '';
       const pushPart = group.pushNumbers.length ? `İade: ${group.pushNumbers.map(num => `#${num}`).join(', ')}` : '';
+      const pendingPart = group.pendingNumbers.length ? `Bekliyor: ${group.pendingNumbers.map(num => `#${num}`).join(', ')}` : '';
+
+      if (group.pendingCount === group.totalSignals) {
+        return `Bu maçtaki ${group.totalSignals} sinyal manuel sonuç işaretleme bekliyor.`;
+      }
 
       if (group.successCount > 0 && group.failCount === 0) {
         return `Bu maçta gelen ${group.totalSignals} sinyalin tamamı başarılı oldu.`;
@@ -1350,7 +1372,7 @@
         return `Bu maçta gelen ${group.totalSignals} sinyalin tamamı başarısız oldu.`;
       }
 
-      return [failPart, successPart, pushPart].filter(Boolean).join(' | ');
+      return [failPart, successPart, pushPart, pendingPart].filter(Boolean).join(' | ');
     }
 
     function buildGroups(signals) {
@@ -1381,9 +1403,11 @@
         const successNumbers = [];
         const failNumbers = [];
         const pushNumbers = [];
+        const pendingNumbers = [];
         let successCount = 0;
         let failCount = 0;
         let pushCount = 0;
+        let pendingCount = 0;
         let altSignals = 0;
         let altSuccess = 0;
         let ustSignals = 0;
@@ -1410,9 +1434,12 @@
             failNumbers.push(signalNo);
             if (direction === 'alt') altFail += 1;
             else ustFail += 1;
-          } else {
+          } else if (result === 'iade') {
             pushCount += 1;
             pushNumbers.push(signalNo);
+          } else {
+            pendingCount += 1;
+            pendingNumbers.push(signalNo);
           }
 
           if (isSuspiciousSignal(signal)) suspiciousCount += 1;
@@ -1430,6 +1457,7 @@
           successCount,
           failCount,
           pushCount,
+          pendingCount,
           altSignals,
           altSuccess,
           ustSignals,
@@ -1443,14 +1471,17 @@
           successNumbers,
           failNumbers,
           pushNumbers,
+          pendingNumbers,
           latestSignal,
           sequenceNote: buildSequenceNote({
             totalSignals: signalsSorted.length,
             successCount,
             failCount,
+            pendingCount,
             successNumbers,
             failNumbers,
-            pushNumbers
+            pushNumbers,
+            pendingNumbers
           })
         };
       }).sort((a, b) => {
@@ -1480,6 +1511,7 @@
       const successSignals = signals.filter(signal => canonicalResult(signal.result) === 'basarili');
       const failSignals = signals.filter(signal => canonicalResult(signal.result) === 'basarisiz');
       const pushSignals = signals.filter(signal => canonicalResult(signal.result) === 'iade');
+      const pendingSignals = signals.filter(signal => canonicalResult(signal.result) === 'pending');
       const alt = directionStats(signals, 'alt');
       const ust = directionStats(signals, 'ust');
       const uniqueMatches = groups.length;
@@ -1508,6 +1540,7 @@
         successSignals: successSignals.length,
         failSignals: failSignals.length,
         pushSignals: pushSignals.length,
+        pendingSignals: pendingSignals.length,
         overallSuccessRate: pct(successSignals.length, successSignals.length + failSignals.length),
         alt,
         ust,
@@ -1519,6 +1552,9 @@
     }
 
     function trustTone(stats) {
+      if (stats.pendingSignals > 0 && stats.successSignals + stats.failSignals === 0) {
+        return { label: 'Manuel işaretleme bekliyor', className: 'trust-tone tone-caution' };
+      }
       if (stats.suspiciousSignals > 0) {
         return { label: 'Temkinli yaklaş', className: 'trust-tone tone-caution' };
       }
@@ -1532,6 +1568,10 @@
     }
 
     function buildTrustText(stats) {
+      if (stats.pendingSignals > 0 && stats.successSignals + stats.failSignals === 0) {
+        return `${stats.pendingSignals} kayıt sonuç işaretleme bekliyor. Başarı oranı, siz başarılı veya başarısız işaretledikçe netleşecek.`;
+      }
+
       const diff = Math.abs(stats.alt.successRate - stats.ust.successRate);
       let directionSentence = 'ALT ve ÜST tarafı birbirine çok yakın.';
 
@@ -1560,7 +1600,10 @@
 
     function renderTrust(stats) {
       const tone = trustTone(stats);
-      document.getElementById('trustScore').textContent = formatPercent(stats.overallSuccessRate);
+      document.getElementById('trustScore').textContent =
+        stats.pendingSignals > 0 && stats.successSignals + stats.failSignals === 0
+          ? 'Bekliyor'
+          : formatPercent(stats.overallSuccessRate);
       const trustToneEl = document.getElementById('trustTone');
       trustToneEl.className = tone.className;
       trustToneEl.textContent = tone.label;
@@ -1576,6 +1619,7 @@
         `<span class="point-chip">${escapeHtml(leaderText)}</span>`,
         `<span class="point-chip">${stats.mixedMatches} karışık maç</span>`,
         `<span class="point-chip">${stats.repeatedMatches} tekrarlı maç</span>`,
+        `<span class="point-chip">${stats.pendingSignals} bekleyen sonuç</span>`,
         `<span class="point-chip">${stats.suspiciousSignals} şüpheli kayıt</span>`
       ].join('');
 
@@ -1598,7 +1642,7 @@
         <article class="summary-card success">
           <div class="card-kicker">Benzersiz Maç</div>
           <strong class="mono">${stats.uniqueMatches}</strong>
-          <p>${stats.onlySuccessMatches} maç sadece başarılı, ${stats.onlyFailMatches} maç sadece başarısız, ${stats.mixedMatches} maç karışık sonuç verdi.</p>
+          <p>${stats.onlySuccessMatches} maç sadece başarılı, ${stats.onlyFailMatches} maç sadece başarısız, ${stats.mixedMatches} maç karışık sonuç verdi. ${stats.pendingSignals} kayıt ise beklemede.</p>
         </article>
         <article class="summary-card warning">
           <div class="card-kicker">Tekrarlı Maç</div>
@@ -1681,10 +1725,26 @@
       `;
     }
 
-    function qualityButtonHtml(signal) {
-      const quality = qualityMeta(signal);
-      const score = Number(signal.quality_score || 0);
-      return `<button class="quality-btn" onclick="showQuality(${Number(signal.id)})">Kalite: ${escapeHtml(quality.label)} ${score.toFixed(1)}</button>`;
+    function manualResultButtonsHtml(signal) {
+      const result = canonicalResult(signal.result);
+      const isSuccess = result === 'basarili';
+      const isFail = result === 'basarisiz';
+      return `
+        <div class="manual-result-actions">
+          <button
+            class="result-icon-btn success ${isSuccess ? 'is-active' : ''}"
+            onclick="updateFinishedMatchResult(${Number(signal.id)}, 'basarili', this)"
+            title="Başarılı olarak işaretle"
+            aria-label="Başarılı olarak işaretle"
+          >✓</button>
+          <button
+            class="result-icon-btn fail ${isFail ? 'is-active' : ''}"
+            onclick="updateFinishedMatchResult(${Number(signal.id)}, 'basarisiz', this)"
+            title="Başarısız olarak işaretle"
+            aria-label="Başarısız olarak işaretle"
+          >✕</button>
+        </div>
+      `;
     }
 
     function signalRowHtml(signal) {
@@ -1699,10 +1759,7 @@
               <span class="${direction.className}">${escapeHtml(direction.label)}</span>
               <span class="${result.className}">${escapeHtml(result.label)}</span>
             </div>
-            <div class="signal-actions">
-              ${qualityButtonHtml(signal)}
-              <button class="delete-btn" onclick="deleteFinishedMatch(${Number(signal.id)})">Sinyali Sil</button>
-            </div>
+            ${manualResultButtonsHtml(signal)}
           </div>
 
           <div class="signal-grid">
@@ -1739,6 +1796,7 @@
 
     function groupStatusBadge(group) {
       if (group.mixed) return '<span class="badge badge-neutral">Karışık maç</span>';
+      if (group.pendingCount === group.totalSignals) return '<span class="badge badge-neutral">Sonuç bekliyor</span>';
       if (group.successCount > 0 && group.failCount === 0) return '<span class="badge badge-success">Tüm sinyaller başarılı</span>';
       if (group.failCount > 0 && group.successCount === 0) return '<span class="badge badge-fail">Tüm sinyaller başarısız</span>';
       return '<span class="badge badge-push">Sadece iade</span>';
@@ -2023,62 +2081,41 @@
       }
     }
 
-    async function checkNow() {
-      const button = document.getElementById('checkNowBtn');
-      const originalText = button.textContent;
-      button.disabled = true;
-      button.textContent = 'Kontrol Ediliyor...';
-      showBanner('warn', 'Kontrol başladı', 'Maçlar şimdi tek tek kontrol ediliyor. Final skor bulunan yeni sinyaller arşive eklenecek.');
+    async function updateFinishedMatchResult(id, result, button) {
+      const actionWrap = button?.closest('.manual-result-actions');
+      const buttons = actionWrap ? Array.from(actionWrap.querySelectorAll('button')) : [];
+      buttons.forEach(item => { item.disabled = true; });
 
       try {
-        const response = await fetch('/api/finished-matches/check-now', { method: 'POST' });
-        if (response.status === 409) {
-          showBanner('warn', 'Zaten çalışıyor', 'Şu anda başka bir manuel kontrol isteği işleniyor. Birkaç saniye sonra tekrar deneyebilirsin.');
-          return;
-        }
-        if (!response.ok) {
-          let message = `HTTP ${response.status}`;
-          try {
-            const payload = await response.json();
-            if (payload && payload.message) message = payload.message;
-          } catch (parseError) {
-            console.error(parseError);
-          }
-          throw new Error(message);
-        }
+        const response = await fetch(`/api/finished-matches/${id}/result`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ result })
+        });
 
-        const summary = await response.json();
-        await loadFinishedMatches();
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-        if (summary.archived_count > 0) {
-          showBanner(
-            'success',
-            'Yeni arşiv kaydı eklendi',
-            `${summary.archived_count} sinyal arşive taşındı. Başarılı: ${summary.successful_count}, Başarısız: ${summary.failed_count}, İade: ${summary.push_count}.`
-          );
-        } else if (summary.finished_match_count > 0) {
-          showBanner(
-            'warn',
-            'Biten maç bulundu',
-            `${summary.checked_count} maç kontrol edildi ancak final skor okunamadığı için yeni kayıt eklenmedi.`
-          );
-        } else {
-          showBanner(
-            'warn',
-            'Yeni biten maç yok',
-            `${summary.checked_count} maç kontrol edildi. Henüz bitip arşive taşınacak yeni sinyal bulunmadı.`
-          );
-        }
+        const payload = await response.json();
+        allSignals = allSignals.map(signal =>
+          Number(signal.id) === Number(id)
+            ? { ...signal, result: payload.result }
+            : signal
+        );
+        groupedMatches = buildGroups(allSignals);
+        document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString('tr-TR');
+        render();
+        showBanner(
+          'success',
+          'Sonuç güncellendi',
+          payload.result === 'Başarılı'
+            ? 'Seçilen kayıt başarılı olarak işaretlendi.'
+            : 'Seçilen kayıt başarısız olarak işaretlendi.'
+        );
       } catch (error) {
         console.error(error);
-        showBanner(
-          'error',
-          'Kontrol başarısız',
-          error?.message || 'Anlık biten maç kontrolü sırasında bir hata oluştu.'
-        );
+        showBanner('error', 'Güncelleme başarısız', 'Kayıt sonucu güncellenirken bir hata oluştu.');
       } finally {
-        button.disabled = false;
-        button.textContent = originalText;
+        buttons.forEach(item => { item.disabled = false; });
       }
     }
 

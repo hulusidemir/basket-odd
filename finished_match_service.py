@@ -26,14 +26,6 @@ def parse_score_total(score: str) -> float | None:
     return float(int(match.group(1)) + int(match.group(2)))
 
 
-def evaluate_signal_result(direction: str, live_line: float, final_total: float) -> str:
-    if abs(final_total - live_line) < 1e-9:
-        return "İade"
-    if direction == "ALT":
-        return "Başarılı" if final_total < live_line else "Başarısız"
-    return "Başarılı" if final_total > live_line else "Başarısız"
-
-
 class AiscoreFinishedMatchChecker:
     def __init__(
         self,
@@ -326,6 +318,7 @@ async def run_finished_match_cycle(db, config) -> dict:
         "successful_count": 0,
         "failed_count": 0,
         "push_count": 0,
+        "pending_count": 0,
         "details": [],
     }
 
@@ -346,28 +339,18 @@ async def run_finished_match_cycle(db, config) -> dict:
         pending_alerts = db.get_pending_alerts_for_match(result["match_id"])
 
         for alert in pending_alerts:
-            signal_result = evaluate_signal_result(
-                alert["direction"],
-                float(alert["live"]),
-                final_total,
-            )
             inserted_id = db.archive_finished_alert(
                 alert,
                 final_status=result.get("status", ""),
                 final_score=final_score,
                 final_total=final_total,
-                result=signal_result,
+                result="",
             )
             if not inserted_id:
                 continue
 
             summary["archived_count"] += 1
-            if signal_result == "Başarılı":
-                summary["successful_count"] += 1
-            elif signal_result == "Başarısız":
-                summary["failed_count"] += 1
-            else:
-                summary["push_count"] += 1
+            summary["pending_count"] += 1
 
             summary["details"].append({
                 "match_id": alert["match_id"],
@@ -376,7 +359,7 @@ async def run_finished_match_cycle(db, config) -> dict:
                 "live_line": float(alert["live"]),
                 "final_score": final_score,
                 "final_total": final_total,
-                "result": signal_result,
+                "result": "",
             })
 
     return summary
