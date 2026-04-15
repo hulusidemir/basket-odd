@@ -7,6 +7,7 @@ import logging
 from telegram import Bot
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
+from signal_reliability import alert_reliability
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,14 @@ class TelegramNotifier:
             emoji = "🔺"
             tip = "Canlı barem açılışa göre düştü"
 
+        reliability = alert_reliability(
+            direction=direction,
+            quality_grade=(quality or {}).get("grade", ""),
+            status=status,
+            diff=diff,
+            counter_level=(quality or {}).get("counter_level", ""),
+        )
+
         score_line = f"📊 Skor: <b>{score}</b>\n" if score else ""
         signal_line = f"🔁 <b>{signal_count}. sinyal</b>\n" if signal_count > 1 else ""
         quality_line = ""
@@ -85,7 +94,7 @@ class TelegramNotifier:
                 )
 
         text = (
-            f"{emoji} <b>Sinyal: {direction}</b>\n"
+            f"{emoji} <b>Sinyal: {direction} ({reliability['label']})</b>\n"
             f"{quality_line}"
             f"{signal_line}\n"
             f"🏀 <b>{match_name}</b>\n"

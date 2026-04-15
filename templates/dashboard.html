@@ -580,6 +580,18 @@
     .badge-quality-b { background: rgba(251, 191, 36, 0.14); color: #f8d06f; border-color: rgba(251, 191, 36, 0.24); }
     .badge-quality-c { background: rgba(148, 163, 184, 0.14); color: #c0cbda; border-color: rgba(148, 163, 184, 0.22); }
 
+    .signal-trust {
+      display: inline-flex;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.4;
+      white-space: normal;
+    }
+
+    .signal-trust-reliable { color: #8af0c9; }
+    .signal-trust-watch { color: #f8d06f; }
+
     .quality-badge {
       cursor: pointer;
       transition: transform 0.15s ease, border-color 0.15s ease;
@@ -1203,6 +1215,13 @@
       white-space: nowrap;
     }
 
+    .saved-bet-name-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
     .saved-bet-meta {
       font-size: 10px;
       color: var(--text-dim);
@@ -1768,6 +1787,13 @@
       `;
     }
 
+    function trustLabelHtml(alert) {
+      const label = String(alert.trust_label || '').trim();
+      if (!label) return '';
+      const code = alert.trust_code === 'reliable' ? 'reliable' : 'watch';
+      return `<span class="signal-trust signal-trust-${code}">(${escapeHtml(label)})</span>`;
+    }
+
     function projectedHtml(a) {
       if (a.projected === null || a.projected === undefined) return '<td>-</td>';
       const isHigher = a.projected > a.live;
@@ -2035,11 +2061,16 @@
         const eligible = Number(item.eligible_count || item?.payload?.eligible_count || 0);
         const createdAt = formatBetBuilderDate(item.created_at);
         const isExpanded = expandedSavedBetSlipId === itemId;
+        const summary = summarizeSavedBetSlip(item?.payload || {});
+        const overallMeta = savedResultMeta(summary.overall);
         return `
           <div>
             <div class="saved-bet-row">
               <div class="saved-bet-main">
-                <div class="saved-bet-name">${escapeHtml(item.name || '-')}</div>
+                <div class="saved-bet-name-wrap">
+                  <div class="saved-bet-name">${escapeHtml(item.name || '-')}</div>
+                  <span class="${overallMeta.className}">${escapeHtml(overallMeta.label)}</span>
+                </div>
                 <div class="saved-bet-meta">${createdAt} | ${selected}/${eligible} secim</div>
               </div>
               <div class="saved-bet-actions">
@@ -2414,6 +2445,7 @@
           <td class="time-col">${time}</td>
           <td class="col-direction signal-cell">
             <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
+            ${trustLabelHtml(a)}
             ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
           </td>
           <td>${qualityBadgeHtml(a)}</td>
@@ -2483,6 +2515,7 @@
             <div class="card-match"><div class="card-match-row">${matchFocusButton}${matchDisplay}</div></div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
               <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
+              ${trustLabelHtml(a)}
               ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
               <span class="${qualityMeta(a).className}" onclick="showQuality(${a.id})">${escapeHtml(qualityMeta(a).label)}</span>
             </div>

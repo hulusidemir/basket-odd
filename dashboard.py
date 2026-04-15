@@ -14,6 +14,7 @@ from flask import Flask, jsonify, render_template, request
 from db import Database
 from config import Config
 from finished_matches import finished_matches_bp
+from signal_reliability import alert_reliability
 
 config = Config()
 db = Database(config.DB_PATH)
@@ -85,6 +86,15 @@ def enrich_alerts_with_projection(alerts: list[dict]) -> list[dict]:
             match_name=alert.get("match_name", ""),
             tournament=alert.get("tournament", "")
         )
+        reliability = alert_reliability(
+            direction=alert.get("direction", ""),
+            quality_grade=alert.get("quality_grade", ""),
+            status=alert.get("status", ""),
+            diff=alert.get("diff", 0),
+            counter_level=alert.get("counter_level", ""),
+        )
+        alert["trust_label"] = reliability["label"]
+        alert["trust_code"] = reliability["code"]
     return alerts
 
 
