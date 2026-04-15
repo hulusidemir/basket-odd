@@ -606,6 +606,54 @@ class Database:
             )
         return cursor.rowcount > 0
 
+    def update_saved_bet_slip_result(self, slip_id: int, match_id: str, result: str) -> bool:
+        saved = self.get_saved_bet_slip(slip_id)
+        if not saved:
+            return False
+
+        payload = saved.get("payload") if isinstance(saved, dict) else {}
+        if not isinstance(payload, dict):
+            return False
+
+        slip = payload.get("slip")
+        if not isinstance(slip, list):
+            return False
+
+        target_match_id = str(match_id or "").strip()
+        updated = False
+        normalized_slip: list[dict] = []
+
+        for leg in slip:
+            if not isinstance(leg, dict):
+                continue
+            item = dict(leg)
+            if str(item.get("match_id") or "").strip() == target_match_id:
+                item["result"] = result
+                updated = True
+            normalized_slip.append(item)
+
+        if not updated:
+            return False
+
+        payload["slip"] = normalized_slip
+        with self._conn() as conn:
+            conn.execute(
+                """
+                UPDATE saved_bet_slips
+                SET payload_json = ?, selected_count = ?, eligible_count = ?, requested_max_count = ?, message = ?
+                WHERE id = ?
+                """,
+                (
+                    json.dumps(payload, ensure_ascii=False),
+                    int(payload.get("selected_count") or len(normalized_slip)),
+                    int(payload.get("eligible_count") or len(normalized_slip)),
+                    int(payload.get("requested_max_count") or len(normalized_slip) or 1),
+                    str(payload.get("message") or ""),
+                    slip_id,
+                ),
+            )
+        return True
+
     # ---------- finished matches ----------
 
     def recent_finished_matches(self, limit: int | None = 500) -> list:

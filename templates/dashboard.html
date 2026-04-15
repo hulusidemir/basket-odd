@@ -1330,6 +1330,53 @@
       background: rgba(148, 163, 184, 0.12);
     }
 
+    .saved-result-actions {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .saved-result-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      border: 1px solid rgba(110, 146, 187, 0.22);
+      background: rgba(19, 37, 58, 0.94);
+      color: var(--text-dim);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+    }
+
+    .saved-result-btn:hover {
+      transform: translateY(-1px);
+      color: var(--text);
+      border-color: rgba(95, 167, 255, 0.45);
+    }
+
+    .saved-result-btn.is-active.success {
+      color: #a7f3d0;
+      border-color: rgba(16, 185, 129, 0.35);
+      background: rgba(16, 185, 129, 0.16);
+    }
+
+    .saved-result-btn.is-active.fail {
+      color: #fecaca;
+      border-color: rgba(239, 68, 68, 0.35);
+      background: rgba(239, 68, 68, 0.14);
+    }
+
+    .saved-result-btn:disabled {
+      opacity: 0.55;
+      cursor: wait;
+      transform: none;
+    }
+
     .saved-match-subtitle {
       display: block;
       margin-top: 2px;
@@ -1363,9 +1410,10 @@
     .saved-detail-table th:nth-child(5),
     .saved-detail-table td:nth-child(5),
     .saved-detail-table th:nth-child(6),
-    .saved-detail-table td:nth-child(6),
+    .saved-detail-table td:nth-child(6) { width: 90px; }
+
     .saved-detail-table th:nth-child(7),
-    .saved-detail-table td:nth-child(7) { width: 90px; }
+    .saved-detail-table td:nth-child(7) { width: 110px; }
 
     @media (max-width: 1100px) {
       .stats {
@@ -1638,7 +1686,6 @@
     let latestBetBuilderPayload = null;
     let savedBetSlips = [];
     let expandedSavedBetSlipId = null;
-    let savedBetSlipChecks = {};
     let focusedMatchId = null;
     let focusedMatchName = '';
 
@@ -1839,65 +1886,106 @@
       target.style.display = message ? 'block' : 'none';
     }
 
-    function savedResultMeta(statusKey, label) {
-      if (statusKey === 'success') return { className: 'saved-result-pill success', label: label || 'Başarılı' };
-      if (statusKey === 'fail') return { className: 'saved-result-pill fail', label: label || 'Başarısız' };
-      if (statusKey === 'push') return { className: 'saved-result-pill push', label: label || 'İade' };
-      if (statusKey === 'pending') return { className: 'saved-result-pill pending', label: label || 'Bekliyor' };
-      return { className: 'saved-result-pill unknown', label: label || 'Bilinmiyor' };
+    function savedResultMeta(value) {
+      const normalized = String(value || '').trim().toLowerCase();
+      if (normalized === 'başarılı' || normalized === 'basarili' || normalized === 'success') {
+        return { key: 'success', className: 'saved-result-pill success', label: 'Başarılı' };
+      }
+      if (normalized === 'başarısız' || normalized === 'basarisiz' || normalized === 'fail' || normalized === 'failed') {
+        return { key: 'fail', className: 'saved-result-pill fail', label: 'Başarısız' };
+      }
+      return { key: 'pending', className: 'saved-result-pill pending', label: 'Bekliyor' };
+    }
+
+    function summarizeSavedBetSlip(payload) {
+      const slip = Array.isArray(payload?.slip) ? payload.slip : [];
+      let successCount = 0;
+      let failCount = 0;
+      let pendingCount = 0;
+
+      slip.forEach(leg => {
+        const meta = savedResultMeta(leg?.result);
+        if (meta.key === 'success') successCount += 1;
+        else if (meta.key === 'fail') failCount += 1;
+        else pendingCount += 1;
+      });
+
+      let overall = 'Bekliyor';
+      if (slip.length === 0) overall = 'Kupon boş';
+      else if (failCount > 0) overall = 'Başarısız';
+      else if (successCount === slip.length) overall = 'Başarılı';
+      else if (successCount > 0) overall = 'Kısmi';
+
+      return {
+        total: slip.length,
+        successCount,
+        failCount,
+        pendingCount,
+        overall,
+      };
+    }
+
+    function savedResultActionsHtml(slipId, leg) {
+      const meta = savedResultMeta(leg?.result);
+      const matchId = JSON.stringify(String(leg?.match_id || ''));
+      return `
+        <div class="saved-result-actions">
+          <button
+            class="saved-result-btn success ${meta.key === 'success' ? 'is-active' : ''}"
+            type="button"
+            title="Başarılı"
+            aria-label="Başarılı"
+            onclick='updateSavedBetSlipResult(${Number(slipId)}, ${matchId}, "Başarılı", this)'
+          >✓</button>
+          <button
+            class="saved-result-btn fail ${meta.key === 'fail' ? 'is-active' : ''}"
+            type="button"
+            title="Başarısız"
+            aria-label="Başarısız"
+            onclick='updateSavedBetSlipResult(${Number(slipId)}, ${matchId}, "Başarısız", this)'
+          >✕</button>
+        </div>
+      `;
     }
 
     function renderSavedBetSlipDetail(item, itemId) {
       const payload = (item && item.payload && typeof item.payload === 'object') ? item.payload : {};
       const slip = Array.isArray(payload.slip) ? payload.slip : [];
-      const check = savedBetSlipChecks[itemId]?.check || null;
 
       if (!slip.length) {
         return `<div class="saved-bet-detail"><div class="builder-empty">Bu kayıtta kupon içeriği bulunamadı.</div></div>`;
       }
 
-      const detailsByIndex = new Map();
-      if (check && Array.isArray(check.details)) {
-        check.details.forEach(detail => {
-          const idx = Number(detail?.index || 0);
-          if (idx > 0) detailsByIndex.set(idx, detail);
-        });
-      }
-
-      const summary = check
-        ? `<div class="saved-detail-summary"><strong>${escapeHtml(check.overall || '-')}</strong> Başarılı: ${Number(check.success_count || 0)} | Başarısız: ${Number(check.fail_count || 0)} | İade: ${Number(check.push_count || 0)} | Bekleyen: ${Number(check.pending_count || 0)} | Bilinmiyor: ${Number(check.unknown_count || 0)}</div>`
-        : `<div class="saved-detail-summary">Kupon içeriği aşağıda. Sonucu görmek için <strong>Başarıyı Kontrol Et</strong> butonunu kullan.</div>`;
+      const summaryData = summarizeSavedBetSlip(payload);
+      const summary = `
+        <div class="saved-detail-summary">
+          <strong>${escapeHtml(summaryData.overall)}</strong>
+          Başarılı: ${summaryData.successCount} |
+          Başarısız: ${summaryData.failCount} |
+          Bekleyen: ${summaryData.pendingCount}
+        </div>
+      `;
 
       const rows = slip.map((leg, idx) => {
         const itemLeg = leg && typeof leg === 'object' ? leg : {};
-        const detail = detailsByIndex.get(idx + 1);
-        const resultMeta = savedResultMeta(detail?.status_key, detail?.result_label);
+        const resultMeta = savedResultMeta(itemLeg.result);
         const matchName = cleanMatchName(itemLeg.match_name || '-');
         const matchLink = itemLeg.url
           ? `<a class="match-link" href="${escapeHtml(itemLeg.url)}" target="_blank">${escapeHtml(matchName)}</a>`
           : escapeHtml(matchName);
         const matchStateNote = buildMatchStateNote({
-          bet_placed: Number(detail?.bet_placed ?? itemLeg.bet_placed ?? 0),
-          followed: Number(detail?.followed ?? itemLeg.followed ?? 0),
+          bet_placed: Number(itemLeg.bet_placed ?? 0),
+          followed: Number(itemLeg.followed ?? 0),
         });
         const recommendation = buildBetRecommendation(itemLeg.live, itemLeg.direction, itemLeg.signal_tier);
-        const finalTotal = detail && detail.final_total !== null && detail.final_total !== undefined
-          ? Number(detail.final_total).toFixed(1)
-          : '-';
-        const liveInfo = detail
-          ? (detail.final_score
-            ? `Final ${escapeHtml(detail.final_score)}`
-            : (detail.live_score ? `Canlı ${escapeHtml(detail.live_score)}` : '-'))
-          : '-';
         return `
           <tr>
             <td>${idx + 1}</td>
             <td>${matchLink}${matchStateNote}<span class="saved-match-subtitle">(${escapeHtml(itemLeg.tournament || '-')})</span></td>
             <td>${escapeHtml(recommendation)}</td>
             <td>${Number(itemLeg.projected || 0).toFixed(1)}</td>
-            <td>${finalTotal}</td>
             <td><span class="${resultMeta.className}">${escapeHtml(resultMeta.label)}</span></td>
-            <td>${liveInfo}</td>
+            <td>${savedResultActionsHtml(itemId, itemLeg)}</td>
           </tr>
         `;
       }).join('');
@@ -1913,9 +2001,8 @@
                   <th>Maç</th>
                   <th>Oynanacak</th>
                   <th>Proj</th>
-                  <th>Final</th>
                   <th>Sonuç</th>
-                  <th>Skor</th>
+                  <th>İşaretle</th>
                 </tr>
               </thead>
               <tbody>${rows}</tbody>
@@ -1957,8 +2044,6 @@
               </div>
               <div class="saved-bet-actions">
                 <button class="saved-inline-btn" type="button" onclick="toggleSavedBetSlipDetail(${itemId})">${isExpanded ? 'Gizle' : 'İçeriği Gör'}</button>
-                <button class="saved-inline-btn" type="button" onclick="checkSavedBetSlip(${itemId})">Başarıyı Kontrol Et</button>
-                <button class="saved-inline-btn" type="button" onclick="applySavedBetSlip(${itemId})">Yükle</button>
                 <button class="saved-inline-btn danger" type="button" onclick="deleteSavedBetSlip(${itemId})">Sil</button>
               </div>
             </div>
@@ -1992,37 +2077,41 @@
       }
     }
 
-    async function checkSavedBetSlip(id) {
+    async function updateSavedBetSlipResult(id, matchId, result, button) {
       const targetId = Number(id || 0);
       const found = savedBetSlips.find(item => Number(item.id || 0) === targetId);
       if (!found) return;
 
-      showBetBuilderStatus(`"${found.name || 'Kupon'}" kontrol ediliyor...`, 'info');
+      const actionWrap = button?.closest('.saved-result-actions');
+      const buttons = actionWrap ? Array.from(actionWrap.querySelectorAll('button')) : [];
+      buttons.forEach(item => { item.disabled = true; });
+
       try {
-        const response = await fetch(`/api/bet-builder/saved/${targetId}/check`);
+        const response = await fetch(`/api/bet-builder/saved/${targetId}/result`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ match_id: matchId, result }),
+        });
         const payload = await response.json();
-        if (!response.ok) throw new Error(payload?.error || 'Kupon sonucu kontrol edilemedi.');
-        savedBetSlipChecks[targetId] = payload;
+        if (!response.ok) throw new Error(payload?.error || 'Kupon sonucu kaydedilemedi.');
+
+        savedBetSlips = savedBetSlips.map(item =>
+          Number(item.id || 0) === targetId
+            ? { ...item, payload: payload?.payload || item.payload }
+            : item
+        );
         expandedSavedBetSlipId = targetId;
         renderSavedBetSlipList();
-        showBetBuilderStatus(`"${found.name || 'Kupon'}" kontrol edildi: ${payload?.check?.overall || '-'}.`, 'success');
+        showBetBuilderStatus(
+          `"${found.name || 'Kupon'}" icin sonuc ${result.toLowerCase()} olarak kaydedildi.`,
+          'success'
+        );
       } catch (error) {
         console.error(error);
-        showBetBuilderStatus(error?.message || 'Kupon sonucu kontrol edilemedi.', 'error');
+        showBetBuilderStatus(error?.message || 'Kupon sonucu kaydedilemedi.', 'error');
+      } finally {
+        buttons.forEach(item => { item.disabled = false; });
       }
-    }
-
-    function applySavedBetSlip(id) {
-      const targetId = Number(id || 0);
-      const found = savedBetSlips.find(item => Number(item.id || 0) === targetId);
-      if (!found || !found.payload) {
-        showBetBuilderStatus('Kayıtlı kupon yüklenemedi.', 'error');
-        return;
-      }
-      latestBetBuilderPayload = found.payload;
-      document.getElementById('betBuilderName').value = found.name || '';
-      renderBetSlip(found.payload);
-      showBetBuilderStatus(`"${found.name || 'Kupon'}" yüklendi.`, 'info');
     }
 
     async function deleteSavedBetSlip(id) {
@@ -2035,7 +2124,6 @@
         const response = await fetch(`/api/bet-builder/saved/${targetId}`, { method: 'DELETE' });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload?.error || 'Kayıt silinemedi.');
-        delete savedBetSlipChecks[targetId];
         if (expandedSavedBetSlipId === targetId) expandedSavedBetSlipId = null;
         showBetBuilderStatus('Kayıt silindi.', 'success');
         await loadSavedBetSlips();
