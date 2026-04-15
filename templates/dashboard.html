@@ -265,10 +265,16 @@
       margin-bottom: 18px;
     }
 
-    .search-box {
+    .search-wrap {
+      position: relative;
       flex: 1;
       min-width: 260px;
+    }
+
+    .search-box {
+      width: 100%;
       padding: 12px 16px;
+      padding-right: 42px;
       border-radius: 14px;
       border: 1px solid var(--line);
       background: rgba(11, 24, 38, 1);
@@ -282,6 +288,39 @@
     .search-box:focus {
       border-color: rgba(95, 167, 255, 0.45);
       box-shadow: 0 0 0 3px rgba(95, 167, 255, 0.10);
+    }
+
+    .search-clear-btn {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 24px;
+      height: 24px;
+      border: none;
+      border-radius: 999px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(95, 167, 255, 0.12);
+      color: var(--text-dim);
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .search-clear-btn.is-visible { display: flex; }
+
+    .search-clear-btn:hover {
+      color: var(--text);
+      background: rgba(95, 167, 255, 0.2);
+    }
+
+    .search-clear-btn:focus-visible {
+      outline: 2px solid rgba(95, 167, 255, 0.5);
+      outline-offset: 1px;
     }
 
     .refresh-info {
@@ -974,7 +1013,7 @@
         align-items: stretch;
       }
 
-      .search-box {
+      .search-wrap {
         min-width: 0;
       }
 
@@ -1066,7 +1105,10 @@
     </div>
 
     <div class="toolbar">
-      <input class="search-box" type="text" placeholder="Takım, lig veya maç ara" id="searchInput">
+      <div class="search-wrap">
+        <input class="search-box" type="text" placeholder="Takım, lig veya maç ara" id="searchInput">
+        <button class="search-clear-btn" id="clearSearchBtn" type="button" aria-label="Aramayi temizle" title="Temizle">&times;</button>
+      </div>
       <button class="filter-btn" onclick="openBetBuilder()">Bahis Oluşturucu</button>
       <button class="filter-btn" onclick="manualRefresh()">Listeyi Yenile</button>
       <span class="refresh-info"><span id="countdown">15</span>s | <span id="lastUpdate">-</span></span>
@@ -1663,12 +1705,31 @@
       });
     });
 
+    const searchInput = document.getElementById('searchInput');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+
+    function updateSearchClearButton() {
+      clearSearchBtn.classList.toggle('is-visible', searchInput.value.length > 0);
+    }
+
     // Search
-    document.getElementById('searchInput').addEventListener('input', e => {
+    searchInput.addEventListener('input', e => {
       searchQuery = e.target.value;
       currentPage = 1;
       render();
+      updateSearchClearButton();
     });
+
+    clearSearchBtn.addEventListener('click', () => {
+      if (!searchInput.value) return;
+      searchInput.value = '';
+      searchQuery = '';
+      currentPage = 1;
+      render();
+      updateSearchClearButton();
+      searchInput.focus();
+    });
+    updateSearchClearButton();
 
     // Sort headers
     document.querySelectorAll('thead th[data-sort]').forEach(th => {
