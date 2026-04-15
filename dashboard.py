@@ -8,6 +8,7 @@ Usage:
 
 import os
 import re
+import asyncio
 from datetime import datetime, timedelta
 from typing import Optional
 from flask import Flask, jsonify, render_template, request
@@ -498,6 +499,15 @@ def api_alerts():
 def api_bet_builder():
     max_count = request.args.get("max_count", default=4, type=int) or 4
     max_count = max(1, min(max_count, 8))
+
+    # Kupon oluşturulmadan hemen önce biten maç kontrolünü tetikle.
+    # Böylece FT olan maçlar arşive taşınır ve kupon adayından düşer.
+    try:
+        from finished_match_service import run_finished_match_cycle
+        asyncio.run(run_finished_match_cycle(db, config))
+    except Exception as exc:
+        app.logger.warning("Bet builder pre-check failed, continuing with current data: %s", exc)
+
     return jsonify(build_bet_builder(max_count))
 
 
