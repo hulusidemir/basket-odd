@@ -803,7 +803,7 @@
     }
 
     .bet-builder-box {
-      max-width: 560px;
+      max-width: 660px;
     }
 
     .modal-header {
@@ -947,7 +947,7 @@
 
     .bet-slip-table {
       width: 100%;
-      min-width: 820px;
+      min-width: 760px;
       border-collapse: collapse;
     }
 
@@ -982,12 +982,14 @@
       text-overflow: ellipsis;
     }
 
-    .bet-slip-table .league-col {
-      min-width: 140px;
-      max-width: 220px;
+    .bet-slip-tournament {
+      display: block;
+      margin-top: 2px;
+      font-size: 10px;
+      font-style: italic;
+      color: var(--text-dim);
       overflow: hidden;
       text-overflow: ellipsis;
-      color: var(--text-dim);
     }
 
     .bet-slip-signal {
@@ -1101,6 +1103,108 @@
       color: #fecaca;
     }
 
+    .saved-bet-detail {
+      margin-top: 6px;
+      border-radius: 10px;
+      border: 1px solid rgba(110, 146, 187, 0.14);
+      background: rgba(10, 20, 32, 0.92);
+      overflow: hidden;
+    }
+
+    .saved-detail-summary {
+      padding: 7px 8px;
+      border-bottom: 1px solid rgba(110, 146, 187, 0.12);
+      font-size: 11px;
+      color: var(--text-dim);
+      line-height: 1.3;
+    }
+
+    .saved-detail-summary strong {
+      color: var(--text);
+      font-weight: 800;
+      margin-right: 8px;
+    }
+
+    .saved-detail-table-wrap {
+      overflow: auto;
+    }
+
+    .saved-detail-table {
+      width: 100%;
+      min-width: 620px;
+      border-collapse: collapse;
+    }
+
+    .saved-detail-table th {
+      text-align: left;
+      padding: 6px 7px;
+      font-size: 10px;
+      color: var(--text-dim);
+      border-bottom: 1px solid rgba(110, 146, 187, 0.14);
+      white-space: nowrap;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .saved-detail-table td {
+      padding: 6px 7px;
+      font-size: 11px;
+      border-bottom: 1px solid rgba(110, 146, 187, 0.09);
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+
+    .saved-detail-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .saved-result-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 800;
+      border: 1px solid transparent;
+      line-height: 1.3;
+    }
+
+    .saved-result-pill.success {
+      color: #a7f3d0;
+      border-color: rgba(16, 185, 129, 0.35);
+      background: rgba(16, 185, 129, 0.16);
+    }
+
+    .saved-result-pill.fail {
+      color: #fecaca;
+      border-color: rgba(239, 68, 68, 0.35);
+      background: rgba(239, 68, 68, 0.14);
+    }
+
+    .saved-result-pill.push {
+      color: #fde68a;
+      border-color: rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.14);
+    }
+
+    .saved-result-pill.pending,
+    .saved-result-pill.unknown {
+      color: #cbd5e1;
+      border-color: rgba(148, 163, 184, 0.35);
+      background: rgba(148, 163, 184, 0.12);
+    }
+
+    .saved-match-subtitle {
+      display: block;
+      margin-top: 2px;
+      font-size: 10px;
+      font-style: italic;
+      color: var(--text-dim);
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     @media (max-width: 1100px) {
       .stats {
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1111,7 +1215,7 @@
       }
 
       .bet-slip-table {
-        min-width: 720px;
+        min-width: 680px;
       }
     }
 
@@ -1370,6 +1474,8 @@
     let pageSize = 25;
     let latestBetBuilderPayload = null;
     let savedBetSlips = [];
+    let expandedSavedBetSlipId = null;
+    let savedBetSlipChecks = {};
 
     function cleanMatchName(name) {
       return (name || '')
@@ -1486,6 +1592,19 @@
       return `${num >= 0 ? '+' : ''}${num.toFixed(1)}`;
     }
 
+    function formatLineForPick(value) {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return '-';
+      return Number.isInteger(num) ? String(num) : num.toFixed(1);
+    }
+
+    function buildBetRecommendation(liveLine, direction, tier) {
+      const line = formatLineForPick(liveLine);
+      const dir = String(direction || '-').trim() || '-';
+      const t = String(tier || '-').trim() || '-';
+      return `${line}-${dir} (${t})`;
+    }
+
     function formatBetBuilderDate(value) {
       if (!value) return '-';
       const source = String(value);
@@ -1501,6 +1620,94 @@
       target.textContent = message || '';
       target.className = `builder-status ${type}`;
       target.style.display = message ? 'block' : 'none';
+    }
+
+    function savedResultMeta(statusKey, label) {
+      if (statusKey === 'success') return { className: 'saved-result-pill success', label: label || 'Başarılı' };
+      if (statusKey === 'fail') return { className: 'saved-result-pill fail', label: label || 'Başarısız' };
+      if (statusKey === 'push') return { className: 'saved-result-pill push', label: label || 'İade' };
+      if (statusKey === 'pending') return { className: 'saved-result-pill pending', label: label || 'Bekliyor' };
+      return { className: 'saved-result-pill unknown', label: label || 'Bilinmiyor' };
+    }
+
+    function renderSavedBetSlipDetail(item, itemId) {
+      const payload = (item && item.payload && typeof item.payload === 'object') ? item.payload : {};
+      const slip = Array.isArray(payload.slip) ? payload.slip : [];
+      const check = savedBetSlipChecks[itemId]?.check || null;
+
+      if (!slip.length) {
+        return `<div class="saved-bet-detail"><div class="builder-empty">Bu kayıtta kupon içeriği bulunamadı.</div></div>`;
+      }
+
+      const detailsByIndex = new Map();
+      if (check && Array.isArray(check.details)) {
+        check.details.forEach(detail => {
+          const idx = Number(detail?.index || 0);
+          if (idx > 0) detailsByIndex.set(idx, detail);
+        });
+      }
+
+      const summary = check
+        ? `<div class="saved-detail-summary"><strong>${escapeHtml(check.overall || '-')}</strong> Başarılı: ${Number(check.success_count || 0)} | Başarısız: ${Number(check.fail_count || 0)} | İade: ${Number(check.push_count || 0)} | Bekleyen: ${Number(check.pending_count || 0)} | Bilinmiyor: ${Number(check.unknown_count || 0)}</div>`
+        : `<div class="saved-detail-summary">Kupon içeriği aşağıda. Sonucu görmek için <strong>Başarıyı Kontrol Et</strong> butonunu kullan.</div>`;
+
+      const rows = slip.map((leg, idx) => {
+        const itemLeg = leg && typeof leg === 'object' ? leg : {};
+        const detail = detailsByIndex.get(idx + 1);
+        const resultMeta = savedResultMeta(detail?.status_key, detail?.result_label);
+        const matchName = cleanMatchName(itemLeg.match_name || '-');
+        const matchLink = itemLeg.url
+          ? `<a class="match-link" href="${escapeHtml(itemLeg.url)}" target="_blank">${escapeHtml(matchName)}</a>`
+          : escapeHtml(matchName);
+        const recommendation = buildBetRecommendation(itemLeg.live, itemLeg.direction, itemLeg.signal_tier);
+        const finalTotal = detail && detail.final_total !== null && detail.final_total !== undefined
+          ? Number(detail.final_total).toFixed(1)
+          : '-';
+        const liveInfo = detail
+          ? (detail.final_score
+            ? `Final ${escapeHtml(detail.final_score)}`
+            : (detail.live_score ? `Canlı ${escapeHtml(detail.live_score)}` : '-'))
+          : '-';
+        return `
+          <tr>
+            <td>${idx + 1}</td>
+            <td>${matchLink}<span class="saved-match-subtitle">(${escapeHtml(itemLeg.tournament || '-')})</span></td>
+            <td>${escapeHtml(recommendation)}</td>
+            <td>${Number(itemLeg.projected || 0).toFixed(1)}</td>
+            <td>${finalTotal}</td>
+            <td><span class="${resultMeta.className}">${escapeHtml(resultMeta.label)}</span></td>
+            <td>${liveInfo}</td>
+          </tr>
+        `;
+      }).join('');
+
+      return `
+        <div class="saved-bet-detail">
+          ${summary}
+          <div class="saved-detail-table-wrap">
+            <table class="saved-detail-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Maç</th>
+                  <th>Oynanacak</th>
+                  <th>Proj</th>
+                  <th>Final</th>
+                  <th>Sonuç</th>
+                  <th>Skor</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function toggleSavedBetSlipDetail(id) {
+      const targetId = Number(id || 0);
+      expandedSavedBetSlipId = expandedSavedBetSlipId === targetId ? null : targetId;
+      renderSavedBetSlipList();
     }
 
     function renderSavedBetSlipList() {
@@ -1519,16 +1726,22 @@
         const selected = Number(item.selected_count || item?.payload?.selected_count || 0);
         const eligible = Number(item.eligible_count || item?.payload?.eligible_count || 0);
         const createdAt = formatBetBuilderDate(item.created_at);
+        const isExpanded = expandedSavedBetSlipId === itemId;
         return `
-          <div class="saved-bet-row">
-            <div class="saved-bet-main">
-              <div class="saved-bet-name">${escapeHtml(item.name || '-')}</div>
-              <div class="saved-bet-meta">${createdAt} | ${selected}/${eligible} secim</div>
+          <div>
+            <div class="saved-bet-row">
+              <div class="saved-bet-main">
+                <div class="saved-bet-name">${escapeHtml(item.name || '-')}</div>
+                <div class="saved-bet-meta">${createdAt} | ${selected}/${eligible} secim</div>
+              </div>
+              <div class="saved-bet-actions">
+                <button class="saved-inline-btn" type="button" onclick="toggleSavedBetSlipDetail(${itemId})">${isExpanded ? 'Gizle' : 'İçeriği Gör'}</button>
+                <button class="saved-inline-btn" type="button" onclick="checkSavedBetSlip(${itemId})">Başarıyı Kontrol Et</button>
+                <button class="saved-inline-btn" type="button" onclick="applySavedBetSlip(${itemId})">Yükle</button>
+                <button class="saved-inline-btn danger" type="button" onclick="deleteSavedBetSlip(${itemId})">Sil</button>
+              </div>
             </div>
-            <div class="saved-bet-actions">
-              <button class="saved-inline-btn" type="button" onclick="applySavedBetSlip(${itemId})">Yukle</button>
-              <button class="saved-inline-btn danger" type="button" onclick="deleteSavedBetSlip(${itemId})">Sil</button>
-            </div>
+            ${isExpanded ? renderSavedBetSlipDetail(item, itemId) : ''}
           </div>
         `;
       }).join('');
@@ -1545,12 +1758,36 @@
         const payload = await response.json();
         if (!response.ok) throw new Error(payload?.error || 'Kayıtlı kuponlar alınamadı.');
         savedBetSlips = Array.isArray(payload) ? payload : [];
+        if (expandedSavedBetSlipId && !savedBetSlips.some(item => Number(item.id || 0) === expandedSavedBetSlipId)) {
+          expandedSavedBetSlipId = null;
+        }
         renderSavedBetSlipList();
       } catch (error) {
         console.error(error);
         savedBetSlips = [];
+        expandedSavedBetSlipId = null;
         target.className = 'builder-empty';
         target.innerHTML = escapeHtml(error?.message || 'Kayıtlı kuponlar yüklenirken hata oluştu.');
+      }
+    }
+
+    async function checkSavedBetSlip(id) {
+      const targetId = Number(id || 0);
+      const found = savedBetSlips.find(item => Number(item.id || 0) === targetId);
+      if (!found) return;
+
+      showBetBuilderStatus(`"${found.name || 'Kupon'}" kontrol ediliyor...`, 'info');
+      try {
+        const response = await fetch(`/api/bet-builder/saved/${targetId}/check`);
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.error || 'Kupon sonucu kontrol edilemedi.');
+        savedBetSlipChecks[targetId] = payload;
+        expandedSavedBetSlipId = targetId;
+        renderSavedBetSlipList();
+        showBetBuilderStatus(`"${found.name || 'Kupon'}" kontrol edildi: ${payload?.check?.overall || '-'}.`, 'success');
+      } catch (error) {
+        console.error(error);
+        showBetBuilderStatus(error?.message || 'Kupon sonucu kontrol edilemedi.', 'error');
       }
     }
 
@@ -1577,6 +1814,8 @@
         const response = await fetch(`/api/bet-builder/saved/${targetId}`, { method: 'DELETE' });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload?.error || 'Kayıt silinemedi.');
+        delete savedBetSlipChecks[targetId];
+        if (expandedSavedBetSlipId === targetId) expandedSavedBetSlipId = null;
         showBetBuilderStatus('Kayıt silindi.', 'success');
         await loadSavedBetSlips();
       } catch (error) {
@@ -1609,24 +1848,16 @@
       }
 
       const rows = payload.slip.map(item => {
-        const dir = betDirectionMeta(item.direction);
         const matchText = cleanMatchName(item.match_name || '-');
+        const recommendation = buildBetRecommendation(item.live, item.direction, item.signal_tier);
         const matchBlock = item.url
           ? `<a class="match-link" href="${escapeHtml(item.url)}" target="_blank">${escapeHtml(matchText)}</a>`
           : `${escapeHtml(matchText)}`;
         return `
           <tr>
-            <td class="match-col">${matchBlock}</td>
-            <td class="league-col" title="${escapeHtml(item.tournament || '-')}">${escapeHtml(item.tournament || '-')}</td>
-            <td>
-              <span class="bet-slip-signal">
-                <span class="${dir.className}">${dir.icon} ${escapeHtml(item.direction || '-')}</span>
-                ${escapeHtml(item.signal_tier || '-')}
-              </span>
-            </td>
-            <td><span class="bet-slip-code">${escapeHtml(item.signal_code || '-')}</span></td>
+            <td class="match-col">${matchBlock}<span class="bet-slip-tournament">(${escapeHtml(item.tournament || '-')})</span></td>
+            <td><span class="bet-slip-code">${escapeHtml(recommendation)}</span></td>
             <td>${Number(item.projected || 0).toFixed(1)}</td>
-            <td>${Number(item.live || 0).toFixed(1)}</td>
             <td>${formatSignedNumber(item.projection_gap || 0)}</td>
             <td>${Number(item.opening || 0).toFixed(1)}</td>
             <td>${formatSignedNumber(item.opening_gap || 0)}</td>
@@ -1643,11 +1874,8 @@
             <thead>
               <tr>
                 <th>Maç</th>
-                <th>Lig</th>
-                <th>Sinyal</th>
-                <th>Kod</th>
+                <th>Oynanacak</th>
                 <th>Proj</th>
-                <th>Canlı</th>
                 <th>P. Fark</th>
                 <th>Açılış</th>
                 <th>A. Fark</th>

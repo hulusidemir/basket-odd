@@ -509,6 +509,79 @@ class Database:
             items.append(item)
         return items
 
+    def get_saved_bet_slip(self, slip_id: int) -> dict | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT id, name, requested_max_count, selected_count, eligible_count, message, payload_json, created_at
+                FROM saved_bet_slips
+                WHERE id = ?
+                """,
+                (slip_id,),
+            ).fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        try:
+            payload = json.loads(item.get("payload_json") or "{}")
+        except Exception:
+            payload = {}
+        item["payload"] = payload if isinstance(payload, dict) else {}
+        item.pop("payload_json", None)
+        return item
+
+    def latest_finished_by_match_ids(self, match_ids: list[str]) -> dict[str, dict]:
+        keys = [str(mid) for mid in match_ids if str(mid).strip()]
+        if not keys:
+            return {}
+
+        placeholders = ", ".join("?" for _ in keys)
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT id, match_id, final_status, final_score, final_total, result, finished_at
+                FROM finished_matches
+                WHERE match_id IN ({placeholders})
+                ORDER BY finished_at DESC, id DESC
+                """,
+                tuple(keys),
+            ).fetchall()
+
+        by_match: dict[str, dict] = {}
+        for row in rows:
+            item = dict(row)
+            match_id = str(item.get("match_id") or "")
+            if not match_id or match_id in by_match:
+                continue
+            by_match[match_id] = item
+        return by_match
+
+    def latest_alerts_by_match_ids(self, match_ids: list[str]) -> dict[str, dict]:
+        keys = [str(mid) for mid in match_ids if str(mid).strip()]
+        if not keys:
+            return {}
+
+        placeholders = ", ".join("?" for _ in keys)
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT id, match_id, status, score, alerted_at, live, opening
+                FROM alerts
+                WHERE match_id IN ({placeholders})
+                ORDER BY alerted_at DESC, id DESC
+                """,
+                tuple(keys),
+            ).fetchall()
+
+        by_match: dict[str, dict] = {}
+        for row in rows:
+            item = dict(row)
+            match_id = str(item.get("match_id") or "")
+            if not match_id or match_id in by_match:
+                continue
+            by_match[match_id] = item
+        return by_match
+
     def delete_saved_bet_slip(self, slip_id: int) -> bool:
         with self._conn() as conn:
             cursor = conn.execute(

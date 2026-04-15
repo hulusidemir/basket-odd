@@ -296,6 +296,149 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
     }
 
 
+def _normalize_text_key(value: str) -> str:
+    return (
+        str(value or "")
+        .strip()
+        .lower()
+        .replace("ı", "i")
+        .replace("ş", "s")
+        .replace("ğ", "g")
+        .replace("ü", "u")
+        .replace("ö", "o")
+        .replace("ç", "c")
+    )
+
+
+def _evaluate_leg_result(direction: str, live_line: float, final_total: float) -> str:
+    if abs(final_total - live_line) < 1e-9:
+        return "İade"
+    if str(direction or "").upper() == "ALT":
+        return "Başarılı" if final_total < live_line else "Başarısız"
+    return "Başarılı" if final_total > live_line else "Başarısız"
+
+
+def evaluate_saved_bet_slip(payload: dict) -> dict:
+    raw_slip = payload.get("slip")
+    slip = raw_slip if isinstance(raw_slip, list) else []
+
+    match_ids = []
+    for leg in slip:
+        if not isinstance(leg, dict):
+            continue
+        match_id = str(leg.get("match_id") or "").strip()
+        if match_id and match_id not in match_ids:
+            match_ids.append(match_id)
+
+    finished_by_match = db.latest_finished_by_match_ids(match_ids)
+    live_by_match = db.latest_alerts_by_match_ids(match_ids)
+
+    details = []
+    success_count = 0
+    fail_count = 0
+    push_count = 0
+    pending_count = 0
+    unknown_count = 0
+
+    for idx, leg in enumerate(slip, start=1):
+        leg_item = leg if isinstance(leg, dict) else {}
+        match_id = str(leg_item.get("match_id") or "").strip()
+        direction = str(leg_item.get("direction") or "").strip()
+        match_name = str(leg_item.get("match_name") or "")
+        tournament = str(leg_item.get("tournament") or "")
+        signal_code = str(leg_item.get("signal_code") or "")
+
+        try:
+            live_line = float(leg_item.get("live") or 0)
+        except (TypeError, ValueError):
+            live_line = 0.0
+        try:
+            projected = float(leg_item.get("projected") or 0)
+        except (TypeError, ValueError):
+            projected = 0.0
+
+        finished = finished_by_match.get(match_id, {})
+        live = live_by_match.get(match_id, {})
+        final_total_raw = finished.get("final_total")
+
+        status_key = "unknown"
+        result_label = "Bilinmiyor"
+        final_total = None
+
+        if final_total_raw is not None:
+            try:
+                final_total = float(final_total_raw)
+            except (TypeError, ValueError):
+                final_total = None
+
+        if final_total is not None:
+            result_label = _evaluate_leg_result(direction, live_line, final_total)
+            result_key = _normalize_text_key(result_label)
+            if result_key == "basarili":
+                status_key = "success"
+                success_count += 1
+            elif result_key == "basarisiz":
+                status_key = "fail"
+                fail_count += 1
+            else:
+                status_key = "push"
+                push_count += 1
+        elif live:
+            status_key = "pending"
+            result_label = "Bekliyor"
+            pending_count += 1
+        else:
+            status_key = "unknown"
+            result_label = "Bilinmiyor"
+            unknown_count += 1
+
+        details.append({
+            "index": idx,
+            "match_id": match_id,
+            "match_name": match_name,
+            "tournament": tournament,
+            "signal_code": signal_code,
+            "direction": direction,
+            "live_line": round(live_line, 1),
+            "projected": round(projected, 1),
+            "status_key": status_key,
+            "result_label": result_label,
+            "final_status": str(finished.get("final_status") or ""),
+            "final_score": str(finished.get("final_score") or ""),
+            "final_total": final_total,
+            "finished_at": str(finished.get("finished_at") or ""),
+            "live_status": str(live.get("status") or ""),
+            "live_score": str(live.get("score") or ""),
+            "last_alerted_at": str(live.get("alerted_at") or ""),
+        })
+
+    total = len(slip)
+    resolved_count = success_count + fail_count + push_count
+
+    if total == 0:
+        overall = "Kupon boş"
+    elif resolved_count == total:
+        overall = "Başarısız" if fail_count > 0 else "Başarılı"
+    elif resolved_count > 0:
+        overall = "Kısmi Sonuç"
+    elif pending_count > 0:
+        overall = "Beklemede"
+    else:
+        overall = "Bilinmiyor"
+
+    return {
+        "overall": overall,
+        "total": total,
+        "resolved_count": resolved_count,
+        "success_count": success_count,
+        "fail_count": fail_count,
+        "push_count": push_count,
+        "pending_count": pending_count,
+        "unknown_count": unknown_count,
+        "details": details,
+    }
+
+
 @app.route("/")
 def index():
     return render_template("dashboard.html")
@@ -341,6 +484,24 @@ def api_saved_bet_builder_delete(slip_id: int):
     if not db.delete_saved_bet_slip(slip_id):
         return jsonify({"error": "not found"}), 404
     return jsonify({"deleted": True, "id": slip_id})
+
+
+@app.route("/api/bet-builder/saved/<int:slip_id>/check")
+def api_saved_bet_builder_check(slip_id: int):
+    saved = db.get_saved_bet_slip(slip_id)
+    if not saved:
+        return jsonify({"error": "not found"}), 404
+
+    payload = normalize_bet_builder_payload(saved.get("payload"))
+    if not payload:
+        return jsonify({"error": "invalid payload"}), 400
+
+    return jsonify({
+        "id": saved.get("id"),
+        "name": saved.get("name"),
+        "created_at": saved.get("created_at"),
+        "check": evaluate_saved_bet_slip(payload),
+    })
 
 
 @app.route("/api/alerts/<int:alert_id>/bet", methods=["POST"])
