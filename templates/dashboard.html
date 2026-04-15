@@ -997,6 +997,16 @@
       text-overflow: ellipsis;
     }
 
+    .match-state-note {
+      display: inline-block;
+      margin-left: 6px;
+      font-size: 10px;
+      font-style: italic;
+      color: #f8d06f;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
     .bet-slip-signal {
       display: inline-flex;
       align-items: center;
@@ -1664,6 +1674,14 @@
       return `${line}-${dir} (${t})`;
     }
 
+    function buildMatchStateNote(item) {
+      const notes = [];
+      if (Number(item?.bet_placed || 0) > 0) notes.push('Bahis Oynandı');
+      if (Number(item?.followed || 0) > 0) notes.push('Takip Ediliyor');
+      if (notes.length === 0) return '';
+      return `<span class="match-state-note">(${escapeHtml(notes.join(', '))})</span>`;
+    }
+
     function formatBetBuilderDate(value) {
       if (!value) return '-';
       const source = String(value);
@@ -1718,6 +1736,10 @@
         const matchLink = itemLeg.url
           ? `<a class="match-link" href="${escapeHtml(itemLeg.url)}" target="_blank">${escapeHtml(matchName)}</a>`
           : escapeHtml(matchName);
+        const matchStateNote = buildMatchStateNote({
+          bet_placed: Number(detail?.bet_placed ?? itemLeg.bet_placed ?? 0),
+          followed: Number(detail?.followed ?? itemLeg.followed ?? 0),
+        });
         const recommendation = buildBetRecommendation(itemLeg.live, itemLeg.direction, itemLeg.signal_tier);
         const finalTotal = detail && detail.final_total !== null && detail.final_total !== undefined
           ? Number(detail.final_total).toFixed(1)
@@ -1730,7 +1752,7 @@
         return `
           <tr>
             <td>${idx + 1}</td>
-            <td>${matchLink}<span class="saved-match-subtitle">(${escapeHtml(itemLeg.tournament || '-')})</span></td>
+            <td>${matchLink}${matchStateNote}<span class="saved-match-subtitle">(${escapeHtml(itemLeg.tournament || '-')})</span></td>
             <td>${escapeHtml(recommendation)}</td>
             <td>${Number(itemLeg.projected || 0).toFixed(1)}</td>
             <td>${finalTotal}</td>
@@ -1909,12 +1931,13 @@
       const rows = payload.slip.map(item => {
         const matchText = cleanMatchName(item.match_name || '-');
         const recommendation = buildBetRecommendation(item.live, item.direction, item.signal_tier);
+        const matchStateNote = buildMatchStateNote(item);
         const matchBlock = item.url
           ? `<a class="match-link" href="${escapeHtml(item.url)}" target="_blank">${escapeHtml(matchText)}</a>`
           : `${escapeHtml(matchText)}`;
         return `
           <tr>
-            <td class="match-col">${matchBlock}<span class="bet-slip-tournament">(${escapeHtml(item.tournament || '-')})</span></td>
+            <td class="match-col">${matchBlock}${matchStateNote}<span class="bet-slip-tournament">(${escapeHtml(item.tournament || '-')})</span></td>
             <td><span class="bet-slip-code">${escapeHtml(recommendation)}</span></td>
             <td>${Number(item.projected || 0).toFixed(1)}</td>
             <td>${formatSignedNumber(item.projection_gap || 0)}</td>

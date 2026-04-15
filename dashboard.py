@@ -152,6 +152,7 @@ def build_bet_builder(max_count: int) -> dict:
         if _is_live_basketball_status(alert.get("status", ""))
         and _is_recent_alert(alert.get("alerted_at", ""))
     ]
+    saved_match_ids = db.get_saved_bet_match_ids(limit=1000)
     latest_by_match = {}
     for alert in alerts:
         match_id = alert.get("match_id")
@@ -160,8 +161,25 @@ def build_bet_builder(max_count: int) -> dict:
         latest_by_match[match_id] = alert
 
     candidates = []
+    excluded_ignored = 0
+    excluded_bet = 0
+    excluded_follow = 0
+    excluded_saved = 0
 
     for alert in latest_by_match.values():
+        if bool(alert.get("ignored", 0)):
+            excluded_ignored += 1
+            continue
+        if bool(alert.get("bet_placed", 0)):
+            excluded_bet += 1
+            continue
+        if bool(alert.get("followed", 0)):
+            excluded_follow += 1
+            continue
+        if str(alert.get("match_id") or "").strip() in saved_match_ids:
+            excluded_saved += 1
+            continue
+
         projected = alert.get("projected")
         if projected is None:
             continue
@@ -190,6 +208,9 @@ def build_bet_builder(max_count: int) -> dict:
             "projection_gap": signal["projection_gap"],
             "projection_edge": signal["projection_edge"],
             "signal_priority": signal["priority"],
+            "bet_placed": int(alert.get("bet_placed") or 0),
+            "followed": int(alert.get("followed") or 0),
+            "ignored": int(alert.get("ignored") or 0),
         })
 
     candidates.sort(
@@ -215,12 +236,20 @@ def build_bet_builder(max_count: int) -> dict:
             f"Kupon hazır. Canlı {len(eligible_candidates)} uygun maç içinden en güçlü {leg_count} seçim alındı."
         )
 
+    excluded_total = excluded_ignored + excluded_bet + excluded_follow + excluded_saved
+    if excluded_total > 0:
+        message += (
+            f" {excluded_total} maç daha önce işaretlendiği/kaydedildiği için otomatik dışlandı "
+            f"(Gözardı: {excluded_ignored}, Bahis: {excluded_bet}, Takip: {excluded_follow}, Eski kupon: {excluded_saved})."
+        )
+
     return {
         "created": can_build,
         "requested_max_count": max(max_count, 1),
         "selected_count": leg_count if can_build else 0,
         "eligible_count": len(eligible_candidates),
         "total_candidates": len(candidates),
+        "excluded_count": excluded_total,
         "message": message,
         "slip": slip,
     }
@@ -260,6 +289,7 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
         "status",
         "score",
     }
+    bool_fields = {"bet_placed", "followed", "ignored"}
 
     slip: list[dict] = []
     for raw_item in raw_slip:
@@ -278,6 +308,8 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
                 item[key] = int(raw_item.get(key) or 0)
             except (TypeError, ValueError):
                 item[key] = 0
+        for key in bool_fields:
+            item[key] = 1 if bool(raw_item.get(key)) else 0
         slip.append(item)
 
     requested_max_count = safe_int(raw_payload.get("requested_max_count") or len(slip) or 1, 1)
@@ -291,6 +323,7 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
         "selected_count": max(0, selected_count),
         "eligible_count": max(0, eligible_count),
         "total_candidates": max(0, total_candidates),
+        "excluded_count": max(0, safe_int(raw_payload.get("excluded_count"), 0)),
         "message": str(raw_payload.get("message") or ""),
         "slip": slip,
     }
@@ -410,6 +443,9 @@ def evaluate_saved_bet_slip(payload: dict) -> dict:
             "live_status": str(live.get("status") or ""),
             "live_score": str(live.get("score") or ""),
             "last_alerted_at": str(live.get("alerted_at") or ""),
+            "bet_placed": 1 if bool(leg_item.get("bet_placed") or live.get("bet_placed")) else 0,
+            "followed": 1 if bool(leg_item.get("followed") or live.get("followed")) else 0,
+            "ignored": 1 if bool(leg_item.get("ignored") or live.get("ignored")) else 0,
         })
 
     total = len(slip)

@@ -565,7 +565,7 @@ class Database:
         with self._conn() as conn:
             rows = conn.execute(
                 f"""
-                SELECT id, match_id, status, score, alerted_at, live, opening
+                SELECT id, match_id, status, score, alerted_at, live, opening, bet_placed, followed, ignored
                 FROM alerts
                 WHERE match_id IN ({placeholders})
                 ORDER BY alerted_at DESC, id DESC
@@ -581,6 +581,22 @@ class Database:
                 continue
             by_match[match_id] = item
         return by_match
+
+    def get_saved_bet_match_ids(self, limit: int = 500) -> set[str]:
+        rows = self.list_saved_bet_slips(limit=max(1, limit))
+        match_ids: set[str] = set()
+        for row in rows:
+            payload = row.get("payload") if isinstance(row, dict) else {}
+            slip = payload.get("slip") if isinstance(payload, dict) else []
+            if not isinstance(slip, list):
+                continue
+            for leg in slip:
+                if not isinstance(leg, dict):
+                    continue
+                match_id = str(leg.get("match_id") or "").strip()
+                if match_id:
+                    match_ids.add(match_id)
+        return match_ids
 
     def delete_saved_bet_slip(self, slip_id: int) -> bool:
         with self._conn() as conn:
