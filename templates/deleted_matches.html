@@ -223,6 +223,18 @@
       white-space: nowrap;
     }
 
+    th[data-sort] {
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.15s ease, background 0.15s ease;
+    }
+
+    th[data-sort]:hover,
+    th.sorted {
+      color: var(--text);
+      background: rgba(24, 43, 67, 0.96);
+    }
+
     tbody tr:hover { background: rgba(95, 167, 255, 0.08); }
 
     .match-link {
@@ -364,15 +376,15 @@
         <table>
           <thead>
             <tr>
-              <th>Silinme</th>
-              <th>Maç</th>
-              <th>Sinyal</th>
-              <th>Durum</th>
-              <th>Skor</th>
-              <th>Açılış</th>
-              <th>Canlı</th>
-              <th>Fark</th>
-              <th>Kalite</th>
+              <th data-sort="deleted_at">Silinme ▼</th>
+              <th data-sort="match_name">Maç</th>
+              <th data-sort="direction">Sinyal</th>
+              <th data-sort="status">Durum</th>
+              <th data-sort="score">Skor</th>
+              <th data-sort="opening">Açılış</th>
+              <th data-sort="live">Canlı</th>
+              <th data-sort="diff">Fark</th>
+              <th data-sort="quality_score">Kalite</th>
             </tr>
           </thead>
           <tbody id="deletedBody"></tbody>
@@ -386,6 +398,8 @@
   <script>
     let deletedAlerts = [];
     let searchQuery = '';
+    let sortField = 'deleted_at';
+    let sortAsc = false;
 
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -436,9 +450,10 @@
     }
 
     function filteredAlerts() {
-      if (!searchQuery) return [...deletedAlerts];
+      let rows = [...deletedAlerts];
+      if (!searchQuery) return sortedAlerts(rows);
       const q = searchQuery.toLowerCase();
-      return deletedAlerts.filter(alert => [
+      rows = rows.filter(alert => [
         alert.match_name,
         alert.tournament,
         alert.status,
@@ -447,6 +462,43 @@
         alert.quality_grade,
         alert.quality_summary,
       ].some(value => String(value || '').toLowerCase().includes(q)));
+      return sortedAlerts(rows);
+    }
+
+    function parseDateValue(value) {
+      if (!value) return 0;
+      const date = new Date(String(value).replace(' ', 'T') + 'Z');
+      return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+    }
+
+    function sortValue(alert, field) {
+      if (field === 'deleted_at' || field === 'alerted_at') return parseDateValue(alert[field]);
+      if (['opening', 'live', 'diff', 'quality_score', 'signal_count'].includes(field)) {
+        const num = Number(alert[field]);
+        return Number.isFinite(num) ? num : -Infinity;
+      }
+      if (field === 'match_name') return cleanMatchName(alert.match_name || '').toLocaleLowerCase('tr-TR');
+      return String(alert[field] || '').toLocaleLowerCase('tr-TR');
+    }
+
+    function sortedAlerts(rows) {
+      rows.sort((a, b) => {
+        const va = sortValue(a, sortField);
+        const vb = sortValue(b, sortField);
+        if (va < vb) return sortAsc ? -1 : 1;
+        if (va > vb) return sortAsc ? 1 : -1;
+        return (Number(b.id || 0) - Number(a.id || 0));
+      });
+      return rows;
+    }
+
+    function updateSortHeaders() {
+      document.querySelectorAll('th[data-sort]').forEach(th => {
+        const label = th.dataset.label || th.textContent.replace(/[▲▼]\s*$/, '').trim();
+        th.dataset.label = label;
+        th.classList.toggle('sorted', th.dataset.sort === sortField);
+        th.textContent = th.dataset.sort === sortField ? `${label} ${sortAsc ? '▲' : '▼'}` : label;
+      });
     }
 
     function updateStats() {
@@ -464,6 +516,7 @@
       const empty = document.getElementById('emptyState');
 
       updateStats();
+      updateSortHeaders();
 
       if (rows.length === 0) {
         body.innerHTML = '';
@@ -549,6 +602,19 @@
     document.getElementById('searchInput').addEventListener('input', event => {
       searchQuery = event.target.value.trim();
       render();
+    });
+
+    document.querySelectorAll('th[data-sort]').forEach(th => {
+      th.addEventListener('click', () => {
+        const field = th.dataset.sort;
+        if (sortField === field) {
+          sortAsc = !sortAsc;
+        } else {
+          sortField = field;
+          sortAsc = ['match_name', 'direction', 'status', 'score'].includes(field);
+        }
+        render();
+      });
     });
 
     loadDeletedMatches();
