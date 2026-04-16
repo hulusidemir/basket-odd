@@ -362,10 +362,28 @@ def index():
     return render_template("dashboard.html")
 
 
+@app.route("/deleted-matches")
+def deleted_matches():
+    return render_template("deleted_matches.html")
+
+
 @app.route("/api/alerts")
 def api_alerts():
     """Returns all anomaly records with projected scores."""
     return jsonify(enrich_alerts_with_projection(db.recent_alerts(limit=500)))
+
+
+@app.route("/api/deleted-matches")
+def api_deleted_matches():
+    limit = request.args.get("limit", default=1000, type=int) or 1000
+    limit = max(1, min(limit, 5000))
+    return jsonify(enrich_alerts_with_projection(db.recent_deleted_alerts(limit=limit)))
+
+
+@app.route("/api/deleted-matches/clear", methods=["POST"])
+def api_clear_deleted_matches():
+    deleted_count = db.purge_deleted_matches()
+    return jsonify({"cleared": True, "deleted_count": deleted_count})
 
 
 @app.route("/api/bet-builder")
@@ -539,9 +557,9 @@ def api_delete_alert(alert_id: int):
 
 @app.route("/api/clear", methods=["POST"])
 def api_clear_db():
-    """Wipe all alerts, match_actions and opening_lines."""
-    db.clear_all()
-    return jsonify({"cleared": True})
+    """Move every active alert into deleted matches."""
+    moved_count = db.clear_all()
+    return jsonify({"cleared": True, "moved_count": moved_count})
 
 
 if __name__ == "__main__":

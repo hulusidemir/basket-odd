@@ -50,6 +50,10 @@ async def process_match(
 
     log = logging.getLogger("main")
 
+    if db.is_match_deleted(match_id):
+        log.debug("Skipped (deleted match): %s", match_name)
+        return
+
     # Uzatmaya giden (OT) maçları yoksay
     if re.search(r'\bOT\b|Uzatma', status, re.IGNORECASE):
         log.debug("Skipped (Overtime): %s", match_name)

@@ -1559,7 +1559,7 @@
       </div>
       <div class="topbar-right">
         <button class="top-action primary" onclick="manualRefresh()">Tümünü Yenile</button>
-        <button class="top-action danger" onclick="clearDatabase()">Veritabanını Temizle</button>
+        <button class="top-action danger" onclick="clearDatabase()">Tümünü Sil</button>
       </div>
     </div>
 
@@ -1567,6 +1567,7 @@
     <div class="nav-tabs">
       <span class="nav-tab active">Anomaliler</span>
       <a class="nav-tab" href="/finished-matches">Biten Maçlar</a>
+      <a class="nav-tab" href="/deleted-matches">Silinen Maçlar</a>
       <a class="nav-tab" href="/bankroll">Bankroll</a>
     </div>
 
@@ -2627,11 +2628,11 @@
       const alertItem = allAlerts.find(a => a.id === id);
       if (!alertItem) return;
       const matchName = cleanMatchName(alertItem.match_name);
-      if (!confirm(`"${matchName}" maçına ait tüm uyarılar silinsin mi?`)) return;
+      if (!confirm(`"${matchName}" maçına ait tüm uyarılar Silinen Maçlar'a aktarılsın mı?`)) return;
       const resp = await fetch(`/api/alerts/${id}`, { method: 'DELETE' });
       const payload = await resp.json();
       if (!resp.ok) {
-        alert('Maç silinirken hata oluştu.');
+        alert('Maç Silinen Maçlar alanına aktarılırken hata oluştu.');
         return;
       }
       if (isFocusedMatch(payload.match_id)) {
@@ -2644,8 +2645,12 @@
     }
 
     async function clearDatabase() {
-      if (!confirm('Tüm veritabanı temizlenecek (alertler, aksiyonlar, açılış çizgileri). Emin misiniz?')) return;
-      await fetch('/api/clear', { method: 'POST' });
+      if (!confirm('Dashboard listesindeki tüm maçlar Silinen Maçlar alanına aktarılsın mı?')) return;
+      const response = await fetch('/api/clear', { method: 'POST' });
+      if (!response.ok) {
+        alert('Maçlar Silinen Maçlar alanına aktarılırken hata oluştu.');
+        return;
+      }
       allAlerts = [];
       focusedMatchId = null;
       focusedMatchName = '';

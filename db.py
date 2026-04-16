@@ -54,6 +54,7 @@ class Database:
                     counter_score REAL NOT NULL DEFAULT 0,
                     counter_note TEXT NOT NULL DEFAULT '',
                     counter_reasons TEXT NOT NULL DEFAULT '',
+                    deleted_at  TIMESTAMP,
                     alerted_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
@@ -61,7 +62,8 @@ class Database:
                     match_id    TEXT PRIMARY KEY,
                     bet_placed  INTEGER NOT NULL DEFAULT 0,
                     ignored     INTEGER NOT NULL DEFAULT 0,
-                    followed    INTEGER NOT NULL DEFAULT 0
+                    followed    INTEGER NOT NULL DEFAULT 0,
+                    deleted_at  TIMESTAMP
                 );
 
                 CREATE TABLE IF NOT EXISTS finished_matches (
@@ -197,6 +199,10 @@ class Database:
             except Exception:
                 pass
             try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN deleted_at TIMESTAMP")
+            except Exception:
+                pass
+            try:
                 conn.execute("ALTER TABLE finished_matches ADD COLUMN final_status TEXT NOT NULL DEFAULT ''")
             except Exception:
                 pass
@@ -258,9 +264,15 @@ class Database:
                     match_id    TEXT PRIMARY KEY,
                     bet_placed  INTEGER NOT NULL DEFAULT 0,
                     ignored     INTEGER NOT NULL DEFAULT 0,
-                    followed    INTEGER NOT NULL DEFAULT 0
+                    followed    INTEGER NOT NULL DEFAULT 0,
+                    deleted_at  TIMESTAMP
                 )
             """)
+            try:
+                conn.execute("ALTER TABLE match_actions ADD COLUMN deleted_at TIMESTAMP")
+            except Exception:
+                pass
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_deleted_at ON alerts(deleted_at)")
 
     # ---------- opening line ----------
 
@@ -296,6 +308,20 @@ class Database:
                 LIMIT 1
                 """,
                 (match_id, direction, f"-{cooldown_minutes}"),
+            ).fetchone()
+        return row is not None
+
+    def is_match_deleted(self, match_id: str) -> bool:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT 1 FROM match_actions
+                WHERE match_id = ?
+                  AND deleted_at IS NOT NULL
+                  AND deleted_at != ''
+                LIMIT 1
+                """,
+                (match_id,),
             ).fetchone()
         return row is not None
 
@@ -335,27 +361,28 @@ class Database:
         with self._conn() as conn:
             # Inherit match-level actions if previously set
             action = conn.execute(
-                "SELECT bet_placed, ignored, followed FROM match_actions WHERE match_id = ?",
+                "SELECT bet_placed, ignored, followed, deleted_at FROM match_actions WHERE match_id = ?",
                 (match_id,),
             ).fetchone()
             bet = action["bet_placed"] if action else 0
             ign = action["ignored"] if action else 0
             fol = action["followed"] if action else 0
+            deleted_at = action["deleted_at"] if action else None
             cursor = conn.execute(
                 """
                 INSERT INTO alerts (
                     match_id, match_name, opening, live, direction, diff, tournament, status, url, score,
                     signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
                     counter_direction, counter_level, counter_score, counter_note, counter_reasons,
-                    bet_placed, ignored, followed
+                    bet_placed, ignored, followed, deleted_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     match_id, match_name, opening, live, direction, diff, tournament, status, url, score,
                     signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
                     counter_direction, counter_level, counter_score, counter_note, counter_reasons,
-                    bet, ign, fol,
+                    bet, ign, fol, deleted_at,
                 ),
             )
             return cursor.lastrowid
@@ -363,7 +390,13 @@ class Database:
     def recent_alerts(self, limit: int = 200) -> list:
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM alerts ORDER BY alerted_at DESC LIMIT ?", (limit,)
+                """
+                SELECT * FROM alerts
+                WHERE deleted_at IS NULL OR deleted_at = ''
+                ORDER BY alerted_at DESC
+                LIMIT ?
+                """,
+                (limit,),
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -395,7 +428,7 @@ class Database:
         params.append(match_id)
         with self._conn() as conn:
             cursor = conn.execute(
-                f"UPDATE alerts SET {', '.join(updates)} WHERE match_id = ?",
+                f"UPDATE alerts SET {', '.join(updates)} WHERE match_id = ? AND (deleted_at IS NULL OR deleted_at = '')",
                 tuple(params),
             )
             # Persist match-level actions for future alerts
@@ -425,7 +458,10 @@ class Database:
 
     def get_alert(self, alert_id: int) -> dict | None:
         with self._conn() as conn:
-            row = conn.execute("SELECT * FROM alerts WHERE id = ?", (alert_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM alerts WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')",
+                (alert_id,),
+            ).fetchone()
         return dict(row) if row else None
 
     def update_analysis(self, alert_id: int, analysis: str):
@@ -450,18 +486,102 @@ class Database:
         return cursor.rowcount > 0
 
     def delete_match_data(self, match_id: str) -> int:
-        """Delete all alert/state records belonging to the same match."""
+        """Move all active alert/state records for the same match into deleted matches."""
         with self._conn() as conn:
-            cursor = conn.execute("DELETE FROM alerts WHERE match_id = ?", (match_id,))
-            conn.execute("DELETE FROM match_actions WHERE match_id = ?", (match_id,))
+            cursor = conn.execute(
+                """
+                UPDATE alerts
+                SET deleted_at = CURRENT_TIMESTAMP
+                WHERE match_id = ?
+                  AND (deleted_at IS NULL OR deleted_at = '')
+                """,
+                (match_id,),
+            )
+            conn.execute(
+                """
+                INSERT INTO match_actions (match_id, deleted_at)
+                VALUES (?, CURRENT_TIMESTAMP)
+                ON CONFLICT(match_id) DO UPDATE SET deleted_at = excluded.deleted_at
+                """,
+                (match_id,),
+            )
             conn.execute("DELETE FROM opening_lines WHERE match_id = ?", (match_id,))
         return cursor.rowcount
 
     def clear_all(self):
+        """Move every active alert to deleted matches, preserving the rows for review."""
         with self._conn() as conn:
-            conn.execute("DELETE FROM alerts")
-            conn.execute("DELETE FROM match_actions")
+            rows = conn.execute(
+                """
+                SELECT DISTINCT match_id
+                FROM alerts
+                WHERE deleted_at IS NULL OR deleted_at = ''
+                """
+            ).fetchall()
+            match_ids = [row["match_id"] for row in rows]
+            cursor = conn.execute(
+                """
+                UPDATE alerts
+                SET deleted_at = CURRENT_TIMESTAMP
+                WHERE deleted_at IS NULL OR deleted_at = ''
+                """
+            )
+            for match_id in match_ids:
+                conn.execute(
+                    """
+                    INSERT INTO match_actions (match_id, deleted_at)
+                    VALUES (?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(match_id) DO UPDATE SET deleted_at = excluded.deleted_at
+                    """,
+                    (match_id,),
+                )
             conn.execute("DELETE FROM opening_lines")
+        return cursor.rowcount
+
+    # ---------- deleted matches ----------
+
+    def recent_deleted_alerts(self, limit: int | None = 1000) -> list:
+        with self._conn() as conn:
+            if limit is None:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM alerts
+                    WHERE deleted_at IS NOT NULL AND deleted_at != ''
+                    ORDER BY deleted_at DESC, alerted_at DESC, id DESC
+                    """
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM alerts
+                    WHERE deleted_at IS NOT NULL AND deleted_at != ''
+                    ORDER BY deleted_at DESC, alerted_at DESC, id DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+        return [dict(r) for r in rows]
+
+    def purge_deleted_matches(self) -> int:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT match_id
+                FROM alerts
+                WHERE deleted_at IS NOT NULL AND deleted_at != ''
+                """
+            ).fetchall()
+            match_ids = [row["match_id"] for row in rows]
+            cursor = conn.execute(
+                "DELETE FROM alerts WHERE deleted_at IS NOT NULL AND deleted_at != ''"
+            )
+            if match_ids:
+                placeholders = ", ".join("?" for _ in match_ids)
+                conn.execute(
+                    f"DELETE FROM match_actions WHERE match_id IN ({placeholders})",
+                    tuple(match_ids),
+                )
+        return cursor.rowcount
 
     # ---------- saved bet slips ----------
 
@@ -568,6 +688,7 @@ class Database:
                 SELECT id, match_id, status, score, alerted_at, live, opening, bet_placed, followed, ignored
                 FROM alerts
                 WHERE match_id IN ({placeholders})
+                  AND (deleted_at IS NULL OR deleted_at = '')
                 ORDER BY alerted_at DESC, id DESC
                 """,
                 tuple(keys),
@@ -704,6 +825,7 @@ class Database:
                     SELECT match_id, MAX(id) AS latest_alert_id
                     FROM alerts
                     WHERE url != ''
+                      AND (deleted_at IS NULL OR deleted_at = '')
                     GROUP BY match_id
                 ) latest ON latest.latest_alert_id = a.id
                 WHERE EXISTS (
@@ -711,6 +833,7 @@ class Database:
                     FROM alerts pending
                     LEFT JOIN finished_matches fm ON fm.source_alert_id = pending.id
                     WHERE pending.match_id = a.match_id
+                      AND (pending.deleted_at IS NULL OR pending.deleted_at = '')
                       AND fm.id IS NULL
                 )
                 ORDER BY a.alerted_at DESC, a.id DESC
@@ -728,6 +851,7 @@ class Database:
                 FROM alerts a
                 LEFT JOIN finished_matches fm ON fm.source_alert_id = a.id
                 WHERE a.match_id = ?
+                  AND (a.deleted_at IS NULL OR a.deleted_at = '')
                   AND fm.id IS NULL
                 ORDER BY a.alerted_at ASC, a.id ASC
                 """,

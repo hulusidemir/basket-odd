@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Silinen Maçlar</title>
+  <style>
+    :root {
+      --bg: #08111d;
+      --surface: #0e1a2a;
+      --surface-2: #132236;
+      --surface-3: #182b43;
+      --border: rgba(129, 162, 198, 0.2);
+      --border-strong: rgba(129, 162, 198, 0.34);
+      --text: #edf4ff;
+      --text-soft: #99abc1;
+      --accent-blue: #5fa7ff;
+      --accent-orange: #ff9e64;
+      --accent-red: #ff6b63;
+      --accent-green: #34d399;
+      --accent-alt: #22c55e;
+      --accent-ust: #ef4444;
+      --shadow: 0 22px 52px rgba(0, 0, 0, 0.28);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      font-family: "Inter", "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, #08111d 0%, #0a1422 48%, #07101b 100%);
+      color: var(--text);
+    }
+
+    .app-shell {
+      width: calc(100% - 12px);
+      margin: 6px auto 22px;
+    }
+
+    .topbar,
+    .panel {
+      background: rgba(14, 26, 42, 0.96);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 16px;
+      border-radius: 22px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .status-pill {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: rgba(24, 43, 67, 0.95);
+      border: 1px solid var(--border);
+      position: relative;
+      flex: 0 0 auto;
+    }
+
+    .status-pill::after {
+      content: "";
+      position: absolute;
+      inset: 15px;
+      border-radius: 50%;
+      background: var(--accent-orange);
+      box-shadow: 0 0 0 6px rgba(255, 158, 100, 0.14);
+    }
+
+    h1 {
+      font-size: 24px;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    .muted {
+      color: var(--text-soft);
+      font-size: 13px;
+      margin-top: 4px;
+    }
+
+    .actions,
+    .nav-tabs,
+    .toolbar,
+    .stats {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn,
+    .nav-tab {
+      border: 1px solid var(--border-strong);
+      background: rgba(24, 43, 67, 0.9);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 11px 15px;
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .btn:hover,
+    .nav-tab:hover {
+      transform: translateY(-1px);
+      border-color: rgba(95, 167, 255, 0.55);
+    }
+
+    .btn.primary,
+    .nav-tab.active {
+      background: linear-gradient(180deg, #6bb2ff, #5a9cea);
+      color: #07111d;
+      border-color: transparent;
+    }
+
+    .btn.danger {
+      background: rgba(255, 107, 99, 0.16);
+      border-color: rgba(255, 107, 99, 0.36);
+      color: #ffd8d5;
+    }
+
+    .section-shell {
+      background: rgba(9, 19, 32, 0.88);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 16px;
+    }
+
+    .nav-tabs { margin-bottom: 14px; }
+
+    .panel {
+      border-radius: 18px;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    .toolbar {
+      justify-content: space-between;
+      align-items: stretch;
+    }
+
+    .search-box {
+      min-width: min(420px, 100%);
+      flex: 1 1 300px;
+      border: 1px solid var(--border-strong);
+      background: rgba(7, 16, 27, 0.96);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .search-box:focus { border-color: rgba(95, 167, 255, 0.62); }
+
+    .stat-chip {
+      min-width: 136px;
+      background: rgba(19, 34, 54, 0.94);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .stat-chip span {
+      display: block;
+      color: var(--text-soft);
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .stat-chip strong {
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: rgba(7, 16, 27, 0.86);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 980px;
+    }
+
+    th,
+    td {
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 1px solid rgba(129, 162, 198, 0.12);
+      vertical-align: middle;
+      font-size: 13px;
+    }
+
+    th {
+      color: var(--text-soft);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      background: rgba(19, 34, 54, 0.92);
+      white-space: nowrap;
+    }
+
+    tbody tr:hover { background: rgba(95, 167, 255, 0.08); }
+
+    .match-link {
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 750;
+    }
+
+    .match-link:hover { color: var(--accent-blue); }
+
+    .subline {
+      color: var(--text-soft);
+      margin-top: 4px;
+      font-size: 12px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 54px;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .badge-alt {
+      background: rgba(34, 197, 94, 0.14);
+      color: #9df0bd;
+      border: 1px solid rgba(34, 197, 94, 0.28);
+    }
+
+    .badge-ust {
+      background: rgba(239, 68, 68, 0.14);
+      color: #ffb2b2;
+      border: 1px solid rgba(239, 68, 68, 0.28);
+    }
+
+    .mono {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .empty-state {
+      display: none;
+      padding: 44px 16px;
+      color: var(--text-soft);
+      text-align: center;
+      border: 1px dashed var(--border-strong);
+      border-radius: 16px;
+      background: rgba(7, 16, 27, 0.62);
+    }
+
+    .banner {
+      display: none;
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin-bottom: 14px;
+      border: 1px solid rgba(52, 211, 153, 0.28);
+      background: rgba(52, 211, 153, 0.12);
+      color: #bdf7dd;
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .banner.error {
+      border-color: rgba(255, 107, 99, 0.35);
+      background: rgba(255, 107, 99, 0.13);
+      color: #ffd4d0;
+    }
+
+    @media (max-width: 720px) {
+      h1 { font-size: 20px; }
+      .topbar,
+      .toolbar { align-items: flex-start; }
+      .actions,
+      .toolbar > .actions,
+      .search-box { width: 100%; }
+      .btn,
+      .nav-tab { flex: 1 1 auto; text-align: center; }
+      .stat-chip { flex: 1 1 140px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="status-pill"></span>
+        <div>
+          <h1>Silinen Maçlar</h1>
+          <div class="muted">Dashboard'dan kaldırılan sinyaller</div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn primary" onclick="loadDeletedMatches()">Yenile</button>
+        <button class="btn danger" onclick="clearDeletedMatches()">Veritabanını Temizle</button>
+      </div>
+    </header>
+
+    <main class="section-shell">
+      <nav class="nav-tabs">
+        <a class="nav-tab" href="/">Anomaliler</a>
+        <a class="nav-tab" href="/finished-matches">Biten Maçlar</a>
+        <span class="nav-tab active">Silinen Maçlar</span>
+        <a class="nav-tab" href="/bankroll">Bankroll</a>
+      </nav>
+
+      <section class="panel stats">
+        <div class="stat-chip">
+          <span>Silinen Sinyal</span>
+          <strong id="statSignals">0</strong>
+        </div>
+        <div class="stat-chip">
+          <span>Benzersiz Maç</span>
+          <strong id="statMatches">0</strong>
+        </div>
+        <div class="stat-chip">
+          <span>ALT</span>
+          <strong id="statAlt">0</strong>
+        </div>
+        <div class="stat-chip">
+          <span>ÜST</span>
+          <strong id="statUst">0</strong>
+        </div>
+      </section>
+
+      <section class="panel toolbar">
+        <input class="search-box" id="searchInput" type="text" placeholder="Maç, turnuva veya skor ara">
+        <div class="actions">
+          <button class="btn" onclick="resetSearch()">Temizle</button>
+        </div>
+      </section>
+
+      <div class="banner" id="statusBanner"></div>
+
+      <section class="table-wrap" id="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Silinme</th>
+              <th>Maç</th>
+              <th>Sinyal</th>
+              <th>Durum</th>
+              <th>Skor</th>
+              <th>Açılış</th>
+              <th>Canlı</th>
+              <th>Fark</th>
+              <th>Kalite</th>
+            </tr>
+          </thead>
+          <tbody id="deletedBody"></tbody>
+        </table>
+      </section>
+
+      <div class="empty-state" id="emptyState">Silinen maç yok.</div>
+    </main>
+  </div>
+
+  <script>
+    let deletedAlerts = [];
+    let searchQuery = '';
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+      }[ch]));
+    }
+
+    function cleanMatchName(name) {
+      return (name || '')
+        .replace(/\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}\s*/g, '')
+        .replace(/\s*betting odds\s*/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function formatDate(value) {
+      if (!value) return '-';
+      const date = new Date(String(value).replace(' ', 'T') + 'Z');
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString('tr-TR', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    }
+
+    function formatNumber(value) {
+      const num = Number(value);
+      return Number.isFinite(num) ? num.toFixed(1) : '-';
+    }
+
+    function signalBadge(alert) {
+      const direction = alert.direction || '-';
+      const cls = direction === 'ALT' ? 'badge-alt' : 'badge-ust';
+      return `<span class="badge ${cls}">${escapeHtml(direction)}</span>`;
+    }
+
+    function qualityLabel(alert) {
+      const grade = (alert.quality_grade || '').trim();
+      const score = Number(alert.quality_score || 0);
+      if (!grade) return '-';
+      return `${escapeHtml(grade)} ${Number.isFinite(score) && score > 0 ? `<span class="mono">${score.toFixed(1)}</span>` : ''}`;
+    }
+
+    function filteredAlerts() {
+      if (!searchQuery) return [...deletedAlerts];
+      const q = searchQuery.toLowerCase();
+      return deletedAlerts.filter(alert => [
+        alert.match_name,
+        alert.tournament,
+        alert.status,
+        alert.score,
+        alert.final_score,
+        alert.quality_grade,
+        alert.quality_summary,
+      ].some(value => String(value || '').toLowerCase().includes(q)));
+    }
+
+    function updateStats() {
+      const matchIds = new Set(deletedAlerts.map(item => String(item.match_id || item.id)));
+      document.getElementById('statSignals').textContent = deletedAlerts.length;
+      document.getElementById('statMatches').textContent = matchIds.size;
+      document.getElementById('statAlt').textContent = deletedAlerts.filter(item => item.direction === 'ALT').length;
+      document.getElementById('statUst').textContent = deletedAlerts.filter(item => item.direction === 'ÜST').length;
+    }
+
+    function render() {
+      const rows = filteredAlerts();
+      const body = document.getElementById('deletedBody');
+      const tableWrap = document.getElementById('tableWrap');
+      const empty = document.getElementById('emptyState');
+
+      updateStats();
+
+      if (rows.length === 0) {
+        body.innerHTML = '';
+        tableWrap.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+      }
+
+      tableWrap.style.display = 'block';
+      empty.style.display = 'none';
+      body.innerHTML = rows.map(alert => {
+        const matchName = cleanMatchName(alert.match_name || '-');
+        const matchHtml = alert.url
+          ? `<a class="match-link" href="${escapeHtml(alert.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(matchName)}</a>`
+          : `<span class="match-link">${escapeHtml(matchName)}</span>`;
+        return `
+          <tr>
+            <td class="mono">${formatDate(alert.deleted_at)}</td>
+            <td>
+              ${matchHtml}
+              <div class="subline">${escapeHtml(alert.tournament || '-')}</div>
+            </td>
+            <td>
+              ${signalBadge(alert)}
+              ${Number(alert.signal_count || 0) > 1 ? `<div class="subline">${Number(alert.signal_count)}. sinyal</div>` : ''}
+            </td>
+            <td>${escapeHtml(alert.status || '-')}</td>
+            <td class="mono">${escapeHtml(alert.score || '-')}</td>
+            <td class="mono">${formatNumber(alert.opening)}</td>
+            <td class="mono">${formatNumber(alert.live)}</td>
+            <td class="mono">${formatNumber(alert.diff)}</td>
+            <td>${qualityLabel(alert)}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function showBanner(message, type = 'success') {
+      const banner = document.getElementById('statusBanner');
+      banner.className = `banner ${type === 'error' ? 'error' : ''}`;
+      banner.textContent = message;
+      banner.style.display = 'block';
+      setTimeout(() => {
+        banner.style.display = 'none';
+      }, 2800);
+    }
+
+    async function loadDeletedMatches() {
+      try {
+        const response = await fetch('/api/deleted-matches');
+        if (!response.ok) throw new Error('Silinen maçlar alınamadı.');
+        deletedAlerts = await response.json();
+        render();
+      } catch (error) {
+        console.error(error);
+        showBanner(error.message || 'Silinen maçlar alınamadı.', 'error');
+      }
+    }
+
+    async function clearDeletedMatches() {
+      if (deletedAlerts.length === 0) return;
+      if (!confirm('Silinen Maçlar alanındaki tüm kayıtlar veritabanından kalıcı olarak silinsin mi?')) return;
+
+      try {
+        const response = await fetch('/api/deleted-matches/clear', { method: 'POST' });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.error || 'Veritabanı temizlenemedi.');
+        deletedAlerts = [];
+        render();
+        showBanner(`${payload.deleted_count || 0} kayıt kalıcı olarak silindi.`);
+      } catch (error) {
+        console.error(error);
+        showBanner(error.message || 'Veritabanı temizlenemedi.', 'error');
+      }
+    }
+
+    function resetSearch() {
+      searchQuery = '';
+      document.getElementById('searchInput').value = '';
+      render();
+    }
+
+    document.getElementById('searchInput').addEventListener('input', event => {
+      searchQuery = event.target.value.trim();
+      render();
+    });
+
+    loadDeletedMatches();
+  </script>
+</body>
+</html>
