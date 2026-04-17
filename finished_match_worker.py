@@ -1,6 +1,6 @@
 """
-finished_match_worker.py — Periodically checks whether tracked AIScore matches
-have finished and archives signal outcomes into finished_matches.
+finished_match_worker.py — Periodically checks deleted AIScore matches and
+archives finished signal outcomes into finished_matches.
 """
 
 import asyncio

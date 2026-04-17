@@ -811,21 +811,22 @@ class Database:
             )
         return cursor.rowcount > 0
 
-    def get_tracked_live_matches(self, limit: int = 200) -> list:
+    def get_tracked_deleted_matches(self, limit: int = 200) -> list:
         """
-        Return one latest alert row per match where at least one signal
-        has not been copied into finished_matches yet.
+        Return one latest deleted alert row per match where at least one deleted
+        signal has not been copied into finished_matches yet.
         """
         with self._conn() as conn:
             rows = conn.execute(
                 """
-                SELECT a.match_id, a.match_name, a.tournament, a.url, a.status, a.score, a.alerted_at
+                SELECT a.match_id, a.match_name, a.tournament, a.url, a.status, a.score, a.alerted_at, a.deleted_at
                 FROM alerts a
                 INNER JOIN (
                     SELECT match_id, MAX(id) AS latest_alert_id
                     FROM alerts
                     WHERE url != ''
-                      AND (deleted_at IS NULL OR deleted_at = '')
+                      AND deleted_at IS NOT NULL
+                      AND deleted_at != ''
                     GROUP BY match_id
                 ) latest ON latest.latest_alert_id = a.id
                 WHERE EXISTS (
@@ -833,17 +834,18 @@ class Database:
                     FROM alerts pending
                     LEFT JOIN finished_matches fm ON fm.source_alert_id = pending.id
                     WHERE pending.match_id = a.match_id
-                      AND (pending.deleted_at IS NULL OR pending.deleted_at = '')
+                      AND pending.deleted_at IS NOT NULL
+                      AND pending.deleted_at != ''
                       AND fm.id IS NULL
                 )
-                ORDER BY a.alerted_at DESC, a.id DESC
+                ORDER BY a.deleted_at DESC, a.alerted_at DESC, a.id DESC
                 LIMIT ?
                 """,
                 (limit,),
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_pending_alerts_for_match(self, match_id: str) -> list:
+    def get_pending_deleted_alerts_for_match(self, match_id: str) -> list:
         with self._conn() as conn:
             rows = conn.execute(
                 """
@@ -851,13 +853,22 @@ class Database:
                 FROM alerts a
                 LEFT JOIN finished_matches fm ON fm.source_alert_id = a.id
                 WHERE a.match_id = ?
-                  AND (a.deleted_at IS NULL OR a.deleted_at = '')
+                  AND a.deleted_at IS NOT NULL
+                  AND a.deleted_at != ''
                   AND fm.id IS NULL
                 ORDER BY a.alerted_at ASC, a.id ASC
                 """,
                 (match_id,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def get_tracked_live_matches(self, limit: int = 200) -> list:
+        """Backward-compatible alias for the deleted-match finished queue."""
+        return self.get_tracked_deleted_matches(limit=limit)
+
+    def get_pending_alerts_for_match(self, match_id: str) -> list:
+        """Backward-compatible alias for deleted alerts waiting for FT archive."""
+        return self.get_pending_deleted_alerts_for_match(match_id)
 
     def archive_finished_alert(
         self,

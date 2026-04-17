@@ -1181,6 +1181,7 @@
     <section class="panel toolbar">
       <input class="search-box" id="searchInput" type="text" placeholder="Takım, turnuva, sinyal no veya final skor ara...">
       <button class="toolbar-btn primary" id="reportBtn" onclick="openReportModal()">Rapor</button>
+      <button class="toolbar-btn success" id="checkDeletedBtn" onclick="checkDeletedFinishedMatches()">Silinenleri Tara</button>
       <button class="toolbar-btn primary" onclick="loadFinishedMatches()">Yenile</button>
       <button class="toolbar-btn danger" id="clearAllBtn" onclick="clearAllFinishedMatches()">Tümünü Sil</button>
       <div class="toolbar-note">
@@ -2079,6 +2080,38 @@
         render();
         document.getElementById('emptyState').style.display = 'block';
         document.getElementById('emptyState').textContent = 'Biten maç verileri yüklenemedi.';
+      }
+    }
+
+    async function checkDeletedFinishedMatches() {
+      const button = document.getElementById('checkDeletedBtn');
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Taranıyor...';
+
+      try {
+        const response = await fetch('/api/finished-matches/check-now', { method: 'POST' });
+        const payload = await response.json();
+        if (!response.ok) {
+          if (response.status === 409) {
+            showBanner('error', 'Tarama zaten çalışıyor', 'Silinen maç kontrolü şu anda devam ediyor.');
+            return;
+          }
+          throw new Error(payload?.message || 'Silinen maç kontrolü çalıştırılamadı.');
+        }
+
+        await loadFinishedMatches();
+        showBanner(
+          'success',
+          'Silinen maçlar tarandı',
+          `${payload.tracked_count || 0} maç kontrol kuyruğunda, ${payload.archived_count || 0} sinyal arşivlendi. Başarılı: ${payload.successful_count || 0}, başarısız: ${payload.failed_count || 0}, iade: ${payload.push_count || 0}.`
+        );
+      } catch (error) {
+        console.error(error);
+        showBanner('error', 'Tarama başarısız', error.message || 'Silinen maçlar taranırken bir hata oluştu.');
+      } finally {
+        button.disabled = false;
+        button.textContent = originalText;
       }
     }
 

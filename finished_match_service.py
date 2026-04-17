@@ -26,6 +26,17 @@ def parse_score_total(score: str) -> float | None:
     return float(int(match.group(1)) + int(match.group(2)))
 
 
+def evaluate_signal_result(direction: str, live_line: float, final_total: float) -> str:
+    direction_key = (direction or "").strip().upper()
+    if abs(final_total - live_line) < 0.0001:
+        return "İade"
+    if direction_key == "ALT":
+        return "Başarılı" if final_total < live_line else "Başarısız"
+    if direction_key in {"ÜST", "UST"}:
+        return "Başarılı" if final_total > live_line else "Başarısız"
+    return ""
+
+
 class AiscoreFinishedMatchChecker:
     def __init__(
         self,
@@ -285,8 +296,8 @@ class AiscoreFinishedMatchChecker:
 
 
 async def run_finished_match_cycle(db, config) -> dict:
-    tracked_matches = db.get_tracked_live_matches(limit=config.FINISHED_MATCH_BATCH_SIZE)
-    logger.info("Tracking %s live signaled matches for finish checks.", len(tracked_matches))
+    tracked_matches = db.get_tracked_deleted_matches(limit=config.FINISHED_MATCH_BATCH_SIZE)
+    logger.info("Tracking %s deleted matches for finish checks.", len(tracked_matches))
 
     if not tracked_matches:
         return {
@@ -336,21 +347,33 @@ async def run_finished_match_cycle(db, config) -> dict:
             continue
 
         summary["finished_match_count"] += 1
-        pending_alerts = db.get_pending_alerts_for_match(result["match_id"])
+        pending_alerts = db.get_pending_deleted_alerts_for_match(result["match_id"])
 
         for alert in pending_alerts:
+            signal_result = evaluate_signal_result(
+                alert.get("direction", ""),
+                float(alert.get("live") or 0),
+                final_total,
+            )
             inserted_id = db.archive_finished_alert(
                 alert,
                 final_status=result.get("status", ""),
                 final_score=final_score,
                 final_total=final_total,
-                result="",
+                result=signal_result,
             )
             if not inserted_id:
                 continue
 
             summary["archived_count"] += 1
-            summary["pending_count"] += 1
+            if signal_result == "Başarılı":
+                summary["successful_count"] += 1
+            elif signal_result == "Başarısız":
+                summary["failed_count"] += 1
+            elif signal_result == "İade":
+                summary["push_count"] += 1
+            else:
+                summary["pending_count"] += 1
 
             summary["details"].append({
                 "match_id": alert["match_id"],
@@ -359,7 +382,7 @@ async def run_finished_match_cycle(db, config) -> dict:
                 "live_line": float(alert["live"]),
                 "final_score": final_score,
                 "final_total": final_total,
-                "result": "",
+                "result": signal_result,
             })
 
     return summary
