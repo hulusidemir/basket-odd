@@ -258,6 +258,39 @@ class Database:
                 conn.execute("ALTER TABLE finished_matches ADD COLUMN counter_reasons TEXT NOT NULL DEFAULT ''")
             except Exception:
                 pass
+            # Professional evaluation columns
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN margin REAL")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN signal_timing_grade TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN market_read_correct INTEGER")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN projection_accuracy REAL")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN quality_accuracy TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN counter_triggered INTEGER")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN verdict TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN lesson TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
             # Ensure match_actions table exists for action inheritance
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS match_actions (
@@ -326,10 +359,10 @@ class Database:
         return row is not None
 
     def count_match_alerts(self, match_id: str) -> int:
-        """Count how many alerts have been sent for this match (any direction)."""
+        """Count how many active (non-deleted) alerts have been sent for this match."""
         with self._conn() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) as cnt FROM alerts WHERE match_id = ?",
+                "SELECT COUNT(*) as cnt FROM alerts WHERE match_id = ? AND (deleted_at IS NULL OR deleted_at = '')",
                 (match_id,),
             ).fetchone()
         return row["cnt"] if row else 0
@@ -878,7 +911,9 @@ class Database:
         final_score: str,
         final_total: float | None,
         result: str,
+        evaluation: dict | None = None,
     ) -> int:
+        eval_data = evaluation or {}
         with self._conn() as conn:
             cursor = conn.execute(
                 """
@@ -887,9 +922,11 @@ class Database:
                     opening, live, direction, diff, url, bet_placed, ignored, followed,
                     alerted_at, score, signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
                     counter_direction, counter_level, counter_score, counter_note, counter_reasons,
-                    final_score, final_total, result
+                    final_score, final_total, result,
+                    margin, signal_timing_grade, market_read_correct, projection_accuracy,
+                    quality_accuracy, counter_triggered, verdict, lesson
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     alert["id"],
@@ -922,6 +959,14 @@ class Database:
                     final_score,
                     final_total,
                     result,
+                    eval_data.get("margin"),
+                    eval_data.get("signal_timing_grade", ""),
+                    eval_data.get("market_read_correct"),
+                    eval_data.get("projection_accuracy"),
+                    eval_data.get("quality_accuracy", ""),
+                    eval_data.get("counter_triggered"),
+                    eval_data.get("verdict", ""),
+                    eval_data.get("lesson", ""),
                 ),
             )
         return cursor.lastrowid if cursor.rowcount > 0 else 0

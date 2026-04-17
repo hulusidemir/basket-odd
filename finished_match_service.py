@@ -37,6 +37,190 @@ def evaluate_signal_result(direction: str, live_line: float, final_total: float)
     return ""
 
 
+def _parse_period_from_status(status: str) -> int | None:
+    """Extract period number from alert status string."""
+    s = (status or "").strip().upper()
+    m = re.match(r"Q([1-4])", s)
+    if m:
+        return int(m.group(1))
+    m = re.match(r"([1-4])Q", s)
+    if m:
+        return int(m.group(1))
+    if s == "HT":
+        return 2
+    m = re.match(r"([1-4])", s)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+def evaluate_signal_professionally(
+    alert: dict,
+    final_total: float,
+    signal_result: str,
+) -> dict:
+    """
+    Profesyonel basketbol bahisçisi gözüyle sinyal değerlendirmesi.
+
+    Çıktı:
+        margin: Barem ile final toplam arasındaki fark (pozitif = bahisçi lehine)
+        signal_timing_grade: Sinyalin zamanlaması ne kadar isabetli (A/B/C/D)
+        market_read_correct: Market hareketi doğru okunmuş mu? (1/0)
+        projection_accuracy: Kalite projeksiyon vs gerçek farkı
+        quality_accuracy: Verilen kalite notunun sonuçla uyumu
+        counter_triggered: Counter sinyal haklı çıktı mı? (1/0/None)
+        verdict: Kısa profesyonel yorum
+        lesson: Gelecek sinyaller için çıkarılacak ders
+    """
+    direction = (alert.get("direction") or "").strip().upper()
+    live = float(alert.get("live") or 0)
+    opening = float(alert.get("opening") or 0)
+    diff = float(alert.get("diff") or 0)
+    status = alert.get("status") or ""
+    quality_grade = (alert.get("quality_grade") or "").strip().upper()
+    quality_score = float(alert.get("quality_score") or 0)
+    counter_level = (alert.get("counter_level") or "").strip().upper()
+    counter_direction = (alert.get("counter_direction") or "").strip().upper()
+    signal_count = int(alert.get("signal_count") or 1)
+
+    is_success = signal_result == "Başarılı"
+    is_fail = signal_result == "Başarısız"
+
+    # ── 1. Margin: Barem ile final toplam farkı ──
+    if direction == "ALT":
+        margin = round(live - final_total, 1)  # pozitif = kazanç
+    elif direction in {"ÜST", "UST"}:
+        margin = round(final_total - live, 1)  # pozitif = kazanç
+    else:
+        margin = None
+
+    # ── 2. Signal Timing Grade ──
+    period = _parse_period_from_status(status)
+    if period == 2:
+        timing_grade = "A"  # Q2: en ideal pencere
+    elif period == 3:
+        timing_grade = "A"  # Q3: ana fiyatlama penceresi
+    elif period == 1:
+        timing_grade = "C"  # Q1: çok erken, veri az
+    elif period == 4:
+        timing_grade = "B"  # Q4: geç ama varyanslı
+    else:
+        timing_grade = "D"  # Bilinmiyor
+
+    # ── 3. Market Read Correct ──
+    # Açılış → Canlı hareketi doğru yönde mi okunmuş?
+    opening_to_live_diff = live - opening
+    if direction == "ALT":
+        # ALT: barem yükselmiş olmalı (opening_to_live_diff > 0)
+        market_read_correct = 1 if opening_to_live_diff > 0 else 0
+    elif direction in {"ÜST", "UST"}:
+        # ÜST: barem düşmüş olmalı (opening_to_live_diff < 0)
+        market_read_correct = 1 if opening_to_live_diff < 0 else 0
+    else:
+        market_read_correct = None
+
+    # ── 4. Quality Accuracy ──
+    # Kalite notu sonucu doğru tahmin etti mi?
+    high_quality = quality_grade in {"A++", "A+", "A", "B"}
+    if is_success and high_quality:
+        quality_accuracy = "İsabetli"
+    elif is_fail and high_quality:
+        quality_accuracy = "Yanıltıcı"
+    elif is_success and not high_quality:
+        quality_accuracy = "Sürpriz Başarı"
+    elif is_fail and not high_quality:
+        quality_accuracy = "Beklenen Başarısızlık"
+    else:
+        quality_accuracy = ""
+
+    # ── 5. Counter Signal Validation ──
+    counter_triggered = None
+    if counter_level in {"YÜKSEK", "ORTA"}:
+        # Counter sinyal varsa ve bizim sinyalimiz başarısız olduysa → counter haklı
+        if is_fail:
+            counter_triggered = 1
+        elif is_success:
+            counter_triggered = 0
+
+    # ── 6. Projection Accuracy ──
+    # quality_summary'den projeksiyon değerini çıkarmaya çalış
+    projection_accuracy = None
+    quality_summary = alert.get("quality_summary") or ""
+    proj_match = re.search(r"(\d+\.?\d*)\s*[<>]", quality_summary)
+    if not proj_match:
+        proj_match = re.search(r"projeksiyonu?\s*[^(]*\((\d+\.?\d*)", quality_summary, re.IGNORECASE)
+    if proj_match:
+        try:
+            projected = float(proj_match.group(1))
+            projection_accuracy = round(abs(final_total - projected), 1)
+        except (ValueError, TypeError):
+            pass
+
+    # ── 7. Verdict: Profesyonel yorum ──
+    verdict_parts = []
+    if is_success:
+        if margin is not None and margin >= 10:
+            verdict_parts.append(f"Güçlü kazanç ({margin:+.1f} puan marjla)")
+        elif margin is not None and margin >= 3:
+            verdict_parts.append(f"Rahat kazanç ({margin:+.1f} puan)")
+        elif margin is not None:
+            verdict_parts.append(f"Kıl payı kazanç ({margin:+.1f} puan)")
+        else:
+            verdict_parts.append("Başarılı sinyal")
+    elif is_fail:
+        if margin is not None and margin <= -10:
+            verdict_parts.append(f"Ağır kayıp ({margin:+.1f} puan farkla)")
+        elif margin is not None and margin <= -3:
+            verdict_parts.append(f"Net kayıp ({margin:+.1f} puan)")
+        elif margin is not None:
+            verdict_parts.append(f"Kıl payı kayıp ({margin:+.1f} puan)")
+        else:
+            verdict_parts.append("Başarısız sinyal")
+    else:
+        verdict_parts.append("İade/Beklemede")
+
+    if timing_grade in {"A"}:
+        verdict_parts.append("zamanlama iyi")
+    elif timing_grade == "C":
+        verdict_parts.append("erken sinyal riski")
+
+    if counter_triggered == 1:
+        verdict_parts.append("counter sinyal haklıydı")
+
+    verdict = " — ".join(verdict_parts)
+
+    # ── 8. Lesson: Çıkarılacak ders ──
+    lessons = []
+    if is_fail and high_quality:
+        lessons.append("Yüksek kalite notu tek başına yeterli değil, maç dinamiğini de izle")
+    if is_fail and counter_level == "YÜKSEK":
+        lessons.append("YÜKSEK counter sinyali olan maçlarda daha dikkatli ol")
+    if is_success and signal_count >= 3:
+        lessons.append("Tekrarlayan sinyaller (3+) güvenilirliği artırıyor")
+    if is_fail and period == 1:
+        lessons.append("Q1 sinyallerine daha az güven, veri penceresi yetersiz")
+    if is_success and period in {2, 3}:
+        lessons.append("Q2-Q3 penceresi en güvenilir zamanlama")
+    if is_fail and diff < 12:
+        lessons.append("Düşük fark (<12) sinyallerinde riskleri daha dikkatli tart")
+    if margin is not None and abs(margin) <= 2 and is_fail:
+        lessons.append("Kıl payı kayıp — sinyal yönünde hareket vardı, biraz şanssızlık")
+
+    lesson = ". ".join(lessons[:2]) if lessons else ""
+
+    return {
+        "margin": margin,
+        "signal_timing_grade": timing_grade,
+        "market_read_correct": market_read_correct,
+        "projection_accuracy": projection_accuracy,
+        "quality_accuracy": quality_accuracy,
+        "counter_triggered": counter_triggered,
+        "verdict": verdict,
+        "lesson": lesson,
+    }
+
+
+
 class AiscoreFinishedMatchChecker:
     def __init__(
         self,
@@ -355,12 +539,16 @@ async def run_finished_match_cycle(db, config) -> dict:
                 float(alert.get("live") or 0),
                 final_total,
             )
+            evaluation = evaluate_signal_professionally(
+                alert, final_total, signal_result,
+            )
             inserted_id = db.archive_finished_alert(
                 alert,
                 final_status=result.get("status", ""),
                 final_score=final_score,
                 final_total=final_total,
                 result=signal_result,
+                evaluation=evaluation,
             )
             if not inserted_id:
                 continue
@@ -383,6 +571,9 @@ async def run_finished_match_cycle(db, config) -> dict:
                 "final_score": final_score,
                 "final_total": final_total,
                 "result": signal_result,
+                "verdict": evaluation.get("verdict", ""),
+                "margin": evaluation.get("margin"),
+                "lesson": evaluation.get("lesson", ""),
             })
 
     return summary

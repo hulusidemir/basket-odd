@@ -485,11 +485,11 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
             score_value += 6
             reasons.append(f"Skor farki {score_gap} puan, tempo dusme riski var")
             tags.add("blowout")
-        if direction == "UST" and period == 4 and score_gap <= 8:
+        if direction == "ÜST" and period == 4 and score_gap <= 8:
             score_value += 7
             reasons.append("Mac yakin, son bolum faul oyunu USTu destekleyebilir")
             tags.add("clutch_over")
-        if direction == "UST" and score_gap >= 18:
+        if direction == "ÜST" and score_gap >= 18:
             score_value -= 7
             risks.append(f"Skor farki {score_gap} puan, blowout UST icin negatif")
         if direction == "ALT" and period == 4 and score_gap <= 6:
@@ -505,7 +505,7 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
     if home_last5 is not None and away_last5 is not None:
         source_count += 1
         avg_over = (home_last5 + away_last5) / 2
-        if direction == "UST":
+        if direction == "ÜST":
             if avg_over >= 60:
                 score_value += 6
                 reasons.append(f"Son 5 total profili UST lehine ({avg_over:.0f}% over)")
@@ -522,14 +522,14 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
                 risks.append(f"Son 5 total profili ALTi desteklemiyor ({avg_over:.0f}% over)")
 
     if expected_total is not None:
-        if direction == "UST" and expected_total >= live + 4:
+        if direction == "ÜST" and expected_total >= live + 4:
             score_value += 5
             reasons.append(f"Tarihsel total profili yukarida ({expected_total:.1f})")
             tags.add("history_over")
         elif direction == "ALT" and expected_total <= live - 4:
             score_value += 5
             reasons.append(f"Tarihsel total profili asagida ({expected_total:.1f})")
-        elif direction == "UST" and expected_total < live - 6:
+        elif direction == "ÜST" and expected_total < live - 6:
             score_value -= 4
             risks.append(f"Tarihsel total profili UST ile celisiyor ({expected_total:.1f})")
         elif direction == "ALT" and expected_total > live + 6:
@@ -537,7 +537,7 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
             risks.append(f"Tarihsel total profili ALT ile celisiyor ({expected_total:.1f})")
 
     if h2h_over_pct is not None:
-        if direction == "UST" and h2h_over_pct >= 60:
+        if direction == "ÜST" and h2h_over_pct >= 60:
             score_value += 2
         elif direction == "ALT" and h2h_over_pct <= 40:
             score_value += 2

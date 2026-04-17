@@ -17,13 +17,23 @@ def alert_reliability(direction: str, quality_grade: str, status: str, diff: flo
     normalized_counter = str(counter_level or "").strip().upper()
     diff_value = abs(float(diff or 0))
 
-    is_reliable = (
+    is_alt_reliable = (
         normalized_direction == "ALT"
         and normalized_grade in {"B", "A", "A+", "A++"}
         and stage in {"Q2", "Q3", "LIVE"}
         and diff_value >= 15
         and normalized_counter != "YÜKSEK"
     )
+
+    is_ust_reliable = (
+        normalized_direction == "ÜST"
+        and normalized_grade in {"B", "A", "A+", "A++"}
+        and stage in {"Q2", "Q3", "LIVE"}
+        and diff_value >= 15
+        and normalized_counter != "YÜKSEK"
+    )
+
+    is_reliable = is_alt_reliable or is_ust_reliable
 
     return {
         "label": RELIABLE_LABEL if is_reliable else WATCH_LABEL,
