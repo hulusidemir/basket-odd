@@ -26,9 +26,6 @@ BET_BUILDER_ALERT_WINDOW_MINUTES = 240
 
 def enrich_alerts_with_projection(alerts: list[dict]) -> list[dict]:
     for alert in alerts:
-        prematch = alert.get("prematch")
-        alert["reference"] = prematch if prematch is not None else alert.get("opening")
-        alert["reference_label"] = "Maç Öncesi" if prematch is not None else "Açılış"
         alert["projected"] = calculate_projected_total(
             score=alert.get("score", ""),
             status=alert.get("status", ""),
