@@ -11,7 +11,7 @@ import random
 import re
 import sys
 
-from aiscore_opera_scraper import AiscoreOperaScraper
+from aiscore_scraper import AiscoreScraper
 from config import Config
 from db import Database
 from notifier import TelegramNotifier
@@ -30,7 +30,7 @@ async def process_match(
     match: dict,
     db: Database,
     notifier: TelegramNotifier,
-    scraper: AiscoreOperaScraper,
+    scraper: AiscoreScraper,
     config: Config,
 ) -> None:
     """
@@ -44,6 +44,7 @@ async def process_match(
     tournament = match.get("tournament", "")
     opening_total = match["opening_total"]
     inplay_total = match["inplay_total"]
+    prematch_total = match.get("prematch_total")  # None olabilir
     status = match.get("status", "Canlı")
     url = match.get("url", "")
     score = match.get("score", "")
@@ -67,12 +68,15 @@ async def process_match(
                 log.debug("Blacklisted (%s): %s", term, match_name)
                 return
 
-    diff = inplay_total - opening_total  # positive → line went up, negative → line went down
+    # PRIMARY comparison: inplay vs prematch (fallback: inplay vs opening)
+    baseline = prematch_total if prematch_total is not None else opening_total
+    diff = inplay_total - baseline
     abs_diff = abs(diff)
     log.info(
-        "📊 %s | Açılış: %.1f | Canlı: %.1f | Fark: %+.1f | Skor: %s | Durum: %s",
+        "📊 %s | Açılış: %.1f | Maç Öncesi: %s | Canlı: %.1f | Fark: %+.1f | Skor: %s | Durum: %s",
         match_name,
         opening_total,
+        f"{prematch_total:.1f}" if prematch_total else "-",
         inplay_total,
         diff,
         score or "-",
@@ -106,6 +110,7 @@ async def process_match(
         {
             **match,
             "direction": direction,
+            "baseline": baseline,
         },
         insights,
         config.THRESHOLD,
@@ -115,6 +120,8 @@ async def process_match(
     await notifier.send_alert(
         match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
         score=score, signal_count=signal_count, quality=quality,
+        prematch=prematch_total,
+        threshold=config.THRESHOLD,
     )
 
     # 3) Save to database
@@ -131,14 +138,13 @@ async def process_match(
         counter_score=quality["counter_score"],
         counter_note=quality["counter_note"],
         counter_reasons=quality["counter_reasons_text"],
+        prematch=prematch_total,
     )
 
     log.info(
         "Alert sent: id=%s | name=%s | direction=%s | diff=%.2f | kalite=%s %.1f",
         match_id, match_name, direction, abs_diff, quality["grade"], quality["score"],
     )
-
-    # Yapay zeka analizi devredışı bırakıldı
 
 
 async def run():
@@ -156,23 +162,18 @@ async def run():
     db.init()
 
     notifier = TelegramNotifier(config.TELEGRAM_TOKEN, config.TELEGRAM_CHAT_ID)
-    scraper = AiscoreOperaScraper(
-        cdp_url=config.OPERA_CDP_URL,
+    scraper = AiscoreScraper(
         aiscore_url=config.AISCORE_URL,
         max_matches_per_cycle=config.MAX_MATCHES_PER_CYCLE,
         page_timeout_ms=config.PAGE_TIMEOUT_MS,
-        browser_mode=config.BROWSER_MODE,
-        opera_binary=config.OPERA_BINARY,
-        cdp_port=config.OPERA_CDP_PORT,
     )
 
     await notifier.send_startup()
     log.info(
-        "Bot started. Threshold: %s pts | Poll interval: %s-%ss | CDP: %s",
+        "Bot started. Threshold: %s pts | Poll interval: %s-%ss",
         config.THRESHOLD,
         config.POLL_INTERVAL_MIN,
         config.POLL_INTERVAL_MAX,
-        config.OPERA_CDP_URL,
     )
 
     consecutive_errors = 0

@@ -10,18 +10,20 @@ RELIABLE_LABEL = "GÜVENİLİR"
 WATCH_LABEL = "GÜVENİLİR DEĞİL TAKİP ET"
 
 
-def alert_reliability(direction: str, quality_grade: str, status: str, diff: float, counter_level: str) -> dict[str, str | bool]:
+def alert_reliability(direction: str, quality_grade: str, status: str, diff: float, counter_level: str, threshold: float = 10.0) -> dict[str, str | bool]:
     stage = _stage_from_status(status)
     normalized_direction = str(direction or "").strip().upper()
     normalized_grade = str(quality_grade or "").strip().upper()
     normalized_counter = str(counter_level or "").strip().upper()
     diff_value = abs(float(diff or 0))
 
+    reliable_diff_threshold = max(threshold * 1.3, 12.0)
+
     is_alt_reliable = (
         normalized_direction == "ALT"
         and normalized_grade in {"B", "A", "A+", "A++"}
         and stage in {"Q2", "Q3", "LIVE"}
-        and diff_value >= 15
+        and diff_value >= reliable_diff_threshold
         and normalized_counter != "YÜKSEK"
     )
 
@@ -29,7 +31,7 @@ def alert_reliability(direction: str, quality_grade: str, status: str, diff: flo
         normalized_direction == "ÜST"
         and normalized_grade in {"B", "A", "A+", "A++"}
         and stage in {"Q2", "Q3", "LIVE"}
-        and diff_value >= 15
+        and diff_value >= reliable_diff_threshold
         and normalized_counter != "YÜKSEK"
     )
 

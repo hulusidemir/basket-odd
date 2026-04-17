@@ -48,6 +48,8 @@ class TelegramNotifier:
         score: str = "",
         signal_count: int = 1,
         quality: dict | None = None,
+        prematch: float | None = None,
+        threshold: float = 10.0,
     ) -> dict:
         """
         Sends a single alert notification.
@@ -66,6 +68,7 @@ class TelegramNotifier:
             status=status,
             diff=diff,
             counter_level=(quality or {}).get("counter_level", ""),
+            threshold=threshold,
         )
 
         score_line = f"📊 Skor: <b>{score}</b>\n" if score else ""
@@ -93,6 +96,7 @@ class TelegramNotifier:
                     f"{quality['counter_note']}\n"
                 )
 
+        prematch_line = f"Maç Öncesi:    <b>{prematch:.1f}</b>\n" if prematch is not None else ""
         text = (
             f"{emoji} <b>Sinyal: {direction} ({reliability['label']})</b>\n"
             f"{quality_line}"
@@ -101,6 +105,7 @@ class TelegramNotifier:
             f"🏆 {tournament} | {status}\n"
             f"{score_line}\n"
             f"Açılış Baremi: <b>{opening:.1f}</b>\n"
+            f"{prematch_line}"
             f"Güncel Barem:  <b>{live:.1f}</b>\n"
             f"Fark: <b>{diff:+.1f}</b> puan\n\n"
             f"{summary_line}"
@@ -117,22 +122,6 @@ class TelegramNotifier:
         except TelegramError as e:
             logger.error(f"Telegram error: {e}")
             return {}
-
-    async def send_analysis(self, analysis: str, match_name: str, reply_to: dict | None = None) -> bool:
-        """Send AI analysis as a reply to the original alert message."""
-        # Truncate if too long for Telegram (4096 char limit)
-        if len(analysis) > 3800:
-            analysis = analysis[:3800] + "\n\n<i>... (kırpıldı)</i>"
-
-        text = f"🤖 <b>AI Analiz: {match_name}</b>\n\n{analysis}"
-
-        try:
-            await self._send_to_all(text, reply_to=reply_to)
-            logger.info(f"Analysis sent: {match_name}")
-            return True
-        except TelegramError as e:
-            logger.error(f"Analysis send error: {e}")
-            return False
 
     async def send_startup(self):
         """Sends an info message when the bot starts."""

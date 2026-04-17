@@ -119,6 +119,12 @@
       box-shadow: 0 14px 24px rgba(0, 0, 0, 0.18);
     }
 
+    .top-action.active {
+      background: rgba(95, 167, 255, 0.15);
+      border-color: rgba(95, 167, 255, 0.38);
+      color: #a8d4ff;
+    }
+
     .top-action.primary {
       background: rgba(25, 52, 81, 0.96);
     }
@@ -528,21 +534,19 @@
   <div class="app-shell">
     <div class="topbar">
       <div class="topbar-left">
-        <span class="status-pill"></span>
+        <div class="status-pill"></div>
+        <span style="font-size:20px;font-weight:900;letter-spacing:-0.03em;">🏀 Basket Sinyal</span>
       </div>
       <div class="topbar-right">
-        <a href="/" class="nav-link">Anomali Dashboard</a>
-        <a href="/deleted-matches" class="nav-link">Silinen Maçlar</a>
+        <a href="/" class="top-action">Canlı</a>
+        <a href="/finished-matches" class="top-action">Biten Maçlar</a>
+        <a href="/deleted-matches" class="top-action">Silinen</a>
+        <a href="/bankroll" class="top-action active">Bankroll</a>
       </div>
     </div>
 
     <div class="section-shell">
-      <div class="nav-tabs">
-        <a href="/" class="nav-tab">Anomaliler</a>
-        <a href="/finished-matches" class="nav-tab">Biten Maçlar</a>
-        <a href="/deleted-matches" class="nav-tab">Silinen Maçlar</a>
-        <span class="nav-tab active">Bankroll</span>
-      </div>
+      <div class="nav-tabs"></div>
 
   <!-- Setup -->
   <div class="setup-panel" id="setupPanel">

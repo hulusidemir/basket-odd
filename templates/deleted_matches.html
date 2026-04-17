@@ -6,30 +6,41 @@
   <title>Silinen Maçlar</title>
   <style>
     :root {
-      --bg: #08111d;
-      --surface: #0e1a2a;
-      --surface-2: #132236;
-      --surface-3: #182b43;
-      --border: rgba(129, 162, 198, 0.2);
-      --border-strong: rgba(129, 162, 198, 0.34);
+      --bg: #07131f;
+      --surface: #0b1726;
+      --surface-2: #0f1d2f;
+      --surface-3: #13253a;
+      --surface-4: #182c44;
+      --border: rgba(110, 146, 187, 0.18);
+      --border-strong: rgba(110, 146, 187, 0.28);
       --text: #edf4ff;
-      --text-soft: #99abc1;
+      --text-dim: #8ea2ba;
+      --text-soft: #8ea2ba;
+      --accent: #ff9e64;
+      --accent-alt: #ff6a63;
+      --accent-ust: #34d399;
       --accent-blue: #5fa7ff;
+      --accent-yellow: #fbbf24;
       --accent-orange: #ff9e64;
       --accent-red: #ff6b63;
       --accent-green: #34d399;
-      --accent-alt: #22c55e;
-      --accent-ust: #ef4444;
-      --shadow: 0 22px 52px rgba(0, 0, 0, 0.28);
+      --shadow: 0 24px 60px rgba(0, 0, 0, 0.26);
+      --radius-xl: 26px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 12px;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      min-height: 100vh;
       font-family: "Inter", "Segoe UI", sans-serif;
-      background: linear-gradient(180deg, #08111d 0%, #0a1422 48%, #07101b 100%);
+      background:
+        radial-gradient(circle at top right, rgba(20, 184, 166, 0.12), transparent 22%),
+        radial-gradient(circle at top left, rgba(255, 158, 100, 0.10), transparent 18%),
+        linear-gradient(180deg, #07131f 0%, #091423 46%, #08111d 100%);
       color: var(--text);
+      min-height: 100vh;
     }
 
     .app-shell {
@@ -325,25 +336,20 @@
   <div class="app-shell">
     <header class="topbar">
       <div class="brand">
-        <span class="status-pill"></span>
-        <div>
-          <h1>Silinen Maçlar</h1>
-          <div class="muted">Dashboard'dan kaldırılan sinyaller</div>
-        </div>
+        <div class="status-pill"></div>
+        <span style="font-size:20px;font-weight:900;letter-spacing:-0.03em;">🏀 Basket Sinyal</span>
       </div>
       <div class="actions">
+        <a href="/" class="btn">Canlı</a>
+        <a href="/finished-matches" class="btn">Biten Maçlar</a>
+        <span class="btn primary">Silinen</span>
+        <a href="/bankroll" class="btn">Bankroll</a>
         <button class="btn primary" onclick="loadDeletedMatches()">Yenile</button>
         <button class="btn danger" onclick="clearDeletedMatches()">Veritabanını Temizle</button>
       </div>
     </header>
 
     <main class="section-shell">
-      <nav class="nav-tabs">
-        <a class="nav-tab" href="/">Anomaliler</a>
-        <a class="nav-tab" href="/finished-matches">Biten Maçlar</a>
-        <span class="nav-tab active">Silinen Maçlar</span>
-        <a class="nav-tab" href="/bankroll">Bankroll</a>
-      </nav>
 
       <section class="panel stats">
         <div class="stat-chip">

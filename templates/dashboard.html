@@ -120,6 +120,12 @@
       box-shadow: 0 14px 24px rgba(0, 0, 0, 0.18);
     }
 
+    .top-action.active {
+      background: rgba(95, 167, 255, 0.15);
+      border-color: rgba(95, 167, 255, 0.38);
+      color: #a8d4ff;
+    }
+
     .top-action.primary {
       background: rgba(25, 52, 81, 0.96);
     }
@@ -1698,9 +1704,14 @@
   <div class="app-shell">
     <div class="topbar">
       <div class="topbar-left">
-        <span class="status-pill"></span>
+        <div class="status-pill"></div>
+        <span style="font-size:20px;font-weight:900;letter-spacing:-0.03em;">🏀 Basket Sinyal</span>
       </div>
       <div class="topbar-right">
+        <a href="/" class="top-action active">Canlı</a>
+        <a href="/finished-matches" class="top-action">Biten Maçlar</a>
+        <a href="/deleted-matches" class="top-action">Silinen</a>
+        <a href="/bankroll" class="top-action">Bankroll</a>
         <button class="top-action primary" onclick="manualRefresh()">Tümünü Yenile</button>
         <button class="top-action danger" onclick="clearDatabase()">Tümünü Sil</button>
       </div>
@@ -1709,9 +1720,6 @@
     <div class="section-shell">
     <div class="nav-tabs">
       <span class="nav-tab active">Anomaliler</span>
-      <a class="nav-tab" href="/finished-matches">Biten Maçlar</a>
-      <a class="nav-tab" href="/deleted-matches">Silinen Maçlar</a>
-      <a class="nav-tab" href="/bankroll">Bankroll</a>
     </div>
 
     <div class="header">
@@ -2836,6 +2844,11 @@
               <div class="card-odds-num">${a.opening.toFixed(1)}</div>
             </div>
             <div class="card-odds-arrow">→</div>
+            ${a.prematch != null ? `<div class="card-odds-value">
+              <div class="card-odds-label">Maç Öncesi</div>
+              <div class="card-odds-num" style="color:#fbbf24">${Number(a.prematch).toFixed(1)}</div>
+            </div>
+            <div class="card-odds-arrow">→</div>` : ''}
             <div class="card-odds-value">
               <div class="card-odds-label">Canlı</div>
               <div class="card-odds-num">${a.live.toFixed(1)}</div>

@@ -34,6 +34,7 @@ class Database:
                     tournament  TEXT NOT NULL DEFAULT '',
                     status      TEXT NOT NULL DEFAULT '',
                     opening     REAL NOT NULL,
+                    prematch    REAL,
                     live        REAL NOT NULL,
                     direction   TEXT NOT NULL,
                     diff        REAL NOT NULL,
@@ -75,6 +76,7 @@ class Database:
                     status          TEXT NOT NULL DEFAULT '',
                     final_status    TEXT NOT NULL DEFAULT '',
                     opening         REAL NOT NULL,
+                    prematch        REAL,
                     live            REAL NOT NULL,
                     direction       TEXT NOT NULL,
                     diff            REAL NOT NULL,
@@ -305,6 +307,14 @@ class Database:
                 conn.execute("ALTER TABLE match_actions ADD COLUMN deleted_at TIMESTAMP")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN prematch REAL")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN prematch REAL")
+            except Exception:
+                pass
             conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_deleted_at ON alerts(deleted_at)")
 
     # ---------- opening line ----------
@@ -390,6 +400,7 @@ class Database:
         counter_score: float = 0.0,
         counter_note: str = "",
         counter_reasons: str = "",
+        prematch: float | None = None,
     ) -> int:
         with self._conn() as conn:
             # Inherit match-level actions if previously set
@@ -404,15 +415,15 @@ class Database:
             cursor = conn.execute(
                 """
                 INSERT INTO alerts (
-                    match_id, match_name, opening, live, direction, diff, tournament, status, url, score,
+                    match_id, match_name, opening, prematch, live, direction, diff, tournament, status, url, score,
                     signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
                     counter_direction, counter_level, counter_score, counter_note, counter_reasons,
                     bet_placed, ignored, followed, deleted_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    match_id, match_name, opening, live, direction, diff, tournament, status, url, score,
+                    match_id, match_name, opening, prematch, live, direction, diff, tournament, status, url, score,
                     signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
                     counter_direction, counter_level, counter_score, counter_note, counter_reasons,
                     bet, ign, fol, deleted_at,
@@ -496,22 +507,6 @@ class Database:
                 (alert_id,),
             ).fetchone()
         return dict(row) if row else None
-
-    def update_analysis(self, alert_id: int, analysis: str):
-        with self._conn() as conn:
-            conn.execute(
-                "UPDATE alerts SET ai_analysis = ? WHERE id = ?",
-                (analysis, alert_id),
-            )
-
-    def get_match_analysis_text(self, match_id: str) -> str | None:
-        """Return the latest non-empty AI analysis for a match, if any."""
-        with self._conn() as conn:
-            row = conn.execute(
-                "SELECT ai_analysis FROM alerts WHERE match_id = ? AND ai_analysis != '' ORDER BY alerted_at DESC LIMIT 1",
-                (match_id,),
-            ).fetchone()
-        return row["ai_analysis"] if row else None
 
     def delete_alert(self, alert_id: int) -> bool:
         with self._conn() as conn:
@@ -919,14 +914,14 @@ class Database:
                 """
                 INSERT OR IGNORE INTO finished_matches (
                     source_alert_id, match_id, match_name, tournament, status, final_status,
-                    opening, live, direction, diff, url, bet_placed, ignored, followed,
+                    opening, prematch, live, direction, diff, url, bet_placed, ignored, followed,
                     alerted_at, score, signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
                     counter_direction, counter_level, counter_score, counter_note, counter_reasons,
                     final_score, final_total, result,
                     margin, signal_timing_grade, market_read_correct, projection_accuracy,
                     quality_accuracy, counter_triggered, verdict, lesson
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     alert["id"],
@@ -936,6 +931,7 @@ class Database:
                     alert.get("status", ""),
                     final_status,
                     alert["opening"],
+                    alert.get("prematch"),
                     alert["live"],
                     alert["direction"],
                     alert["diff"],

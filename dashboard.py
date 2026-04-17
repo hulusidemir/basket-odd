@@ -92,6 +92,7 @@ def enrich_alerts_with_projection(alerts: list[dict]) -> list[dict]:
             status=alert.get("status", ""),
             diff=alert.get("diff", 0),
             counter_level=alert.get("counter_level", ""),
+            threshold=config.THRESHOLD,
         )
         alert["trust_label"] = reliability["label"]
         alert["trust_code"] = reliability["code"]

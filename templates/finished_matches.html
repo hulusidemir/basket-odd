@@ -6,35 +6,49 @@
   <title>🏁 Biten Maçlar | Basket Anomali</title>
   <style>
     :root {
-      --bg: #0d1118;
-      --panel: #141a24;
-      --panel-2: #1a2230;
-      --border: rgba(148, 163, 184, 0.18);
-      --border-strong: rgba(148, 163, 184, 0.28);
-      --text: #edf2f7;
-      --text-soft: #a7b1c2;
+      --bg: #07131f;
+      --surface: #0b1726;
+      --surface-2: #0f1d2f;
+      --surface-3: #13253a;
+      --surface-4: #182c44;
+      --panel: #0b1726;
+      --panel-2: #0f1d2f;
+      --border: rgba(110, 146, 187, 0.18);
+      --border-strong: rgba(110, 146, 187, 0.28);
+      --text: #edf4ff;
+      --text-soft: #8ea2ba;
+      --text-dim: #8ea2ba;
       --text-muted: #7d8798;
-      --blue: #4f9cf9;
-      --blue-soft: rgba(79, 156, 249, 0.18);
+      --accent: #ff9e64;
+      --accent-alt: #ff6a63;
+      --accent-ust: #34d399;
+      --accent-blue: #5fa7ff;
+      --accent-yellow: #fbbf24;
+      --blue: #5fa7ff;
+      --blue-soft: rgba(95, 167, 255, 0.18);
       --green: #34d399;
       --green-soft: rgba(52, 211, 153, 0.14);
       --red: #f87171;
       --red-soft: rgba(248, 113, 113, 0.14);
       --amber: #fbbf24;
       --amber-soft: rgba(251, 191, 36, 0.14);
-      --slate-soft: rgba(148, 163, 184, 0.12);
-      --shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+      --slate-soft: rgba(110, 146, 187, 0.12);
+      --shadow: 0 24px 60px rgba(0, 0, 0, 0.26);
       --radius: 18px;
+      --radius-xl: 26px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 12px;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: "Inter", "Segoe UI", sans-serif;
       background:
-        radial-gradient(circle at top right, rgba(79, 156, 249, 0.12), transparent 30%),
-        radial-gradient(circle at top left, rgba(52, 211, 153, 0.08), transparent 24%),
-        linear-gradient(180deg, #0d1118 0%, #0a0e14 100%);
+        radial-gradient(circle at top right, rgba(20, 184, 166, 0.12), transparent 22%),
+        radial-gradient(circle at top left, rgba(255, 158, 100, 0.10), transparent 18%),
+        linear-gradient(180deg, #07131f 0%, #091423 46%, #08111d 100%);
       color: var(--text);
       min-height: 100vh;
       -webkit-tap-highlight-color: transparent;
@@ -1125,18 +1139,25 @@
   </style>
 </head>
 <body>
-  <div class="page">
-    <section class="hero">
-      <div class="hero-top">
-        <div class="hero-copy">
+  <div class=”app-shell” style=”width:calc(100% - 4px);max-width:none;margin:2px auto 12px;”>
+    <nav class=”topbar” style=”display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;border-radius:26px;background:rgba(10,22,36,0.94);border:1px solid var(--border);box-shadow:var(--shadow);margin-bottom:14px;”>
+      <div style=”display:flex;align-items:center;gap:10px;flex-wrap:wrap;”>
+        <div class=”status-pill” style=”display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:50%;background:rgba(17,31,48,0.95);border:1px solid var(--border);”></div>
+        <span style=”font-size:20px;font-weight:900;letter-spacing:-0.03em;”>🏀 Basket Sinyal</span>
+      </div>
+      <div style=”display:flex;align-items:center;gap:10px;flex-wrap:wrap;”>
+        <a href=”/” style=”padding:12px 18px;border-radius:16px;text-decoration:none;font-size:13px;font-weight:700;white-space:nowrap;border:1px solid var(--border-strong);background:rgba(19,37,58,0.94);color:var(--text);”>Canlı</a>
+        <a href=”/finished-matches” style=”padding:12px 18px;border-radius:16px;text-decoration:none;font-size:13px;font-weight:700;white-space:nowrap;border:1px solid rgba(95,167,255,0.38);background:rgba(95,167,255,0.15);color:#a8d4ff;”>Biten Maçlar</a>
+        <a href=”/deleted-matches” style=”padding:12px 18px;border-radius:16px;text-decoration:none;font-size:13px;font-weight:700;white-space:nowrap;border:1px solid var(--border-strong);background:rgba(19,37,58,0.94);color:var(--text);”>Silinen</a>
+        <a href=”/bankroll” style=”padding:12px 18px;border-radius:16px;text-decoration:none;font-size:13px;font-weight:700;white-space:nowrap;border:1px solid var(--border-strong);background:rgba(19,37,58,0.94);color:var(--text);”>Bankroll</a>
+      </div>
+    </nav>
+  <div class=”page”>
+    <section class=”hero”>
+      <div class=”hero-top”>
+        <div class=”hero-copy”>
           <h1>🏁 Biten Maçlar</h1>
           <p>Bu ekran artık sinyalleri tek tek dökmek yerine maç bazlı düşünür: önce uygulamaya ne kadar güvenilebileceğini gösterir, sonra aynı maç içindeki tüm sinyalleri tek kartta toplar. Böylece “ALT mı daha iyi, ÜST mü daha iyi, aynı maçta hangi sinyaller tuttu, hangileri patladı?” sorularını doğrudan okuyabilirsin.</p>
-        </div>
-        <div class="nav-links">
-          <a class="nav-link" href="/">Canlı Dashboard</a>
-          <a class="nav-link active" href="/finished-matches">Biten Maçlar</a>
-          <a class="nav-link" href="/deleted-matches">Silinen Maçlar</a>
-          <a class="nav-link" href="/bankroll">Bankroll</a>
         </div>
       </div>
 
@@ -2217,5 +2238,6 @@
 
     loadFinishedMatches();
   </script>
+  </div><!-- /.app-shell -->
 </body>
 </html>

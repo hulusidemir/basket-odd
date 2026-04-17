@@ -230,7 +230,7 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         escaped = re.escape(team_name)
         pattern = (
             rf"Last 5[, ]+{escaped}.*?"
-            rf"(\d+(?:\.\d+)?) points per macth,\s*"
+            rf"(\d+(?:\.\d+)?) points per match,\s*"
             rf"(\d+(?:\.\d+)?) opponent points per game,.*?"
             rf"Total points over%:\s*(\d+(?:\.\d+)?)%"
         )
@@ -462,7 +462,8 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
             elif projected_edge >= 1:
                 score_value += 4
             else:
-                score_value -= 10
+                penalty = -4 if period == 1 else (-7 if period == 2 else -10)
+                score_value += penalty
                 risks.append(f"Projeksiyon ALT ile ayni hizada degil ({projected_total:.1f})")
         else:
             projected_edge = projected_total - live
@@ -475,7 +476,8 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
             elif projected_edge >= 1:
                 score_value += 4
             else:
-                score_value -= 10
+                penalty = -4 if period == 1 else (-7 if period == 2 else -10)
+                score_value += penalty
                 risks.append(f"Projeksiyon UST ile ayni hizada degil ({projected_total:.1f})")
     else:
         risks.append("Tempo projeksiyonu hesaplanamadi")
