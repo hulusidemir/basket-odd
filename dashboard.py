@@ -13,7 +13,6 @@ from typing import Optional
 from flask import Flask, jsonify, render_template, request
 from db import Database
 from config import Config
-from finished_matches import finished_matches_bp
 from signal_reliability import alert_reliability
 
 config = Config()
@@ -21,7 +20,6 @@ db = Database(config.DB_PATH)
 db.init()
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
-app.register_blueprint(finished_matches_bp)
 
 BET_BUILDER_ALERT_WINDOW_MINUTES = 240
 
@@ -385,6 +383,214 @@ def api_deleted_matches():
 def api_clear_deleted_matches():
     deleted_count = db.purge_deleted_matches()
     return jsonify({"cleared": True, "deleted_count": deleted_count})
+
+
+def _normalize_deleted_result(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    normalized = (
+        normalized.replace("ı", "i").replace("ş", "s")
+        .replace("ğ", "g").replace("ü", "u")
+        .replace("ö", "o").replace("ç", "c")
+    )
+    if normalized in {"basarili", "success", "başarılı"}:
+        return "Başarılı"
+    if normalized in {"basarisiz", "fail", "failed", "başarısız"}:
+        return "Başarısız"
+    return ""
+
+
+@app.route("/api/deleted-matches/<int:alert_id>/result", methods=["POST"])
+def api_update_deleted_match_result(alert_id: int):
+    payload = request.get_json(silent=True) or {}
+    result = _normalize_deleted_result(payload.get("result", ""))
+    if not result:
+        return jsonify({"error": "invalid_result"}), 400
+    updated = db.update_deleted_alert_result(alert_id, result)
+    if not updated:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"id": alert_id, "result": result, "updated": True})
+
+
+def _pct(success: int, total: int) -> float:
+    return round((success / total) * 100, 1) if total > 0 else 0.0
+
+
+def _fold(value) -> str:
+    return (
+        str(value or "").strip().lower()
+        .replace("ı", "i").replace("ş", "s")
+        .replace("ğ", "g").replace("ü", "u")
+        .replace("ö", "o").replace("ç", "c")
+    )
+
+
+def _dir_stats(signals: list, direction: str) -> dict:
+    scoped = [s for s in signals if _fold(s.get("direction")) == direction]
+    success = [s for s in scoped if _fold(s.get("result")) == "basarili"]
+    fail = [s for s in scoped if _fold(s.get("result")) == "basarisiz"]
+    return {
+        "total": len(scoped),
+        "success": len(success),
+        "fail": len(fail),
+        "success_rate": _pct(len(success), len(success) + len(fail)),
+    }
+
+
+def build_deleted_matches_report(signals: list) -> dict:
+    if not signals:
+        return {
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "headline": "Rapor için yeterli silinen maç verisi yok.",
+            "summary": "Silinen maçlara sinyal başarı sonucu işaretlendikçe burada detaylı analiz görünecek.",
+            "cards": [],
+            "highlights": [],
+            "mixed_examples": [],
+        }
+
+    total = len(signals)
+    success_count = sum(1 for s in signals if _fold(s.get("result")) == "basarili")
+    fail_count = sum(1 for s in signals if _fold(s.get("result")) == "basarisiz")
+    pending_count = total - success_count - fail_count
+    resolved = success_count + fail_count
+
+    alt_stats = _dir_stats(signals, "alt")
+    ust_stats = _dir_stats(signals, "üst")
+
+    match_ids = {}
+    for s in signals:
+        mid = str(s.get("match_id") or s.get("id"))
+        if mid not in match_ids:
+            match_ids[mid] = []
+        match_ids[mid].append(s)
+
+    unique_matches = len(match_ids)
+    mixed_matches = [
+        (mid, rows) for mid, rows in match_ids.items()
+        if any(_fold(r.get("result")) == "basarili" for r in rows)
+        and any(_fold(r.get("result")) == "basarisiz" for r in rows)
+    ]
+
+    quality_good = [s for s in signals if str(s.get("quality_grade") or "").upper() in {"A++", "A+", "A", "B"}]
+    quality_good_success = sum(1 for s in quality_good if _fold(s.get("result")) == "basarili")
+    quality_good_resolved = sum(
+        1 for s in quality_good if _fold(s.get("result")) in {"basarili", "basarisiz"}
+    )
+
+    first_signals = [s for s in signals if int(s.get("signal_count") or 1) == 1]
+    first_success = sum(1 for s in first_signals if _fold(s.get("result")) == "basarili")
+    first_resolved = sum(1 for s in first_signals if _fold(s.get("result")) in {"basarili", "basarisiz"})
+
+    repeat_signals = [s for s in signals if int(s.get("signal_count") or 1) >= 2]
+    repeat_success = sum(1 for s in repeat_signals if _fold(s.get("result")) == "basarili")
+    repeat_resolved = sum(1 for s in repeat_signals if _fold(s.get("result")) in {"basarili", "basarisiz"})
+
+    overall_rate = _pct(success_count, resolved)
+    dir_diff = abs(alt_stats["success_rate"] - ust_stats["success_rate"])
+
+    if resolved == 0:
+        headline = "Sonuçlar işaretlenmemiş. Sinyal başarılarını işaretleyerek raporu oluşturun."
+    elif overall_rate >= 60:
+        headline = "Genel tablo olumlu — sinyaller başarılı görünüyor."
+    elif overall_rate >= 50:
+        headline = "Dengeli bir tablo; net bir avantaj söz konusu değil."
+    else:
+        headline = "Başarı oranı düşük — strateji gözden geçirilmeli."
+
+    if dir_diff < 5:
+        dir_summary = "ALT ve ÜST performansı birbirine yakın."
+    elif alt_stats["success_rate"] > ust_stats["success_rate"]:
+        dir_summary = f"ALT tarafı {dir_diff:.1f} puan önde."
+    else:
+        dir_summary = f"ÜST tarafı {dir_diff:.1f} puan önde."
+
+    summary = (
+        f"Toplam {total} sinyal, {unique_matches} benzersiz maçtan. "
+        f"Genel başarı oranı %{overall_rate:.1f} ({resolved} sonuçlanan). "
+        f"{dir_summary} Karışık maç sayısı {len(mixed_matches)}. "
+        f"İşaretlenmeyi bekleyen {pending_count} kayıt var."
+    )
+
+    cards = [
+        {
+            "title": "Toplam Sinyal",
+            "value": total,
+            "detail": f"{unique_matches} benzersiz maç, {pending_count} sonuç bekliyor.",
+        },
+        {
+            "title": "Genel Başarı",
+            "value": f"%{overall_rate:.1f}",
+            "detail": f"{success_count} başarılı, {fail_count} başarısız.",
+        },
+        {
+            "title": "ALT / ÜST",
+            "value": f"%{alt_stats['success_rate']:.1f} / %{ust_stats['success_rate']:.1f}",
+            "detail": f"ALT {alt_stats['success']}/{alt_stats['total']} | ÜST {ust_stats['success']}/{ust_stats['total']}.",
+        },
+        {
+            "title": "Kalite B+",
+            "value": f"%{_pct(quality_good_success, quality_good_resolved):.1f}",
+            "detail": f"{len(quality_good)} sinyalde kalite B ve üzeri.",
+        },
+        {
+            "title": "#1 Sinyal",
+            "value": f"%{_pct(first_success, first_resolved):.1f}",
+            "detail": f"{len(first_signals)} ilk sinyal kaydı.",
+        },
+        {
+            "title": "#2+ Tekrar",
+            "value": f"%{_pct(repeat_success, repeat_resolved):.1f}",
+            "detail": f"{len(repeat_signals)} tekrar sinyal kaydı.",
+        },
+        {
+            "title": "Karışık Maç",
+            "value": len(mixed_matches),
+            "detail": "Hem başarılı hem başarısız sinyal içeren maç.",
+        },
+    ]
+
+    highlights = [
+        f"ALT başarı %{alt_stats['success_rate']:.1f} ({alt_stats['success']}/{alt_stats['total']}), "
+        f"ÜST başarı %{ust_stats['success_rate']:.1f} ({ust_stats['success']}/{ust_stats['total']}).",
+
+        f"İlk sinyal (#1) başarı oranı %{_pct(first_success, first_resolved):.1f}, "
+        f"tekrar sinyaller (#2+) başarı oranı %{_pct(repeat_success, repeat_resolved):.1f}.",
+
+        f"Kalite B ve üzeri sinyallerin başarı oranı %{_pct(quality_good_success, quality_good_resolved):.1f} "
+        f"({quality_good_resolved} sonuçlanan kayıt).",
+    ]
+
+    mixed_examples = []
+    for mid, rows in sorted(mixed_matches, key=lambda x: -len(x[1]))[:5]:
+        sigs_ok = [r for r in rows if _fold(r.get("result")) == "basarili"]
+        sigs_fail = [r for r in rows if _fold(r.get("result")) == "basarisiz"]
+        match_name = rows[0].get("match_name") or "-"
+        tournament = rows[0].get("tournament") or "-"
+        parts = []
+        if sigs_fail:
+            parts.append("Başarısız: " + ", ".join(f"#{r.get('signal_count', 1)}" for r in sigs_fail))
+        if sigs_ok:
+            parts.append("Başarılı: " + ", ".join(f"#{r.get('signal_count', 1)}" for r in sigs_ok))
+        mixed_examples.append({
+            "match_name": match_name,
+            "tournament": tournament,
+            "signal_count": len(rows),
+            "summary": " | ".join(parts),
+        })
+
+    return {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "headline": headline,
+        "summary": summary,
+        "cards": cards,
+        "highlights": highlights,
+        "mixed_examples": mixed_examples,
+    }
+
+
+@app.route("/api/deleted-matches/report")
+def api_deleted_matches_report():
+    signals = db.recent_deleted_alerts(limit=None)
+    return jsonify(build_deleted_matches_report(signals))
 
 
 @app.route("/api/bet-builder")

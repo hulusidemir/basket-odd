@@ -149,6 +149,16 @@
       color: #ffd8d5;
     }
 
+    .btn.report-btn {
+      background: rgba(251, 191, 36, 0.14);
+      border-color: rgba(251, 191, 36, 0.36);
+      color: #fef08a;
+    }
+    .btn.report-btn:hover {
+      background: rgba(251, 191, 36, 0.24);
+      border-color: rgba(251, 191, 36, 0.6);
+    }
+
     .section-shell {
       background: rgba(9, 19, 32, 0.88);
       border: 1px solid var(--border);
@@ -184,7 +194,7 @@
     .search-box:focus { border-color: rgba(95, 167, 255, 0.62); }
 
     .stat-chip {
-      min-width: 136px;
+      min-width: 120px;
       background: rgba(19, 34, 54, 0.94);
       border: 1px solid var(--border);
       border-radius: 14px;
@@ -204,6 +214,10 @@
       letter-spacing: 0;
     }
 
+    .stat-chip.success strong { color: var(--accent-green); }
+    .stat-chip.fail strong { color: var(--accent-red); }
+    .stat-chip.rate strong { color: var(--accent-yellow); }
+
     .table-wrap {
       overflow-x: auto;
       border-radius: 16px;
@@ -214,7 +228,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 980px;
+      min-width: 1080px;
     }
 
     th,
@@ -319,6 +333,169 @@
       color: #ffd4d0;
     }
 
+    /* Result buttons */
+    .result-cell { white-space: nowrap; }
+
+    .result-btn {
+      border-radius: 8px;
+      padding: 4px 9px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: opacity 0.15s ease, background 0.15s ease;
+      margin: 0 2px;
+    }
+    .result-btn:hover { opacity: 0.8; }
+    .result-btn.success {
+      background: rgba(34, 197, 94, 0.15);
+      color: #9df0bd;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    .result-btn.success.active {
+      background: rgba(34, 197, 94, 0.42);
+      border-color: rgba(34, 197, 94, 0.7);
+      color: #c5ffdf;
+    }
+    .result-btn.fail {
+      background: rgba(255, 107, 99, 0.15);
+      color: #ffd4d0;
+      border: 1px solid rgba(255, 107, 99, 0.3);
+    }
+    .result-btn.fail.active {
+      background: rgba(255, 107, 99, 0.42);
+      border-color: rgba(255, 107, 99, 0.7);
+      color: #ffe5e3;
+    }
+
+    /* Report modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      z-index: 200;
+      overflow-y: auto;
+      padding: 24px 16px;
+    }
+    .modal-overlay.open { display: flex; align-items: flex-start; justify-content: center; }
+
+    .modal-box {
+      background: rgba(9, 19, 32, 0.99);
+      border: 1px solid var(--border-strong);
+      border-radius: 22px;
+      padding: 24px;
+      width: 100%;
+      max-width: 800px;
+      box-shadow: 0 32px 80px rgba(0, 0, 0, 0.55);
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      gap: 12px;
+    }
+    .modal-header h2 { font-size: 19px; font-weight: 800; }
+    .modal-close {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-soft);
+      border-radius: 10px;
+      padding: 7px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .modal-close:hover { border-color: var(--border-strong); color: var(--text); }
+
+    .report-headline {
+      padding: 14px 16px;
+      background: rgba(19, 34, 54, 0.96);
+      border-radius: 14px;
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+      line-height: 1.5;
+    }
+    .report-summary {
+      font-size: 13px;
+      color: var(--text-soft);
+      margin-bottom: 18px;
+      line-height: 1.6;
+    }
+    .report-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .report-card {
+      background: rgba(19, 34, 54, 0.94);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    .report-card-title {
+      font-size: 11px;
+      color: var(--text-soft);
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .report-card-value {
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    .report-card-detail {
+      font-size: 11px;
+      color: var(--text-soft);
+      line-height: 1.5;
+    }
+    .report-section-title {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: var(--text-soft);
+      letter-spacing: 0.05em;
+      margin: 16px 0 8px;
+    }
+    .report-highlight {
+      font-size: 13px;
+      color: var(--text-dim);
+      padding: 9px 12px;
+      background: rgba(13, 26, 42, 0.85);
+      border-radius: 10px;
+      margin-bottom: 6px;
+      border-left: 3px solid var(--accent-blue);
+      line-height: 1.5;
+    }
+    .report-mixed-item {
+      font-size: 12px;
+      padding: 9px 12px;
+      background: rgba(255, 158, 100, 0.08);
+      border: 1px solid rgba(255, 158, 100, 0.2);
+      border-radius: 10px;
+      margin-bottom: 6px;
+    }
+    .report-mixed-match { font-weight: 700; margin-bottom: 3px; }
+    .report-mixed-detail { color: var(--text-soft); }
+    .report-loading {
+      text-align: center;
+      padding: 44px;
+      color: var(--text-soft);
+      font-size: 14px;
+    }
+    .report-ts {
+      font-size: 11px;
+      color: var(--text-soft);
+      margin-top: 18px;
+      text-align: right;
+    }
+
     @media (max-width: 720px) {
       h1 { font-size: 20px; }
       .topbar,
@@ -328,7 +505,7 @@
       .search-box { width: 100%; }
       .btn,
       .nav-tab { flex: 1 1 auto; text-align: center; }
-      .stat-chip { flex: 1 1 140px; }
+      .stat-chip { flex: 1 1 120px; }
     }
   </style>
 </head>
@@ -341,9 +518,9 @@
       </div>
       <div class="actions">
         <a href="/" class="btn">Canlı</a>
-        <a href="/finished-matches" class="btn">Biten Maçlar</a>
         <span class="btn primary">Silinen</span>
         <a href="/bankroll" class="btn">Bankroll</a>
+        <button class="btn report-btn" onclick="openReport()">Rapor</button>
         <button class="btn primary" onclick="loadDeletedMatches()">Yenile</button>
         <button class="btn danger" onclick="clearDeletedMatches()">Veritabanını Temizle</button>
       </div>
@@ -367,6 +544,18 @@
         <div class="stat-chip">
           <span>ÜST</span>
           <strong id="statUst">0</strong>
+        </div>
+        <div class="stat-chip success">
+          <span>Başarılı</span>
+          <strong id="statSuccess">0</strong>
+        </div>
+        <div class="stat-chip fail">
+          <span>Başarısız</span>
+          <strong id="statFail">0</strong>
+        </div>
+        <div class="stat-chip rate">
+          <span>Başarı %</span>
+          <strong id="statRate">-</strong>
         </div>
       </section>
 
@@ -392,6 +581,7 @@
               <th data-sort="live">Canlı</th>
               <th data-sort="diff">Fark</th>
               <th data-sort="quality_score">Kalite</th>
+              <th data-sort="result">Sonuç</th>
             </tr>
           </thead>
           <tbody id="deletedBody"></tbody>
@@ -400,6 +590,19 @@
 
       <div class="empty-state" id="emptyState">Silinen maç yok.</div>
     </main>
+  </div>
+
+  <!-- Report Modal -->
+  <div class="modal-overlay" id="reportModal" onclick="handleModalClick(event)">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2>Sinyal Kalite Raporu</h2>
+        <button class="modal-close" onclick="closeReport()">Kapat</button>
+      </div>
+      <div id="reportContent">
+        <div class="report-loading">Rapor yükleniyor…</div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -456,6 +659,16 @@
       return `${escapeHtml(grade)} ${Number.isFinite(score) && score > 0 ? `<span class="mono">${score.toFixed(1)}</span>` : ''}`;
     }
 
+    function resultCell(alert) {
+      const result = (alert.result || '').trim();
+      const isSuccess = result === 'Başarılı';
+      const isFail = result === 'Başarısız';
+      return `<div class="result-cell">
+        <button class="result-btn success${isSuccess ? ' active' : ''}" onclick="markResult(${alert.id}, 'Başarılı', this)">✓</button>
+        <button class="result-btn fail${isFail ? ' active' : ''}" onclick="markResult(${alert.id}, 'Başarısız', this)">✕</button>
+      </div>`;
+    }
+
     function filteredAlerts() {
       let rows = [...deletedAlerts];
       if (!searchQuery) return sortedAlerts(rows);
@@ -465,9 +678,9 @@
         alert.tournament,
         alert.status,
         alert.score,
-        alert.final_score,
         alert.quality_grade,
         alert.quality_summary,
+        alert.result,
       ].some(value => String(value || '').toLowerCase().includes(q)));
       return sortedAlerts(rows);
     }
@@ -510,10 +723,18 @@
 
     function updateStats() {
       const matchIds = new Set(deletedAlerts.map(item => String(item.match_id || item.id)));
+      const successList = deletedAlerts.filter(item => item.result === 'Başarılı');
+      const failList = deletedAlerts.filter(item => item.result === 'Başarısız');
+      const resolved = successList.length + failList.length;
+      const rate = resolved > 0 ? Math.round((successList.length / resolved) * 1000) / 10 : null;
+
       document.getElementById('statSignals').textContent = deletedAlerts.length;
       document.getElementById('statMatches').textContent = matchIds.size;
       document.getElementById('statAlt').textContent = deletedAlerts.filter(item => item.direction === 'ALT').length;
       document.getElementById('statUst').textContent = deletedAlerts.filter(item => item.direction === 'ÜST').length;
+      document.getElementById('statSuccess').textContent = successList.length;
+      document.getElementById('statFail').textContent = failList.length;
+      document.getElementById('statRate').textContent = rate !== null ? `%${rate.toFixed(1)}` : '-';
     }
 
     function render() {
@@ -556,6 +777,7 @@
             <td class="mono">${formatNumber(alert.live)}</td>
             <td class="mono">${formatNumber(alert.diff)}</td>
             <td>${qualityLabel(alert)}</td>
+            <td>${resultCell(alert)}</td>
           </tr>
         `;
       }).join('');
@@ -566,9 +788,47 @@
       banner.className = `banner ${type === 'error' ? 'error' : ''}`;
       banner.textContent = message;
       banner.style.display = 'block';
-      setTimeout(() => {
-        banner.style.display = 'none';
-      }, 2800);
+      setTimeout(() => { banner.style.display = 'none'; }, 2800);
+    }
+
+    async function markResult(alertId, result, btn) {
+      const row = btn.closest('tr');
+      const buttons = row ? row.querySelectorAll('.result-btn') : [];
+
+      try {
+        const response = await fetch(`/api/deleted-matches/${alertId}/result`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ result }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.error || 'Güncellenemedi.');
+
+        const alert = deletedAlerts.find(a => a.id === alertId);
+        if (alert) {
+          // Toggle: clicking the active result clears it
+          if (alert.result === result) {
+            alert.result = '';
+            await fetch(`/api/deleted-matches/${alertId}/result`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ result: '' }),
+            });
+          } else {
+            alert.result = result;
+          }
+        }
+
+        buttons.forEach(b => b.classList.remove('active'));
+        if (alert && alert.result) {
+          const targetClass = alert.result === 'Başarılı' ? 'success' : 'fail';
+          buttons.forEach(b => { if (b.classList.contains(targetClass)) b.classList.add('active'); });
+        }
+        updateStats();
+      } catch (error) {
+        console.error(error);
+        showBanner(error.message || 'Güncelleme başarısız.', 'error');
+      }
     }
 
     async function loadDeletedMatches() {
@@ -606,6 +866,72 @@
       render();
     }
 
+    // ── Report modal ──────────────────────────────────────────────────────────
+
+    function openReport() {
+      const modal = document.getElementById('reportModal');
+      modal.classList.add('open');
+      document.body.style.overflow = 'hidden';
+      fetchReport();
+    }
+
+    function closeReport() {
+      document.getElementById('reportModal').classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    function handleModalClick(event) {
+      if (event.target === document.getElementById('reportModal')) closeReport();
+    }
+
+    async function fetchReport() {
+      document.getElementById('reportContent').innerHTML = '<div class="report-loading">Rapor yükleniyor…</div>';
+      try {
+        const response = await fetch('/api/deleted-matches/report');
+        if (!response.ok) throw new Error('Rapor alınamadı.');
+        const data = await response.json();
+        renderReport(data);
+      } catch (error) {
+        document.getElementById('reportContent').innerHTML =
+          `<div class="report-loading" style="color:var(--accent-red)">Rapor yüklenemedi: ${escapeHtml(error.message)}</div>`;
+      }
+    }
+
+    function renderReport(data) {
+      const cards = (data.cards || []).map(card => `
+        <div class="report-card">
+          <div class="report-card-title">${escapeHtml(card.title)}</div>
+          <div class="report-card-value">${escapeHtml(String(card.value))}</div>
+          <div class="report-card-detail">${escapeHtml(card.detail || '')}</div>
+        </div>
+      `).join('');
+
+      const highlights = (data.highlights || []).map(h =>
+        `<div class="report-highlight">${escapeHtml(h)}</div>`
+      ).join('');
+
+      const mixed = (data.mixed_examples || []).map(m => `
+        <div class="report-mixed-item">
+          <div class="report-mixed-match">${escapeHtml(m.match_name)} <span style="color:var(--text-soft);font-weight:400;font-size:11px;">${escapeHtml(m.tournament)}</span></div>
+          <div class="report-mixed-detail">${escapeHtml(m.summary)}</div>
+        </div>
+      `).join('');
+
+      const mixedSection = mixed ? `
+        <div class="report-section-title">Karışık Sonuçlu Maçlar</div>
+        ${mixed}
+      ` : '';
+
+      document.getElementById('reportContent').innerHTML = `
+        <div class="report-headline">${escapeHtml(data.headline || '')}</div>
+        <div class="report-summary">${escapeHtml(data.summary || '')}</div>
+        <div class="report-cards">${cards}</div>
+        ${highlights ? `<div class="report-section-title">Öne Çıkanlar</div>${highlights}` : ''}
+        ${mixedSection}
+        <div class="report-ts">Oluşturuldu: ${escapeHtml(data.generated_at || '')}</div>
+      `;
+    }
+
     document.getElementById('searchInput').addEventListener('input', event => {
       searchQuery = event.target.value.trim();
       render();
@@ -618,10 +944,14 @@
           sortAsc = !sortAsc;
         } else {
           sortField = field;
-          sortAsc = ['match_name', 'direction', 'status', 'score'].includes(field);
+          sortAsc = ['match_name', 'direction', 'status', 'score', 'result'].includes(field);
         }
         render();
       });
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeReport();
     });
 
     loadDeletedMatches();

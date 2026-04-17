@@ -56,6 +56,7 @@ class Database:
                     counter_note TEXT NOT NULL DEFAULT '',
                     counter_reasons TEXT NOT NULL DEFAULT '',
                     deleted_at  TIMESTAMP,
+                    result      TEXT NOT NULL DEFAULT '',
                     alerted_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
@@ -313,6 +314,10 @@ class Database:
                 pass
             try:
                 conn.execute("ALTER TABLE finished_matches ADD COLUMN prematch REAL")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN result TEXT NOT NULL DEFAULT ''")
             except Exception:
                 pass
             conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_deleted_at ON alerts(deleted_at)")
@@ -610,6 +615,14 @@ class Database:
                     tuple(match_ids),
                 )
         return cursor.rowcount
+
+    def update_deleted_alert_result(self, alert_id: int, result: str) -> bool:
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "UPDATE alerts SET result = ? WHERE id = ? AND deleted_at IS NOT NULL AND deleted_at != ''",
+                (result, alert_id),
+            )
+        return cursor.rowcount > 0
 
     # ---------- saved bet slips ----------
 
