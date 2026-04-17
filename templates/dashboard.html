@@ -331,6 +331,20 @@
       white-space: nowrap;
     }
 
+    .bulk-delete-btn {
+      display: none;
+      background: rgba(88, 36, 48, 0.95);
+      border-color: rgba(255, 126, 126, 0.24);
+      color: #ffd8d6;
+    }
+
+    .bulk-delete-btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+      transform: none;
+      box-shadow: none;
+    }
+
     .match-focus-status {
       display: inline-flex;
       align-items: center;
@@ -412,6 +426,14 @@
       background: rgba(17, 32, 49, 0.72);
     }
 
+    tbody tr.is-selected {
+      background: rgba(95, 167, 255, 0.12);
+    }
+
+    tbody tr.is-selected:hover {
+      background: rgba(95, 167, 255, 0.18);
+    }
+
     tbody td {
       padding: 12px 14px;
       vertical-align: middle;
@@ -469,6 +491,10 @@
     }
     .alert-card.is-followed { background: var(--follow-bg); }
     .alert-card.is-ignored { background: var(--ignored-bg); opacity: 0.72; }
+    .alert-card.is-selected {
+      border-color: rgba(95, 167, 255, 0.45);
+      box-shadow: inset 0 0 0 1px rgba(95, 167, 255, 0.2);
+    }
     .alert-card.is-ignored .card-match,
     .alert-card.is-ignored .card-tournament { text-decoration: line-through; }
 
@@ -761,6 +787,25 @@
       align-items: center;
       gap: 10px;
       min-width: 0;
+    }
+
+    .match-select-wrap {
+      width: 30px;
+      height: 30px;
+      flex: 0 0 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      background: rgba(12, 27, 43, 0.95);
+      border: 1px solid rgba(110, 146, 187, 0.2);
+    }
+
+    .match-select-box {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: #ff9960;
     }
 
     .match-cell-wrap .match-link,
@@ -1628,6 +1673,7 @@
       </div>
       <button class="filter-btn" onclick="openBetBuilder()">Bahis Oluşturucu</button>
       <button class="filter-btn" onclick="manualRefresh()">Listeyi Yenile</button>
+      <button class="filter-btn bulk-delete-btn" id="bulkDeleteBtn" onclick="deleteSelectedMatches()">İşaretli Olanları Sil</button>
       <button class="match-focus-status" id="matchFocusStatus" onclick="clearMatchFocus()" style="display:none;"></button>
       <span class="refresh-info"><span id="countdown">15</span>s | <span id="lastUpdate">-</span></span>
     </div>
@@ -1737,6 +1783,8 @@
     let expandedSavedBetSlipId = null;
     let focusedMatchId = null;
     let focusedMatchName = '';
+    let selectedMatchIds = new Set();
+    let bulkDeleteInProgress = false;
 
     function cleanMatchName(name) {
       return (name || '')
@@ -1756,6 +1804,15 @@
       return focusedMatchId !== null && String(matchId || '') === focusedMatchId;
     }
 
+    function normalizeMatchId(matchId) {
+      return String(matchId || '').trim();
+    }
+
+    function isMatchSelected(matchId) {
+      const key = normalizeMatchId(matchId);
+      return key ? selectedMatchIds.has(key) : false;
+    }
+
     function updateMatchFocusStatus() {
       const el = document.getElementById('matchFocusStatus');
       if (!el) return;
@@ -1773,6 +1830,56 @@
       focusedMatchId = null;
       focusedMatchName = '';
       currentPage = 1;
+      render();
+    }
+
+    function updateBulkDeleteButton() {
+      const button = document.getElementById('bulkDeleteBtn');
+      if (!button) return;
+
+      const count = selectedMatchIds.size;
+      if (count <= 0 && !bulkDeleteInProgress) {
+        button.style.display = 'none';
+        button.disabled = false;
+        button.textContent = 'İşaretli Olanları Sil';
+        return;
+      }
+
+      button.style.display = 'inline-flex';
+      if (bulkDeleteInProgress) {
+        button.textContent = 'Aktarılıyor...';
+        button.disabled = true;
+        return;
+      }
+
+      button.textContent = `İşaretli Olanları Sil (${count})`;
+      button.disabled = false;
+    }
+
+    function syncSelectedMatchesWithAlerts() {
+      if (selectedMatchIds.size === 0) {
+        updateBulkDeleteButton();
+        return;
+      }
+      const activeMatchIds = new Set(
+        allAlerts
+          .map(item => normalizeMatchId(item.match_id))
+          .filter(Boolean)
+      );
+      Array.from(selectedMatchIds).forEach(matchId => {
+        if (!activeMatchIds.has(matchId)) selectedMatchIds.delete(matchId);
+      });
+      updateBulkDeleteButton();
+    }
+
+    function toggleMatchSelectionByAlert(alertId, checked) {
+      const alert = allAlerts.find(item => Number(item.id) === Number(alertId));
+      if (!alert) return;
+      const matchId = normalizeMatchId(alert.match_id);
+      if (!matchId) return;
+
+      if (checked) selectedMatchIds.add(matchId);
+      else selectedMatchIds.delete(matchId);
       render();
     }
 
@@ -2370,6 +2477,7 @@
           focusedMatchId = null;
           focusedMatchName = '';
         }
+        syncSelectedMatchesWithAlerts();
         render();
         updateStats();
         document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('tr-TR');
@@ -2428,6 +2536,7 @@
       updateMatchFocusStatus();
       renderTable();
       renderCards();
+      updateBulkDeleteButton();
     }
 
     function renderTable() {
@@ -2453,6 +2562,7 @@
 
       tbody.innerHTML = paged.map(a => {
         const classes = [];
+        if (isMatchSelected(a.match_id)) classes.push('is-selected');
         if (a.bet_placed) classes.push('bet-placed');
         if (a.followed) classes.push('is-followed');
         if (a.ignored) classes.push('is-ignored');
@@ -2465,6 +2575,8 @@
         }) : '-';
         const cleanName = cleanMatchName(a.match_name);
         const matchFocusButton = matchFocusButtonHtml(a);
+        const matchSelected = isMatchSelected(a.match_id);
+        const checkedAttr = matchSelected ? 'checked' : '';
         const matchDisplay = a.url
           ? `<a class="match-link" href="${escapeHtml(a.url)}" target="_blank" title="${escapeHtml(cleanName)}">${escapeHtml(cleanName)}</a>`
           : `<span class="match-link" title="${escapeHtml(cleanName)}">${escapeHtml(cleanName)}</span>`;
@@ -2482,7 +2594,15 @@
             ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
           </td>
           <td>${qualityBadgeHtml(a)}</td>
-          <td class="col-match"><div class="match-cell-wrap">${matchFocusButton}${matchDisplay}</div></td>
+          <td class="col-match">
+            <div class="match-cell-wrap">
+              ${matchFocusButton}
+              <label class="match-select-wrap" title="Toplu silme için maçı seç">
+                <input class="match-select-box" type="checkbox" ${checkedAttr} onchange="toggleMatchSelectionByAlert(${a.id}, this.checked)" aria-label="Maçı seç">
+              </label>
+              ${matchDisplay}
+            </div>
+          </td>
           <td class="col-tournament" title="${escapeHtml(a.tournament || '-')}">${escapeHtml(a.tournament || '-')}</td>
           <td>${escapeHtml(a.status || '-')}</td>
           <td><b>${escapeHtml(a.score || '-')}</b></td>
@@ -2521,6 +2641,7 @@
 
       wrap.innerHTML = paged.map(a => {
         const classes = ['alert-card'];
+        if (isMatchSelected(a.match_id)) classes.push('is-selected');
         if (a.bet_placed) classes.push('bet-placed');
         if (a.followed) classes.push('is-followed');
         if (a.ignored) classes.push('is-ignored');
@@ -2533,6 +2654,8 @@
         }) : '-';
         const matchName = cleanMatchName(a.match_name);
         const matchFocusButton = matchFocusButtonHtml(a);
+        const matchSelected = isMatchSelected(a.match_id);
+        const checkedAttr = matchSelected ? 'checked' : '';
         const matchDisplay = a.url
           ? `<a class="card-match-link" href="${escapeHtml(a.url)}" target="_blank">${escapeHtml(matchName)}</a>`
           : `<span class="card-match-link">${escapeHtml(matchName)}</span>`;
@@ -2545,7 +2668,15 @@
 
         return `<div class="${classes.join(' ')}">
           <div class="card-top">
-            <div class="card-match"><div class="card-match-row">${matchFocusButton}${matchDisplay}</div></div>
+            <div class="card-match">
+              <div class="card-match-row">
+                ${matchFocusButton}
+                <label class="match-select-wrap" title="Toplu silme için maçı seç">
+                  <input class="match-select-box" type="checkbox" ${checkedAttr} onchange="toggleMatchSelectionByAlert(${a.id}, this.checked)" aria-label="Maçı seç">
+                </label>
+                ${matchDisplay}
+              </div>
+            </div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
               <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
               ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
@@ -2632,6 +2763,66 @@
       updateStats();
     }
 
+    async function deleteSelectedMatches() {
+      if (bulkDeleteInProgress) return;
+      const selectedIds = Array.from(selectedMatchIds);
+      if (selectedIds.length === 0) return;
+
+      if (!confirm(`İşaretlediğin ${selectedIds.length} maç Silinen Maçlar'a aktarılsın mı?`)) return;
+
+      const targets = selectedIds
+        .map(matchId => {
+          const alert = allAlerts.find(item => normalizeMatchId(item.match_id) === matchId);
+          return alert ? { matchId, alertId: alert.id } : null;
+        })
+        .filter(Boolean);
+
+      if (targets.length === 0) {
+        selectedMatchIds.clear();
+        render();
+        return;
+      }
+
+      bulkDeleteInProgress = true;
+      updateBulkDeleteButton();
+
+      let successCount = 0;
+      let failedCount = 0;
+
+      try {
+        for (const target of targets) {
+          try {
+            const response = await fetch(`/api/alerts/${target.alertId}`, { method: 'DELETE' });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              failedCount += 1;
+              continue;
+            }
+            const deletedMatchId = normalizeMatchId(payload.match_id) || target.matchId;
+            if (isFocusedMatch(deletedMatchId)) {
+              focusedMatchId = null;
+              focusedMatchName = '';
+            }
+            allAlerts = allAlerts.filter(item => normalizeMatchId(item.match_id) !== deletedMatchId);
+            selectedMatchIds.delete(deletedMatchId);
+            successCount += 1;
+          } catch (error) {
+            console.error(error);
+            failedCount += 1;
+          }
+        }
+      } finally {
+        bulkDeleteInProgress = false;
+        syncSelectedMatchesWithAlerts();
+        render();
+        updateStats();
+      }
+
+      if (failedCount > 0) {
+        alert(`${successCount} maç aktarıldı, ${failedCount} maç için işlem tamamlanamadı.`);
+      }
+    }
+
     async function deleteMatch(id) {
       const alertItem = allAlerts.find(a => a.id === id);
       if (!alertItem) return;
@@ -2647,7 +2838,9 @@
         focusedMatchId = null;
         focusedMatchName = '';
       }
-      allAlerts = allAlerts.filter(a => a.match_id !== payload.match_id);
+      const deletedMatchId = normalizeMatchId(payload.match_id) || normalizeMatchId(alertItem.match_id);
+      allAlerts = allAlerts.filter(a => normalizeMatchId(a.match_id) !== deletedMatchId);
+      selectedMatchIds.delete(deletedMatchId);
       render();
       updateStats();
     }
@@ -2662,6 +2855,7 @@
       allAlerts = [];
       focusedMatchId = null;
       focusedMatchName = '';
+      selectedMatchIds.clear();
       render();
       updateStats();
     }
