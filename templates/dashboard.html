@@ -451,6 +451,58 @@
       box-shadow: inset 0 0 0 1px rgba(255, 126, 126, 0.35);
     }
 
+    tbody tr.is-selected {
+      background: rgba(220, 38, 38, 0.18) !important;
+      border-left: 3px solid rgba(239, 68, 68, 0.7);
+    }
+
+    tbody tr.is-selected:hover {
+      background: rgba(220, 38, 38, 0.26) !important;
+    }
+
+    tbody tr.is-selected td {
+      color: #fecaca;
+    }
+
+    tbody tr.is-selected td .match-link,
+    tbody tr.is-selected td .badge,
+    tbody tr.is-selected td .quality-badge {
+      opacity: 0.85;
+    }
+
+    .cancel-select-btn {
+      display: none;
+      padding: 10px 16px;
+      border-radius: 14px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+      cursor: pointer;
+      border: 1px solid rgba(255, 126, 126, 0.32);
+      background: rgba(127, 29, 29, 0.6);
+      color: #fecaca;
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+      animation: cancelBtnFadeIn 0.25s ease;
+    }
+
+    .cancel-select-btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255, 126, 126, 0.55);
+      background: rgba(153, 27, 27, 0.7);
+      box-shadow: 0 10px 20px rgba(220, 38, 38, 0.15);
+    }
+
+    .cancel-select-btn.is-visible {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    @keyframes cancelBtnFadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
     tbody td.col-match,
     tbody td.col-tournament {
       white-space: nowrap;
@@ -501,8 +553,9 @@
     .alert-card.is-followed { background: var(--follow-bg); }
     .alert-card.is-ignored { background: var(--ignored-bg); opacity: 0.72; }
     .alert-card.is-selected {
-      border-color: rgba(95, 167, 255, 0.45);
-      box-shadow: inset 0 0 0 1px rgba(95, 167, 255, 0.2);
+      border-color: rgba(239, 68, 68, 0.5);
+      background: rgba(220, 38, 38, 0.14) !important;
+      box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.25);
     }
     .alert-card.is-ignored .card-match,
     .alert-card.is-ignored .card-tournament { text-decoration: line-through; }
@@ -1705,6 +1758,7 @@
       <button class="filter-btn" onclick="openBetBuilder()">Bahis Oluşturucu</button>
       <button class="filter-btn" onclick="manualRefresh()">Listeyi Yenile</button>
       <button class="filter-btn bulk-delete-btn" id="bulkDeleteBtn" onclick="deleteSelectedMatches()">İşaretli Olanları Sil</button>
+      <button class="cancel-select-btn" id="cancelSelectBtn" onclick="cancelAllSelections()">✕ Seçimi İptal Et</button>
       <button class="match-focus-status" id="matchFocusStatus" onclick="clearMatchFocus()" style="display:none;"></button>
       <span class="refresh-info"><span id="countdown">15</span>s | <span id="lastUpdate">-</span></span>
     </div>
@@ -1867,6 +1921,7 @@
 
     function updateBulkDeleteButton() {
       const button = document.getElementById('bulkDeleteBtn');
+      const cancelBtn = document.getElementById('cancelSelectBtn');
       if (!button) return;
 
       const count = selectedMatchIds.size;
@@ -1874,10 +1929,13 @@
         button.style.display = 'none';
         button.disabled = false;
         button.textContent = 'İşaretli Olanları Sil';
+        if (cancelBtn) cancelBtn.classList.remove('is-visible');
         return;
       }
 
       button.style.display = 'inline-flex';
+      if (cancelBtn) cancelBtn.classList.add('is-visible');
+
       if (bulkDeleteInProgress) {
         button.textContent = 'Aktarılıyor...';
         button.disabled = true;
@@ -1886,6 +1944,11 @@
 
       button.textContent = `İşaretli Olanları Sil (${count})`;
       button.disabled = false;
+    }
+
+    function cancelAllSelections() {
+      selectedMatchIds.clear();
+      render();
     }
 
     function syncSelectedMatchesWithAlerts() {
