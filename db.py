@@ -939,11 +939,10 @@ class Database:
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_deleted_matches_for_result_check(self, limit: int = 200) -> list:
+    def get_deleted_matches_for_result_check(self, limit: int | None = 200) -> list:
         """Return one deleted row per match where at least one result is still blank."""
         with self._conn() as conn:
-            rows = conn.execute(
-                """
+            sql = """
                 SELECT a.match_id, a.match_name, a.tournament, a.url, a.status, a.score, a.alerted_at, a.deleted_at
                 FROM alerts a
                 INNER JOIN (
@@ -960,13 +959,14 @@ class Database:
                     WHERE pending.match_id = a.match_id
                       AND pending.deleted_at IS NOT NULL
                       AND pending.deleted_at != ''
-                      AND (pending.result IS NULL OR pending.result = '')
+                      AND TRIM(COALESCE(pending.result, '')) = ''
                 )
                 ORDER BY a.deleted_at DESC, a.alerted_at DESC, a.id DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
+                """
+            if limit is None:
+                rows = conn.execute(sql).fetchall()
+            else:
+                rows = conn.execute(f"{sql} LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in rows]
 
     def get_deleted_match_for_result_check_by_alert_id(self, alert_id: int) -> dict | None:
@@ -1008,7 +1008,7 @@ class Database:
                 WHERE match_id = ?
                   AND deleted_at IS NOT NULL
                   AND deleted_at != ''
-                  AND (result IS NULL OR result = '')
+                  AND TRIM(COALESCE(result, '')) = ''
                 ORDER BY alerted_at ASC, id ASC
                 """,
                 (match_id,),

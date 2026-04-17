@@ -218,11 +218,105 @@
     .stat-chip.fail strong { color: var(--accent-red); }
     .stat-chip.rate strong { color: var(--accent-yellow); }
 
+    .quality-breakdown {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+    }
+
+    .quality-filter {
+      text-align: left;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(19, 34, 54, 0.94);
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+    }
+
+    .quality-filter:hover {
+      transform: translateY(-1px);
+      border-color: rgba(95, 167, 255, 0.52);
+    }
+
+    .quality-filter.active {
+      border-color: rgba(95, 167, 255, 0.78);
+      background: rgba(95, 167, 255, 0.14);
+    }
+
+    .quality-filter-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 900;
+      margin-bottom: 8px;
+    }
+
+    .quality-filter-title .badge {
+      min-width: auto;
+      padding: 4px 8px;
+      font-size: 11px;
+    }
+
+    .quality-filter-main {
+      font-size: 22px;
+      font-weight: 900;
+      margin-bottom: 4px;
+    }
+
+    .quality-filter-detail {
+      color: var(--text-soft);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .quality-filter-reset {
+      border-style: dashed;
+    }
+
     .table-wrap {
       overflow-x: auto;
       border-radius: 16px;
       border: 1px solid var(--border);
       background: rgba(7, 16, 27, 0.86);
+    }
+
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .page-btn,
+    .page-size {
+      border: 1px solid var(--border-strong);
+      background: rgba(24, 43, 67, 0.9);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 9px 12px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .page-btn {
+      cursor: pointer;
+    }
+
+    .page-btn:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+
+    .page-info {
+      color: var(--text-soft);
+      font-size: 12px;
+      font-weight: 800;
     }
 
     table {
@@ -558,6 +652,10 @@
         </div>
       </section>
 
+      <section class="panel">
+        <div class="quality-breakdown" id="qualityBreakdown"></div>
+      </section>
+
       <section class="panel toolbar">
         <input class="search-box" id="searchInput" type="text" placeholder="Maç, turnuva veya skor ara">
         <div class="actions">
@@ -587,6 +685,18 @@
         </table>
       </section>
 
+      <div class="pagination" id="paginationBar">
+        <button class="page-btn" id="prevPage" onclick="changePage(-1)">Önceki</button>
+        <span class="page-info" id="pageInfo">1 / 1</span>
+        <button class="page-btn" id="nextPage" onclick="changePage(1)">Sonraki</button>
+        <select class="page-size" id="pageSizeSelect" onchange="changePageSize(this.value)">
+          <option value="50">50</option>
+          <option value="100" selected>100</option>
+          <option value="200">200</option>
+          <option value="500">500</option>
+        </select>
+      </div>
+
       <div class="empty-state" id="emptyState">Silinen maç yok.</div>
     </main>
   </div>
@@ -609,6 +719,9 @@
     let searchQuery = '';
     let sortField = 'deleted_at';
     let sortAsc = false;
+    let qualityFilter = null;
+    let currentPage = 1;
+    let pageSize = 100;
 
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -651,6 +764,14 @@
       return `<span class="badge ${cls}">${escapeHtml(direction)}</span>`;
     }
 
+    function qualityBucket(alert) {
+      const grade = String(alert.quality_grade || '').trim().toUpperCase();
+      if (grade.startsWith('A')) return 'A';
+      if (grade.startsWith('B')) return 'B';
+      if (grade.startsWith('C')) return 'C';
+      return '-';
+    }
+
     function qualityLabel(alert) {
       const grade = (alert.quality_grade || '').trim();
       const score = Number(alert.quality_score || 0);
@@ -673,6 +794,11 @@
 
     function filteredAlerts() {
       let rows = [...deletedAlerts];
+      if (qualityFilter) {
+        rows = rows.filter(alert =>
+          alert.direction === qualityFilter.direction && qualityBucket(alert) === qualityFilter.grade
+        );
+      }
       if (!searchQuery) return sortedAlerts(rows);
       const q = searchQuery.toLowerCase();
       rows = rows.filter(alert => [
@@ -737,6 +863,66 @@
       document.getElementById('statSuccess').textContent = successList.length;
       document.getElementById('statFail').textContent = failList.length;
       document.getElementById('statRate').textContent = rate !== null ? `%${rate.toFixed(1)}` : '-';
+      renderQualityBreakdown();
+    }
+
+    function qualityStats(direction, grade) {
+      const scoped = deletedAlerts.filter(item => item.direction === direction && qualityBucket(item) === grade);
+      const success = scoped.filter(item => item.result === 'Başarılı').length;
+      const fail = scoped.filter(item => item.result === 'Başarısız').length;
+      const resolved = success + fail;
+      const rate = resolved > 0 ? Math.round((success / resolved) * 1000) / 10 : null;
+      return { total: scoped.length, success, fail, rate };
+    }
+
+    function renderQualityBreakdown() {
+      const target = document.getElementById('qualityBreakdown');
+      const directions = ['ALT', 'ÜST'];
+      const grades = ['A', 'B', 'C'];
+      const activeKey = qualityFilter ? `${qualityFilter.direction}-${qualityFilter.grade}` : '';
+      const cards = [];
+
+      cards.push(`
+        <button class="quality-filter quality-filter-reset ${!qualityFilter ? 'active' : ''}" onclick="setQualityFilter('', '')">
+          <div class="quality-filter-title">TÜM SİNYALLER</div>
+          <div class="quality-filter-main">${deletedAlerts.length}</div>
+          <div class="quality-filter-detail">Filtreyi kaldır</div>
+        </button>
+      `);
+
+      for (const direction of directions) {
+        for (const grade of grades) {
+          const stats = qualityStats(direction, grade);
+          const key = `${direction}-${grade}`;
+          const badgeClass = direction === 'ALT' ? 'badge-alt' : 'badge-ust';
+          const rateText = stats.rate !== null ? `%${stats.rate.toFixed(1)}` : '-';
+          cards.push(`
+            <button class="quality-filter ${activeKey === key ? 'active' : ''}" onclick="setQualityFilter('${direction}', '${grade}')">
+              <div class="quality-filter-title">
+                <span class="badge ${badgeClass}">${direction}</span>
+                <span>${grade}</span>
+              </div>
+              <div class="quality-filter-main">${stats.total}</div>
+              <div class="quality-filter-detail">
+                Başarılı ${stats.success} / Başarısız ${stats.fail}<br>
+                Başarı ${rateText}
+              </div>
+            </button>
+          `);
+        }
+      }
+
+      target.innerHTML = cards.join('');
+    }
+
+    function setQualityFilter(direction, grade) {
+      if (!direction || !grade) {
+        qualityFilter = null;
+      } else {
+        qualityFilter = { direction, grade };
+      }
+      currentPage = 1;
+      render();
     }
 
     function render() {
@@ -744,6 +930,7 @@
       const body = document.getElementById('deletedBody');
       const tableWrap = document.getElementById('tableWrap');
       const empty = document.getElementById('emptyState');
+      const pagination = document.getElementById('paginationBar');
 
       updateStats();
       updateSortHeaders();
@@ -751,13 +938,26 @@
       if (rows.length === 0) {
         body.innerHTML = '';
         tableWrap.style.display = 'none';
+        pagination.style.display = 'none';
         empty.style.display = 'block';
         return;
       }
 
       tableWrap.style.display = 'block';
+      pagination.style.display = 'flex';
       empty.style.display = 'none';
-      body.innerHTML = rows.map(alert => {
+      const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+      if (currentPage > totalPages) currentPage = totalPages;
+      if (currentPage < 1) currentPage = 1;
+      const start = (currentPage - 1) * pageSize;
+      const pagedRows = rows.slice(start, start + pageSize);
+
+      document.getElementById('pageInfo').textContent = `${currentPage} / ${totalPages} (${rows.length})`;
+      document.getElementById('prevPage').disabled = currentPage <= 1;
+      document.getElementById('nextPage').disabled = currentPage >= totalPages;
+      document.getElementById('pageSizeSelect').value = String(pageSize);
+
+      body.innerHTML = pagedRows.map(alert => {
         const matchName = cleanMatchName(alert.match_name || '-');
         const matchHtml = alert.url
           ? `<a class="match-link" href="${escapeHtml(alert.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(matchName)}</a>`
@@ -785,6 +985,17 @@
       }).join('');
     }
 
+    function changePage(delta) {
+      currentPage += delta;
+      render();
+    }
+
+    function changePageSize(value) {
+      pageSize = Number(value) || 100;
+      currentPage = 1;
+      render();
+    }
+
     function showBanner(message, type = 'success') {
       const banner = document.getElementById('statusBanner');
       banner.className = `banner ${type === 'error' ? 'error' : ''}`;
@@ -798,6 +1009,7 @@
         const response = await fetch('/api/deleted-matches');
         if (!response.ok) throw new Error('Silinen maçlar alınamadı.');
         deletedAlerts = await response.json();
+        currentPage = 1;
         render();
       } catch (error) {
         console.error(error);
@@ -869,6 +1081,7 @@
 
     function resetSearch() {
       searchQuery = '';
+      currentPage = 1;
       document.getElementById('searchInput').value = '';
       render();
     }
@@ -941,6 +1154,7 @@
 
     document.getElementById('searchInput').addEventListener('input', event => {
       searchQuery = event.target.value.trim();
+      currentPage = 1;
       render();
     });
 
@@ -953,6 +1167,7 @@
           sortField = field;
           sortAsc = ['match_name', 'direction', 'status', 'score', 'result'].includes(field);
         }
+        currentPage = 1;
         render();
       });
     });

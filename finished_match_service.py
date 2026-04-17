@@ -462,7 +462,7 @@ async def run_finished_match_cycle(db, config) -> dict:
 
 
 async def run_deleted_match_result_cycle(db, config) -> dict:
-    tracked_matches = db.get_deleted_matches_for_result_check(limit=config.FINISHED_MATCH_BATCH_SIZE)
+    tracked_matches = db.get_deleted_matches_for_result_check(limit=None)
     logger.info("Checking %s deleted matches for final results.", len(tracked_matches))
 
     if not tracked_matches:
