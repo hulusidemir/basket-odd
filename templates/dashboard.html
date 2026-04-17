@@ -511,6 +511,7 @@
     }
 
     tr.bet-placed:hover {
+      background: var(--bet-bg);
       opacity: 0.72;
     }
 
@@ -518,9 +519,17 @@
       background: var(--follow-bg);
     }
 
+    tr.is-followed:hover {
+      background: var(--follow-bg);
+    }
+
     tr.is-ignored {
       background: var(--ignored-bg);
       opacity: 0.72;
+    }
+
+    tr.is-ignored:hover {
+      background: var(--ignored-bg);
     }
 
     tr.is-ignored td.col-match,
