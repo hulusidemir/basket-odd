@@ -5,3 +5,5 @@ discovery_output.json
 __pycache__/
 *.pyc
 *.db
+*.md.claude/
+*.bak
