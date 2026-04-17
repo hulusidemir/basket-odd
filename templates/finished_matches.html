@@ -43,9 +43,10 @@
     a { color: inherit; }
 
     .page {
-      width: min(1440px, calc(100% - 32px));
+      width: calc(100% - 4px);
+      max-width: none;
       margin: 0 auto;
-      padding: 24px 0 40px;
+      padding: 6px 0 24px;
     }
 
     .hero {
@@ -1073,7 +1074,7 @@
 
     @media (max-width: 900px) {
       .page {
-        width: min(100%, calc(100% - 20px));
+        width: calc(100% - 4px);
         padding-top: 14px;
       }
 
