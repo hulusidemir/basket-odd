@@ -446,10 +446,7 @@
       padding: 10px 8px;
     }
 
-    tbody td.col-select.is-selected {
-      background: rgba(255, 107, 99, 0.2);
-      box-shadow: inset 0 0 0 1px rgba(255, 126, 126, 0.35);
-    }
+
 
     tbody tr.is-selected {
       background: rgba(220, 38, 38, 0.18) !important;
@@ -1768,7 +1765,11 @@
       <table>
         <thead>
           <tr>
-            <th class="col-select-header">Seç</th>
+            <th class="col-select-header">
+              <label class="match-select-wrap" title="Sayfadaki tümünü seç/kaldır">
+                <input class="match-select-box" type="checkbox" id="selectAllCheckbox" onchange="selectAllOnPage(this.checked)" aria-label="Tümünü seç">
+              </label>
+            </th>
             <th data-sort="alerted_at">Zaman ▼</th>
             <th data-sort="direction">Sinyal</th>
             <th data-sort="quality_score">Kalite</th>
@@ -2632,6 +2633,40 @@
       renderTable();
       renderCards();
       updateBulkDeleteButton();
+      updateSelectAllCheckbox();
+    }
+
+    function selectAllOnPage(checked) {
+      const filtered = filterAlerts();
+      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+      if (currentPage > totalPages) currentPage = totalPages;
+      const start = (currentPage - 1) * pageSize;
+      const paged = filtered.slice(start, start + pageSize);
+
+      paged.forEach(a => {
+        const key = normalizeMatchId(a.match_id);
+        if (!key) return;
+        if (checked) selectedMatchIds.add(key);
+        else selectedMatchIds.delete(key);
+      });
+      render();
+    }
+
+    function updateSelectAllCheckbox() {
+      const cb = document.getElementById('selectAllCheckbox');
+      if (!cb) return;
+      const filtered = filterAlerts();
+      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+      const start = (currentPage - 1) * pageSize;
+      const paged = filtered.slice(start, start + pageSize);
+      if (paged.length === 0) {
+        cb.checked = false;
+        cb.indeterminate = false;
+        return;
+      }
+      const selectedCount = paged.filter(a => isMatchSelected(a.match_id)).length;
+      cb.checked = selectedCount === paged.length;
+      cb.indeterminate = selectedCount > 0 && selectedCount < paged.length;
     }
 
     function renderTable() {
@@ -2683,7 +2718,7 @@
         const ignoreBtnTitle = a.ignored ? 'Gözardı işaretini kaldır' : 'Gözardı et';
 
         return `<tr class="${classes.join(' ')}">
-          <td class="col-select ${matchSelected ? 'is-selected' : ''}">
+          <td class="col-select">
             <label class="match-select-wrap" title="Toplu silme için maçı seç">
               <input class="match-select-box" type="checkbox" ${checkedAttr} onchange="toggleMatchSelectionByAlert(${a.id}, this.checked)" aria-label="Maçı seç">
             </label>
