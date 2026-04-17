@@ -2716,9 +2716,9 @@
         const dirIcon = a.direction === 'ALT' ? '🔻' : '🔺';
         const diffClass = a.diff >= 0 ? 'diff-positive' : 'diff-negative';
         const diffSign = a.direction === 'ALT' ? '+' : '-';
-        const liveReference = a.prematch != null
-          ? `mö ${Number(a.prematch).toFixed(1)}`
-          : 'açılış ref.';
+        const prematchInline = a.prematch != null && Number(a.prematch) !== Number(a.opening)
+          ? ` <span style="color:#8ea2ba;font-size:11px;">(${Number(a.prematch).toFixed(1)})</span>`
+          : '';
         const diffSource = a.prematch != null ? 'Maç Öncesi' : 'Açılış';
         const time = a.alerted_at ? new Date(a.alerted_at + 'Z').toLocaleString('tr-TR', {
           day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
@@ -2758,8 +2758,8 @@
           <td class="col-tournament" title="${escapeHtml(a.tournament || '-')}">${escapeHtml(a.tournament || '-')}</td>
           <td>${escapeHtml(a.status || '-')}</td>
           <td><b>${escapeHtml(a.score || '-')}</b></td>
-          <td>${a.opening.toFixed(1)}</td>
-          <td title="Fark kaynağı: ${escapeHtml(diffSource)}">${a.live.toFixed(1)} <span style="color:#8ea2ba;font-size:11px;">(${escapeHtml(liveReference)})</span></td>
+          <td title="Fark kaynağı: ${escapeHtml(diffSource)}">${a.opening.toFixed(1)}${prematchInline}</td>
+          <td>${a.live.toFixed(1)}</td>
           ${projectedHtml(a)}
           <td class="diff-val ${diffClass}">${diffSign}${a.diff.toFixed(1)}</td>
           <td>
@@ -2845,14 +2845,9 @@
           <div class="card-odds">
             <div class="card-odds-value">
               <div class="card-odds-label">Açılış</div>
-              <div class="card-odds-num">${a.opening.toFixed(1)}</div>
+              <div class="card-odds-num">${a.opening.toFixed(1)}${a.prematch != null && Number(a.prematch) !== Number(a.opening) ? ` <span style="color:#8ea2ba;font-size:12px;">(${Number(a.prematch).toFixed(1)})</span>` : ''}</div>
             </div>
             <div class="card-odds-arrow">→</div>
-            ${a.prematch != null ? `<div class="card-odds-value">
-              <div class="card-odds-label">Maç Öncesi</div>
-              <div class="card-odds-num" style="color:#fbbf24">${Number(a.prematch).toFixed(1)}</div>
-            </div>
-            <div class="card-odds-arrow">→</div>` : ''}
             <div class="card-odds-value">
               <div class="card-odds-label">Canlı</div>
               <div class="card-odds-num">${a.live.toFixed(1)}</div>
