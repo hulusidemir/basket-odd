@@ -9,10 +9,10 @@ Usage:
 import os
 import re
 from datetime import datetime, timedelta
-from typing import Optional
 from flask import Flask, jsonify, render_template, request
 from db import Database
 from config import Config
+from projection import calculate_projected_total
 from signal_reliability import alert_reliability
 
 config = Config()
@@ -24,61 +24,12 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 BET_BUILDER_ALERT_WINDOW_MINUTES = 240
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Projected Score Calculation
-# ──────────────────────────────────────────────────────────────────────────────
-
-def calculate_projected_score(score: str, status: str, match_name: str = "", tournament: str = "") -> Optional[float]:
-    if not score: return None
-    match = re.search(r'(\d+)\s*[-–]\s*(\d+)', score.strip())
-    if not match: return None
-    total_score = float(match.group(1)) + float(match.group(2))
-
-    period = None
-    remaining_min = None
-    status_clean = (status or "").strip()
-    
-    if not status_clean or re.match(r'^OT', status_clean, re.IGNORECASE):
-        return None
-        
-    if re.match(r'^HT$', status_clean, re.IGNORECASE):
-        period = 2
-        remaining_min = 0.0
-    else:
-        m1 = re.search(r'(?:Q(\d)|(\d)Q|(\d{1,2}))[-:\s]*(\d{1,2}):(\d{2})', status_clean, re.IGNORECASE)
-        if m1:
-            period = int(m1.group(1) or m1.group(2) or m1.group(3))
-            remaining_min = int(m1.group(4)) + int(m1.group(5)) / 60.0
-            
-    if period is None or remaining_min is None:
-        return None
-
-    text_to_check = f"{match_name} {tournament}".upper()
-    if "NBA" in text_to_check:
-        quarter_length = 12
-        total_game_min = 48
-    elif "NCAA" in text_to_check:
-        quarter_length = 20
-        total_game_min = 40
-    else:
-        quarter_length = 10
-        total_game_min = 40
-        
-    if quarter_length == 20:
-        elapsed_min = (period - 1) * 20 + (20 - remaining_min)
-    else:
-        elapsed_min = (period - 1) * quarter_length + (quarter_length - remaining_min)
-
-    if elapsed_min < 1:
-        return None
-        
-    projected_total = (total_score / elapsed_min) * total_game_min
-    return round(projected_total, 1)
-
-
 def enrich_alerts_with_projection(alerts: list[dict]) -> list[dict]:
     for alert in alerts:
-        alert["projected"] = calculate_projected_score(
+        prematch = alert.get("prematch")
+        alert["reference"] = prematch if prematch is not None else alert.get("opening")
+        alert["reference_label"] = "Maç Öncesi" if prematch is not None else "Açılış"
+        alert["projected"] = calculate_projected_total(
             score=alert.get("score", ""),
             status=alert.get("status", ""),
             match_name=alert.get("match_name", ""),

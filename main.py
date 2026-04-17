@@ -35,9 +35,9 @@ async def process_match(
 ) -> None:
     """
     Processes a single match:
-    - Calculates the difference between Opening odds and In-play odds total lines.
+    - Calculates the difference between reference and in-play total lines.
     - Sends a Telegram notification if the difference exceeds the threshold.
-    - Spawns background AI analysis task.
+    - Scores the signal with live context and market projection.
     """
     match_id = match["match_id"]
     match_name = match["match_name"]
@@ -68,15 +68,18 @@ async def process_match(
                 log.debug("Blacklisted (%s): %s", term, match_name)
                 return
 
-    # PRIMARY comparison: inplay vs prematch (fallback: inplay vs opening)
+    # PRIMARY comparison: in-play vs prematch (fallback: in-play vs opening)
     baseline = prematch_total if prematch_total is not None else opening_total
+    baseline_label = "Maç Öncesi" if prematch_total is not None else "Açılış"
     diff = inplay_total - baseline
     abs_diff = abs(diff)
     log.info(
-        "📊 %s | Açılış: %.1f | Maç Öncesi: %s | Canlı: %.1f | Fark: %+.1f | Skor: %s | Durum: %s",
+        "📊 %s | Açılış: %.1f | Maç Öncesi: %s | Referans: %s %.1f | Canlı: %.1f | Fark: %+.1f | Skor: %s | Durum: %s",
         match_name,
         opening_total,
-        f"{prematch_total:.1f}" if prematch_total else "-",
+        f"{prematch_total:.1f}" if prematch_total is not None else "-",
+        baseline_label,
+        baseline,
         inplay_total,
         diff,
         score or "-",
@@ -111,16 +114,19 @@ async def process_match(
             **match,
             "direction": direction,
             "baseline": baseline,
+            "baseline_label": baseline_label,
         },
         insights,
         config.THRESHOLD,
     )
 
-    # 2) Send instant Telegram alert
+    # 2) Send Telegram alert
     await notifier.send_alert(
         match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
         score=score, signal_count=signal_count, quality=quality,
         prematch=prematch_total,
+        baseline=baseline,
+        baseline_label=baseline_label,
         threshold=config.THRESHOLD,
     )
 

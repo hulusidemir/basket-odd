@@ -49,6 +49,8 @@ class TelegramNotifier:
         signal_count: int = 1,
         quality: dict | None = None,
         prematch: float | None = None,
+        baseline: float | None = None,
+        baseline_label: str = "Açılış",
         threshold: float = 10.0,
     ) -> dict:
         """
@@ -57,10 +59,10 @@ class TelegramNotifier:
         """
         if direction == "ALT":
             emoji = "🔻"
-            tip = "Canlı barem açılışa göre yükseldi"
+            tip = f"Canlı barem {baseline_label.lower()} referansına göre yükseldi"
         else:
             emoji = "🔺"
-            tip = "Canlı barem açılışa göre düştü"
+            tip = f"Canlı barem {baseline_label.lower()} referansına göre düştü"
 
         reliability = alert_reliability(
             direction=direction,
@@ -97,6 +99,8 @@ class TelegramNotifier:
                 )
 
         prematch_line = f"Maç Öncesi:    <b>{prematch:.1f}</b>\n" if prematch is not None else ""
+        reference_value = baseline if baseline is not None else opening
+        reference_line = f"Referans:      <b>{baseline_label} {reference_value:.1f}</b>\n"
         text = (
             f"{emoji} <b>Sinyal: {direction} ({reliability['label']})</b>\n"
             f"{quality_line}"
@@ -106,6 +110,7 @@ class TelegramNotifier:
             f"{score_line}\n"
             f"Açılış Baremi: <b>{opening:.1f}</b>\n"
             f"{prematch_line}"
+            f"{reference_line}"
             f"Güncel Barem:  <b>{live:.1f}</b>\n"
             f"Fark: <b>{diff:+.1f}</b> puan\n\n"
             f"{summary_line}"

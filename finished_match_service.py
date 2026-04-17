@@ -5,12 +5,7 @@ Used by both the background worker and manual UI-triggered checks.
 
 import asyncio
 import logging
-import os
-import platform
 import re
-import shutil
-import subprocess
-import time
 
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
@@ -108,14 +103,15 @@ def evaluate_signal_professionally(
         timing_grade = "D"  # Bilinmiyor
 
     # ── 3. Market Read Correct ──
-    # Açılış → Canlı hareketi doğru yönde mi okunmuş?
-    opening_to_live_diff = live - opening
+    # Referans → Canlı hareketi doğru yönde mi okunmuş?
+    reference = float(alert.get("prematch") or opening)
+    reference_to_live_diff = live - reference
     if direction == "ALT":
-        # ALT: barem yükselmiş olmalı (opening_to_live_diff > 0)
-        market_read_correct = 1 if opening_to_live_diff > 0 else 0
+        # ALT: barem yükselmiş olmalı.
+        market_read_correct = 1 if reference_to_live_diff > 0 else 0
     elif direction in {"ÜST", "UST"}:
-        # ÜST: barem düşmüş olmalı (opening_to_live_diff < 0)
-        market_read_correct = 1 if opening_to_live_diff < 0 else 0
+        # ÜST: barem düşmüş olmalı.
+        market_read_correct = 1 if reference_to_live_diff < 0 else 0
     else:
         market_read_correct = None
 
@@ -225,20 +221,11 @@ class AiscoreFinishedMatchChecker:
     def __init__(
         self,
         *,
-        browser_mode: str,
-        cdp_url: str,
-        cdp_port: int,
-        opera_binary: str,
         page_timeout_ms: int,
         concurrency: int = 4,
     ):
-        self.browser_mode = browser_mode.lower()
-        self.cdp_url = cdp_url
-        self.cdp_port = cdp_port
-        self.opera_binary = opera_binary
         self.page_timeout_ms = page_timeout_ms
         self.concurrency = concurrency
-        self._opera_process = None
 
     async def _launch_headless_context(self, playwright):
         try:
@@ -265,109 +252,8 @@ class AiscoreFinishedMatchChecker:
         except Exception as exc:
             raise RuntimeError(
                 "Headless Chromium could not be started. "
-                "Run 'playwright install chromium' on the server or configure a working Opera CDP target."
+                "Run 'playwright install chromium' on the server."
             ) from exc
-
-    def _find_opera_binary(self) -> str:
-        if self.opera_binary:
-            return self.opera_binary
-
-        flatpak_export = "/var/lib/flatpak/exports/bin/com.opera.Opera"
-        if os.path.exists(flatpak_export):
-            return flatpak_export
-
-        found = shutil.which("opera")
-        if found:
-            return found
-
-        try:
-            result = subprocess.run(
-                ["flatpak", "list", "--app", "--columns=application"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if "com.opera.Opera" in result.stdout:
-                return "flatpak run --branch=stable --arch=x86_64 com.opera.Opera"
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
-
-        if platform.system() == "Windows":
-            candidates = [
-                os.path.expandvars(r"%LOCALAPPDATA%\Programs\Opera\opera.exe"),
-                os.path.expandvars(r"%PROGRAMFILES%\Opera\opera.exe"),
-                os.path.expandvars(r"%PROGRAMFILES(X86)%\Opera\opera.exe"),
-            ]
-            for candidate in candidates:
-                if os.path.isfile(candidate):
-                    return candidate
-
-        raise RuntimeError("Opera not found. Set OPERA_BINARY in .env or install Opera.")
-
-    def _is_opera_cdp_alive(self) -> bool:
-        import http.client
-        import socket
-
-        try:
-            with socket.create_connection(("127.0.0.1", self.cdp_port), timeout=2):
-                pass
-        except (ConnectionRefusedError, OSError):
-            return False
-
-        try:
-            conn = http.client.HTTPConnection("127.0.0.1", self.cdp_port, timeout=5)
-            conn.request("GET", "/json/version")
-            resp = conn.getresponse()
-            conn.close()
-            return resp.status == 200
-        except Exception:
-            return False
-
-    def _launch_opera(self):
-        if self._is_opera_cdp_alive():
-            return
-
-        binary = self._find_opera_binary()
-        user_data_dir = os.path.expanduser("~/.opera-cdp-profile")
-
-        cmd_parts = binary.split() if " " in binary else [binary]
-        args = cmd_parts + [
-            f"--remote-debugging-port={self.cdp_port}",
-            f"--user-data-dir={user_data_dir}",
-            "--no-first-run",
-            "--disable-popup-blocking",
-            "--start-minimized",
-        ]
-
-        logger.info("Launching Opera for finished match checks.")
-        self._opera_process = subprocess.Popen(
-            args,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-
-        for _ in range(30):
-            time.sleep(1)
-            if self._is_opera_cdp_alive():
-                return
-
-        raise RuntimeError(f"Opera CDP port {self.cdp_port} did not become ready.")
-
-    async def _build_context(self, playwright):
-        if self.browser_mode == "headless":
-            return await self._launch_headless_context(playwright)
-
-        try:
-            self._launch_opera()
-            browser = await playwright.chromium.connect_over_cdp(self.cdp_url)
-            context = browser.contexts[0] if browser.contexts else await browser.new_context()
-            return browser, context, False
-        except Exception as exc:
-            logger.warning(
-                "Opera/CDP finished-match check is unavailable, falling back to headless Chromium: %s",
-                exc,
-            )
-            return await self._launch_headless_context(playwright)
 
     async def check_matches(self, tracked_matches: list[dict]) -> list[dict]:
         if not tracked_matches:
@@ -375,7 +261,7 @@ class AiscoreFinishedMatchChecker:
 
         results = []
         async with async_playwright() as playwright:
-            browser, context, should_close_browser = await self._build_context(playwright)
+            browser, context, should_close_browser = await self._launch_headless_context(playwright)
             try:
                 for index in range(0, len(tracked_matches), self.concurrency):
                     batch = tracked_matches[index:index + self.concurrency]
@@ -496,10 +382,6 @@ async def run_finished_match_cycle(db, config) -> dict:
         }
 
     checker = AiscoreFinishedMatchChecker(
-        browser_mode=config.BROWSER_MODE,
-        cdp_url=config.OPERA_CDP_URL,
-        cdp_port=config.OPERA_CDP_PORT,
-        opera_binary=config.OPERA_BINARY,
         page_timeout_ms=config.PAGE_TIMEOUT_MS,
         concurrency=4,
     )

@@ -1794,6 +1794,7 @@
             <th data-sort="status">Durum</th>
             <th data-sort="score">Skor</th>
             <th data-sort="opening">Açılış</th>
+            <th data-sort="reference">Referans</th>
             <th data-sort="live">Canlı</th>
             <th data-sort="projected">Proj</th>
             <th data-sort="diff">Fark</th>
@@ -2055,7 +2056,7 @@
     }
 
     function sortValue(alert, field) {
-      const numericFields = new Set(['opening', 'live', 'diff', 'projected', 'quality_score', 'signal_count']);
+      const numericFields = new Set(['opening', 'reference', 'live', 'diff', 'projected', 'quality_score', 'signal_count']);
       const value = alert[field];
 
       if (numericFields.has(field)) {
@@ -2716,6 +2717,8 @@
         const dirIcon = a.direction === 'ALT' ? '🔻' : '🔺';
         const diffClass = a.diff >= 0 ? 'diff-positive' : 'diff-negative';
         const diffSign = a.direction === 'ALT' ? '+' : '-';
+        const referenceLabel = a.reference_label || (a.prematch != null ? 'Maç Öncesi' : 'Açılış');
+        const referenceValue = a.reference != null ? Number(a.reference) : Number(a.prematch != null ? a.prematch : a.opening);
         const time = a.alerted_at ? new Date(a.alerted_at + 'Z').toLocaleString('tr-TR', {
           day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
         }) : '-';
@@ -2755,6 +2758,7 @@
           <td>${escapeHtml(a.status || '-')}</td>
           <td><b>${escapeHtml(a.score || '-')}</b></td>
           <td>${a.opening.toFixed(1)}</td>
+          <td title="${escapeHtml(referenceLabel)}">${referenceValue.toFixed(1)}</td>
           <td>${a.live.toFixed(1)}</td>
           ${projectedHtml(a)}
           <td class="diff-val ${diffClass}">${diffSign}${a.diff.toFixed(1)}</td>
@@ -2797,6 +2801,7 @@
         const dirIcon = a.direction === 'ALT' ? '🔻' : '🔺';
         const diffClass = a.diff >= 0 ? 'diff-positive' : 'diff-negative';
         const diffSign = a.direction === 'ALT' ? '+' : '-';
+        const referenceLabel = a.reference_label || (a.prematch != null ? 'Maç Öncesi' : 'Açılış');
         const time = a.alerted_at ? new Date(a.alerted_at + 'Z').toLocaleString('tr-TR', {
           day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
         }) : '-';
@@ -2859,7 +2864,7 @@
             </div>
             <div class="card-odds-arrow">＝</div>
             <div class="card-diff">
-              <div class="card-diff-label">Fark</div>
+              <div class="card-diff-label" title="${escapeHtml(referenceLabel)}">Fark (${escapeHtml(referenceLabel)})</div>
               <div class="card-diff-value ${diffClass}">${diffSign}${a.diff.toFixed(1)}</div>
             </div>
           </div>

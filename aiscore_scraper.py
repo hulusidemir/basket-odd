@@ -689,7 +689,7 @@ class AiscoreScraper:
             "tournament": parsed.get("tournament") or "Unknown",
             "status": parsed.get("status") or "Live",
             "opening_total": float(opening),
-            "prematch_total": float(prematch) if prematch is not None else float(opening),
+            "prematch_total": float(prematch) if prematch is not None else None,
             "inplay_total": float(inplay),
             "url": url,
             "score": parsed.get("score") or "",

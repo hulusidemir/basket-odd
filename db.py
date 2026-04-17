@@ -605,14 +605,27 @@ class Database:
                 """
             ).fetchall()
             match_ids = [row["match_id"] for row in rows]
-            cursor = conn.execute(
-                "DELETE FROM alerts WHERE deleted_at IS NOT NULL AND deleted_at != ''"
-            )
             if match_ids:
                 placeholders = ", ".join("?" for _ in match_ids)
+                cursor = conn.execute(
+                    f"DELETE FROM alerts WHERE match_id IN ({placeholders})",
+                    tuple(match_ids),
+                )
                 conn.execute(
                     f"DELETE FROM match_actions WHERE match_id IN ({placeholders})",
                     tuple(match_ids),
+                )
+                conn.execute(
+                    f"DELETE FROM opening_lines WHERE match_id IN ({placeholders})",
+                    tuple(match_ids),
+                )
+                conn.execute(
+                    f"DELETE FROM finished_matches WHERE match_id IN ({placeholders})",
+                    tuple(match_ids),
+                )
+            else:
+                cursor = conn.execute(
+                    "DELETE FROM alerts WHERE deleted_at IS NOT NULL AND deleted_at != ''"
                 )
         return cursor.rowcount
 

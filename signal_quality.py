@@ -1,116 +1,14 @@
 import re
 from statistics import mean
 
+from projection import calculate_projected_total, game_clock, parse_score
+
 
 def _split_match_name(match_name: str) -> tuple[str, str]:
     parts = [part.strip() for part in (match_name or "").split(" - ", 1)]
     if len(parts) == 2:
         return parts[0], parts[1]
     return match_name or "Home", "Away"
-
-
-def _parse_score(score: str) -> tuple[int, int] | tuple[None, None]:
-    match = re.search(r"(\d+)\s*[-–]\s*(\d+)", score or "")
-    if not match:
-        return None, None
-    return int(match.group(1)), int(match.group(2))
-
-
-def _parse_status(status: str, match_name: str = "", tournament: str = "") -> tuple[int | None, float | None, int]:
-    status_clean = (status or "").strip()
-    if not status_clean or re.match(r"^OT", status_clean, re.IGNORECASE):
-        return None, None, 40
-
-    text_to_check = f"{match_name} {tournament}".upper()
-    if "NBA" in text_to_check:
-        quarter_length = 12
-        total_game_min = 48
-    elif "NCAA" in text_to_check:
-        quarter_length = 20
-        total_game_min = 40
-    else:
-        quarter_length = 10
-        total_game_min = 40
-
-    period = None
-    remaining_min = None
-
-    if re.match(r"^HT$", status_clean, re.IGNORECASE):
-        period = 2
-        remaining_min = 0.0
-
-    if period is None:
-        q_match = re.match(
-            r"(?:Q(\d)|(\d)Q)\s*[-\s]?\s*(\d{1,2}):(\d{2})",
-            status_clean,
-            re.IGNORECASE,
-        )
-        if q_match:
-            period = int(q_match.group(1) or q_match.group(2))
-            remaining_min = int(q_match.group(3)) + int(q_match.group(4)) / 60.0
-
-    if period is None:
-        ord_match = re.match(
-            r"(\d)(?:st|nd|rd|th)\s*[-\s]?\s*(?:(\d{1,2}):(\d{2}))?",
-            status_clean,
-            re.IGNORECASE,
-        )
-        if ord_match:
-            period = int(ord_match.group(1))
-            if ord_match.group(2) and ord_match.group(3):
-                remaining_min = int(ord_match.group(2)) + int(ord_match.group(3)) / 60.0
-            else:
-                remaining_min = 5.0
-
-    if period is None:
-        q_only = re.match(r"^(?:Q(\d)|(\d)Q)$", status_clean, re.IGNORECASE)
-        if q_only:
-            period = int(q_only.group(1) or q_only.group(2))
-            remaining_min = 5.0
-
-    if period is None:
-        h_match = re.match(r"^(\d)H$", status_clean, re.IGNORECASE)
-        if h_match:
-            half = int(h_match.group(1))
-            period = 2 if half == 1 else 4
-            remaining_min = 5.0
-
-    if period is None:
-        d_match = re.match(r"^([1-4])$", status_clean)
-        if d_match:
-            period = int(d_match.group(1))
-            remaining_min = 5.0
-
-    if period is None:
-        nt_match = re.match(r"(\d{1,2})[-:](\d{1,2}):(\d{2})", status_clean)
-        if nt_match:
-            p = int(nt_match.group(1))
-            if 1 <= p <= 4:
-                period = p
-                remaining_min = int(nt_match.group(2)) + int(nt_match.group(3)) / 60.0
-
-    return period, remaining_min, total_game_min
-
-
-def calculate_projected_total(score: str, status: str, match_name: str = "", tournament: str = "") -> float | None:
-    home_score, away_score = _parse_score(score)
-    if home_score is None or away_score is None:
-        return None
-
-    period, remaining_min, total_game_min = _parse_status(status, match_name, tournament)
-    if period is None or remaining_min is None:
-        return None
-
-    quarter_length = 20 if total_game_min == 40 and "NCAA" in f"{match_name} {tournament}".upper() else (12 if total_game_min == 48 else 10)
-    if quarter_length == 20:
-        elapsed_min = (period - 1) * 20 + (20 - remaining_min)
-    else:
-        elapsed_min = (period - 1) * quarter_length + (quarter_length - remaining_min)
-
-    if elapsed_min <= 1:
-        return None
-
-    return round(((home_score + away_score) / elapsed_min) * total_game_min, 1)
 
 
 def _safe_float(value) -> float | None:
@@ -395,15 +293,19 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
     direction = match["direction"]
     opening = float(match["opening_total"])
     live = float(match["inplay_total"])
-    diff = abs(live - opening)
+    baseline = float(match.get("baseline") or opening)
+    baseline_label = str(match.get("baseline_label") or "Açılış")
+    diff = abs(live - baseline)
     match_name = match.get("match_name", "")
     tournament = match.get("tournament", "")
     status = match.get("status", "")
     score = match.get("score", "")
     locked = bool(match.get("market_locked"))
 
-    period, remaining_min, _ = _parse_status(status, match_name, tournament)
-    home_score, away_score = _parse_score(score)
+    clock = game_clock(status, match_name, tournament)
+    period = clock["period"]
+    remaining_min = clock["remaining_min"]
+    home_score, away_score = parse_score(score)
     score_gap = abs(home_score - away_score) if home_score is not None and away_score is not None else None
 
     h2h_metrics = _extract_h2h_metrics((context.get("h2h") or {}).get("body_text", ""), match_name)
@@ -418,13 +320,13 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
     diff_ratio = diff / max(float(threshold or 1), 1.0)
     if diff_ratio >= 1.7:
         score_value += 14
-        reasons.append(f"Market sapmasi cok guclu: acilis-canli farki {diff:.1f}")
+        reasons.append(f"Market sapmasi cok guclu: {baseline_label}-canli farki {diff:.1f}")
     elif diff_ratio >= 1.4:
         score_value += 10
-        reasons.append(f"Market sapmasi guclu: fark {diff:.1f}")
+        reasons.append(f"Market sapmasi guclu: {baseline_label}-canli farki {diff:.1f}")
     elif diff_ratio >= 1.15:
         score_value += 6
-        reasons.append(f"Market sapmasi esitigin ustunde: fark {diff:.1f}")
+        reasons.append(f"Market sapmasi esitigin ustunde: {baseline_label}-canli farki {diff:.1f}")
 
     if period == 2:
         score_value += 7
