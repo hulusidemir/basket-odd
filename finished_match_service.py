@@ -459,3 +459,116 @@ async def run_finished_match_cycle(db, config) -> dict:
             })
 
     return summary
+
+
+async def run_deleted_match_result_cycle(db, config) -> dict:
+    tracked_matches = db.get_deleted_matches_for_result_check(limit=config.FINISHED_MATCH_BATCH_SIZE)
+    logger.info("Checking %s deleted matches for final results.", len(tracked_matches))
+
+    if not tracked_matches:
+        return {
+            "tracked_count": 0,
+            "checked_count": 0,
+            "finished_match_count": 0,
+            "updated_count": 0,
+            "successful_count": 0,
+            "failed_count": 0,
+            "push_count": 0,
+            "details": [],
+        }
+
+    return await _run_deleted_match_result_check_for_matches(db, config, tracked_matches)
+
+
+async def run_single_deleted_match_result_check(db, config, alert_id: int) -> dict:
+    tracked_match = db.get_deleted_match_for_result_check_by_alert_id(alert_id)
+    if not tracked_match:
+        return {
+            "tracked_count": 0,
+            "checked_count": 0,
+            "finished_match_count": 0,
+            "updated_count": 0,
+            "successful_count": 0,
+            "failed_count": 0,
+            "push_count": 0,
+            "details": [],
+            "message": "Kontrol edilecek maç bulunamadı.",
+        }
+
+    summary = await _run_deleted_match_result_check_for_matches(db, config, [tracked_match])
+    if summary["finished_match_count"] == 0:
+        summary["message"] = "Maç henüz bitmemiş veya final skoru alınamadı."
+    elif summary["updated_count"] == 0:
+        summary["message"] = "Maç bitmiş görünüyor ama güncellenecek boş sonuç bulunamadı."
+    else:
+        summary["message"] = f"{summary['updated_count']} sinyal güncellendi."
+    return summary
+
+
+async def _run_deleted_match_result_check_for_matches(db, config, tracked_matches: list[dict]) -> dict:
+    checker = AiscoreFinishedMatchChecker(
+        page_timeout_ms=config.PAGE_TIMEOUT_MS,
+        concurrency=4,
+    )
+    results = await checker.check_matches(tracked_matches)
+    summary = {
+        "tracked_count": len(tracked_matches),
+        "checked_count": len(results),
+        "finished_match_count": 0,
+        "updated_count": 0,
+        "successful_count": 0,
+        "failed_count": 0,
+        "push_count": 0,
+        "details": [],
+    }
+
+    for result in results:
+        if not result.get("is_finished"):
+            continue
+
+        final_score = result.get("score", "")
+        final_total = parse_score_total(final_score)
+        if final_total is None:
+            logger.debug("Deleted match is finished but score is not parseable: %s", result.get("match_id"))
+            continue
+
+        summary["finished_match_count"] += 1
+        alerts = db.get_deleted_alerts_for_result_check(result["match_id"])
+        for alert in alerts:
+            signal_result = evaluate_signal_result(
+                alert.get("direction", ""),
+                float(alert.get("live") or 0),
+                final_total,
+            )
+            if not signal_result:
+                continue
+
+            updated = db.update_deleted_alert_final_result(
+                alert["id"],
+                result=signal_result,
+                final_score=final_score,
+                final_status=result.get("status", "") or "Full Time",
+            )
+            if not updated:
+                continue
+
+            summary["updated_count"] += 1
+            if signal_result == "Başarılı":
+                summary["successful_count"] += 1
+            elif signal_result == "Başarısız":
+                summary["failed_count"] += 1
+            elif signal_result == "İade":
+                summary["push_count"] += 1
+
+            summary["details"].append({
+                "id": alert["id"],
+                "match_id": alert["match_id"],
+                "match_name": alert["match_name"],
+                "direction": alert["direction"],
+                "live_line": float(alert["live"]),
+                "final_score": final_score,
+                "final_total": final_total,
+                "result": signal_result,
+            })
+
+    return summary

@@ -6,12 +6,14 @@ Usage:
     python dashboard.py
 """
 
+import asyncio
 import os
 import re
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, render_template, request
 from db import Database
 from config import Config
+from finished_match_service import run_deleted_match_result_cycle, run_single_deleted_match_result_check
 from projection import calculate_projected_total
 from signal_reliability import alert_reliability
 
@@ -333,6 +335,18 @@ def api_clear_deleted_matches():
     return jsonify({"cleared": True, "deleted_count": deleted_count})
 
 
+@app.route("/api/deleted-matches/check-results", methods=["POST"])
+def api_check_deleted_match_results():
+    summary = asyncio.run(run_deleted_match_result_cycle(db, config))
+    return jsonify(summary)
+
+
+@app.route("/api/deleted-matches/<int:alert_id>/check-result", methods=["POST"])
+def api_check_single_deleted_match_result(alert_id: int):
+    summary = asyncio.run(run_single_deleted_match_result_check(db, config, alert_id))
+    return jsonify(summary)
+
+
 def _normalize_deleted_result(value: str) -> str:
     normalized = str(value or "").strip().lower()
     normalized = (
@@ -350,7 +364,14 @@ def _normalize_deleted_result(value: str) -> str:
 @app.route("/api/deleted-matches/<int:alert_id>/result", methods=["POST"])
 def api_update_deleted_match_result(alert_id: int):
     payload = request.get_json(silent=True) or {}
-    result = _normalize_deleted_result(payload.get("result", ""))
+    raw_result = payload.get("result", "")
+    if str(raw_result or "").strip() == "":
+        updated = db.update_deleted_alert_result(alert_id, "")
+        if not updated:
+            return jsonify({"error": "not found"}), 404
+        return jsonify({"id": alert_id, "result": "", "updated": True})
+
+    result = _normalize_deleted_result(raw_result)
     if not result:
         return jsonify({"error": "invalid_result"}), 400
     updated = db.update_deleted_alert_result(alert_id, result)

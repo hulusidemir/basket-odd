@@ -637,6 +637,29 @@ class Database:
             )
         return cursor.rowcount > 0
 
+    def update_deleted_alert_final_result(
+        self,
+        alert_id: int,
+        *,
+        result: str,
+        final_score: str,
+        final_status: str,
+    ) -> bool:
+        with self._conn() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE alerts
+                SET result = ?,
+                    score = CASE WHEN ? != '' THEN ? ELSE score END,
+                    status = CASE WHEN ? != '' THEN ? ELSE status END
+                WHERE id = ?
+                  AND deleted_at IS NOT NULL
+                  AND deleted_at != ''
+                """,
+                (result, final_score, final_score, final_status, final_status, alert_id),
+            )
+        return cursor.rowcount > 0
+
     # ---------- saved bet slips ----------
 
     def save_bet_slip(self, name: str, payload: dict) -> int:
@@ -911,6 +934,82 @@ class Database:
                   AND a.deleted_at != ''
                   AND fm.id IS NULL
                 ORDER BY a.alerted_at ASC, a.id ASC
+                """,
+                (match_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_deleted_matches_for_result_check(self, limit: int = 200) -> list:
+        """Return one deleted row per match where at least one result is still blank."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT a.match_id, a.match_name, a.tournament, a.url, a.status, a.score, a.alerted_at, a.deleted_at
+                FROM alerts a
+                INNER JOIN (
+                    SELECT match_id, MAX(id) AS latest_alert_id
+                    FROM alerts
+                    WHERE url != ''
+                      AND deleted_at IS NOT NULL
+                      AND deleted_at != ''
+                    GROUP BY match_id
+                ) latest ON latest.latest_alert_id = a.id
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM alerts pending
+                    WHERE pending.match_id = a.match_id
+                      AND pending.deleted_at IS NOT NULL
+                      AND pending.deleted_at != ''
+                      AND (pending.result IS NULL OR pending.result = '')
+                )
+                ORDER BY a.deleted_at DESC, a.alerted_at DESC, a.id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_deleted_match_for_result_check_by_alert_id(self, alert_id: int) -> dict | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT match_id
+                FROM alerts
+                WHERE id = ?
+                  AND deleted_at IS NOT NULL
+                  AND deleted_at != ''
+                """,
+                (alert_id,),
+            ).fetchone()
+            if not row:
+                return None
+
+            match = conn.execute(
+                """
+                SELECT match_id, match_name, tournament, url, status, score, alerted_at, deleted_at
+                FROM alerts
+                WHERE match_id = ?
+                  AND url != ''
+                  AND deleted_at IS NOT NULL
+                  AND deleted_at != ''
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (row["match_id"],),
+            ).fetchone()
+        return dict(match) if match else None
+
+    def get_deleted_alerts_for_result_check(self, match_id: str) -> list:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM alerts
+                WHERE match_id = ?
+                  AND deleted_at IS NOT NULL
+                  AND deleted_at != ''
+                  AND (result IS NULL OR result = '')
+                ORDER BY alerted_at ASC, id ASC
                 """,
                 (match_id,),
             ).fetchall()
