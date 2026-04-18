@@ -135,9 +135,13 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         match = re.search(pattern, text, re.IGNORECASE)
         if not match:
             return {}
+        ppg = float(match.group(1))
+        oppg = float(match.group(2))
         return {
-            "ppg": float(match.group(1)),
-            "oppg": float(match.group(2)),
+            "team": team_name,
+            "ppg": ppg,
+            "oppg": oppg,
+            "avg_total": round(ppg + oppg, 1),
             "over_pct": float(match.group(3)),
         }
 
@@ -161,8 +165,8 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
     expected_total = None
     if home_metrics and away_metrics:
         expected_total = round(mean([
-            home_metrics["ppg"] + home_metrics["oppg"],
-            away_metrics["ppg"] + away_metrics["oppg"],
+            home_metrics["avg_total"],
+            away_metrics["avg_total"],
         ]), 1)
 
     return {
@@ -171,6 +175,149 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         "h2h_over_pct": h2h_over,
         "h2h_games": h2h_games,
         "expected_total": expected_total,
+    }
+
+
+def _team_profile_label(avg_total: float | None, over_pct: float | None) -> str:
+    """Takımın son 5 maç ortalama toplam + over eğilimini tek etikete çevir."""
+    if avg_total is None:
+        return "veri yok"
+    if avg_total >= 180:
+        scoring = "Yüksek skorlu"
+    elif avg_total >= 160:
+        scoring = "Orta skorlu"
+    elif avg_total >= 140:
+        scoring = "Düşük-orta skorlu"
+    else:
+        scoring = "Düşük skorlu"
+    if over_pct is None:
+        return scoring
+    if over_pct >= 60:
+        return f"{scoring} · over eğilimli"
+    if over_pct <= 40:
+        return f"{scoring} · under eğilimli"
+    return f"{scoring} · dengeli"
+
+
+def build_team_context(h2h_metrics: dict, live: float, direction: str) -> dict | None:
+    """Sinyalin maçtaki takım geçmişiyle uyumunu çıkarır.
+    Döndürdüğü sözlük hem notifier hem dashboard tarafından gösterilir."""
+    home = h2h_metrics.get("home_last5") or {}
+    away = h2h_metrics.get("away_last5") or {}
+    if not home and not away:
+        return None
+
+    expected = h2h_metrics.get("expected_total")
+    regression_note = None
+    regression_direction = None
+    regression_delta = None
+    if expected is not None and live is not None:
+        delta = round(live - expected, 1)
+        regression_delta = delta
+        if delta >= 4:
+            regression_direction = "ALT"
+            regression_note = (
+                f"Son 5 maç ortalaması {expected:.1f}, canlı barem {live:.1f} "
+                f"(+{delta:.1f}). Ortalamaya dönüş ALT tarafını destekler."
+            )
+        elif delta <= -4:
+            regression_direction = "ÜST"
+            regression_note = (
+                f"Son 5 maç ortalaması {expected:.1f}, canlı barem {live:.1f} "
+                f"({delta:.1f}). Ortalamaya dönüş ÜST tarafını destekler."
+            )
+        else:
+            regression_note = (
+                f"Son 5 maç ortalaması {expected:.1f}, canlı barem {live:.1f} "
+                f"({delta:+.1f}). Barem tarihsel profile yakın."
+            )
+
+    def profile(raw: dict) -> dict | None:
+        if not raw:
+            return None
+        return {
+            "team": raw.get("team", "-"),
+            "avg_total": raw.get("avg_total"),
+            "ppg": raw.get("ppg"),
+            "oppg": raw.get("oppg"),
+            "over_pct": raw.get("over_pct"),
+            "label": _team_profile_label(raw.get("avg_total"), raw.get("over_pct")),
+        }
+
+    home_profile = profile(home)
+    away_profile = profile(away)
+
+    h2h_games = h2h_metrics.get("h2h_games")
+    h2h_over = h2h_metrics.get("h2h_over_pct")
+    h2h_note = None
+    if h2h_over is not None:
+        game_part = f"{int(h2h_games)} maç" if h2h_games else "geçmiş maçlar"
+        if h2h_over >= 60:
+            tilt = "ÜST tarafına eğilimli"
+        elif h2h_over <= 40:
+            tilt = "ALT tarafına eğilimli"
+        else:
+            tilt = "dengeli"
+        h2h_note = f"Karşılaşma geçmişi ({game_part}): %{h2h_over:.0f} over — {tilt}."
+
+    # Sinyale destek mi, karşı mı?
+    support_points = 0
+    against_points = 0
+    avg_over = None
+    if home.get("over_pct") is not None and away.get("over_pct") is not None:
+        avg_over = (home["over_pct"] + away["over_pct"]) / 2
+        if direction == "ÜST":
+            if avg_over >= 60:
+                support_points += 1
+            elif avg_over <= 40:
+                against_points += 1
+        else:
+            if avg_over <= 40:
+                support_points += 1
+            elif avg_over >= 60:
+                against_points += 1
+    if regression_direction:
+        if regression_direction == direction:
+            support_points += 1
+        else:
+            against_points += 1
+    if h2h_over is not None:
+        if direction == "ÜST" and h2h_over >= 60:
+            support_points += 1
+        elif direction == "ALT" and h2h_over <= 40:
+            support_points += 1
+        elif direction == "ÜST" and h2h_over <= 40:
+            against_points += 1
+        elif direction == "ALT" and h2h_over >= 60:
+            against_points += 1
+
+    if support_points == 0 and against_points == 0:
+        alignment = "Nötr"
+        alignment_code = "neutral"
+    elif support_points > against_points:
+        alignment = f"Takım profili {direction} sinyalini destekliyor"
+        alignment_code = "support"
+    elif against_points > support_points:
+        alignment = f"Takım profili {direction} sinyaline karşı"
+        alignment_code = "against"
+    else:
+        alignment = "Takım profili karışık sinyal veriyor"
+        alignment_code = "mixed"
+
+    return {
+        "expected_total": expected,
+        "regression_delta": regression_delta,
+        "regression_direction": regression_direction,
+        "regression_note": regression_note,
+        "home_profile": home_profile,
+        "away_profile": away_profile,
+        "h2h_games": h2h_games,
+        "h2h_over_pct": h2h_over,
+        "h2h_note": h2h_note,
+        "avg_last5_over_pct": round(avg_over, 1) if avg_over is not None else None,
+        "alignment": alignment,
+        "alignment_code": alignment_code,
+        "signal_direction": direction,
     }
 
 
@@ -503,6 +650,8 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
     for item in risks:
         lines.append(f"- {item}")
 
+    team_context = build_team_context(h2h_metrics, live, direction)
+
     return {
         "grade": grade,
         "score": round(score_value, 1),
@@ -516,4 +665,5 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
         "counter_score": counter_signal["score"],
         "counter_note": counter_signal["note"],
         "counter_reasons_text": "\n".join(counter_signal["reasons"]),
+        "team_context": team_context,
     }

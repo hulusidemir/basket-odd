@@ -765,6 +765,89 @@
 
     .counter-warning strong { color: #ffd2cf; }
 
+    .team-context {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(19, 34, 54, 0.92);
+      border: 1px solid rgba(110, 146, 187, 0.18);
+      line-height: 1.55;
+      font-size: 13px;
+    }
+    .team-context-title {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-soft);
+      margin-bottom: 8px;
+    }
+    .team-context-align {
+      display: inline-block;
+      font-weight: 700;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 8px;
+      border: 1px solid transparent;
+    }
+    .team-context-align.support { background: rgba(52, 211, 153, 0.16); color: #9df0bd; border-color: rgba(52, 211, 153, 0.32); }
+    .team-context-align.against { background: rgba(255, 107, 99, 0.14); color: #ffc0bc; border-color: rgba(255, 107, 99, 0.32); }
+    .team-context-align.mixed { background: rgba(251, 191, 36, 0.14); color: #fde68a; border-color: rgba(251, 191, 36, 0.32); }
+    .team-context-align.neutral { background: rgba(95, 167, 255, 0.12); color: #b9dcff; border-color: rgba(95, 167, 255, 0.28); }
+    .team-context-regression {
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      border-radius: 10px;
+      background: rgba(13, 26, 42, 0.72);
+      border-left: 3px solid #fbbf24;
+      font-size: 12px;
+      color: var(--text);
+    }
+    .team-context-regression.alt { border-left-color: #ff6b63; }
+    .team-context-regression.ust { border-left-color: #34d399; }
+    .team-context-teams {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .team-context-card {
+      background: rgba(11, 24, 38, 0.86);
+      border: 1px solid rgba(110, 146, 187, 0.14);
+      border-radius: 10px;
+      padding: 9px 10px;
+      font-size: 12px;
+    }
+    .team-context-card-head {
+      font-weight: 800;
+      margin-bottom: 4px;
+      color: var(--text);
+    }
+    .team-context-card-total {
+      font-size: 18px;
+      font-weight: 900;
+      color: var(--accent-blue);
+    }
+    .team-context-card-breakdown {
+      color: var(--text-soft);
+      font-size: 11px;
+      margin-top: 2px;
+    }
+    .team-context-card-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #fde68a;
+      margin-top: 4px;
+    }
+    .team-context-h2h {
+      font-size: 12px;
+      color: var(--text-dim);
+      padding: 6px 10px;
+      background: rgba(13, 26, 42, 0.6);
+      border-radius: 8px;
+    }
+
     .diff-val {
       font-weight: 900;
       font-variant-numeric: tabular-nums;
@@ -2097,9 +2180,68 @@
         ${setup}
         ${summary}
         ${counter}
+        ${renderTeamContext(a.team_context)}
         ${reasons ? `<p><strong>Analist notlari:</strong></p><ul style="padding-left:18px; margin:0;">${reasons}</ul>` : '<p>Detay notu bulunmuyor.</p>'}
       `;
       modal.classList.add('active');
+    }
+
+    function renderTeamContext(raw) {
+      if (!raw) return '';
+      let ctx;
+      try {
+        ctx = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      } catch (e) {
+        return '';
+      }
+      if (!ctx || (!ctx.home_profile && !ctx.away_profile && !ctx.regression_note && !ctx.h2h_note)) return '';
+
+      const alignCode = ctx.alignment_code || 'neutral';
+      const alignText = ctx.alignment || '';
+      const alignBadge = alignText
+        ? `<div class="team-context-align ${escapeHtml(alignCode)}">${escapeHtml(alignText)}</div>`
+        : '';
+
+      const regressionDir = (ctx.regression_direction || '').toLowerCase() === 'alt' ? 'alt'
+        : (ctx.regression_direction || '').toLowerCase() === 'üst' ? 'ust' : '';
+      const regression = ctx.regression_note
+        ? `<div class="team-context-regression ${regressionDir}">📉 ${escapeHtml(ctx.regression_note)}</div>`
+        : '';
+
+      const renderCard = (profile, prefix) => {
+        if (!profile || profile.avg_total == null) return '';
+        const ppg = Number(profile.ppg || 0);
+        const oppg = Number(profile.oppg || 0);
+        const overPct = profile.over_pct != null ? Math.round(Number(profile.over_pct)) : null;
+        return `
+          <div class="team-context-card">
+            <div class="team-context-card-head">${escapeHtml(prefix)} ${escapeHtml(profile.team || '-')}</div>
+            <div class="team-context-card-total">${Number(profile.avg_total).toFixed(1)}</div>
+            <div class="team-context-card-breakdown">${ppg.toFixed(0)} attığı + ${oppg.toFixed(0)} yediği${overPct != null ? ` · over %${overPct}` : ''}</div>
+            <div class="team-context-card-label">${escapeHtml(profile.label || '')}</div>
+          </div>
+        `;
+      };
+
+      const homeCard = renderCard(ctx.home_profile, '🏠');
+      const awayCard = renderCard(ctx.away_profile, '🚌');
+      const teams = (homeCard || awayCard)
+        ? `<div class="team-context-teams">${homeCard}${awayCard}</div>`
+        : '';
+
+      const h2h = ctx.h2h_note
+        ? `<div class="team-context-h2h">🤝 ${escapeHtml(ctx.h2h_note)}</div>`
+        : '';
+
+      return `
+        <div class="team-context">
+          <div class="team-context-title">Takım Profili & Geçmiş</div>
+          ${alignBadge}
+          ${regression}
+          ${teams}
+          ${h2h}
+        </div>
+      `;
     }
 
     function closeQualityModal() {

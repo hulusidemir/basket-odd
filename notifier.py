@@ -79,6 +79,7 @@ class TelegramNotifier:
         summary_line = ""
         reasons_line = ""
         counter_line = ""
+        team_line = ""
         if quality:
             quality_line = (
                 f"🏅 <b>Kalite: {quality.get('grade', '-')}</b>"
@@ -97,6 +98,32 @@ class TelegramNotifier:
                     f"({quality['counter_level']})</b>\n"
                     f"{quality['counter_note']}\n"
                 )
+            ctx = quality.get("team_context") or {}
+            if ctx:
+                lines = ["📚 <b>Takım Profili</b>"]
+                align_code = ctx.get("alignment_code")
+                align_icon = {"support": "✅", "against": "⚠️", "mixed": "🔀", "neutral": "➖"}.get(align_code, "➖")
+                if ctx.get("alignment"):
+                    lines.append(f"{align_icon} {ctx['alignment']}")
+                if ctx.get("regression_note"):
+                    lines.append(f"📉 {ctx['regression_note']}")
+                home = ctx.get("home_profile") or {}
+                away = ctx.get("away_profile") or {}
+                if home.get("avg_total") is not None:
+                    lines.append(
+                        f"🏠 <b>{home.get('team','Ev')}</b> · son 5 ort "
+                        f"<b>{home['avg_total']:.1f}</b> ({home.get('ppg',0):.0f}+{home.get('oppg',0):.0f})"
+                        f" · over %{int(home.get('over_pct') or 0)} · <i>{home.get('label','')}</i>"
+                    )
+                if away.get("avg_total") is not None:
+                    lines.append(
+                        f"🚌 <b>{away.get('team','Dep')}</b> · son 5 ort "
+                        f"<b>{away['avg_total']:.1f}</b> ({away.get('ppg',0):.0f}+{away.get('oppg',0):.0f})"
+                        f" · over %{int(away.get('over_pct') or 0)} · <i>{away.get('label','')}</i>"
+                    )
+                if ctx.get("h2h_note"):
+                    lines.append(f"🤝 {ctx['h2h_note']}")
+                team_line = "\n".join(lines) + "\n"
 
         prematch_line = f"Maç Öncesi:    <b>{prematch:.1f}</b>\n" if prematch is not None else ""
         reference_value = baseline if baseline is not None else opening
@@ -116,6 +143,7 @@ class TelegramNotifier:
             f"{summary_line}"
             f"{counter_line}"
             f"{reasons_line}"
+            f"{team_line}"
             f"💡 <i>{tip}</i>"
             f"\n"
         )

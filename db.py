@@ -55,6 +55,7 @@ class Database:
                     counter_score REAL NOT NULL DEFAULT 0,
                     counter_note TEXT NOT NULL DEFAULT '',
                     counter_reasons TEXT NOT NULL DEFAULT '',
+                    team_context TEXT NOT NULL DEFAULT '',
                     deleted_at  TIMESTAMP,
                     result      TEXT NOT NULL DEFAULT '',
                     alerted_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -98,6 +99,7 @@ class Database:
                     counter_score   REAL NOT NULL DEFAULT 0,
                     counter_note    TEXT NOT NULL DEFAULT '',
                     counter_reasons TEXT NOT NULL DEFAULT '',
+                    team_context    TEXT NOT NULL DEFAULT '',
                     final_score     TEXT NOT NULL DEFAULT '',
                     final_total     REAL,
                     result          TEXT NOT NULL DEFAULT '',
@@ -294,6 +296,15 @@ class Database:
                 conn.execute("ALTER TABLE finished_matches ADD COLUMN lesson TEXT NOT NULL DEFAULT ''")
             except Exception:
                 pass
+            # Team context (H2H + son 5 maç profili) — JSON encoded
+            try:
+                conn.execute("ALTER TABLE alerts ADD COLUMN team_context TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN team_context TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
             # Ensure match_actions table exists for action inheritance
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS match_actions (
@@ -405,6 +416,7 @@ class Database:
         counter_score: float = 0.0,
         counter_note: str = "",
         counter_reasons: str = "",
+        team_context: str = "",
         prematch: float | None = None,
     ) -> int:
         with self._conn() as conn:
@@ -423,14 +435,16 @@ class Database:
                     match_id, match_name, opening, prematch, live, direction, diff, tournament, status, url, score,
                     signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
                     counter_direction, counter_level, counter_score, counter_note, counter_reasons,
+                    team_context,
                     bet_placed, ignored, followed, deleted_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     match_id, match_name, opening, prematch, live, direction, diff, tournament, status, url, score,
                     signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
                     counter_direction, counter_level, counter_score, counter_note, counter_reasons,
+                    team_context,
                     bet, ign, fol, deleted_at,
                 ),
             )
@@ -1042,11 +1056,12 @@ class Database:
                     opening, prematch, live, direction, diff, url, bet_placed, ignored, followed,
                     alerted_at, score, signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
                     counter_direction, counter_level, counter_score, counter_note, counter_reasons,
+                    team_context,
                     final_score, final_total, result,
                     margin, signal_timing_grade, market_read_correct, projection_accuracy,
                     quality_accuracy, counter_triggered, verdict, lesson
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     alert["id"],
@@ -1077,6 +1092,7 @@ class Database:
                     alert.get("counter_score", 0),
                     alert.get("counter_note", ""),
                     alert.get("counter_reasons", ""),
+                    alert.get("team_context", ""),
                     final_score,
                     final_total,
                     result,

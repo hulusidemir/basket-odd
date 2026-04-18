@@ -6,6 +6,7 @@ Usage:
 """
 
 import asyncio
+import json
 import logging
 import random
 import re
@@ -131,6 +132,7 @@ async def process_match(
     )
 
     # 3) Save to database
+    team_context_json = json.dumps(quality.get("team_context") or {}, ensure_ascii=False) if quality.get("team_context") else ""
     db.save_alert(
         match_id, match_name, opening_total, inplay_total, direction, abs_diff,
         tournament=tournament, status=status, url=url, score=score, signal_count=signal_count,
@@ -144,6 +146,7 @@ async def process_match(
         counter_score=quality["counter_score"],
         counter_note=quality["counter_note"],
         counter_reasons=quality["counter_reasons_text"],
+        team_context=team_context_json,
         prematch=prematch_total,
     )
 
