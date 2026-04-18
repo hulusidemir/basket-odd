@@ -249,6 +249,41 @@
       margin-bottom: 12px;
     }
 
+    .direction-filter-btn {
+      width: 100%;
+      border: 1px solid rgba(129, 162, 198, 0.12);
+      border-radius: 12px;
+      padding: 8px;
+      background: rgba(7, 16, 27, 0.26);
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+      transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+    }
+
+    .direction-filter-btn:hover,
+    .direction-filter-btn.active,
+    .direction-mini-stat:hover,
+    .direction-mini-stat.active {
+      border-color: rgba(95, 167, 255, 0.56);
+      background: rgba(95, 167, 255, 0.10);
+    }
+
+    .direction-filter-btn:hover,
+    .direction-mini-stat:hover {
+      transform: translateY(-1px);
+    }
+
+    .direction-mini-stat.static {
+      cursor: default;
+    }
+
+    .direction-mini-stat.static:hover {
+      transform: none;
+      border-color: rgba(129, 162, 198, 0.12);
+      background: rgba(7, 16, 27, 0.42);
+    }
+
     .direction-summary-title {
       display: flex;
       align-items: center;
@@ -281,6 +316,11 @@
       border: 1px solid rgba(129, 162, 198, 0.12);
       border-radius: 10px;
       padding: 8px;
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+      text-align: left;
+      transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
     }
 
     .direction-mini-stat span {
@@ -313,6 +353,7 @@
       background: rgba(7, 16, 27, 0.34);
       color: var(--text);
       cursor: pointer;
+      font: inherit;
       transition: border-color 0.15s ease, background 0.15s ease;
     }
 
@@ -452,6 +493,47 @@
     }
 
     .match-link:hover { color: var(--accent-blue); }
+
+    .match-cell-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .match-cell-wrap .match-link {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .match-focus-btn {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      border: 1px solid rgba(110, 146, 187, 0.2);
+      background: rgba(12, 27, 43, 0.95);
+      color: var(--text-soft);
+      cursor: pointer;
+      font-size: 16px;
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .match-focus-btn:hover {
+      color: var(--text);
+      border-color: rgba(95, 167, 255, 0.45);
+      box-shadow: 0 10px 18px rgba(0, 0, 0, 0.16);
+      transform: translateY(-1px);
+    }
+
+    .match-focus-btn.active {
+      color: #1a1b22;
+      border-color: transparent;
+      background: linear-gradient(180deg, #ffb37c, #ff9960);
+    }
 
     .subline {
       color: var(--text-soft);
@@ -810,7 +892,7 @@
     let searchQuery = '';
     let sortField = 'deleted_at';
     let sortAsc = false;
-    let qualityFilter = null;
+    let activeFilter = null;
     let currentPage = 1;
     let pageSize = 100;
 
@@ -830,6 +912,10 @@
         .replace(/\s*betting odds\s*/gi, '')
         .replace(/\s+/g, ' ')
         .trim();
+    }
+
+    function matchKey(alert) {
+      return String(alert.match_id || cleanMatchName(alert.match_name || '') || alert.id || '').trim();
     }
 
     function formatDate(value) {
@@ -872,6 +958,29 @@
       return `${escapeHtml(grade)} ${Number.isFinite(score) && score > 0 ? `<span class="mono">${score.toFixed(1)}</span>` : ''}`;
     }
 
+    function isFocusedMatch(alert) {
+      return !!activeFilter?.matchKey && matchKey(alert) === activeFilter.matchKey;
+    }
+
+    function toggleMatchFocusByAlert(alertId) {
+      const alert = deletedAlerts.find(item => Number(item.id) === Number(alertId));
+      if (!alert) return;
+      if (isFocusedMatch(alert)) {
+        clearSummaryFilter();
+        return;
+      }
+      setSummaryFilter({
+        matchKey: matchKey(alert),
+        matchName: cleanMatchName(alert.match_name || ''),
+      });
+    }
+
+    function matchFocusButtonHtml(alert) {
+      const active = isFocusedMatch(alert);
+      const title = active ? 'Maç filtresini kaldır' : 'Sadece bu maçın sinyallerini göster';
+      return `<button class="match-focus-btn ${active ? 'active' : ''}" onclick="toggleMatchFocusByAlert(${Number(alert.id)})" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${active ? '◉' : '◎'}</button>`;
+    }
+
     function resultCell(alert) {
       const result = (alert.result || '').trim();
       const isSuccess = result === 'Başarılı';
@@ -887,10 +996,14 @@
 
     function filteredAlerts() {
       let rows = [...deletedAlerts];
-      if (qualityFilter) {
-        rows = rows.filter(alert =>
-          alert.direction === qualityFilter.direction && qualityGrade(alert) === qualityFilter.grade
-        );
+      if (activeFilter) {
+        rows = rows.filter(alert => {
+          if (activeFilter.direction && alert.direction !== activeFilter.direction) return false;
+          if (activeFilter.grade && qualityGrade(alert) !== activeFilter.grade) return false;
+          if (activeFilter.result && alert.result !== activeFilter.result) return false;
+          if (activeFilter.matchKey && matchKey(alert) !== activeFilter.matchKey) return false;
+          return true;
+        });
       }
       if (!searchQuery) return sortedAlerts(rows);
       const q = searchQuery.toLowerCase();
@@ -943,7 +1056,7 @@
     }
 
     function updateStats() {
-      const matchIds = new Set(deletedAlerts.map(item => String(item.match_id || item.id)));
+      const matchIds = new Set(deletedAlerts.map(item => matchKey(item)).filter(Boolean));
       const successList = deletedAlerts.filter(item => item.result === 'Başarılı');
       const failList = deletedAlerts.filter(item => item.result === 'Başarısız');
       const resolved = successList.length + failList.length;
@@ -960,25 +1073,33 @@
     }
 
     function uniqueMatchCount(rows) {
-      return new Set(rows.map(item => String(item.match_id || item.id))).size;
+      return new Set(rows.map(item => matchKey(item)).filter(Boolean)).size;
+    }
+
+    function baseStats(rows) {
+      const successRows = rows.filter(item => item.result === 'Başarılı');
+      const failRows = rows.filter(item => item.result === 'Başarısız');
+      const resolved = successRows.length + failRows.length;
+      const rate = resolved > 0 ? Math.round((successRows.length / resolved) * 1000) / 10 : null;
+      return {
+        total: rows.length,
+        unique: uniqueMatchCount(rows),
+        success: successRows.length,
+        successUnique: uniqueMatchCount(successRows),
+        fail: failRows.length,
+        failUnique: uniqueMatchCount(failRows),
+        rate,
+      };
     }
 
     function directionStats(direction) {
       const scoped = deletedAlerts.filter(item => item.direction === direction);
-      const success = scoped.filter(item => item.result === 'Başarılı').length;
-      const fail = scoped.filter(item => item.result === 'Başarısız').length;
-      const resolved = success + fail;
-      const rate = resolved > 0 ? Math.round((success / resolved) * 1000) / 10 : null;
-      return { total: scoped.length, success, fail, rate, unique: uniqueMatchCount(scoped) };
+      return baseStats(scoped);
     }
 
     function qualityStats(direction, grade) {
       const scoped = deletedAlerts.filter(item => item.direction === direction && qualityGrade(item) === grade);
-      const success = scoped.filter(item => item.result === 'Başarılı').length;
-      const fail = scoped.filter(item => item.result === 'Başarısız').length;
-      const resolved = success + fail;
-      const rate = resolved > 0 ? Math.round((success / resolved) * 1000) / 10 : null;
-      return { total: scoped.length, success, fail, rate, unique: uniqueMatchCount(scoped) };
+      return baseStats(scoped);
     }
 
     function gradesForDirection(direction) {
@@ -995,46 +1116,53 @@
     function renderQualityBreakdown() {
       const target = document.getElementById('qualityBreakdown');
       const directions = ['ALT', 'ÜST'];
-      const activeKey = qualityFilter ? `${qualityFilter.direction}-${qualityFilter.grade}` : '';
+      const activeKey = activeFilter ? [
+        activeFilter.direction || '',
+        activeFilter.grade || '',
+        activeFilter.result || '',
+        activeFilter.matchKey || '',
+      ].join('|') : '';
       const panels = directions.map(direction => {
         const stats = directionStats(direction);
         const badgeClass = direction === 'ALT' ? 'badge-alt' : 'badge-ust';
         const rateText = stats.rate !== null ? `%${stats.rate.toFixed(1)}` : '-';
+        const directionActive = activeKey === `${direction}|||`;
+        const successActive = activeKey === `${direction}||Başarılı|`;
+        const failActive = activeKey === `${direction}||Başarısız|`;
         const gradeRows = gradesForDirection(direction).map(grade => {
           const stats = qualityStats(direction, grade);
-          const key = `${direction}-${grade}`;
-          const rateText = stats.rate !== null ? `%${stats.rate.toFixed(1)}` : '-';
+          const key = `${direction}|${grade}||`;
           return `
-            <button class="grade-row ${activeKey === key ? 'active' : ''}" onclick="setQualityFilter('${direction}', '${grade}')">
+            <button class="grade-row ${activeKey === key ? 'active' : ''}" onclick='setSummaryFilter(${escapeHtml(JSON.stringify({ direction, grade }))})'>
               <div class="grade-name">${escapeHtml(grade)}</div>
               <div class="grade-metric"><span>Toplam</span><strong>${stats.total}</strong></div>
               <div class="grade-metric"><span>Maç</span><strong>${stats.unique}</strong></div>
-              <div class="grade-metric"><span>Başarılı</span><strong>${stats.success}</strong></div>
-              <div class="grade-metric"><span>Başarısız</span><strong>${stats.fail}</strong></div>
+              <div class="grade-metric"><span>Başarılı</span><strong>${stats.success} (${stats.successUnique})</strong></div>
+              <div class="grade-metric"><span>Başarısız</span><strong>${stats.fail} (${stats.failUnique})</strong></div>
             </button>
           `;
         }).join('') || '<div class="grade-empty">Bu yönde sinyal yok.</div>';
 
         return `
           <div class="direction-summary ${direction === 'ALT' ? 'alt' : 'ust'}">
-            <div class="direction-summary-head">
+            <button class="direction-summary-head direction-filter-btn ${directionActive ? 'active' : ''}" onclick='setSummaryFilter(${escapeHtml(JSON.stringify({ direction }))})'>
               <div class="direction-summary-title">
                 <span class="badge ${badgeClass}">${direction}</span>
                 <span>Sinyal Özeti</span>
               </div>
               <div class="direction-summary-total">${stats.total}</div>
-            </div>
+            </button>
             <div class="direction-summary-grid">
-              <div class="direction-mini-stat"><span>Maç</span><strong>${stats.unique}</strong></div>
-              <div class="direction-mini-stat"><span>Başarılı</span><strong>${stats.success}</strong></div>
-              <div class="direction-mini-stat"><span>Başarısız</span><strong>${stats.fail}</strong></div>
-              <div class="direction-mini-stat"><span>Başarı</span><strong>${rateText}</strong></div>
+              <button class="direction-mini-stat ${directionActive ? 'active' : ''}" onclick='setSummaryFilter(${escapeHtml(JSON.stringify({ direction }))})'><span>Maç</span><strong>${stats.total} (${stats.unique})</strong></button>
+              <button class="direction-mini-stat ${successActive ? 'active' : ''}" onclick='setSummaryFilter(${escapeHtml(JSON.stringify({ direction, result: 'Başarılı' }))})'><span>Başarılı</span><strong>${stats.success} (${stats.successUnique})</strong></button>
+              <button class="direction-mini-stat ${failActive ? 'active' : ''}" onclick='setSummaryFilter(${escapeHtml(JSON.stringify({ direction, result: 'Başarısız' }))})'><span>Başarısız</span><strong>${stats.fail} (${stats.failUnique})</strong></button>
+              <div class="direction-mini-stat static"><span>Başarı</span><strong>${rateText}</strong></div>
             </div>
             <div class="grade-list">
               ${gradeRows}
             </div>
-            ${qualityFilter ? `
-              <button class="summary-reset" onclick="setQualityFilter('', '')">Filtreyi kaldır</button>
+            ${activeFilter ? `
+              <button class="summary-reset" onclick="clearSummaryFilter()">Filtreyi kaldır</button>
             ` : ''}
           </div>
         `;
@@ -1043,12 +1171,14 @@
       target.innerHTML = panels.join('');
     }
 
-    function setQualityFilter(direction, grade) {
-      if (!direction || !grade) {
-        qualityFilter = null;
-      } else {
-        qualityFilter = { direction, grade };
-      }
+    function setSummaryFilter(filter) {
+      activeFilter = filter && Object.keys(filter).length ? filter : null;
+      currentPage = 1;
+      render();
+    }
+
+    function clearSummaryFilter() {
+      activeFilter = null;
       currentPage = 1;
       render();
     }
@@ -1094,7 +1224,10 @@
           <tr>
             <td class="mono">${formatDate(alert.deleted_at)}</td>
             <td>
-              ${matchHtml}
+              <div class="match-cell-wrap">
+                ${matchFocusButtonHtml(alert)}
+                ${matchHtml}
+              </div>
               <div class="subline">${escapeHtml(alert.tournament || '-')}</div>
             </td>
             <td>
