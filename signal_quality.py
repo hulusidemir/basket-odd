@@ -457,8 +457,8 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
             strength = "eşikte"
         sources.append(_source(
             "market sapması",
-            direction,
-            f"{baseline_label}-canlı farkı {diff:.1f} puan, barem hareketi {strength}",
+            "NÖTR",
+            f"{baseline_label}-canlı farkı {diff:.1f} puan, barem hareketi {strength}; yön için bağımsız kanıt sayılmaz",
         ))
     else:
         sources.append(_source(

@@ -80,6 +80,17 @@ class TelegramNotifier:
         quality_grade = (quality or {}).get("grade", "-")
         reliability_label = reliability["label"]
         if quality:
+            decision = quality.get("decision") or {}
+            if decision:
+                scenario_label = {
+                    "continuation": "market devamı",
+                    "contrarian": "ters ama kaynak destekli",
+                    "pass": "pas",
+                }.get(decision.get("scenario"), decision.get("scenario", ""))
+                if scenario_label:
+                    summary_line += f"🎚️ <b>Karar:</b> {scenario_label} · güven {float(decision.get('confidence') or 0):.1f}/100\n"
+                if decision.get("risk_note"):
+                    summary_line += f"⚠️ <b>Risk:</b> {decision['risk_note']}\n"
             if quality.get("setup"):
                 summary_line += f"🧩 <b>Setup:</b> {quality['setup']}\n"
             if quality.get("history_average_note"):

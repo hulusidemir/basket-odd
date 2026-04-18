@@ -65,6 +65,24 @@ class Database:
                     deleted_at  TIMESTAMP
                 );
 
+                CREATE TABLE IF NOT EXISTS match_snapshots (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    match_id        TEXT NOT NULL,
+                    match_name      TEXT NOT NULL DEFAULT '',
+                    tournament      TEXT NOT NULL DEFAULT '',
+                    status          TEXT NOT NULL DEFAULT '',
+                    score           TEXT NOT NULL DEFAULT '',
+                    opening         REAL,
+                    prematch        REAL,
+                    live            REAL,
+                    elapsed_minutes REAL,
+                    total_score     INTEGER,
+                    captured_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_match_snapshots_match_id
+                ON match_snapshots(match_id, captured_at DESC, id DESC);
+
                 CREATE TABLE IF NOT EXISTS finished_matches (
                     id              INTEGER PRIMARY KEY AUTOINCREMENT,
                     source_alert_id INTEGER NOT NULL UNIQUE,
@@ -301,6 +319,26 @@ class Database:
             except Exception:
                 pass
             conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_deleted_at ON alerts(deleted_at)")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS match_snapshots (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    match_id        TEXT NOT NULL,
+                    match_name      TEXT NOT NULL DEFAULT '',
+                    tournament      TEXT NOT NULL DEFAULT '',
+                    status          TEXT NOT NULL DEFAULT '',
+                    score           TEXT NOT NULL DEFAULT '',
+                    opening         REAL,
+                    prematch        REAL,
+                    live            REAL,
+                    elapsed_minutes REAL,
+                    total_score     INTEGER,
+                    captured_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_match_snapshots_match_id
+                ON match_snapshots(match_id, captured_at DESC, id DESC)
+            """)
 
     # ---------- opening line ----------
 
@@ -323,6 +361,63 @@ class Database:
         """Call after a match ends to clean up stale records."""
         with self._conn() as conn:
             conn.execute("DELETE FROM opening_lines WHERE match_id = ?", (match_id,))
+
+    # ---------- live snapshots ----------
+
+    def save_match_snapshot(
+        self,
+        *,
+        match_id: str,
+        match_name: str,
+        tournament: str,
+        status: str,
+        score: str,
+        opening: float,
+        prematch: float | None,
+        live: float,
+        elapsed_minutes: float | None,
+        total_score: int | None,
+    ) -> int:
+        with self._conn() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO match_snapshots (
+                    match_id, match_name, tournament, status, score,
+                    opening, prematch, live, elapsed_minutes, total_score
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    match_id,
+                    match_name,
+                    tournament,
+                    status,
+                    score,
+                    opening,
+                    prematch,
+                    live,
+                    elapsed_minutes,
+                    total_score,
+                ),
+            )
+            conn.execute(
+                "DELETE FROM match_snapshots WHERE captured_at < datetime('now', '-2 days')"
+            )
+            return cursor.lastrowid
+
+    def recent_match_snapshots(self, match_id: str, limit: int = 8) -> list[dict]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM match_snapshots
+                WHERE match_id = ?
+                ORDER BY captured_at DESC, id DESC
+                LIMIT ?
+                """,
+                (match_id, max(1, limit)),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     # ---------- alerts ----------
 

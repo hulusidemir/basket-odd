@@ -17,6 +17,8 @@ from config import Config
 from db import Database
 from notifier import TelegramNotifier
 from projection import game_clock
+from signal_engine import decide_signal
+from signal_features import build_signal_features
 from signal_quality import assess_signal_quality
 
 
@@ -85,8 +87,30 @@ async def process_match(
     baseline_label = "Maç Öncesi" if prematch_total is not None else "Açılış"
     diff = inplay_total - baseline
     abs_diff = abs(diff)
+    recent_snapshots = db.recent_match_snapshots(match_id, limit=8)
+    features = build_signal_features(
+        match,
+        reference_total=baseline,
+        reference_label=baseline_label,
+        recent_snapshots=recent_snapshots,
+        blowout_margin_threshold=config.BLOWOUT_MARGIN_THRESHOLD,
+        late_game_minutes_threshold=config.LATE_GAME_MINUTES_THRESHOLD,
+        foul_game_score_diff_threshold=config.FOUL_GAME_SCORE_DIFF_THRESHOLD,
+    )
+    db.save_match_snapshot(
+        match_id=match_id,
+        match_name=match_name,
+        tournament=tournament,
+        status=status,
+        score=score,
+        opening=opening_total,
+        prematch=prematch_total,
+        live=inplay_total,
+        elapsed_minutes=features.elapsed_minutes,
+        total_score=features.current_total_score,
+    )
     log.info(
-        "📊 %s | Açılış: %.1f | Maç Öncesi: %s | Referans: %s %.1f | Canlı: %.1f | Fark: %+.1f | Skor: %s | Durum: %s",
+        "📊 %s | Açılış: %.1f | Maç Öncesi: %s | Referans: %s %.1f | Canlı: %.1f | Fark: %+.1f | Skor: %s | Durum: %s | Tempo: %s | Son tempo: %s",
         match_name,
         opening_total,
         f"{prematch_total:.1f}" if prematch_total is not None else "-",
@@ -96,14 +120,43 @@ async def process_match(
         diff,
         score or "-",
         status or "-",
+        f"{features.current_points_per_minute:.2f}" if features.current_points_per_minute is not None else "-",
+        f"{features.recent_points_per_minute:.2f} ({features.recent_pace_trend})" if features.recent_points_per_minute is not None else "-",
     )
     if abs_diff < config.THRESHOLD:
         return
 
-    if diff >= 0:
-        direction = "ALT"
-    else:
-        direction = "ÜST"
+    try:
+        insights = await scraper.get_match_insights(url)
+    except Exception as exc:
+        log.debug("Could not fetch AIScore insights for %s: %s", match_name, exc)
+        insights = {}
+
+    quality_by_direction = {}
+    for candidate_direction in ("ALT", "ÜST"):
+        quality_by_direction[candidate_direction] = assess_signal_quality(
+            {
+                **match,
+                "direction": candidate_direction,
+                "baseline": baseline,
+                "baseline_label": baseline_label,
+            },
+            insights,
+            config.THRESHOLD,
+        )
+
+    decision = decide_signal(features, quality_by_direction, config)
+    if not decision.should_alert or not decision.direction:
+        log.info(
+            "PASS: %s | action=%s | confidence=%.1f | reason=%s",
+            match_name,
+            decision.action,
+            decision.confidence,
+            decision.reason,
+        )
+        return
+
+    direction = decision.direction
 
     if db.was_alerted_recently(match_id, direction, config.ALERT_COOLDOWN_MINUTES):
         log.debug(
@@ -115,22 +168,22 @@ async def process_match(
     # 1) Count previous alerts for this match (signal number)
     signal_count = db.count_match_alerts(match_id) + 1
 
-    try:
-        insights = await scraper.get_match_insights(url)
-    except Exception as exc:
-        log.debug("Could not fetch AIScore insights for %s: %s", match_name, exc)
-        insights = {}
-
-    quality = assess_signal_quality(
-        {
-            **match,
-            "direction": direction,
-            "baseline": baseline,
-            "baseline_label": baseline_label,
-        },
-        insights,
-        config.THRESHOLD,
+    quality = quality_by_direction[direction]
+    original_summary = quality.get("summary", "")
+    setup_label = {
+        "OVER": "Continuation ÜST",
+        "UNDER": "Continuation ALT",
+        "CONTRARIAN_OVER": "Contrarian ÜST",
+        "CONTRARIAN_UNDER": "Contrarian ALT",
+    }.get(decision.action, decision.action)
+    quality["grade"] = decision.grade
+    quality["score"] = decision.confidence
+    quality["setup"] = setup_label
+    quality["summary"] = f"{decision.reason} Risk: {decision.risk_note}" + (
+        f" | {original_summary}" if original_summary else ""
     )
+    quality["decision"] = decision.to_dict()
+    quality["features"] = features.to_dict()
 
     # 2) Send Telegram alert
     await notifier.send_alert(
