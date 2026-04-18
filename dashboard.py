@@ -7,10 +7,12 @@ Usage:
 """
 
 import asyncio
+import csv
+import io
 import os
 import re
 from datetime import datetime, timedelta
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 from db import Database
 from config import Config
 from finished_match_service import run_deleted_match_result_cycle, run_single_deleted_match_result_check
@@ -326,6 +328,42 @@ def api_deleted_matches():
     limit = request.args.get("limit", default=1000, type=int) or 1000
     limit = max(1, min(limit, 5000))
     return jsonify(enrich_alerts_with_projection(db.recent_deleted_alerts(limit=limit)))
+
+
+@app.route("/api/deleted-matches/export.csv")
+def api_export_finished_deleted_matches_csv():
+    rows = [
+        row for row in db.recent_deleted_alerts(limit=None)
+        if str(row.get("result") or "").strip()
+    ]
+
+    output = io.StringIO()
+    output.write("\ufeff")
+    writer = csv.writer(output)
+    writer.writerow(["Maç", "Lig", "Sinyal", "Açılış", "Canlı", "Skor", "Sonuç"])
+
+    for row in rows:
+        grade = str(row.get("quality_grade") or "").strip()
+        direction = str(row.get("direction") or "").strip()
+        signal = f"{direction} ({grade})" if grade else direction
+        match_name = re.sub(r"\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}\s*", "", str(row.get("match_name") or ""))
+        match_name = re.sub(r"\s*betting odds\s*", "", match_name, flags=re.IGNORECASE).strip()
+        writer.writerow([
+            match_name,
+            row.get("tournament") or "",
+            signal,
+            row.get("opening") if row.get("opening") is not None else "",
+            row.get("live") if row.get("live") is not None else "",
+            row.get("score") or "",
+            row.get("result") or "",
+        ])
+
+    filename = f"silinen-biten-maclar-{datetime.now().strftime('%Y%m%d-%H%M')}.csv"
+    return Response(
+        output.getvalue(),
+        content_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.route("/api/deleted-matches/clear", methods=["POST"])
