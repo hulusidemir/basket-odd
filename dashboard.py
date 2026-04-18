@@ -393,16 +393,99 @@ def _fold(value) -> str:
     )
 
 
+def _bucket_stats(rows: list) -> dict:
+    success = sum(1 for r in rows if _fold(r.get("result")) == "basarili")
+    fail = sum(1 for r in rows if _fold(r.get("result")) == "basarisiz")
+    resolved = success + fail
+    return {
+        "total": len(rows),
+        "resolved": resolved,
+        "success": success,
+        "fail": fail,
+        "rate": _pct(success, resolved),
+        "fade_rate": _pct(fail, resolved),
+    }
+
+
 def _dir_stats(signals: list, direction: str) -> dict:
     scoped = [s for s in signals if _fold(s.get("direction")) == direction]
-    success = [s for s in scoped if _fold(s.get("result")) == "basarili"]
-    fail = [s for s in scoped if _fold(s.get("result")) == "basarisiz"]
+    stats = _bucket_stats(scoped)
     return {
-        "total": len(scoped),
-        "success": len(success),
-        "fail": len(fail),
-        "success_rate": _pct(len(success), len(success) + len(fail)),
+        "total": stats["total"],
+        "success": stats["success"],
+        "fail": stats["fail"],
+        "success_rate": stats["rate"],
     }
+
+
+def _diff_bucket(value) -> str:
+    try:
+        v = abs(float(value))
+    except (TypeError, ValueError):
+        return "Bilinmiyor"
+    if v < 1.0:
+        return "0 – 1.0"
+    if v < 2.0:
+        return "1.0 – 2.0"
+    if v < 3.0:
+        return "2.0 – 3.0"
+    return "3.0+"
+
+
+_DIFF_BUCKET_ORDER = ["0 – 1.0", "1.0 – 2.0", "2.0 – 3.0", "3.0+", "Bilinmiyor"]
+
+
+def _period_bucket(status) -> str:
+    s = _fold(status)
+    if not s:
+        return "Bilinmiyor"
+    if "devre arasi" in s or s in {"ht", "half time", "half-time", "mola"}:
+        return "Devre Arası"
+    if "uzatma" in s or "ot" == s or s.startswith("ot ") or "overtime" in s:
+        return "Uzatma"
+    for n, label in [("1", "1. Çeyrek"), ("2", "2. Çeyrek"), ("3", "3. Çeyrek"), ("4", "4. Çeyrek")]:
+        if s.startswith(f"{n}.") or s.startswith(f"{n}c") or f"q{n}" in s or f"{n}. ceyrek" in s or s == n:
+            return label
+    return "Bilinmiyor"
+
+
+_PERIOD_BUCKET_ORDER = [
+    "1. Çeyrek", "2. Çeyrek", "Devre Arası", "3. Çeyrek", "4. Çeyrek", "Uzatma", "Bilinmiyor",
+]
+
+
+def _quality_grade_key(value) -> str:
+    key = str(value or "").strip().upper()
+    return key if key else "YOK"
+
+
+_GRADE_ORDER = ["A++", "A+", "A", "B", "C", "YOK"]
+
+
+def _parse_ts(value):
+    if not value:
+        return None
+    text = str(value).strip().replace("T", " ")
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _fade_verdict(original_rate: float, fade_rate: float, resolved: int) -> str:
+    if resolved < 5:
+        return "Örneklem yetersiz, fade yorumu için daha çok sonuç gerekli."
+    delta = fade_rate - original_rate
+    if abs(delta) < 3:
+        return "Fade ile aynı sonuç — ters çevirmek anlamlı değil."
+    if delta > 0:
+        return f"Ters sinyal %{delta:.1f} puan daha iyi: stratejiyi fade etmeyi ciddi değerlendir."
+    return f"Orijinal yön %{-delta:.1f} puan önde: mevcut mantığa sadık kal."
 
 
 def build_deleted_matches_report(signals: list) -> dict:
@@ -414,6 +497,14 @@ def build_deleted_matches_report(signals: list) -> dict:
             "cards": [],
             "highlights": [],
             "mixed_examples": [],
+            "diff_buckets": [],
+            "period_buckets": [],
+            "grade_buckets": [],
+            "fade_analysis": None,
+            "tournament_top": [],
+            "tournament_bottom": [],
+            "trend_7d": None,
+            "actions": [],
         }
 
     total = len(signals)
@@ -454,16 +545,251 @@ def build_deleted_matches_report(signals: list) -> dict:
     repeat_resolved = sum(1 for s in repeat_signals if _fold(s.get("result")) in {"basarili", "basarisiz"})
 
     overall_rate = _pct(success_count, resolved)
+    overall_fade_rate = _pct(fail_count, resolved)
     dir_diff = abs(alt_stats["success_rate"] - ust_stats["success_rate"])
 
+    # ── Diff (fark) kova analizi ────────────────────────────────────────────
+    diff_groups: dict[str, list] = {label: [] for label in _DIFF_BUCKET_ORDER}
+    for s in signals:
+        diff_groups[_diff_bucket(s.get("diff"))].append(s)
+    diff_buckets = []
+    for label in _DIFF_BUCKET_ORDER:
+        rows = diff_groups.get(label) or []
+        if not rows:
+            continue
+        stats = _bucket_stats(rows)
+        stats["label"] = label
+        diff_buckets.append(stats)
+
+    # ── Periyot (status) kova analizi ───────────────────────────────────────
+    period_groups: dict[str, list] = {label: [] for label in _PERIOD_BUCKET_ORDER}
+    for s in signals:
+        period_groups[_period_bucket(s.get("status"))].append(s)
+    period_buckets = []
+    for label in _PERIOD_BUCKET_ORDER:
+        rows = period_groups.get(label) or []
+        if not rows:
+            continue
+        stats = _bucket_stats(rows)
+        stats["label"] = label
+        period_buckets.append(stats)
+
+    # ── Kalite grade detayı (her grade ayrı) ────────────────────────────────
+    grade_groups: dict[str, list] = {}
+    for s in signals:
+        grade_groups.setdefault(_quality_grade_key(s.get("quality_grade")), []).append(s)
+    grade_buckets = []
+    for label in _GRADE_ORDER:
+        rows = grade_groups.get(label) or []
+        if not rows:
+            continue
+        stats = _bucket_stats(rows)
+        stats["label"] = label
+        grade_buckets.append(stats)
+    for label, rows in grade_groups.items():
+        if label in _GRADE_ORDER or not rows:
+            continue
+        stats = _bucket_stats(rows)
+        stats["label"] = label
+        grade_buckets.append(stats)
+
+    # ── Fade / ters sinyal analizi ──────────────────────────────────────────
+    fade_analysis = {
+        "overall": {
+            "original_rate": overall_rate,
+            "fade_rate": overall_fade_rate,
+            "resolved": resolved,
+            "success": success_count,
+            "fail": fail_count,
+            "verdict": _fade_verdict(overall_rate, overall_fade_rate, resolved),
+        },
+        "by_direction": [
+            {
+                "label": "ALT",
+                "resolved": alt_stats["success"] + alt_stats["fail"],
+                "original_rate": alt_stats["success_rate"],
+                "fade_rate": _pct(alt_stats["fail"], alt_stats["success"] + alt_stats["fail"]),
+            },
+            {
+                "label": "ÜST",
+                "resolved": ust_stats["success"] + ust_stats["fail"],
+                "original_rate": ust_stats["success_rate"],
+                "fade_rate": _pct(ust_stats["fail"], ust_stats["success"] + ust_stats["fail"]),
+            },
+        ],
+        "by_diff": [
+            {
+                "label": b["label"],
+                "resolved": b["resolved"],
+                "original_rate": b["rate"],
+                "fade_rate": b["fade_rate"],
+            }
+            for b in diff_buckets if b["resolved"] > 0
+        ],
+        "by_grade": [
+            {
+                "label": b["label"],
+                "resolved": b["resolved"],
+                "original_rate": b["rate"],
+                "fade_rate": b["fade_rate"],
+            }
+            for b in grade_buckets if b["resolved"] > 0
+        ],
+    }
+
+    # ── Turnuva top/bottom ──────────────────────────────────────────────────
+    tour_groups: dict[str, list] = {}
+    for s in signals:
+        name = (s.get("tournament") or "").strip()
+        if not name:
+            continue
+        tour_groups.setdefault(name, []).append(s)
+    tour_stats = []
+    for name, rows in tour_groups.items():
+        st = _bucket_stats(rows)
+        if st["resolved"] < 3:
+            continue
+        st["label"] = name
+        tour_stats.append(st)
+    tour_stats.sort(key=lambda x: (-x["rate"], -x["resolved"]))
+    tournament_top = tour_stats[:3]
+    tournament_bottom = sorted(tour_stats, key=lambda x: (x["rate"], -x["resolved"]))[:3]
+
+    # ── Son 7 gün trendi ────────────────────────────────────────────────────
+    now = datetime.now()
+    last7_cutoff = now - timedelta(days=7)
+    prior_cutoff = now - timedelta(days=14)
+    last7 = [s for s in signals if (_parse_ts(s.get("deleted_at")) or _parse_ts(s.get("alerted_at"))) and
+             (_parse_ts(s.get("deleted_at")) or _parse_ts(s.get("alerted_at"))) >= last7_cutoff]
+    prior = [s for s in signals if (_parse_ts(s.get("deleted_at")) or _parse_ts(s.get("alerted_at"))) and
+             prior_cutoff <= (_parse_ts(s.get("deleted_at")) or _parse_ts(s.get("alerted_at"))) < last7_cutoff]
+    last7_stats = _bucket_stats(last7)
+    prior_stats = _bucket_stats(prior)
+    if last7_stats["resolved"] == 0 and prior_stats["resolved"] == 0:
+        trend_7d = None
+    else:
+        delta = round(last7_stats["rate"] - prior_stats["rate"], 1) if prior_stats["resolved"] > 0 else None
+        if delta is None:
+            verdict = "Son 7 günde sonuç var, önceki haftayla kıyas için yeterli veri yok."
+        elif abs(delta) < 3:
+            verdict = "Son hafta genele yakın — trend yatay."
+        elif delta > 0:
+            verdict = f"Son hafta %{delta:.1f} puan yukarı — iyileşme var."
+        else:
+            verdict = f"Son hafta %{-delta:.1f} puan aşağı — performans bozuluyor."
+        trend_7d = {
+            "last7": last7_stats,
+            "prior": prior_stats,
+            "delta": delta,
+            "verdict": verdict,
+        }
+
+    # ── Aksiyon önerileri ───────────────────────────────────────────────────
+    actions: list[str] = []
+
+    if resolved >= 5:
+        if overall_fade_rate - overall_rate >= 6:
+            actions.append(
+                f"Genel tablo fade önerisi: ters sinyal %{overall_fade_rate:.1f} vs orijinal %{overall_rate:.1f}. "
+                f"Mevcut mantık sistematik yanlış yönde çalışıyor olabilir."
+            )
+        elif abs(overall_fade_rate - overall_rate) < 3:
+            actions.append(
+                "Genel başarı %50 civarında — sistem neredeyse yazı-tura. "
+                "Kalite ve periyot filtresiyle örneklem daraltılmalı."
+            )
+
+    # Direction fade
+    for d in fade_analysis["by_direction"]:
+        if d["resolved"] >= 5 and d["fade_rate"] - d["original_rate"] >= 8:
+            actions.append(
+                f"{d['label']} sinyallerini fade et: ters %{d['fade_rate']:.1f} vs orijinal %{d['original_rate']:.1f} "
+                f"({d['resolved']} sonuçlanan)."
+            )
+
+    # Worst diff bucket
+    worst_diff = None
+    best_diff = None
+    for b in diff_buckets:
+        if b["resolved"] < 4:
+            continue
+        if worst_diff is None or b["rate"] < worst_diff["rate"]:
+            worst_diff = b
+        if best_diff is None or b["rate"] > best_diff["rate"]:
+            best_diff = b
+    if worst_diff and worst_diff["rate"] < 40:
+        actions.append(
+            f"Fark {worst_diff['label']} aralığında başarı %{worst_diff['rate']:.1f} — "
+            f"bu aralıkta sinyal almamayı veya eşiği yükseltmeyi değerlendir."
+        )
+    if best_diff and best_diff is not worst_diff and best_diff["rate"] >= 60:
+        actions.append(
+            f"Fark {best_diff['label']} aralığı en güçlü segment (%{best_diff['rate']:.1f}) — "
+            f"bahisleri buraya yoğunlaştır."
+        )
+
+    # Worst period
+    worst_period = None
+    for b in period_buckets:
+        if b["resolved"] < 4 or b["label"] == "Bilinmiyor":
+            continue
+        if worst_period is None or b["rate"] < worst_period["rate"]:
+            worst_period = b
+    if worst_period and worst_period["rate"] < 40:
+        actions.append(
+            f"{worst_period['label']} sinyalleri %{worst_period['rate']:.1f} başarı — "
+            f"bu periyotta sinyalleri filtrele veya kalite çubuğunu yükselt."
+        )
+
+    # Worst grade
+    for b in grade_buckets:
+        if b["resolved"] >= 5 and b["rate"] < 35 and b["label"] not in {"A++", "A+"}:
+            actions.append(
+                f"Grade {b['label']} %{b['rate']:.1f} başarı ({b['resolved']} sonuçlanan) — "
+                f"bu seviyeyi sinyal listesinden çıkarmayı düşün."
+            )
+            break
+
+    # Tournament action
+    if tournament_bottom:
+        worst_t = tournament_bottom[0]
+        if worst_t["rate"] < 30 and worst_t["resolved"] >= 4:
+            actions.append(
+                f"{worst_t['label']}: %{worst_t['rate']:.1f} ({worst_t['success']}/{worst_t['resolved']}) — "
+                f"bu turnuvayı kara listeye al."
+            )
+    if tournament_top:
+        best_t = tournament_top[0]
+        if best_t["rate"] >= 65 and best_t["resolved"] >= 4:
+            actions.append(
+                f"{best_t['label']}: %{best_t['rate']:.1f} ({best_t['success']}/{best_t['resolved']}) — "
+                f"en güvenilir liga, önceliklendir."
+            )
+
+    # Trend action
+    if trend_7d and trend_7d.get("delta") is not None and trend_7d["delta"] <= -8:
+        actions.append(
+            f"Son 7 günde başarı %{-trend_7d['delta']:.1f} puan düştü — "
+            f"son değişiklikleri (kalite eşiği, threshold) gözden geçir."
+        )
+
+    if not actions and resolved > 0:
+        actions.append("Belirgin bir aksiyon sinyali yok — mevcut stratejiye devam, örneklemi büyüt.")
+
+    # ── Headline / Summary ──────────────────────────────────────────────────
     if resolved == 0:
         headline = "Sonuçlar işaretlenmemiş. Sinyal başarılarını işaretleyerek raporu oluşturun."
+    elif overall_fade_rate - overall_rate >= 6:
+        headline = (
+            f"Ters sinyal orijinalden %{overall_fade_rate - overall_rate:.1f} puan önde — "
+            f"sistem mantığı tersine çalışıyor olabilir."
+        )
     elif overall_rate >= 60:
-        headline = "Genel tablo olumlu — sinyaller başarılı görünüyor."
+        headline = f"Genel başarı %{overall_rate:.1f} — sinyaller çalışıyor."
     elif overall_rate >= 50:
-        headline = "Dengeli bir tablo; net bir avantaj söz konusu değil."
+        headline = f"Genel başarı %{overall_rate:.1f} — dengeli, net avantaj yok."
     else:
-        headline = "Başarı oranı düşük — strateji gözden geçirilmeli."
+        headline = f"Genel başarı %{overall_rate:.1f} — strateji gözden geçirilmeli."
 
     if dir_diff < 5:
         dir_summary = "ALT ve ÜST performansı birbirine yakın."
@@ -474,9 +800,9 @@ def build_deleted_matches_report(signals: list) -> dict:
 
     summary = (
         f"Toplam {total} sinyal, {unique_matches} benzersiz maçtan. "
-        f"Genel başarı oranı %{overall_rate:.1f} ({resolved} sonuçlanan). "
-        f"{dir_summary} Karışık maç sayısı {len(mixed_matches)}. "
-        f"İşaretlenmeyi bekleyen {pending_count} kayıt var."
+        f"Genel başarı %{overall_rate:.1f} — ters oynansaydı %{overall_fade_rate:.1f} olurdu "
+        f"({resolved} sonuçlanan). {dir_summary} Karışık maç {len(mixed_matches)}, "
+        f"sonuç bekleyen {pending_count}."
     )
 
     cards = [
@@ -489,6 +815,11 @@ def build_deleted_matches_report(signals: list) -> dict:
             "title": "Genel Başarı",
             "value": f"%{overall_rate:.1f}",
             "detail": f"{success_count} başarılı, {fail_count} başarısız.",
+        },
+        {
+            "title": "Fade Etseydik",
+            "value": f"%{overall_fade_rate:.1f}",
+            "detail": f"Her sinyalin tersi oynansa {fail_count} başarılı olurdu.",
         },
         {
             "title": "ALT / ÜST",
@@ -526,6 +857,8 @@ def build_deleted_matches_report(signals: list) -> dict:
 
         f"Kalite B ve üzeri sinyallerin başarı oranı %{_pct(quality_good_success, quality_good_resolved):.1f} "
         f"({quality_good_resolved} sonuçlanan kayıt).",
+
+        fade_analysis["overall"]["verdict"],
     ]
 
     mixed_examples = []
@@ -553,6 +886,14 @@ def build_deleted_matches_report(signals: list) -> dict:
         "cards": cards,
         "highlights": highlights,
         "mixed_examples": mixed_examples,
+        "diff_buckets": diff_buckets,
+        "period_buckets": period_buckets,
+        "grade_buckets": grade_buckets,
+        "fade_analysis": fade_analysis,
+        "tournament_top": tournament_top,
+        "tournament_bottom": tournament_bottom,
+        "trend_7d": trend_7d,
+        "actions": actions,
     }
 
 

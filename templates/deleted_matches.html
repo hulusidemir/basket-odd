@@ -758,6 +758,229 @@
       text-align: right;
     }
 
+    /* Extended report sections */
+    .report-action-box {
+      background: linear-gradient(180deg, rgba(251, 191, 36, 0.14), rgba(251, 191, 36, 0.06));
+      border: 1px solid rgba(251, 191, 36, 0.38);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .report-action-box.ok {
+      background: linear-gradient(180deg, rgba(52, 211, 153, 0.14), rgba(52, 211, 153, 0.05));
+      border-color: rgba(52, 211, 153, 0.36);
+    }
+    .report-action-title {
+      font-size: 11px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #fbbf24;
+      margin-bottom: 6px;
+    }
+    .report-action-box.ok .report-action-title { color: #34d399; }
+    .report-action-item {
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--text);
+      padding: 6px 0;
+      border-top: 1px dashed rgba(129, 162, 198, 0.2);
+    }
+    .report-action-item:first-of-type { border-top: none; padding-top: 2px; }
+
+    .report-trend {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(19, 34, 54, 0.88);
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .report-trend.up { border-color: rgba(52, 211, 153, 0.42); }
+    .report-trend.down { border-color: rgba(255, 107, 99, 0.42); }
+    .report-trend-label {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--text-soft);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .report-trend-nums {
+      display: flex;
+      gap: 14px;
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+    .report-trend-num strong {
+      font-size: 20px;
+      font-weight: 900;
+    }
+    .report-trend-num span {
+      font-size: 11px;
+      color: var(--text-soft);
+      margin-left: 4px;
+    }
+    .report-trend-delta {
+      font-size: 13px;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 8px;
+    }
+    .report-trend-delta.up { background: rgba(52, 211, 153, 0.18); color: #9df0bd; }
+    .report-trend-delta.down { background: rgba(255, 107, 99, 0.18); color: #ffb2b2; }
+    .report-trend-delta.flat { background: rgba(251, 191, 36, 0.14); color: #fef08a; }
+    .report-trend-verdict {
+      font-size: 12px;
+      color: var(--text-soft);
+      flex-basis: 100%;
+      line-height: 1.5;
+    }
+
+    .report-bar-list {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    .report-bar-row {
+      display: grid;
+      grid-template-columns: 120px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 10px;
+      border: 1px solid rgba(129, 162, 198, 0.14);
+      border-radius: 10px;
+      background: rgba(13, 26, 42, 0.78);
+    }
+    .report-bar-label {
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .report-bar-track {
+      position: relative;
+      height: 22px;
+      background: rgba(7, 16, 27, 0.72);
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid rgba(129, 162, 198, 0.08);
+    }
+    .report-bar-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      border-radius: 6px 0 0 6px;
+      transition: width 0.25s ease;
+    }
+    .report-bar-fill.good { background: linear-gradient(90deg, #34d399, #22c07c); }
+    .report-bar-fill.mid { background: linear-gradient(90deg, #fbbf24, #f59e0b); }
+    .report-bar-fill.bad { background: linear-gradient(90deg, #ff6b63, #e14c44); }
+    .report-bar-fill.faint { opacity: 0.55; }
+    .report-bar-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .report-bar-text .l {
+      color: #07131f;
+      text-shadow: 0 0 6px rgba(255, 255, 255, 0.35);
+    }
+    .report-bar-text .r {
+      color: var(--text);
+      text-shadow: 0 0 4px rgba(0, 0, 0, 0.7);
+    }
+    .report-bar-meta {
+      font-size: 11px;
+      color: var(--text-soft);
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .report-fade-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .report-fade-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: rgba(13, 26, 42, 0.86);
+    }
+    .report-fade-card.fade-better { border-color: rgba(52, 211, 153, 0.36); }
+    .report-fade-card.orig-better { border-color: rgba(95, 167, 255, 0.36); }
+    .report-fade-card-label {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--text-soft);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .report-fade-card-nums {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .report-fade-num {
+      font-size: 15px;
+      font-weight: 900;
+    }
+    .report-fade-num.orig { color: #b9dcff; }
+    .report-fade-num.fade { color: #9df0bd; }
+    .report-fade-card-detail {
+      font-size: 11px;
+      color: var(--text-soft);
+      line-height: 1.5;
+    }
+
+    .report-two-col {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 10px;
+    }
+    .report-tour-list {
+      display: grid;
+      gap: 6px;
+    }
+    .report-tour-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 10px;
+      border: 1px solid rgba(129, 162, 198, 0.14);
+      border-radius: 10px;
+      background: rgba(13, 26, 42, 0.72);
+      font-size: 12px;
+    }
+    .report-tour-name {
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .report-tour-rate { font-weight: 900; font-variant-numeric: tabular-nums; }
+    .report-tour-rate.good { color: #9df0bd; }
+    .report-tour-rate.bad { color: #ffb2b2; }
+    .report-tour-rate.mid { color: #fef08a; }
+    .report-tour-meta { color: var(--text-soft); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+    @media (max-width: 720px) {
+      .report-bar-row { grid-template-columns: 92px 1fr; }
+      .report-bar-meta { grid-column: 1 / -1; text-align: right; }
+      .report-tour-row { grid-template-columns: 1fr auto; }
+      .report-tour-meta { grid-column: 1 / -1; text-align: right; }
+    }
+
     @media (max-width: 720px) {
       h1 { font-size: 20px; }
       .topbar,
@@ -1378,6 +1601,98 @@
       }
     }
 
+    function rateClass(rate) {
+      const r = Number(rate);
+      if (!Number.isFinite(r)) return 'mid';
+      if (r >= 60) return 'good';
+      if (r >= 45) return 'mid';
+      return 'bad';
+    }
+
+    function barRow(label, stats, { resolvedLabel = 'sonuçlanan' } = {}) {
+      const rate = Number(stats.rate || 0);
+      const fill = Math.min(100, Math.max(0, rate));
+      const cls = rateClass(rate);
+      const faint = stats.resolved < 4 ? ' faint' : '';
+      return `
+        <div class="report-bar-row">
+          <div class="report-bar-label">${escapeHtml(label)}</div>
+          <div class="report-bar-track">
+            <div class="report-bar-fill ${cls}${faint}" style="width:${fill}%"></div>
+            <div class="report-bar-text">
+              <span class="l">%${rate.toFixed(1)}</span>
+              <span class="r">${stats.success}/${stats.resolved}</span>
+            </div>
+          </div>
+          <div class="report-bar-meta">n=${stats.total} · ${resolvedLabel} ${stats.resolved}</div>
+        </div>
+      `;
+    }
+
+    function fadeCard(item) {
+      const orig = Number(item.original_rate || 0);
+      const fade = Number(item.fade_rate || 0);
+      const delta = fade - orig;
+      const resolved = Number(item.resolved || 0);
+      const klass = resolved < 5 ? '' : (delta >= 3 ? 'fade-better' : (delta <= -3 ? 'orig-better' : ''));
+      const deltaText = resolved < 5
+        ? `<span style="color:var(--text-soft)">yetersiz örneklem</span>`
+        : (Math.abs(delta) < 3
+            ? `<span style="color:#fef08a">≈ eşit</span>`
+            : (delta > 0
+                ? `<span style="color:#9df0bd">fade +${delta.toFixed(1)}p</span>`
+                : `<span style="color:#b9dcff">orijinal +${(-delta).toFixed(1)}p</span>`));
+      return `
+        <div class="report-fade-card ${klass}">
+          <div class="report-fade-card-label">${escapeHtml(item.label)}</div>
+          <div class="report-fade-card-nums">
+            <div><div class="report-fade-num orig">%${orig.toFixed(1)}</div><div class="report-card-detail">orijinal</div></div>
+            <div style="text-align:right"><div class="report-fade-num fade">%${fade.toFixed(1)}</div><div class="report-card-detail">fade</div></div>
+          </div>
+          <div class="report-fade-card-detail">n=${resolved} sonuçlanan · ${deltaText}</div>
+        </div>
+      `;
+    }
+
+    function tourRow(item) {
+      const rate = Number(item.rate || 0);
+      const cls = rateClass(rate);
+      return `
+        <div class="report-tour-row">
+          <div class="report-tour-name" title="${escapeHtml(item.label)}">${escapeHtml(item.label)}</div>
+          <div class="report-tour-rate ${cls}">%${rate.toFixed(1)}</div>
+          <div class="report-tour-meta">${item.success}/${item.resolved} · n=${item.total}</div>
+        </div>
+      `;
+    }
+
+    function trendBlock(trend) {
+      if (!trend) return '';
+      const delta = trend.delta;
+      const hasDelta = delta !== null && delta !== undefined;
+      let wrapperCls = '';
+      let badgeCls = 'flat';
+      let badgeText = '—';
+      if (hasDelta) {
+        if (delta >= 3) { wrapperCls = 'up'; badgeCls = 'up'; badgeText = `▲ %${Number(delta).toFixed(1)}`; }
+        else if (delta <= -3) { wrapperCls = 'down'; badgeCls = 'down'; badgeText = `▼ %${Math.abs(Number(delta)).toFixed(1)}`; }
+        else { badgeText = `≈ %${Number(delta).toFixed(1)}`; }
+      }
+      return `
+        <div class="report-trend ${wrapperCls}">
+          <div>
+            <div class="report-trend-label">Son 7 Gün Trendi</div>
+            <div class="report-trend-nums">
+              <div class="report-trend-num"><strong>%${Number(trend.last7.rate || 0).toFixed(1)}</strong><span>son 7g · ${trend.last7.success}/${trend.last7.resolved}</span></div>
+              <div class="report-trend-num" style="color:var(--text-soft)"><strong>%${Number(trend.prior.rate || 0).toFixed(1)}</strong><span>önceki · ${trend.prior.success}/${trend.prior.resolved}</span></div>
+            </div>
+          </div>
+          <div class="report-trend-delta ${badgeCls}">${badgeText}</div>
+          <div class="report-trend-verdict">${escapeHtml(trend.verdict || '')}</div>
+        </div>
+      `;
+    }
+
     function renderReport(data) {
       const cards = (data.cards || []).map(card => `
         <div class="report-card">
@@ -1403,10 +1718,88 @@
         ${mixed}
       ` : '';
 
+      const actionItems = (data.actions || []).map(a =>
+        `<div class="report-action-item">${escapeHtml(a)}</div>`
+      ).join('');
+      const actionsOk = (data.actions || []).length === 1 &&
+        /belirgin bir aksiyon/i.test(data.actions[0] || '');
+      const actionsBlock = actionItems ? `
+        <div class="report-action-box ${actionsOk ? 'ok' : ''}">
+          <div class="report-action-title">Aksiyon Önerileri</div>
+          ${actionItems}
+        </div>
+      ` : '';
+
+      const fade = data.fade_analysis;
+      let fadeBlock = '';
+      if (fade && fade.overall) {
+        const orig = Number(fade.overall.original_rate || 0);
+        const fadeRate = Number(fade.overall.fade_rate || 0);
+        const delta = fadeRate - orig;
+        const byDirection = (fade.by_direction || []).filter(d => d.resolved > 0).map(fadeCard).join('');
+        const byDiff = (fade.by_diff || []).filter(d => d.resolved > 0).map(fadeCard).join('');
+        const byGrade = (fade.by_grade || []).filter(d => d.resolved > 0).map(fadeCard).join('');
+        fadeBlock = `
+          <div class="report-section-title">Ters Sinyal (Fade) Analizi</div>
+          <div class="report-headline" style="font-size:13px;margin-bottom:10px">
+            Bütün sinyallerin tersi oynansaydı başarı <strong style="color:${delta >= 0 ? '#9df0bd' : '#b9dcff'}">%${fadeRate.toFixed(1)}</strong>
+            olurdu (orijinal %${orig.toFixed(1)}). ${escapeHtml(fade.overall.verdict || '')}
+          </div>
+          ${byDirection ? `<div class="report-card-title" style="margin:10px 0 6px">Yöne Göre</div><div class="report-fade-grid">${byDirection}</div>` : ''}
+          ${byDiff ? `<div class="report-card-title" style="margin:10px 0 6px">Fark Aralığına Göre</div><div class="report-fade-grid">${byDiff}</div>` : ''}
+          ${byGrade ? `<div class="report-card-title" style="margin:10px 0 6px">Kalite Grade'e Göre</div><div class="report-fade-grid">${byGrade}</div>` : ''}
+        `;
+      }
+
+      const diffBars = (data.diff_buckets || [])
+        .map(b => barRow(b.label, b)).join('');
+      const diffSection = diffBars ? `
+        <div class="report-section-title">Fark Aralığına Göre Başarı</div>
+        <div class="report-bar-list">${diffBars}</div>
+      ` : '';
+
+      const periodBars = (data.period_buckets || [])
+        .filter(b => b.label !== 'Bilinmiyor' || b.total >= 3)
+        .map(b => barRow(b.label, b)).join('');
+      const periodSection = periodBars ? `
+        <div class="report-section-title">Periyoda Göre Başarı</div>
+        <div class="report-bar-list">${periodBars}</div>
+      ` : '';
+
+      const gradeBars = (data.grade_buckets || [])
+        .map(b => barRow(b.label, b)).join('');
+      const gradeSection = gradeBars ? `
+        <div class="report-section-title">Kalite Grade Detayı</div>
+        <div class="report-bar-list">${gradeBars}</div>
+      ` : '';
+
+      const top = (data.tournament_top || []).map(tourRow).join('');
+      const bottom = (data.tournament_bottom || []).map(tourRow).join('');
+      const tourSection = (top || bottom) ? `
+        <div class="report-section-title">Turnuva Performansı (min 3 sonuçlanan)</div>
+        <div class="report-two-col">
+          <div>
+            <div class="report-card-title" style="margin-bottom:6px;color:#9df0bd">En iyi</div>
+            <div class="report-tour-list">${top || '<div class="report-mixed-detail">Yeterli veri yok</div>'}</div>
+          </div>
+          <div>
+            <div class="report-card-title" style="margin-bottom:6px;color:#ffb2b2">En kötü</div>
+            <div class="report-tour-list">${bottom || '<div class="report-mixed-detail">Yeterli veri yok</div>'}</div>
+          </div>
+        </div>
+      ` : '';
+
       document.getElementById('reportContent').innerHTML = `
         <div class="report-headline">${escapeHtml(data.headline || '')}</div>
         <div class="report-summary">${escapeHtml(data.summary || '')}</div>
+        ${actionsBlock}
+        ${trendBlock(data.trend_7d)}
         <div class="report-cards">${cards}</div>
+        ${fadeBlock}
+        ${diffSection}
+        ${periodSection}
+        ${gradeSection}
+        ${tourSection}
         ${highlights ? `<div class="report-section-title">Öne Çıkanlar</div>${highlights}` : ''}
         ${mixedSection}
         <div class="report-ts">Oluşturuldu: ${escapeHtml(data.generated_at || '')}</div>
