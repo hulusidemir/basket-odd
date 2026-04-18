@@ -134,7 +134,7 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         )
         match = re.search(pattern, text, re.IGNORECASE)
         if not match:
-            return {}
+            return aiscore_team_metrics(team_name)
         ppg = float(match.group(1))
         oppg = float(match.group(2))
         return {
@@ -145,8 +145,48 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
             "over_pct": float(match.group(3)),
         }
 
+    def aiscore_team_metrics(team_name: str) -> dict:
+        if not team_name:
+            return {}
+        escaped = re.escape(team_name)
+        pattern = (
+            rf"{escaped}\s+"
+            rf"(?P<games>\d+)\s+"
+            rf"(?P<scope>Home|Away|All)\s+"
+            rf"This league\s+W\s*X(?P<wins>\d+)\s+L\s*X(?P<losses>\d+)\s+"
+            rf"pts\s+(?P<ppg>\d+(?:\.\d+)?)\s*[-–]\s*(?P<oppg>\d+(?:\.\d+)?)\s+per game"
+        )
+        matches = list(re.finditer(pattern, text, re.IGNORECASE))
+        if not matches:
+            return {}
+
+        preferred_scope = "home" if team_name == home_team else "away"
+
+        def rank(item: re.Match) -> tuple[int, int]:
+            scope = (item.group("scope") or "").lower()
+            games = int(item.group("games") or 0)
+            return (1 if scope == preferred_scope else 0, games)
+
+        match = max(matches, key=rank)
+        ppg = float(match.group("ppg"))
+        oppg = float(match.group("oppg"))
+        return {
+            "team": team_name,
+            "ppg": ppg,
+            "oppg": oppg,
+            "avg_total": round(ppg + oppg, 1),
+            "over_pct": None,
+            "games": int(match.group("games")),
+            "scope": match.group("scope"),
+            "wins": int(match.group("wins")),
+            "losses": int(match.group("losses")),
+        }
+
     h2h_over = None
     h2h_games = None
+    h2h_avg_total = None
+    h2h_ppg = None
+    h2h_oppg = None
     h2h_match = re.search(
         r"Past H2H Results.*?Total Points Over%:\s*(\d+(?:\.\d+)?)%",
         text,
@@ -158,6 +198,23 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
     total_games_match = re.search(r"Total Matches\s+(\d+)", text, re.IGNORECASE)
     if total_games_match:
         h2h_games = int(total_games_match.group(1))
+    else:
+        h2h_games_match = re.search(r"\bH2H\s+(\d+)\b", text, re.IGNORECASE)
+        if h2h_games_match:
+            h2h_games = int(h2h_games_match.group(1))
+
+    if home_team:
+        escaped_home = re.escape(home_team)
+        h2h_pts_match = re.search(
+            rf"\bH2H\b.*?Home\s*-\s*{escaped_home}\s+This league\s+W\s*X\d+\s+L\s*X\d+\s+"
+            rf"pts\s+(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s+per game",
+            text,
+            re.IGNORECASE,
+        )
+        if h2h_pts_match:
+            h2h_ppg = float(h2h_pts_match.group(1))
+            h2h_oppg = float(h2h_pts_match.group(2))
+            h2h_avg_total = round(h2h_ppg + h2h_oppg, 1)
 
     home_metrics = team_metrics(home_team)
     away_metrics = team_metrics(away_team)
@@ -174,6 +231,9 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         "away_last5": away_metrics,
         "h2h_over_pct": h2h_over,
         "h2h_games": h2h_games,
+        "h2h_avg_total": h2h_avg_total,
+        "h2h_ppg": h2h_ppg,
+        "h2h_oppg": h2h_oppg,
         "expected_total": expected_total,
     }
 
@@ -242,6 +302,7 @@ def build_team_context(h2h_metrics: dict, live: float, direction: str) -> dict |
 
     h2h_games = h2h_metrics.get("h2h_games")
     h2h_over = h2h_metrics.get("h2h_over_pct")
+    h2h_avg_total = h2h_metrics.get("h2h_avg_total")
     h2h_note = None
     if h2h_over is not None:
         game_part = f"{int(h2h_games)} maç" if h2h_games else "geçmiş maçlar"
@@ -252,6 +313,9 @@ def build_team_context(h2h_metrics: dict, live: float, direction: str) -> dict |
         else:
             tilt = "dengeli"
         h2h_note = f"Karşılaşma geçmişi ({game_part}): %{h2h_over:.0f} over — {tilt}."
+    elif h2h_avg_total is not None:
+        game_part = f"{int(h2h_games)} maç" if h2h_games else "geçmiş maçlar"
+        h2h_note = f"Karşılaşma geçmişi ({game_part}): ortalama toplam {h2h_avg_total:.1f}."
 
     # Sinyale destek mi, karşı mı?
     support_points = 0
@@ -306,6 +370,7 @@ def build_team_context(h2h_metrics: dict, live: float, direction: str) -> dict |
         "away_profile": away_profile,
         "h2h_games": h2h_games,
         "h2h_over_pct": h2h_over,
+        "h2h_avg_total": h2h_avg_total,
         "h2h_note": h2h_note,
         "avg_last5_over_pct": round(avg_over, 1) if avg_over is not None else None,
         "alignment": alignment,
@@ -435,6 +500,7 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
     away_avg_total = (h2h_metrics.get("away_last5") or {}).get("avg_total")
     expected_total = h2h_metrics.get("expected_total")
     h2h_over_pct = h2h_metrics.get("h2h_over_pct")
+    h2h_avg_total = h2h_metrics.get("h2h_avg_total")
     history_average_note = ""
     if expected_total is not None:
         history_average_note = f"Geçmiş maç ortalaması {expected_total:.1f}"
@@ -467,6 +533,25 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
                 "NÖTR",
                 f"iki takım son 5 over ortalaması %{avg_over:.0f}{expected_part}",
             ))
+    elif expected_total is not None:
+        if expected_total >= live + 4:
+            sources.append(_source(
+                "takım profili",
+                "ÜST",
+                f"son maç profili {expected_total:.1f}, canlı baremin {expected_total - live:.1f} üstü",
+            ))
+        elif expected_total <= live - 4:
+            sources.append(_source(
+                "takım profili",
+                "ALT",
+                f"son maç profili {expected_total:.1f}, canlı baremin {live - expected_total:.1f} altı",
+            ))
+        else:
+            sources.append(_source(
+                "takım profili",
+                "NÖTR",
+                f"son maç profili {expected_total:.1f}, canlı bareme yakın",
+            ))
     else:
         sources.append(_source("takım profili", "NÖTR", "son 5 takım profili eksik"))
 
@@ -479,6 +564,27 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
             sources.append(_source("H2H geçmiş", "ALT", f"{game_part}over %{h2h_over_pct:.0f}"))
         else:
             sources.append(_source("H2H geçmiş", "NÖTR", f"{game_part}over %{h2h_over_pct:.0f}, dengeli"))
+    elif h2h_avg_total is not None:
+        h2h_games = h2h_metrics.get("h2h_games")
+        game_part = f"{int(h2h_games)} maçta " if h2h_games else ""
+        if h2h_avg_total >= live + 4:
+            sources.append(_source(
+                "H2H geçmiş",
+                "ÜST",
+                f"{game_part}ortalama toplam {h2h_avg_total:.1f}, canlı baremin {h2h_avg_total - live:.1f} üstü",
+            ))
+        elif h2h_avg_total <= live - 4:
+            sources.append(_source(
+                "H2H geçmiş",
+                "ALT",
+                f"{game_part}ortalama toplam {h2h_avg_total:.1f}, canlı baremin {live - h2h_avg_total:.1f} altı",
+            ))
+        else:
+            sources.append(_source(
+                "H2H geçmiş",
+                "NÖTR",
+                f"{game_part}ortalama toplam {h2h_avg_total:.1f}, canlı bareme yakın",
+            ))
     else:
         sources.append(_source("H2H geçmiş", "NÖTR", "karşılıklı geçmiş verisi yok"))
 
