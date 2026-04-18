@@ -179,17 +179,10 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
 
 
 def _team_profile_label(avg_total: float | None, over_pct: float | None) -> str:
-    """Takımın son 5 maç ortalama toplam + over eğilimini tek etikete çevir."""
+    """Takımın son 5 maç over eğilimini ligden bağımsız tek etikete çevir."""
     if avg_total is None:
         return "veri yok"
-    if avg_total >= 180:
-        scoring = "Yüksek skorlu"
-    elif avg_total >= 160:
-        scoring = "Orta skorlu"
-    elif avg_total >= 140:
-        scoring = "Düşük-orta skorlu"
-    else:
-        scoring = "Düşük skorlu"
+    scoring = f"son 5 toplam ort {avg_total:.1f}"
     if over_pct is None:
         return scoring
     if over_pct >= 60:
@@ -321,119 +314,46 @@ def build_team_context(h2h_metrics: dict, live: float, direction: str) -> dict |
     }
 
 
-def _derive_setup_name(direction: str, tags: set[str]) -> str:
-    if direction == "ALT":
-        if "hot_shooting" in tags:
-            return "Sicak Sut Regresyonu ALT"
-        if "blowout" in tags:
-            return "Blowout Game Script ALT"
-        if "low_foul" in tags:
-            return "Durgun Tempo ALT"
-        return "Market Sapmasi ALT"
-
-    if "clutch_over" in tags:
-        return "Faul Oyunu UST"
-    if "cold_shooting" in tags and "shot_volume" in tags:
-        return "Tempo Destekli UST"
-    if "history_over" in tags:
-        return "Profil Destekli UST"
-    return "Market Sapmasi UST"
+def _opposite(direction: str) -> str:
+    return "ÜST" if direction == "ALT" else "ALT"
 
 
-def _build_counter_signal(
-    direction: str,
-    live: float,
-    projected_total: float | None,
-    period: int | None,
-    remaining_min: float | None,
-    score_gap: int | None,
-    avg_over: float | None,
-    expected_total: float | None,
-    h2h_over_pct: float | None,
-) -> dict:
-    counter_direction = "ÜST" if direction == "ALT" else "ALT"
-    pressure_score = 0.0
-    reasons = []
-
-    if projected_total is not None:
-        if counter_direction == "ALT":
-            projection_edge = live - projected_total
-            if projection_edge >= 8:
-                pressure_score += 4
-                reasons.append(f"Projeksiyon canlı baremin belirgin altında ({projected_total:.1f})")
-            elif projection_edge >= 4:
-                pressure_score += 3
-                reasons.append(f"Projeksiyon ALT tarafına kayıyor ({projected_total:.1f})")
-            elif projection_edge >= 1:
-                pressure_score += 1.5
-        else:
-            projection_edge = projected_total - live
-            if projection_edge >= 8:
-                pressure_score += 4
-                reasons.append(f"Projeksiyon canlı baremin belirgin üstünde ({projected_total:.1f})")
-            elif projection_edge >= 4:
-                pressure_score += 3
-                reasons.append(f"Projeksiyon ÜST tarafına kayıyor ({projected_total:.1f})")
-            elif projection_edge >= 1:
-                pressure_score += 1.5
-
-    if counter_direction == "ALT":
-        if score_gap is not None and score_gap >= 15:
-            pressure_score += 2
-            reasons.append(f"Skor farki {score_gap} puan, oyun kopma riski var")
-        if period == 4 and remaining_min is not None and remaining_min <= 6:
-            pressure_score += 1.5
-            reasons.append("Son bolumde tempo dususu ALT lehine olabilir")
-    else:
-        if period == 4 and score_gap is not None and score_gap <= 8:
-            pressure_score += 2.5
-            reasons.append("Mac yakin, son bolum faul oyunu USTe donebilir")
-        if period == 4 and remaining_min is not None and remaining_min <= 6:
-            pressure_score += 1.5
-            reasons.append("Son bolum ekstra pozisyon ve faul riski var")
-
-    if avg_over is not None:
-        if counter_direction == "ALT" and avg_over <= 40:
-            pressure_score += 1.5
-            reasons.append(f"Son 5 total profili daha dusuk skorlu ({avg_over:.0f}% over)")
-        elif counter_direction == "ÜST" and avg_over >= 60:
-            pressure_score += 1.5
-            reasons.append(f"Son 5 total profili daha yuksek skorlu ({avg_over:.0f}% over)")
-
-    if expected_total is not None:
-        if counter_direction == "ALT" and expected_total <= live - 4:
-            pressure_score += 1.5
-            reasons.append(f"Tarihsel total profili daha asagida ({expected_total:.1f})")
-        elif counter_direction == "ÜST" and expected_total >= live + 4:
-            pressure_score += 1.5
-            reasons.append(f"Tarihsel total profili daha yukarida ({expected_total:.1f})")
-
-    if h2h_over_pct is not None:
-        if counter_direction == "ALT" and h2h_over_pct <= 40:
-            pressure_score += 1
-        elif counter_direction == "ÜST" and h2h_over_pct >= 60:
-            pressure_score += 1
-
-    if pressure_score >= 6:
-        level = "YÜKSEK"
-    elif pressure_score >= 3:
-        level = "ORTA"
-    elif pressure_score >= 1.5:
-        level = "DÜŞÜK"
-    else:
-        level = "YOK"
-
-    note = ""
-    if level != "YOK" and reasons:
-        note = f"{counter_direction} tarafi daha mantikli olabilir: {reasons[0]}"
-
+def _source(name: str, vote: str, detail: str, tag: str | None = None) -> dict:
     return {
-        "direction": counter_direction,
-        "level": level,
-        "score": round(pressure_score, 1),
-        "note": note,
-        "reasons": reasons[:3],
+        "name": name,
+        "vote": vote if vote in {"ALT", "ÜST"} else "NÖTR",
+        "detail": detail,
+        "tag": tag or "",
     }
+
+
+def _derive_setup_name(direction: str, tags: set[str]) -> str:
+    if "blowout" in tags:
+        return f"Blowout Senaryosu {direction}"
+    if "clutch_game" in tags:
+        return f"Clutch Senaryosu {direction}"
+    if "garbage_time" in tags:
+        return f"Garbage Time {direction}"
+    if "hot_pace" in tags:
+        return f"Yüksek Tempo {direction}"
+    if "cold_pace" in tags:
+        return f"Düşük Tempo {direction}"
+    return f"Market Sapması {direction}"
+
+
+def _grade_from_votes(support_count: int, against_count: int) -> str:
+    if against_count > support_count:
+        return "D"
+    if support_count >= 3 and against_count <= 1:
+        return "A"
+    if support_count == 2 and against_count <= 1:
+        return "B"
+    return "C"
+
+
+def _score_from_votes(support_count: int, against_count: int, neutral_count: int) -> float:
+    score = 50 + ((support_count - against_count) * 15) + (support_count * 2) - (neutral_count * 2)
+    return round(max(5.0, min(95.0, score)), 1)
 
 
 def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
@@ -447,8 +367,6 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
     tournament = match.get("tournament", "")
     status = match.get("status", "")
     score = match.get("score", "")
-    locked = bool(match.get("market_locked"))
-
     clock = game_clock(status, match_name, tournament)
     period = clock["period"]
     remaining_min = clock["remaining_min"]
@@ -458,199 +376,142 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
     h2h_metrics = _extract_h2h_metrics((context.get("h2h") or {}).get("body_text", ""), match_name)
     projected_total = calculate_projected_total(score, status, match_name, tournament)
 
-    score_value = 50.0
-    reasons = []
-    risks = []
-    tags = set()
-    source_count = 1
+    team_context = build_team_context(h2h_metrics, live, direction)
+    tags: set[str] = set()
+    sources: list[dict] = []
 
     diff_ratio = diff / max(float(threshold or 1), 1.0)
-    if diff_ratio >= 1.7:
-        score_value += 14
-        reasons.append(f"Market sapmasi cok guclu: {baseline_label}-canli farki {diff:.1f}")
-    elif diff_ratio >= 1.4:
-        score_value += 10
-        reasons.append(f"Market sapmasi guclu: {baseline_label}-canli farki {diff:.1f}")
-    elif diff_ratio >= 1.15:
-        score_value += 6
-        reasons.append(f"Market sapmasi esitigin ustunde: {baseline_label}-canli farki {diff:.1f}")
-
-    if period == 2:
-        score_value += 7
-        reasons.append("Q2 veri penceresi saglikli")
-    elif period == 3:
-        score_value += 10
-        reasons.append("Q3 ana fiyatlama penceresi")
-    elif period == 1:
-        score_value -= 7
-        risks.append("Q1 sinyali daha oynak")
-    elif period == 4:
-        score_value -= 4
-        risks.append("Q4 sonu varyansi yuksek")
-        if remaining_min is not None and remaining_min <= 6:
-            score_value -= 5
-            risks.append("Son bolum faul ve clock management etkisi artiyor")
-    else:
-        score_value -= 8
-        risks.append("Periyot/sure bilgisi net degil")
-
-    if locked:
-        score_value -= 4
-        risks.append("Market satirlari kilitli/suspended gorundu")
-
-    if projected_total is not None:
-        source_count += 1
-        if direction == "ALT":
-            projected_edge = live - projected_total
-            if projected_edge >= 8:
-                score_value += 12
-                reasons.append(f"Tempo projeksiyonu ALTi guclu destekliyor ({projected_total:.1f} < {live:.1f})")
-            elif projected_edge >= 4:
-                score_value += 8
-                reasons.append(f"Projeksiyon ALT yonunde ({projected_total:.1f})")
-            elif projected_edge >= 1:
-                score_value += 4
-            else:
-                penalty = -4 if period == 1 else (-7 if period == 2 else -10)
-                score_value += penalty
-                risks.append(f"Projeksiyon ALT ile ayni hizada degil ({projected_total:.1f})")
+    if diff >= float(threshold or 0):
+        if diff_ratio >= 1.7:
+            strength = "çok güçlü"
+        elif diff_ratio >= 1.4:
+            strength = "güçlü"
+        elif diff_ratio >= 1.15:
+            strength = "eşik üstü"
         else:
-            projected_edge = projected_total - live
-            if projected_edge >= 8:
-                score_value += 12
-                reasons.append(f"Tempo projeksiyonu USTu guclu destekliyor ({projected_total:.1f} > {live:.1f})")
-            elif projected_edge >= 4:
-                score_value += 8
-                reasons.append(f"Projeksiyon UST yonunde ({projected_total:.1f})")
-            elif projected_edge >= 1:
-                score_value += 4
-            else:
-                penalty = -4 if period == 1 else (-7 if period == 2 else -10)
-                score_value += penalty
-                risks.append(f"Projeksiyon UST ile ayni hizada degil ({projected_total:.1f})")
+            strength = "eşikte"
+        sources.append(_source(
+            "market sapması",
+            direction,
+            f"{baseline_label}-canlı farkı {diff:.1f} puan, barem hareketi {strength}",
+        ))
     else:
-        risks.append("Tempo projeksiyonu hesaplanamadi")
+        sources.append(_source(
+            "market sapması",
+            "NÖTR",
+            f"{baseline_label}-canlı farkı {diff:.1f}, eşik {float(threshold or 0):.1f}",
+        ))
 
-    if score_gap is not None:
-        if direction == "ALT" and score_gap >= 15:
-            score_value += 6
-            reasons.append(f"Skor farki {score_gap} puan, tempo dusme riski var")
-            tags.add("blowout")
-        if direction == "ÜST" and period == 4 and score_gap <= 8:
-            score_value += 7
-            reasons.append("Mac yakin, son bolum faul oyunu USTu destekleyebilir")
-            tags.add("clutch_over")
-        if direction == "ÜST" and score_gap >= 18:
-            score_value -= 7
-            risks.append(f"Skor farki {score_gap} puan, blowout UST icin negatif")
-        if direction == "ALT" and period == 4 and score_gap <= 6:
-            score_value -= 6
-            risks.append("Mac cok yakin, gec oyun ALT icin riskli")
+    if projected_total is None:
+        sources.append(_source("projeksiyon", "NÖTR", "tempo projeksiyonu hesaplanamadı"))
+    else:
+        projection_edge = round(projected_total - live, 1)
+        if projection_edge >= 4:
+            tags.add("hot_pace")
+            sources.append(_source(
+                "projeksiyon",
+                "ÜST",
+                f"mevcut hız finali {projected_total:.1f} gösteriyor, canlı baremin {projection_edge:.1f} üstü",
+                "hot_pace",
+            ))
+        elif projection_edge <= -4:
+            tags.add("cold_pace")
+            sources.append(_source(
+                "projeksiyon",
+                "ALT",
+                f"mevcut hız finali {projected_total:.1f} gösteriyor, canlı baremin {abs(projection_edge):.1f} altı",
+                "cold_pace",
+            ))
+        else:
+            sources.append(_source(
+                "projeksiyon",
+                "NÖTR",
+                f"mevcut hız {projected_total:.1f}, canlı bareme yakın",
+            ))
 
     home_last5 = (h2h_metrics.get("home_last5") or {}).get("over_pct")
     away_last5 = (h2h_metrics.get("away_last5") or {}).get("over_pct")
     expected_total = h2h_metrics.get("expected_total")
     h2h_over_pct = h2h_metrics.get("h2h_over_pct")
-
     avg_over = None
     if home_last5 is not None and away_last5 is not None:
-        source_count += 1
-        avg_over = (home_last5 + away_last5) / 2
-        if direction == "ÜST":
-            if avg_over >= 60:
-                score_value += 6
-                reasons.append(f"Son 5 total profili UST lehine ({avg_over:.0f}% over)")
-                tags.add("history_over")
-            elif avg_over <= 40:
-                score_value -= 5
-                risks.append(f"Son 5 total profili USTu desteklemiyor ({avg_over:.0f}% over)")
+        avg_over = round((home_last5 + away_last5) / 2, 1)
+        expected_part = f", son 5 ortalama toplam {expected_total:.1f}" if expected_total is not None else ""
+        if avg_over >= 60:
+            sources.append(_source(
+                "takım profili",
+                "ÜST",
+                f"iki takım son 5 over ortalaması %{avg_over:.0f}{expected_part}",
+            ))
+        elif avg_over <= 40:
+            sources.append(_source(
+                "takım profili",
+                "ALT",
+                f"iki takım son 5 over ortalaması %{avg_over:.0f}{expected_part}",
+            ))
         else:
-            if avg_over <= 40:
-                score_value += 6
-                reasons.append(f"Son 5 total profili ALT lehine ({avg_over:.0f}% over)")
-            elif avg_over >= 60:
-                score_value -= 5
-                risks.append(f"Son 5 total profili ALTi desteklemiyor ({avg_over:.0f}% over)")
-
-    if expected_total is not None:
-        if direction == "ÜST" and expected_total >= live + 4:
-            score_value += 5
-            reasons.append(f"Tarihsel total profili yukarida ({expected_total:.1f})")
-            tags.add("history_over")
-        elif direction == "ALT" and expected_total <= live - 4:
-            score_value += 5
-            reasons.append(f"Tarihsel total profili asagida ({expected_total:.1f})")
-        elif direction == "ÜST" and expected_total < live - 6:
-            score_value -= 4
-            risks.append(f"Tarihsel total profili UST ile celisiyor ({expected_total:.1f})")
-        elif direction == "ALT" and expected_total > live + 6:
-            score_value -= 4
-            risks.append(f"Tarihsel total profili ALT ile celisiyor ({expected_total:.1f})")
+            sources.append(_source(
+                "takım profili",
+                "NÖTR",
+                f"iki takım son 5 over ortalaması %{avg_over:.0f}{expected_part}",
+            ))
+    else:
+        sources.append(_source("takım profili", "NÖTR", "son 5 takım profili eksik"))
 
     if h2h_over_pct is not None:
-        if direction == "ÜST" and h2h_over_pct >= 60:
-            score_value += 2
-        elif direction == "ALT" and h2h_over_pct <= 40:
-            score_value += 2
-
-    lineup_page = context.get("lineups") or {}
-    standings_page = context.get("standings") or {}
-    if lineup_page.get("available"):
-        source_count += 0.5
-    if standings_page.get("available"):
-        source_count += 0.5
-
-    if source_count >= 3:
-        score_value += 4
-        reasons.append("Veri kapsamı guclu, birden fazla kaynak teyidi var")
-    elif source_count <= 1.5:
-        score_value -= 6
-        risks.append("Kalite puani sinirli veriyle hesaplandi")
-
-    score_value = max(30.0, min(99.0, score_value))
-
-    if score_value >= 88:
-        grade = "A++"
-    elif score_value >= 80:
-        grade = "A+"
-    elif score_value >= 72:
-        grade = "A"
-    elif score_value >= 62:
-        grade = "B"
+        h2h_games = h2h_metrics.get("h2h_games")
+        game_part = f"{int(h2h_games)} maçta " if h2h_games else ""
+        if h2h_over_pct >= 60:
+            sources.append(_source("H2H geçmiş", "ÜST", f"{game_part}over %{h2h_over_pct:.0f}"))
+        elif h2h_over_pct <= 40:
+            sources.append(_source("H2H geçmiş", "ALT", f"{game_part}over %{h2h_over_pct:.0f}"))
+        else:
+            sources.append(_source("H2H geçmiş", "NÖTR", f"{game_part}over %{h2h_over_pct:.0f}, dengeli"))
     else:
-        grade = "C"
+        sources.append(_source("H2H geçmiş", "NÖTR", "karşılıklı geçmiş verisi yok"))
 
-    counter_signal = _build_counter_signal(
-        direction=direction,
-        live=live,
-        projected_total=projected_total,
-        period=period,
-        remaining_min=remaining_min,
-        score_gap=score_gap,
-        avg_over=avg_over,
-        expected_total=expected_total,
-        h2h_over_pct=h2h_over_pct,
-    )
+    script_vote = "NÖTR"
+    script_detail = "maç scripti belirgin değil"
+    if score_gap is not None and score_gap >= 18 and period == 4 and remaining_min is not None and remaining_min <= 5:
+        script_vote = "ALT"
+        script_detail = f"garbage time — skor farkı {score_gap}, son bölümde tempo düşebilir"
+        tags.add("garbage_time")
+    elif score_gap is not None and score_gap >= 15:
+        script_vote = "ALT"
+        script_detail = f"blowout senaryosu — skor farkı {score_gap}, tempo düşebilir"
+        tags.add("blowout")
+    elif score_gap is not None and period == 4 and remaining_min is not None and remaining_min <= 6 and score_gap <= 8:
+        script_vote = "ÜST"
+        script_detail = f"clutch game — skor farkı {score_gap}, faul oyunu ve ekstra pozisyon riski"
+        tags.add("clutch_game")
+    sources.append(_source("maç script", script_vote, script_detail, next(iter(tags), None) if script_vote != "NÖTR" else None))
 
+    supporting = [item for item in sources if item["vote"] == direction]
+    opposing = [item for item in sources if item["vote"] == _opposite(direction)]
+    neutral = [item for item in sources if item["vote"] == "NÖTR"]
+    support_count = len(supporting)
+    against_count = len(opposing)
+    neutral_count = len(neutral)
+
+    grade = _grade_from_votes(support_count, against_count)
+    score_value = _score_from_votes(support_count, against_count, neutral_count)
     setup = _derive_setup_name(direction, tags)
+    reverse_risk = grade == "D"
 
-    reasons = reasons[:4]
-    risks = risks[:3]
-
-    summary_parts = []
-    if reasons:
-        summary_parts.append(reasons[0])
-    if risks:
-        summary_parts.append(f"Risk: {risks[0]}")
-    summary = " | ".join(summary_parts) if summary_parts else "Kalite puani temel market verisinden hesaplandi"
+    summary = (
+        f"{support_count} kaynak destekliyor, {against_count} kaynak karşı"
+        + (f", {neutral_count} nötr" if neutral_count else "")
+    )
+    if reverse_risk:
+        summary += " — TERS RİSKİ VAR"
 
     lines = []
-    for item in reasons:
-        lines.append(f"+ {item}")
-    for item in risks:
-        lines.append(f"- {item}")
-
-    team_context = build_team_context(h2h_metrics, live, direction)
+    for item in supporting:
+        lines.append(f"+ {item['name']}: {item['detail']}")
+    for item in opposing:
+        lines.append(f"- {item['name']}: {item['detail']}")
+    for item in neutral:
+        lines.append(f"= {item['name']}: {item['detail']}")
 
     return {
         "grade": grade,
@@ -659,11 +520,15 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
         "summary": summary,
         "reasons_text": "\n".join(lines),
         "projected_total": projected_total,
-        "data_sources": source_count,
-        "counter_direction": counter_signal["direction"],
-        "counter_level": counter_signal["level"],
-        "counter_score": counter_signal["score"],
-        "counter_note": counter_signal["note"],
-        "counter_reasons_text": "\n".join(counter_signal["reasons"]),
+        "data_sources": len(sources),
+        "sources": sources,
+        "supporting_signals": supporting,
+        "opposing_signals": opposing,
+        "neutral_signals": neutral,
+        "support_count": support_count,
+        "against_count": against_count,
+        "neutral_count": neutral_count,
+        "reverse_risk": reverse_risk,
+        "script_note": script_detail if script_vote != "NÖTR" else "",
         "team_context": team_context,
     }

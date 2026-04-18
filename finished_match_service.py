@@ -63,7 +63,6 @@ def evaluate_signal_professionally(
         market_read_correct: Market hareketi doğru okunmuş mu? (1/0)
         projection_accuracy: Kalite projeksiyon vs gerçek farkı
         quality_accuracy: Verilen kalite notunun sonuçla uyumu
-        counter_triggered: Counter sinyal haklı çıktı mı? (1/0/None)
         verdict: Kısa profesyonel yorum
         lesson: Gelecek sinyaller için çıkarılacak ders
     """
@@ -74,8 +73,6 @@ def evaluate_signal_professionally(
     status = alert.get("status") or ""
     quality_grade = (alert.get("quality_grade") or "").strip().upper()
     quality_score = float(alert.get("quality_score") or 0)
-    counter_level = (alert.get("counter_level") or "").strip().upper()
-    counter_direction = (alert.get("counter_direction") or "").strip().upper()
     signal_count = int(alert.get("signal_count") or 1)
 
     is_success = signal_result == "Başarılı"
@@ -129,16 +126,7 @@ def evaluate_signal_professionally(
     else:
         quality_accuracy = ""
 
-    # ── 5. Counter Signal Validation ──
-    counter_triggered = None
-    if counter_level in {"YÜKSEK", "ORTA"}:
-        # Counter sinyal varsa ve bizim sinyalimiz başarısız olduysa → counter haklı
-        if is_fail:
-            counter_triggered = 1
-        elif is_success:
-            counter_triggered = 0
-
-    # ── 6. Projection Accuracy ──
+    # ── 5. Projection Accuracy ──
     # quality_summary'den projeksiyon değerini çıkarmaya çalış
     projection_accuracy = None
     quality_summary = alert.get("quality_summary") or ""
@@ -152,7 +140,7 @@ def evaluate_signal_professionally(
         except (ValueError, TypeError):
             pass
 
-    # ── 7. Verdict: Profesyonel yorum ──
+    # ── 6. Verdict: Profesyonel yorum ──
     verdict_parts = []
     if is_success:
         if margin is not None and margin >= 10:
@@ -180,17 +168,14 @@ def evaluate_signal_professionally(
     elif timing_grade == "C":
         verdict_parts.append("erken sinyal riski")
 
-    if counter_triggered == 1:
-        verdict_parts.append("counter sinyal haklıydı")
-
     verdict = " — ".join(verdict_parts)
 
-    # ── 8. Lesson: Çıkarılacak ders ──
+    # ── 7. Lesson: Çıkarılacak ders ──
     lessons = []
     if is_fail and high_quality:
         lessons.append("Yüksek kalite notu tek başına yeterli değil, maç dinamiğini de izle")
-    if is_fail and counter_level == "YÜKSEK":
-        lessons.append("YÜKSEK counter sinyali olan maçlarda daha dikkatli ol")
+    if is_fail and quality_grade == "D":
+        lessons.append("D kalite ters risk bayrağı olan sinyallerde daha dikkatli ol")
     if is_success and signal_count >= 3:
         lessons.append("Tekrarlayan sinyaller (3+) güvenilirliği artırıyor")
     if is_fail and period == 1:
@@ -210,7 +195,6 @@ def evaluate_signal_professionally(
         "market_read_correct": market_read_correct,
         "projection_accuracy": projection_accuracy,
         "quality_accuracy": quality_accuracy,
-        "counter_triggered": counter_triggered,
         "verdict": verdict,
         "lesson": lesson,
     }

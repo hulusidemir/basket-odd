@@ -687,6 +687,7 @@
     .badge-quality-a { background: rgba(79, 139, 223, 0.14); color: #86b7ff; border-color: rgba(79, 139, 223, 0.24); }
     .badge-quality-b { background: rgba(251, 191, 36, 0.14); color: #f8d06f; border-color: rgba(251, 191, 36, 0.24); }
     .badge-quality-c { background: rgba(148, 163, 184, 0.14); color: #c0cbda; border-color: rgba(148, 163, 184, 0.22); }
+    .badge-quality-d { background: rgba(255, 107, 99, 0.14); color: #ffb1aa; border-color: rgba(255, 107, 99, 0.24); }
 
     .signal-trust {
       display: inline-flex;
@@ -712,6 +713,12 @@
       color: #f8d06f;
       background: rgba(251, 191, 36, 0.14);
       border-color: rgba(251, 191, 36, 0.24);
+    }
+
+    .signal-trust-weak {
+      color: #ffb1aa;
+      background: rgba(255, 107, 99, 0.14);
+      border-color: rgba(255, 107, 99, 0.24);
     }
 
     .quality-badge {
@@ -752,7 +759,7 @@
       border: 1px solid rgba(110, 146, 187, 0.12);
     }
 
-    .counter-warning {
+    .opposing-warning {
       margin-top: 10px;
       padding: 10px 12px;
       border-radius: 14px;
@@ -763,7 +770,7 @@
       font-size: 13px;
     }
 
-    .counter-warning strong { color: #ffd2cf; }
+    .opposing-warning strong { color: #ffd2cf; }
 
     .team-context {
       margin-top: 12px;
@@ -1844,6 +1851,7 @@
       <button class="filter-btn" data-filter="a">A</button>
       <button class="filter-btn" data-filter="b">B</button>
       <button class="filter-btn" data-filter="c">C</button>
+      <button class="filter-btn" data-filter="d">D</button>
     </div>
 
     <div class="toolbar">
@@ -2104,6 +2112,7 @@
       if (grade === 'A+') return { label: 'A+', className: 'badge badge-quality-a1 quality-badge', key: 'a1' };
       if (grade === 'A') return { label: 'A', className: 'badge badge-quality-a quality-badge', key: 'a' };
       if (grade === 'B') return { label: 'B', className: 'badge badge-quality-b quality-badge', key: 'b' };
+      if (grade === 'D') return { label: 'D', className: 'badge badge-quality-d quality-badge', key: 'd' };
       return { label: grade || 'C', className: 'badge badge-quality-c quality-badge', key: 'c' };
     }
 
@@ -2125,8 +2134,8 @@
     function trustLabelHtml(alert) {
       const label = String(alert.trust_label || '').trim();
       if (!label) return '';
-      const code = alert.trust_code === 'reliable' ? 'reliable' : 'watch';
-      const symbol = code === 'reliable' ? '✓' : '?';
+      const code = ['reliable', 'watch', 'weak'].includes(alert.trust_code) ? alert.trust_code : 'weak';
+      const symbol = code === 'reliable' ? '✓' : (code === 'watch' ? '?' : '!');
       return `<span class="signal-trust signal-trust-${code}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${symbol}</span>`;
     }
 
@@ -2165,9 +2174,7 @@
 
       const setup = a.quality_setup ? `<p><strong>Setup:</strong> ${escapeHtml(a.quality_setup)}</p>` : '';
       const summary = a.quality_summary ? `<p><strong>Ozet:</strong> ${escapeHtml(a.quality_summary)}</p>` : '';
-      const counter = a.counter_level && a.counter_level !== 'YOK' && a.counter_note
-        ? `<div class="counter-warning"><strong>${escapeHtml(a.counter_direction || '')} tarafi daha baskin (${escapeHtml(a.counter_level)})</strong><br>${escapeHtml(a.counter_note)}</div>`
-        : '';
+      const opposing = renderOpposingSignals(a.opposing_signals);
       const reasons = String(a.quality_reasons || '')
         .split('\n')
         .map(line => line.trim())
@@ -2179,11 +2186,26 @@
         <p><strong>Kalite skoru:</strong> ${Number(a.quality_score || 0).toFixed(1)} / 100</p>
         ${setup}
         ${summary}
-        ${counter}
+        ${opposing}
         ${renderTeamContext(a.team_context)}
         ${reasons ? `<p><strong>Analist notlari:</strong></p><ul style="padding-left:18px; margin:0;">${reasons}</ul>` : '<p>Detay notu bulunmuyor.</p>'}
       `;
       modal.classList.add('active');
+    }
+
+    function renderOpposingSignals(raw) {
+      if (!raw) return '';
+      let rows = [];
+      try {
+        rows = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      } catch (e) {
+        rows = [];
+      }
+      if (!Array.isArray(rows) || rows.length === 0) return '';
+      const items = rows
+        .map(item => `<li><strong>${escapeHtml(item.name || '-')}:</strong> ${escapeHtml(item.detail || '')}</li>`)
+        .join('');
+      return `<div class="opposing-warning"><strong>Karşı sinyaller</strong><ul style="padding-left:18px; margin:6px 0 0;">${items}</ul></div>`;
     }
 
     function renderTeamContext(raw) {
@@ -2766,6 +2788,7 @@
       else if (currentFilter === 'a') filtered = filtered.filter(a => (a.quality_grade || '').toUpperCase() === 'A');
       else if (currentFilter === 'b') filtered = filtered.filter(a => (a.quality_grade || '').toUpperCase() === 'B');
       else if (currentFilter === 'c') filtered = filtered.filter(a => !a.quality_grade || (a.quality_grade || '').toUpperCase() === 'C');
+      else if (currentFilter === 'd') filtered = filtered.filter(a => (a.quality_grade || '').toUpperCase() === 'D');
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         filtered = filtered.filter(a =>
@@ -2773,7 +2796,7 @@
           (a.tournament || '').toLowerCase().includes(q) ||
           (a.quality_setup || '').toLowerCase().includes(q) ||
           (a.quality_summary || '').toLowerCase().includes(q) ||
-          (a.counter_note || '').toLowerCase().includes(q)
+          (a.opposing_signals || '').toLowerCase().includes(q)
         );
       }
       filtered.sort((a, b) => {
@@ -2983,7 +3006,7 @@
             <span class="card-meta-item">🏀 ${escapeHtml(a.score || '-')}</span>
           </div>
           ${(a.quality_setup || a.quality_summary) ? `<div class="quality-summary"><strong>${escapeHtml(a.quality_setup || '-')}</strong><br>${escapeHtml(a.quality_summary || '')}</div>` : ''}
-          ${(a.counter_level && a.counter_level !== 'YOK' && a.counter_note) ? `<div class="counter-warning"><strong>${escapeHtml(a.counter_direction || '')} tarafi daha baskin (${escapeHtml(a.counter_level)})</strong><br>${escapeHtml(a.counter_note)}</div>` : ''}
+          ${renderOpposingSignals(a.opposing_signals)}
           <div class="card-odds">
             <div class="card-odds-value">
               <div class="card-odds-label">Açılış</div>

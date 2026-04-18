@@ -133,6 +133,7 @@ async def process_match(
 
     # 3) Save to database
     team_context_json = json.dumps(quality.get("team_context") or {}, ensure_ascii=False) if quality.get("team_context") else ""
+    opposing_signals_json = json.dumps(quality.get("opposing_signals") or [], ensure_ascii=False)
     db.save_alert(
         match_id, match_name, opening_total, inplay_total, direction, abs_diff,
         tournament=tournament, status=status, url=url, score=score, signal_count=signal_count,
@@ -141,11 +142,7 @@ async def process_match(
         quality_setup=quality["setup"],
         quality_summary=quality["summary"],
         quality_reasons=quality["reasons_text"],
-        counter_direction=quality["counter_direction"],
-        counter_level=quality["counter_level"],
-        counter_score=quality["counter_score"],
-        counter_note=quality["counter_note"],
-        counter_reasons=quality["counter_reasons_text"],
+        opposing_signals=opposing_signals_json,
         team_context=team_context_json,
         prematch=prematch_total,
     )

@@ -50,11 +50,7 @@ class Database:
                     quality_setup TEXT NOT NULL DEFAULT '',
                     quality_summary TEXT NOT NULL DEFAULT '',
                     quality_reasons TEXT NOT NULL DEFAULT '',
-                    counter_direction TEXT NOT NULL DEFAULT '',
-                    counter_level TEXT NOT NULL DEFAULT '',
-                    counter_score REAL NOT NULL DEFAULT 0,
-                    counter_note TEXT NOT NULL DEFAULT '',
-                    counter_reasons TEXT NOT NULL DEFAULT '',
+                    opposing_signals TEXT NOT NULL DEFAULT '',
                     team_context TEXT NOT NULL DEFAULT '',
                     deleted_at  TIMESTAMP,
                     result      TEXT NOT NULL DEFAULT '',
@@ -94,11 +90,7 @@ class Database:
                     quality_setup   TEXT NOT NULL DEFAULT '',
                     quality_summary TEXT NOT NULL DEFAULT '',
                     quality_reasons TEXT NOT NULL DEFAULT '',
-                    counter_direction TEXT NOT NULL DEFAULT '',
-                    counter_level   TEXT NOT NULL DEFAULT '',
-                    counter_score   REAL NOT NULL DEFAULT 0,
-                    counter_note    TEXT NOT NULL DEFAULT '',
-                    counter_reasons TEXT NOT NULL DEFAULT '',
+                    opposing_signals TEXT NOT NULL DEFAULT '',
                     team_context    TEXT NOT NULL DEFAULT '',
                     final_score     TEXT NOT NULL DEFAULT '',
                     final_total     REAL,
@@ -184,23 +176,7 @@ class Database:
             except Exception:
                 pass
             try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN counter_direction TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN counter_level TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN counter_score REAL NOT NULL DEFAULT 0")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN counter_note TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN counter_reasons TEXT NOT NULL DEFAULT ''")
+                conn.execute("ALTER TABLE alerts ADD COLUMN opposing_signals TEXT NOT NULL DEFAULT ''")
             except Exception:
                 pass
             try:
@@ -244,23 +220,7 @@ class Database:
             except Exception:
                 pass
             try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN counter_direction TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN counter_level TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN counter_score REAL NOT NULL DEFAULT 0")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN counter_note TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN counter_reasons TEXT NOT NULL DEFAULT ''")
+                conn.execute("ALTER TABLE finished_matches ADD COLUMN opposing_signals TEXT NOT NULL DEFAULT ''")
             except Exception:
                 pass
             # Professional evaluation columns
@@ -282,10 +242,6 @@ class Database:
                 pass
             try:
                 conn.execute("ALTER TABLE finished_matches ADD COLUMN quality_accuracy TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN counter_triggered INTEGER")
             except Exception:
                 pass
             try:
@@ -327,6 +283,19 @@ class Database:
                 conn.execute("ALTER TABLE finished_matches ADD COLUMN prematch REAL")
             except Exception:
                 pass
+            for table in ("alerts", "finished_matches"):
+                for column in (
+                    "counter_direction",
+                    "counter_level",
+                    "counter_score",
+                    "counter_note",
+                    "counter_reasons",
+                    "counter_triggered",
+                ):
+                    try:
+                        conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+                    except Exception:
+                        pass
             try:
                 conn.execute("ALTER TABLE alerts ADD COLUMN result TEXT NOT NULL DEFAULT ''")
             except Exception:
@@ -411,11 +380,7 @@ class Database:
         quality_setup: str = "",
         quality_summary: str = "",
         quality_reasons: str = "",
-        counter_direction: str = "",
-        counter_level: str = "",
-        counter_score: float = 0.0,
-        counter_note: str = "",
-        counter_reasons: str = "",
+        opposing_signals: str = "",
         team_context: str = "",
         prematch: float | None = None,
     ) -> int:
@@ -434,17 +399,15 @@ class Database:
                 INSERT INTO alerts (
                     match_id, match_name, opening, prematch, live, direction, diff, tournament, status, url, score,
                     signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
-                    counter_direction, counter_level, counter_score, counter_note, counter_reasons,
-                    team_context,
+                    opposing_signals, team_context,
                     bet_placed, ignored, followed, deleted_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     match_id, match_name, opening, prematch, live, direction, diff, tournament, status, url, score,
                     signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
-                    counter_direction, counter_level, counter_score, counter_note, counter_reasons,
-                    team_context,
+                    opposing_signals, team_context,
                     bet, ign, fol, deleted_at,
                 ),
             )
@@ -1055,13 +1018,12 @@ class Database:
                     source_alert_id, match_id, match_name, tournament, status, final_status,
                     opening, prematch, live, direction, diff, url, bet_placed, ignored, followed,
                     alerted_at, score, signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
-                    counter_direction, counter_level, counter_score, counter_note, counter_reasons,
-                    team_context,
+                    opposing_signals, team_context,
                     final_score, final_total, result,
                     margin, signal_timing_grade, market_read_correct, projection_accuracy,
-                    quality_accuracy, counter_triggered, verdict, lesson
+                    quality_accuracy, verdict, lesson
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     alert["id"],
@@ -1087,11 +1049,7 @@ class Database:
                     alert.get("quality_setup", ""),
                     alert.get("quality_summary", ""),
                     alert.get("quality_reasons", ""),
-                    alert.get("counter_direction", ""),
-                    alert.get("counter_level", ""),
-                    alert.get("counter_score", 0),
-                    alert.get("counter_note", ""),
-                    alert.get("counter_reasons", ""),
+                    alert.get("opposing_signals", ""),
                     alert.get("team_context", ""),
                     final_score,
                     final_total,
@@ -1101,7 +1059,6 @@ class Database:
                     eval_data.get("market_read_correct"),
                     eval_data.get("projection_accuracy"),
                     eval_data.get("quality_accuracy", ""),
-                    eval_data.get("counter_triggered"),
                     eval_data.get("verdict", ""),
                     eval_data.get("lesson", ""),
                 ),

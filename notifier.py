@@ -69,35 +69,35 @@ class TelegramNotifier:
             quality_grade=(quality or {}).get("grade", ""),
             status=status,
             diff=diff,
-            counter_level=(quality or {}).get("counter_level", ""),
             threshold=threshold,
         )
 
         score_line = f"📊 Skor: <b>{score}</b>\n" if score else ""
         signal_line = f"🔁 <b>{signal_count}. sinyal</b>\n" if signal_count > 1 else ""
-        quality_line = ""
         summary_line = ""
         reasons_line = ""
-        counter_line = ""
         team_line = ""
+        quality_grade = (quality or {}).get("grade", "-")
+        reliability_label = reliability["label"]
         if quality:
-            quality_line = (
-                f"🏅 <b>Kalite: {quality.get('grade', '-')}</b>"
-                f" <i>({quality.get('score', 0):.1f}/100)</i>\n"
-            )
             if quality.get("setup"):
                 summary_line += f"🧩 <b>Setup:</b> {quality['setup']}\n"
-            if quality.get("summary"):
+            supporting = quality.get("supporting_signals") or []
+            opposing = quality.get("opposing_signals") or []
+            neutral = quality.get("neutral_signals") or []
+            support_names = ", ".join(item.get("name", "-") for item in supporting) or "-"
+            opposing_names = ", ".join(item.get("name", "-") for item in opposing) or "-"
+            reasons_line += f"✅ <b>Destekleyen ({len(supporting)}):</b> {support_names}\n"
+            reasons_line += f"⚠️ <b>Karşı ({len(opposing)}):</b> {opposing_names}\n"
+            if neutral:
+                neutral_names = ", ".join(item.get("name", "-") for item in neutral)
+                reasons_line += f"➖ <b>Nötr ({len(neutral)}):</b> {neutral_names}\n"
+            if quality.get("reverse_risk"):
+                reasons_line += "🟥 <b>TERS RİSKİ VAR</b>\n"
+            if quality.get("script_note"):
+                summary_line += f"📝 {quality['script_note']}\n"
+            elif quality.get("summary"):
                 summary_line += f"📝 {quality['summary']}\n"
-            raw_reasons = [line.strip() for line in str(quality.get("reasons_text", "")).splitlines() if line.strip()]
-            if raw_reasons:
-                reasons_line = "🔎 <b>Gerekceler</b>\n" + "\n".join(raw_reasons[:4]) + "\n"
-            if quality.get("counter_level") and quality.get("counter_level") != "YOK" and quality.get("counter_note"):
-                counter_line = (
-                    f"🟥 <b>{quality['counter_direction']} tarafi daha baskin "
-                    f"({quality['counter_level']})</b>\n"
-                    f"{quality['counter_note']}\n"
-                )
             ctx = quality.get("team_context") or {}
             if ctx:
                 lines = ["📚 <b>Takım Profili</b>"]
@@ -129,8 +129,7 @@ class TelegramNotifier:
         reference_value = baseline if baseline is not None else opening
         reference_line = f"Referans:      <b>{baseline_label} {reference_value:.1f}</b>\n"
         text = (
-            f"{emoji} <b>Sinyal: {direction} ({reliability['label']})</b>\n"
-            f"{quality_line}"
+            f"🎯 <b>Sinyal: {direction} ({quality_grade}) — {reliability_label}</b>\n"
             f"{signal_line}\n"
             f"🏀 <b>{match_name}</b>\n"
             f"🏆 {tournament} | {status}\n"
@@ -141,7 +140,6 @@ class TelegramNotifier:
             f"Güncel Barem:  <b>{live:.1f}</b>\n"
             f"Fark: <b>{diff:+.1f}</b> puan\n\n"
             f"{summary_line}"
-            f"{counter_line}"
             f"{reasons_line}"
             f"{team_line}"
             f"💡 <i>{tip}</i>"

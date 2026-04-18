@@ -39,7 +39,6 @@ def enrich_alerts_with_projection(alerts: list[dict]) -> list[dict]:
             quality_grade=alert.get("quality_grade", ""),
             status=alert.get("status", ""),
             diff=alert.get("diff", 0),
-            counter_level=alert.get("counter_level", ""),
             threshold=config.THRESHOLD,
         )
         alert["trust_label"] = reliability["label"]
@@ -459,7 +458,7 @@ def _quality_grade_key(value) -> str:
     return key if key else "YOK"
 
 
-_GRADE_ORDER = ["A++", "A+", "A", "B", "C", "YOK"]
+_GRADE_ORDER = ["A", "B", "C", "D", "A++", "A+", "YOK"]
 
 
 def _parse_ts(value):
@@ -530,7 +529,7 @@ def build_deleted_matches_report(signals: list) -> dict:
         and any(_fold(r.get("result")) == "basarisiz" for r in rows)
     ]
 
-    quality_good = [s for s in signals if str(s.get("quality_grade") or "").upper() in {"A++", "A+", "A", "B"}]
+    quality_good = [s for s in signals if str(s.get("quality_grade") or "").upper() in {"A", "B"}]
     quality_good_success = sum(1 for s in quality_good if _fold(s.get("result")) == "basarili")
     quality_good_resolved = sum(
         1 for s in quality_good if _fold(s.get("result")) in {"basarili", "basarisiz"}
@@ -827,9 +826,9 @@ def build_deleted_matches_report(signals: list) -> dict:
             "detail": f"ALT {alt_stats['success']}/{alt_stats['total']} | ÜST {ust_stats['success']}/{ust_stats['total']}.",
         },
         {
-            "title": "Kalite B+",
+            "title": "Kalite A/B",
             "value": f"%{_pct(quality_good_success, quality_good_resolved):.1f}",
-            "detail": f"{len(quality_good)} sinyalde kalite B ve üzeri.",
+            "detail": f"{len(quality_good)} sinyalde kalite A veya B.",
         },
         {
             "title": "#1 Sinyal",
@@ -855,7 +854,7 @@ def build_deleted_matches_report(signals: list) -> dict:
         f"İlk sinyal (#1) başarı oranı %{_pct(first_success, first_resolved):.1f}, "
         f"tekrar sinyaller (#2+) başarı oranı %{_pct(repeat_success, repeat_resolved):.1f}.",
 
-        f"Kalite B ve üzeri sinyallerin başarı oranı %{_pct(quality_good_success, quality_good_resolved):.1f} "
+        f"Kalite A/B sinyallerin başarı oranı %{_pct(quality_good_success, quality_good_resolved):.1f} "
         f"({quality_good_resolved} sonuçlanan kayıt).",
 
         fade_analysis["overall"]["verdict"],
