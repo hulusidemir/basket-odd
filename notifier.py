@@ -130,6 +130,8 @@ class TelegramNotifier:
         prematch_line = f"Maç Öncesi:    <b>{prematch:.1f}</b>\n" if prematch is not None else ""
         reference_value = baseline if baseline is not None else opening
         reference_line = f"Referans:      <b>{baseline_label} {reference_value:.1f}</b>\n"
+        projected = (quality or {}).get("projected_total")
+        projected_line = f"Projeksiyon:   <b>{projected:.1f}</b>\n" if projected is not None else ""
         text = (
             f"🎯 <b>Sinyal: {direction} ({quality_grade}) — {reliability_label}</b>\n"
             f"{signal_line}\n"
@@ -140,6 +142,7 @@ class TelegramNotifier:
             f"{prematch_line}"
             f"{reference_line}"
             f"Güncel Barem:  <b>{live:.1f}</b>\n"
+            f"{projected_line}"
             f"Fark: <b>{diff:+.1f}</b> puan\n\n"
             f"{summary_line}"
             f"{reasons_line}"
