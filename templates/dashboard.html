@@ -2120,7 +2120,6 @@
       const meta = qualityMeta(a);
       const score = Number(a.quality_score || 0);
       const setup = a.quality_setup ? `<span class="quality-setup">${escapeHtml(a.quality_setup)}</span>` : '';
-      const summary = a.quality_summary ? `<div class="quality-summary">${escapeHtml(a.quality_summary)}</div>` : '';
       return `
         <div class="quality-cell">
           <div class="quality-row">
@@ -2128,7 +2127,6 @@
             ${trustLabelHtml(a)}
           </div>
           ${setup}
-          ${summary}
         </div>
       `;
     }
@@ -3007,7 +3005,7 @@
             <span class="card-meta-item">📡 ${escapeHtml(a.status || '-')}</span>
             <span class="card-meta-item">🏀 ${escapeHtml(a.score || '-')}</span>
           </div>
-          ${(a.quality_setup || a.quality_summary) ? `<div class="quality-summary"><strong>${escapeHtml(a.quality_setup || '-')}</strong><br>${escapeHtml(a.quality_summary || '')}</div>` : ''}
+          ${a.quality_setup ? `<div class="quality-summary"><strong>${escapeHtml(a.quality_setup)}</strong></div>` : ''}
           ${renderOpposingSignals(a.opposing_signals)}
           <div class="card-odds">
             <div class="card-odds-value">
