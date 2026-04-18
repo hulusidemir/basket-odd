@@ -16,6 +16,7 @@ from aiscore_scraper import AiscoreScraper
 from config import Config
 from db import Database
 from notifier import TelegramNotifier
+from projection import game_clock
 from signal_quality import assess_signal_quality
 
 
@@ -59,6 +60,16 @@ async def process_match(
     # Uzatmaya giden (OT) maçları yoksay
     if re.search(r'\bOT\b|Uzatma', status, re.IGNORECASE):
         log.debug("Skipped (Overtime): %s", match_name)
+        return
+
+    clock = game_clock(status, match_name, tournament)
+    if clock["period"] == 4 and clock["remaining_min"] is not None and clock["remaining_min"] < 5:
+        log.debug(
+            "Skipped (Q4 under 5:00): %s | status=%s | remaining=%.2f",
+            match_name,
+            status,
+            clock["remaining_min"],
+        )
         return
 
     # Blacklist check
