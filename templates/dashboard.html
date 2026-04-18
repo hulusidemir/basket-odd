@@ -759,27 +759,94 @@
       border: 1px solid rgba(110, 146, 187, 0.12);
     }
 
-    .opposing-warning {
-      margin-top: 10px;
+    .quality-modal-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .quality-score-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 10px;
+      background: rgba(11, 24, 38, 0.76);
+      border: 1px solid rgba(110, 146, 187, 0.12);
+      font-size: 13px;
+    }
+
+    .quality-score-line strong { color: var(--text); }
+
+    .quality-section {
       padding: 10px 12px;
-      border-radius: 14px;
+      border-radius: 12px;
+      background: rgba(11, 24, 38, 0.76);
+      border: 1px solid rgba(110, 146, 187, 0.12);
+    }
+
+    .quality-section-title {
+      margin-bottom: 8px;
+      color: var(--text-soft);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .quality-summary-list,
+    .quality-note-list {
+      display: grid;
+      gap: 7px;
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+
+    .quality-summary-list li,
+    .quality-note-list li {
+      display: grid;
+      grid-template-columns: minmax(86px, 130px) 1fr;
+      gap: 8px;
+      padding: 7px 9px;
+      border-radius: 9px;
+      background: rgba(7, 17, 29, 0.7);
+      border: 1px solid rgba(110, 146, 187, 0.08);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .quality-summary-key {
+      color: var(--text-soft);
+      font-weight: 800;
+    }
+
+    .quality-summary-value {
+      color: var(--text);
+      overflow-wrap: anywhere;
+    }
+
+    .opposing-warning {
+      margin-top: 0;
+      padding: 10px 12px;
+      border-radius: 12px;
       background: rgba(255, 106, 99, 0.08);
       border: 1px solid rgba(255, 106, 99, 0.14);
       color: #ffb4b0;
-      line-height: 1.55;
-      font-size: 13px;
+      line-height: 1.45;
+      font-size: 12px;
     }
 
     .opposing-warning strong { color: #ffd2cf; }
 
     .team-context {
-      margin-top: 12px;
-      padding: 12px 14px;
-      border-radius: 14px;
+      margin-top: 0;
+      padding: 10px 12px;
+      border-radius: 12px;
       background: rgba(19, 34, 54, 0.92);
       border: 1px solid rgba(110, 146, 187, 0.18);
-      line-height: 1.55;
-      font-size: 13px;
+      line-height: 1.45;
+      font-size: 12px;
     }
     .team-context-title {
       font-size: 11px;
@@ -1134,10 +1201,10 @@
     .modal-box {
       background: rgba(10, 22, 36, 0.98);
       border: 1px solid var(--line);
-      border-radius: 22px;
-      max-width: 760px;
+      border-radius: 16px;
+      max-width: 720px;
       width: 100%;
-      max-height: 84vh;
+      max-height: 86vh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -1153,14 +1220,16 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 18px 20px;
+      padding: 13px 16px;
       border-bottom: 1px solid rgba(110, 146, 187, 0.12);
       background: rgba(11, 24, 38, 0.98);
     }
 
     .modal-header h3 {
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 800;
+      line-height: 1.35;
+      padding-right: 8px;
     }
 
     .modal-close {
@@ -1178,12 +1247,12 @@
     .modal-close:hover { color: var(--text); }
 
     .modal-body {
-      padding: 20px;
+      padding: 12px;
       overflow-y: auto;
-      font-size: 14px;
-      line-height: 1.7;
+      font-size: 13px;
+      line-height: 1.45;
       color: var(--text);
-      white-space: pre-wrap;
+      white-space: normal;
     }
 
     .modal-body .loading {
@@ -2172,25 +2241,74 @@
       const title = `${cleanMatchName(a.match_name)} | ${meta.label}`;
       document.getElementById('qualityModalTitle').textContent = title;
 
-      const setup = a.quality_setup ? `<p><strong>Setup:</strong> ${escapeHtml(a.quality_setup)}</p>` : '';
-      const summary = a.quality_summary ? `<p><strong>Ozet:</strong> ${escapeHtml(a.quality_summary)}</p>` : '';
+      const setup = a.quality_setup
+        ? `<div class="quality-score-line"><span>Setup</span><strong>${escapeHtml(a.quality_setup)}</strong></div>`
+        : '';
+      const summary = renderQualitySummary(a.quality_summary);
       const opposing = renderOpposingSignals(a.opposing_signals);
       const reasons = String(a.quality_reasons || '')
         .split('\n')
         .map(line => line.trim())
         .filter(Boolean)
-        .map(line => `<li>${escapeHtml(line)}</li>`)
+        .map(line => {
+          const clean = line.replace(/^[+\-=]\s*/, '');
+          const idx = clean.indexOf(':');
+          if (idx > 0) {
+            return `<li><span class="quality-summary-key">${escapeHtml(clean.slice(0, idx))}</span><span class="quality-summary-value">${escapeHtml(clean.slice(idx + 1).trim())}</span></li>`;
+          }
+          return `<li><span class="quality-summary-key">Not</span><span class="quality-summary-value">${escapeHtml(clean)}</span></li>`;
+        })
         .join('');
 
       body.innerHTML = `
-        <p><strong>Kalite skoru:</strong> ${Number(a.quality_score || 0).toFixed(1)} / 100</p>
-        ${setup}
-        ${summary}
-        ${opposing}
-        ${renderTeamContext(a.team_context)}
-        ${reasons ? `<p><strong>Analist notlari:</strong></p><ul style="padding-left:18px; margin:0;">${reasons}</ul>` : '<p>Detay notu bulunmuyor.</p>'}
+        <div class="quality-modal-grid">
+          <div class="quality-score-line"><span>Kalite skoru</span><strong>${Number(a.quality_score || 0).toFixed(1)} / 100</strong></div>
+          ${setup}
+          ${summary}
+          ${opposing}
+          ${renderTeamContext(a.team_context)}
+          ${reasons ? `<div class="quality-section"><div class="quality-section-title">Analist Notları</div><ul class="quality-note-list">${reasons}</ul></div>` : '<div class="quality-section">Detay notu bulunmuyor.</div>'}
+        </div>
       `;
       modal.classList.add('active');
+    }
+
+    function renderQualitySummary(raw) {
+      const text = String(raw || '').trim();
+      if (!text) return '';
+
+      const rows = [];
+      const addRow = (key, value) => {
+        const clean = String(value || '').trim();
+        if (!clean) return;
+        rows.push(`<li><span class="quality-summary-key">${escapeHtml(key)}</span><span class="quality-summary-value">${escapeHtml(clean)}</span></li>`);
+      };
+
+      const pieces = text.split(/\s+\|\s+/).map(item => item.trim()).filter(Boolean);
+      const main = pieces.shift() || text;
+      const riskParts = main.split(/\s+Risk:\s+/i);
+      const decisionText = riskParts[0] || main;
+      const riskText = riskParts[1] || '';
+      const directionMatch = decisionText.match(/^(ALT|ÜST|UST)\s*:\s*(.*)$/i);
+      const direction = directionMatch ? directionMatch[1].replace('UST', 'ÜST') : '';
+      const bodyText = directionMatch ? directionMatch[2] : decisionText;
+      const segments = bodyText.split(';').map(item => item.trim()).filter(Boolean);
+
+      if (direction) addRow('Sinyal', direction);
+      for (const segment of segments) {
+        const lower = segment.toLowerCase();
+        if (lower.includes('barem')) addRow('Barem', segment);
+        else if (lower.includes('projeksiyon')) addRow('Projeksiyon', segment);
+        else if (lower.includes('kaynak')) addRow('Kaynaklar', segment);
+        else if (lower.includes('son pencere')) addRow('Son Tempo', segment);
+        else if (lower.includes('market hareket')) addRow('Senaryo', segment);
+        else addRow('Not', segment);
+      }
+      if (riskText) addRow('Risk', riskText);
+      pieces.forEach(piece => addRow('Ek Not', piece));
+
+      if (!rows.length) addRow('Özet', text);
+      return `<div class="quality-section"><div class="quality-section-title">Özet</div><ul class="quality-summary-list">${rows.join('')}</ul></div>`;
     }
 
     function renderOpposingSignals(raw) {
