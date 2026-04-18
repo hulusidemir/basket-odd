@@ -82,6 +82,8 @@ class TelegramNotifier:
         if quality:
             if quality.get("setup"):
                 summary_line += f"🧩 <b>Setup:</b> {quality['setup']}\n"
+            if quality.get("history_average_note"):
+                summary_line += f"📚 <b>Geçmiş ort:</b> {quality['history_average_note']}\n"
             supporting = quality.get("supporting_signals") or []
             opposing = quality.get("opposing_signals") or []
             neutral = quality.get("neutral_signals") or []

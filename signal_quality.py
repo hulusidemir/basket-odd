@@ -431,8 +431,20 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
 
     home_last5 = (h2h_metrics.get("home_last5") or {}).get("over_pct")
     away_last5 = (h2h_metrics.get("away_last5") or {}).get("over_pct")
+    home_avg_total = (h2h_metrics.get("home_last5") or {}).get("avg_total")
+    away_avg_total = (h2h_metrics.get("away_last5") or {}).get("avg_total")
     expected_total = h2h_metrics.get("expected_total")
     h2h_over_pct = h2h_metrics.get("h2h_over_pct")
+    history_average_note = ""
+    if expected_total is not None:
+        history_average_note = f"Geçmiş maç ortalaması {expected_total:.1f}"
+        side_parts = []
+        if home_avg_total is not None:
+            side_parts.append(f"ev {home_avg_total:.1f}")
+        if away_avg_total is not None:
+            side_parts.append(f"dep {away_avg_total:.1f}")
+        if side_parts:
+            history_average_note += f" ({', '.join(side_parts)})"
     avg_over = None
     if home_last5 is not None and away_last5 is not None:
         avg_over = round((home_last5 + away_last5) / 2, 1)
@@ -502,6 +514,8 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
         f"{support_count} kaynak destekliyor, {against_count} kaynak karşı"
         + (f", {neutral_count} nötr" if neutral_count else "")
     )
+    if history_average_note:
+        summary += f" | {history_average_note}"
     if reverse_risk:
         summary += " — TERS RİSKİ VAR"
 
@@ -530,5 +544,6 @@ def assess_signal_quality(match: dict, context: dict, threshold: float) -> dict:
         "neutral_count": neutral_count,
         "reverse_risk": reverse_risk,
         "script_note": script_detail if script_vote != "NÖTR" else "",
+        "history_average_note": history_average_note,
         "team_context": team_context,
     }

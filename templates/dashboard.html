@@ -2120,6 +2120,7 @@
       const meta = qualityMeta(a);
       const score = Number(a.quality_score || 0);
       const setup = a.quality_setup ? `<span class="quality-setup">${escapeHtml(a.quality_setup)}</span>` : '';
+      const summary = a.quality_summary ? `<div class="quality-summary">${escapeHtml(a.quality_summary)}</div>` : '';
       return `
         <div class="quality-cell">
           <div class="quality-row">
@@ -2127,6 +2128,7 @@
             ${trustLabelHtml(a)}
           </div>
           ${setup}
+          ${summary}
         </div>
       `;
     }
