@@ -220,61 +220,149 @@
 
     .quality-breakdown {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
     }
 
-    .quality-filter {
+    .direction-summary {
       text-align: left;
       border: 1px solid var(--border);
       border-radius: 14px;
-      padding: 12px;
+      padding: 14px;
       background: rgba(19, 34, 54, 0.94);
       color: var(--text);
-      cursor: pointer;
-      transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
     }
 
-    .quality-filter:hover {
-      transform: translateY(-1px);
-      border-color: rgba(95, 167, 255, 0.52);
+    .direction-summary.alt {
+      border-color: rgba(239, 68, 68, 0.24);
     }
 
-    .quality-filter.active {
-      border-color: rgba(95, 167, 255, 0.78);
-      background: rgba(95, 167, 255, 0.14);
+    .direction-summary.ust {
+      border-color: rgba(34, 197, 94, 0.24);
     }
 
-    .quality-filter-title {
+    .direction-summary-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      font-size: 12px;
-      font-weight: 900;
-      margin-bottom: 8px;
+      margin-bottom: 12px;
     }
 
-    .quality-filter-title .badge {
+    .direction-summary-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .direction-summary-title .badge {
       min-width: auto;
       padding: 4px 8px;
       font-size: 11px;
     }
 
-    .quality-filter-main {
-      font-size: 22px;
+    .direction-summary-total {
+      font-size: 24px;
       font-weight: 900;
-      margin-bottom: 4px;
+      line-height: 1;
     }
 
-    .quality-filter-detail {
+    .direction-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .direction-mini-stat {
+      background: rgba(7, 16, 27, 0.42);
+      border: 1px solid rgba(129, 162, 198, 0.12);
+      border-radius: 10px;
+      padding: 8px;
+    }
+
+    .direction-mini-stat span {
+      display: block;
+      color: var(--text-soft);
+      font-size: 10px;
+      font-weight: 800;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+
+    .direction-mini-stat strong {
+      font-size: 17px;
+      font-weight: 900;
+    }
+
+    .grade-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .grade-row {
+      display: grid;
+      grid-template-columns: 46px repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      align-items: center;
+      border: 1px solid rgba(129, 162, 198, 0.12);
+      border-radius: 10px;
+      padding: 8px;
+      background: rgba(7, 16, 27, 0.34);
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .grade-row:hover,
+    .grade-row.active {
+      border-color: rgba(95, 167, 255, 0.56);
+      background: rgba(95, 167, 255, 0.10);
+    }
+
+    .grade-name {
+      font-weight: 900;
+      color: var(--accent-yellow);
+    }
+
+    .grade-metric {
+      min-width: 0;
+    }
+
+    .grade-metric span {
+      display: block;
+      color: var(--text-soft);
+      font-size: 10px;
+      font-weight: 800;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+
+    .grade-metric strong {
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .grade-empty {
       color: var(--text-soft);
       font-size: 12px;
-      line-height: 1.45;
+      font-weight: 700;
+      padding: 8px;
     }
 
-    .quality-filter-reset {
-      border-style: dashed;
+    .summary-reset {
+      margin-top: 10px;
+      width: 100%;
+      border: 1px dashed var(--border-strong);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: rgba(7, 16, 27, 0.32);
+      color: var(--text-soft);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
     }
 
     .table-wrap {
@@ -598,6 +686,9 @@
       .btn,
       .nav-tab { flex: 1 1 auto; text-align: center; }
       .stat-chip { flex: 1 1 120px; }
+      .quality-breakdown { grid-template-columns: 1fr; }
+      .direction-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grade-row { grid-template-columns: 42px repeat(2, minmax(0, 1fr)); }
     }
   </style>
 </head>
@@ -620,6 +711,10 @@
     </header>
 
     <main class="section-shell">
+
+      <section class="panel">
+        <div class="quality-breakdown" id="qualityBreakdown"></div>
+      </section>
 
       <section class="panel stats">
         <div class="stat-chip">
@@ -650,10 +745,6 @@
           <span>Başarı %</span>
           <strong id="statRate">-</strong>
         </div>
-      </section>
-
-      <section class="panel">
-        <div class="quality-breakdown" id="qualityBreakdown"></div>
       </section>
 
       <section class="panel toolbar">
@@ -764,12 +855,14 @@
       return `<span class="badge ${cls}">${escapeHtml(direction)}</span>`;
     }
 
-    function qualityBucket(alert) {
-      const grade = String(alert.quality_grade || '').trim().toUpperCase();
-      if (grade.startsWith('A')) return 'A';
-      if (grade.startsWith('B')) return 'B';
-      if (grade.startsWith('C')) return 'C';
-      return '-';
+    function qualityGrade(alert) {
+      return String(alert.quality_grade || '').trim().toUpperCase() || 'YOK';
+    }
+
+    function gradeRank(grade) {
+      const order = ['A++', 'A+', 'A', 'B', 'C', 'YOK'];
+      const idx = order.indexOf(grade);
+      return idx === -1 ? order.length : idx;
     }
 
     function qualityLabel(alert) {
@@ -796,7 +889,7 @@
       let rows = [...deletedAlerts];
       if (qualityFilter) {
         rows = rows.filter(alert =>
-          alert.direction === qualityFilter.direction && qualityBucket(alert) === qualityFilter.grade
+          alert.direction === qualityFilter.direction && qualityGrade(alert) === qualityFilter.grade
         );
       }
       if (!searchQuery) return sortedAlerts(rows);
@@ -866,53 +959,88 @@
       renderQualityBreakdown();
     }
 
-    function qualityStats(direction, grade) {
-      const scoped = deletedAlerts.filter(item => item.direction === direction && qualityBucket(item) === grade);
+    function uniqueMatchCount(rows) {
+      return new Set(rows.map(item => String(item.match_id || item.id))).size;
+    }
+
+    function directionStats(direction) {
+      const scoped = deletedAlerts.filter(item => item.direction === direction);
       const success = scoped.filter(item => item.result === 'Başarılı').length;
       const fail = scoped.filter(item => item.result === 'Başarısız').length;
       const resolved = success + fail;
       const rate = resolved > 0 ? Math.round((success / resolved) * 1000) / 10 : null;
-      return { total: scoped.length, success, fail, rate };
+      return { total: scoped.length, success, fail, rate, unique: uniqueMatchCount(scoped) };
+    }
+
+    function qualityStats(direction, grade) {
+      const scoped = deletedAlerts.filter(item => item.direction === direction && qualityGrade(item) === grade);
+      const success = scoped.filter(item => item.result === 'Başarılı').length;
+      const fail = scoped.filter(item => item.result === 'Başarısız').length;
+      const resolved = success + fail;
+      const rate = resolved > 0 ? Math.round((success / resolved) * 1000) / 10 : null;
+      return { total: scoped.length, success, fail, rate, unique: uniqueMatchCount(scoped) };
+    }
+
+    function gradesForDirection(direction) {
+      return Array.from(new Set(
+        deletedAlerts
+          .filter(item => item.direction === direction)
+          .map(item => qualityGrade(item))
+      )).sort((a, b) => {
+        const rankDiff = gradeRank(a) - gradeRank(b);
+        return rankDiff !== 0 ? rankDiff : a.localeCompare(b, 'tr-TR');
+      });
     }
 
     function renderQualityBreakdown() {
       const target = document.getElementById('qualityBreakdown');
       const directions = ['ALT', 'ÜST'];
-      const grades = ['A', 'B', 'C'];
       const activeKey = qualityFilter ? `${qualityFilter.direction}-${qualityFilter.grade}` : '';
-      const cards = [];
-
-      cards.push(`
-        <button class="quality-filter quality-filter-reset ${!qualityFilter ? 'active' : ''}" onclick="setQualityFilter('', '')">
-          <div class="quality-filter-title">TÜM SİNYALLER</div>
-          <div class="quality-filter-main">${deletedAlerts.length}</div>
-          <div class="quality-filter-detail">Filtreyi kaldır</div>
-        </button>
-      `);
-
-      for (const direction of directions) {
-        for (const grade of grades) {
+      const panels = directions.map(direction => {
+        const stats = directionStats(direction);
+        const badgeClass = direction === 'ALT' ? 'badge-alt' : 'badge-ust';
+        const rateText = stats.rate !== null ? `%${stats.rate.toFixed(1)}` : '-';
+        const gradeRows = gradesForDirection(direction).map(grade => {
           const stats = qualityStats(direction, grade);
           const key = `${direction}-${grade}`;
-          const badgeClass = direction === 'ALT' ? 'badge-alt' : 'badge-ust';
           const rateText = stats.rate !== null ? `%${stats.rate.toFixed(1)}` : '-';
-          cards.push(`
-            <button class="quality-filter ${activeKey === key ? 'active' : ''}" onclick="setQualityFilter('${direction}', '${grade}')">
-              <div class="quality-filter-title">
-                <span class="badge ${badgeClass}">${direction}</span>
-                <span>${grade}</span>
-              </div>
-              <div class="quality-filter-main">${stats.total}</div>
-              <div class="quality-filter-detail">
-                Başarılı ${stats.success} / Başarısız ${stats.fail}<br>
-                Başarı ${rateText}
-              </div>
+          return `
+            <button class="grade-row ${activeKey === key ? 'active' : ''}" onclick="setQualityFilter('${direction}', '${grade}')">
+              <div class="grade-name">${escapeHtml(grade)}</div>
+              <div class="grade-metric"><span>Toplam</span><strong>${stats.total}</strong></div>
+              <div class="grade-metric"><span>Maç</span><strong>${stats.unique}</strong></div>
+              <div class="grade-metric"><span>Başarılı</span><strong>${stats.success}</strong></div>
+              <div class="grade-metric"><span>Başarısız</span><strong>${stats.fail}</strong></div>
             </button>
-          `);
-        }
-      }
+          `;
+        }).join('') || '<div class="grade-empty">Bu yönde sinyal yok.</div>';
 
-      target.innerHTML = cards.join('');
+        return `
+          <div class="direction-summary ${direction === 'ALT' ? 'alt' : 'ust'}">
+            <div class="direction-summary-head">
+              <div class="direction-summary-title">
+                <span class="badge ${badgeClass}">${direction}</span>
+                <span>Sinyal Özeti</span>
+              </div>
+              <div class="direction-summary-total">${stats.total}</div>
+            </div>
+            <div class="direction-summary-grid">
+              <div class="direction-mini-stat"><span>Maç</span><strong>${stats.unique}</strong></div>
+              <div class="direction-mini-stat"><span>Başarılı</span><strong>${stats.success}</strong></div>
+              <div class="direction-mini-stat"><span>Başarısız</span><strong>${stats.fail}</strong></div>
+              <div class="direction-mini-stat"><span>Başarı</span><strong>${rateText}</strong></div>
+            </div>
+            <div class="grade-list">
+              ${gradeRows}
+            </div>
+            ${qualityFilter ? `
+              <button class="summary-reset" onclick="setQualityFilter('', '')">Filtreyi kaldır</button>
+            ` : ''}
+          </div>
+        `;
+      });
+
+      target.innerHTML = panels.join('');
     }
 
     function setQualityFilter(direction, grade) {
