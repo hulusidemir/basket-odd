@@ -99,6 +99,11 @@ class TelegramNotifier:
             if int(value or 0) > 0 and key in weight_labels
         ]
         weights_line = f"Ağırlık:       <b>{' / '.join(weight_parts)}</b>\n" if weight_parts else ""
+        fair_warning_line = ""
+        if fair_edge is not None:
+            fair_edge_value = float(fair_edge)
+            fair_icon = "🔴 ❔" if abs(fair_edge_value) > 10 else "🟡 ❔"
+            fair_warning_line = f"{fair_icon} Adil barem canlı farkı: <b>{fair_edge_value:+.1f}</b>\n"
         warning_line = "\n".join(f"❔ {item}" for item in warnings[:6])
         if warning_line:
             warning_line += "\n"
@@ -126,6 +131,7 @@ class TelegramNotifier:
             f"{weights_line}"
             f"Fark: <b>{diff:+.1f}</b> puan\n\n"
             f"💡 <b>Tavsiye:</b> {recommendation}\n"
+            f"{fair_warning_line}"
             f"{warning_line}"
             f"💡 <i>{tip}</i>"
             f"\n"
