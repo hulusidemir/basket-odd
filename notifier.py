@@ -67,9 +67,12 @@ class TelegramNotifier:
         reliability = alert_reliability(
             direction=direction,
             quality_grade=(quality or {}).get("grade", ""),
+            quality_score=(quality or {}).get("score", 0),
             status=status,
             diff=diff,
             threshold=threshold,
+            opening=opening,
+            live=live,
         )
 
         score_line = f"📊 Skor: <b>{score}</b>\n" if score else ""

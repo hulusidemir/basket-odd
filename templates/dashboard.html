@@ -2434,8 +2434,7 @@
       const label = String(item?.trust_label || '').trim();
       if (label) return label;
       const grade = String(item?.quality_grade || item?.signal_tier || '').trim().toUpperCase();
-      if (grade === 'A' || grade === 'A+' || grade === 'A++') return 'GÜVENİLİR';
-      if (grade === 'B') return 'İZLE';
+      if (grade === 'A++' || grade === 'A+' || grade === 'A' || grade === 'B') return 'İZLE';
       return 'SİNYAL';
     }
 

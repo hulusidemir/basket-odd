@@ -33,9 +33,12 @@ def enrich_alerts_with_reliability(alerts: list[dict]) -> list[dict]:
         reliability = alert_reliability(
             direction=alert.get("direction", ""),
             quality_grade=alert.get("quality_grade", ""),
+            quality_score=alert.get("quality_score", 0),
             status=alert.get("status", ""),
             diff=alert.get("diff", 0),
             threshold=config.THRESHOLD,
+            opening=alert.get("opening"),
+            live=alert.get("live"),
         )
         alert["trust_label"] = reliability["label"]
         alert["trust_code"] = reliability["code"]
