@@ -1565,6 +1565,8 @@
         alert.status,
         alert.score,
         alert.result,
+        recommendationText(alert),
+        fairLineValue(alert),
       ].some(value => String(value || '').toLowerCase().includes(q)));
       return sortedAlerts(rows);
     }
@@ -1577,7 +1579,7 @@
 
     function sortValue(alert, field) {
       if (field === 'deleted_at' || field === 'alerted_at') return parseDateValue(alert[field]);
-      if (['opening', 'live', 'diff', 'signal_count'].includes(field)) {
+      if (['opening', 'live', 'diff', 'signal_count', 'fair_line', 'fair_edge'].includes(field)) {
         const num = Number(alert[field]);
         return Number.isFinite(num) ? num : -Infinity;
       }
@@ -1756,6 +1758,7 @@
             <td class="mono">${formatNumber(alert.opening)}</td>
             <td class="mono">${formatNumber(alert.live)}</td>
             <td class="mono">${formatNumber(alert.diff)}</td>
+            <td>${fairLineCell(alert)}</td>
             <td>${resultCell(alert)}</td>
           </tr>
         `;
@@ -2111,6 +2114,7 @@
 
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
+        closeSignalInfo();
         closeReport();
       }
     });

@@ -158,15 +158,15 @@ def build_bet_builder(max_count: int) -> dict:
         projected = alert.get("projected")
         history_total = alert.get("history_total")
         opening_gap = round(live - opening, 1)
-        signal_priority = abs(fair_edge) if fair_edge is not None else abs(diff)
+        signal_priority = abs(diff)
         candidates.append({
             "match_id": alert.get("match_id"),
             "match_name": alert.get("match_name", ""),
             "tournament": alert.get("tournament", ""),
             "url": alert.get("url", ""),
             "direction": direction,
-            "signal_tier": "Adil Barem",
-            "signal_code": f"{direction}-ADİL",
+            "signal_tier": "Gelen Sinyal",
+            "signal_code": f"{direction}-SİNYAL",
             "opening": round(opening, 1),
             "live": round(live, 1),
             "projected": round(float(projected), 1) if projected is not None else None,
@@ -252,9 +252,9 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
 
     numeric_float_fields = {
         "opening", "live", "projected", "fair_line", "fair_edge",
-        "history_total", "opening_gap", "diff",
+        "history_total", "opening_gap", "diff", "signal_priority",
     }
-    numeric_int_fields = {"signal_priority"}
+    numeric_int_fields = set()
     keep_fields = {
         "match_id",
         "match_name",
