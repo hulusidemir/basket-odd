@@ -379,6 +379,154 @@ def build_team_context(h2h_metrics: dict, live: float, direction: str) -> dict |
     }
 
 
+def _safe_round(value, digits: int = 1):
+    if value is None:
+        return None
+    try:
+        return round(float(value), digits)
+    except (TypeError, ValueError):
+        return None
+
+
+def _history_total_from_metrics(h2h_metrics: dict) -> float | None:
+    values = [
+        h2h_metrics.get("expected_total"),
+        h2h_metrics.get("h2h_avg_total"),
+    ]
+    values = [float(value) for value in values if value is not None]
+    if not values:
+        return None
+    return round(mean(values), 1)
+
+
+def _weighted_fair_line(projected_total: float | None, history_total: float | None) -> tuple[float | None, dict]:
+    if projected_total is not None and history_total is not None:
+        return round((projected_total * 0.60) + (history_total * 0.40), 1), {
+            "projection": 60,
+            "history": 40,
+        }
+    if projected_total is not None:
+        return round(projected_total, 1), {"projection": 100, "history": 0}
+    if history_total is not None:
+        return round(history_total, 1), {"projection": 0, "history": 100}
+    return None, {"projection": 0, "history": 0}
+
+
+def _pace_note(projected_total: float | None, live: float, fair_line: float | None) -> str:
+    if projected_total is None:
+        return "Maç içi projeksiyon hesaplanamadı; pace yorumu sınırlı."
+    projection_gap = round(projected_total - live, 1)
+    if projection_gap >= 6:
+        return f"Maç hızlı gidiyor: mevcut tempo {projected_total:.1f} final gösteriyor, canlı baremin {projection_gap:.1f} üstü."
+    if projection_gap <= -6:
+        return f"Maç yavaş gidiyor: mevcut tempo {projected_total:.1f} final gösteriyor, canlı baremin {abs(projection_gap):.1f} altı."
+    if fair_line is not None and abs(fair_line - live) <= 3:
+        return "Pace canlı bareme yakın; belirgin değer alanı yok."
+    return f"Pace nötr: mevcut tempo {projected_total:.1f}, canlı bareme yakın."
+
+
+def _script_warning(score: str, status: str, match_name: str, tournament: str) -> str:
+    clock = game_clock(status, match_name, tournament)
+    period = clock["period"]
+    remaining_min = clock["remaining_min"]
+    home_score, away_score = parse_score(score)
+    if home_score is None or away_score is None:
+        return "Skor okunamadı; maç script uyarısı sınırlı."
+    score_gap = abs(home_score - away_score)
+    if score_gap >= 18 and period == 4 and remaining_min is not None and remaining_min <= 5:
+        return f"Blowout/garbage time riski: fark {score_gap}, son bölümde tempo düşebilir."
+    if score_gap >= 15:
+        return f"Blowout riski: fark {score_gap}; önde olan takım tempoyu düşürebilir."
+    if period == 4 and remaining_min is not None and remaining_min <= 6 and score_gap <= 8:
+        return f"Yakın maç riski: fark {score_gap}; faul oyunu ve ekstra pozisyonlar maçı hızlandırabilir."
+    return "Maç scriptinde belirgin ekstra risk yok."
+
+
+def build_signal_analysis(match: dict, context: dict, threshold: float) -> dict:
+    opening = float(match["opening_total"])
+    live = float(match["inplay_total"])
+    baseline = float(match.get("baseline") or opening)
+    baseline_label = str(match.get("baseline_label") or "Açılış")
+    match_name = match.get("match_name", "")
+    tournament = match.get("tournament", "")
+    status = match.get("status", "")
+    score = match.get("score", "")
+
+    h2h_metrics = _extract_h2h_metrics((context.get("h2h") or {}).get("body_text", ""), match_name)
+    projected_total = calculate_projected_total(score, status, match_name, tournament)
+    history_total = _history_total_from_metrics(h2h_metrics)
+    fair_line, weights = _weighted_fair_line(projected_total, history_total)
+    line_delta_open = round(live - opening, 1)
+    line_delta_baseline = round(live - baseline, 1)
+
+    direction = "ALT" if line_delta_open > 0 else "ÜST"
+    fair_edge = round(fair_line - live, 1) if fair_line is not None else None
+
+    team_context = build_team_context(h2h_metrics, live, direction)
+    h2h_note = (team_context or {}).get("h2h_note") or "H2H verisi yok veya okunamadı."
+    history_note = (
+        f"H2H/son maç adil toplamı {history_total:.1f}."
+        if history_total is not None
+        else "H2H ve son maçlardan adil toplam çıkarılamadı."
+    )
+    pace = _pace_note(projected_total, live, fair_line)
+    script = _script_warning(score, status, match_name, tournament)
+
+    warning_lines = [
+        h2h_note,
+        history_note,
+        pace,
+        script,
+    ]
+    if abs(line_delta_open) >= 20:
+        warning_lines.append(
+            f"Açılış-canlı farkı çok yüksek ({line_delta_open:+.1f}); bu bölge ekstra riskli."
+        )
+    if fair_edge is not None and abs(fair_edge) <= 3:
+        warning_lines.append("Adil barem canlıya çok yakın; net değer alanı zayıf.")
+
+    if fair_line is None:
+        recommendation = "Adil barem hesaplanamadı; sadece eşik uyarısı olarak izle."
+    elif fair_edge >= 6:
+        recommendation = "Adil barem canlıdan yüksek: değer ÜST tarafında; maç hızlanabilir."
+    elif fair_edge <= -6:
+        recommendation = "Adil barem canlıdan düşük: değer ALT tarafında; maç yavaşlayabilir."
+    elif fair_edge > 0:
+        recommendation = "Adil barem canlıdan az yüksek: ÜST tarafı hafif değerli, temkinli izle."
+    elif fair_edge < 0:
+        recommendation = "Adil barem canlıdan az düşük: ALT tarafı hafif değerli, temkinli izle."
+    else:
+        recommendation = "Adil barem canlıyla aynı; bahis için net avantaj yok."
+
+    summary = (
+        f"Adil Barem: {fair_line:.1f}" if fair_line is not None else "Adil Barem: hesaplanamadı"
+    )
+    if fair_edge is not None:
+        summary += f" | Canlıya göre {fair_edge:+.1f}"
+    summary += f" | Projeksiyon ağırlığı %{weights['projection']}, geçmiş ağırlığı %{weights['history']}"
+
+    return {
+        "direction": direction,
+        "fair_line": fair_line,
+        "fair_edge": fair_edge,
+        "projected_total": _safe_round(projected_total),
+        "history_total": _safe_round(history_total),
+        "weights": weights,
+        "opening_delta": line_delta_open,
+        "baseline_delta": line_delta_baseline,
+        "baseline_label": baseline_label,
+        "recommendation": recommendation,
+        "pace_note": pace,
+        "h2h_note": h2h_note,
+        "history_note": history_note,
+        "script_note": script,
+        "warnings": warning_lines,
+        "summary": summary,
+        "reasons_text": "\n".join(f"? {line}" for line in warning_lines),
+        "team_context": team_context,
+    }
+
+
 def _opposite(direction: str) -> str:
     return "ÜST" if direction == "ALT" else "ALT"
 

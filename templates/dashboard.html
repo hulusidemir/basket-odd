@@ -1915,12 +1915,6 @@
       <button class="filter-btn" data-filter="ignored">Gözardı</button>
       <button class="filter-btn" data-filter="alt">ALT</button>
       <button class="filter-btn" data-filter="ust">ÜST</button>
-      <button class="filter-btn" data-filter="a2">A++</button>
-      <button class="filter-btn" data-filter="a1">A+</button>
-      <button class="filter-btn" data-filter="a">A</button>
-      <button class="filter-btn" data-filter="b">B</button>
-      <button class="filter-btn" data-filter="c">C</button>
-      <button class="filter-btn" data-filter="d">D</button>
     </div>
 
     <div class="toolbar">
@@ -1948,7 +1942,7 @@
             </th>
             <th data-sort="alerted_at">Zaman ▼</th>
             <th data-sort="direction">Sinyal</th>
-            <th data-sort="quality_score">Kalite</th>
+            <th data-sort="fair_line">Adil Barem</th>
             <th data-sort="match_name">Maç</th>
             <th data-sort="tournament">Turnuva</th>
             <th data-sort="status">Durum</th>
@@ -1984,16 +1978,6 @@
         <option value="100">100</option>
       </select>
     </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="qualityModal" onclick="if(event.target===this)closeQualityModal()">
-    <div class="modal-box">
-      <div class="modal-header">
-        <h3 id="qualityModalTitle">Sinyal Kalitesi</h3>
-        <button class="modal-close" onclick="closeQualityModal()">&times;</button>
-      </div>
-      <div class="modal-body" id="qualityModalBody"></div>
     </div>
   </div>
 
@@ -2175,37 +2159,19 @@
       return `<button class="match-focus-btn ${active ? 'active' : ''}" onclick="toggleMatchFocusByAlert(${alert.id})" title="${title}" aria-label="${title}">${active ? '◉' : '◎'}</button>`;
     }
 
-    function qualityMeta(alert) {
-      const grade = (alert.quality_grade || '').toUpperCase();
-      if (grade === 'A++') return { label: 'A++', className: 'badge badge-quality-a2 quality-badge', key: 'a2' };
-      if (grade === 'A+') return { label: 'A+', className: 'badge badge-quality-a1 quality-badge', key: 'a1' };
-      if (grade === 'A') return { label: 'A', className: 'badge badge-quality-a quality-badge', key: 'a' };
-      if (grade === 'B') return { label: 'B', className: 'badge badge-quality-b quality-badge', key: 'b' };
-      if (grade === 'D') return { label: 'D', className: 'badge badge-quality-d quality-badge', key: 'd' };
-      return { label: grade || 'C', className: 'badge badge-quality-c quality-badge', key: 'c' };
-    }
-
-    function qualityBadgeHtml(a) {
-      const meta = qualityMeta(a);
-      const score = Number(a.quality_score || 0);
-      const setup = a.quality_setup ? `<span class="quality-setup">${escapeHtml(a.quality_setup)}</span>` : '';
+    function fairLineHtml(a) {
+      const fair = Number(a.fair_line);
+      const edge = Number(a.fair_edge);
+      const fairText = Number.isFinite(fair) ? fair.toFixed(1) : '-';
+      const edgeText = Number.isFinite(edge) ? formatSignedNumber(edge) : '';
       return `
         <div class="quality-cell">
           <div class="quality-row">
-            <span class="${meta.className}" onclick="showQuality(${a.id})" title="Detayi ac">${escapeHtml(meta.label)} (${score.toFixed(1)})</span>
-            ${trustLabelHtml(a)}
+            <span class="badge badge-quality-c quality-badge" title="Adil barem">${fairText}</span>
           </div>
-          ${setup}
+          ${edgeText ? `<span class="quality-setup">Canlıya göre ${edgeText}</span>` : ''}
         </div>
       `;
-    }
-
-    function trustLabelHtml(alert) {
-      const label = String(alert.trust_label || '').trim();
-      if (!label) return '';
-      const code = ['reliable', 'watch', 'weak'].includes(alert.trust_code) ? alert.trust_code : 'weak';
-      const symbol = code === 'reliable' ? '✓' : (code === 'watch' ? '?' : '!');
-      return `<span class="signal-trust signal-trust-${code}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${symbol}</span>`;
     }
 
     function projectedHtml(a) {
@@ -2216,7 +2182,7 @@
     }
 
     function sortValue(alert, field) {
-      const numericFields = new Set(['opening', 'live', 'diff', 'projected', 'quality_score', 'signal_count']);
+      const numericFields = new Set(['opening', 'live', 'diff', 'projected', 'fair_line', 'fair_edge', 'signal_count']);
       const value = alert[field];
 
       if (numericFields.has(field)) {
@@ -2229,163 +2195,6 @@
       }
 
       return String(value || '').toLowerCase();
-    }
-
-    function showQuality(id) {
-      const modal = document.getElementById('qualityModal');
-      const body = document.getElementById('qualityModalBody');
-      const a = allAlerts.find(x => x.id === id);
-      if (!a) return;
-
-      const meta = qualityMeta(a);
-      const title = `${cleanMatchName(a.match_name)} | ${meta.label}`;
-      document.getElementById('qualityModalTitle').textContent = title;
-
-      const setup = a.quality_setup
-        ? `<div class="quality-score-line"><span>Setup</span><strong>${escapeHtml(a.quality_setup)}</strong></div>`
-        : '';
-      const summary = renderQualitySummary(a.quality_summary);
-      const opposing = renderOpposingSignals(a.opposing_signals);
-      const reasons = String(a.quality_reasons || '')
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean)
-        .map(line => {
-          const clean = line.replace(/^[+\-=]\s*/, '');
-          const idx = clean.indexOf(':');
-          if (idx > 0) {
-            return `<li><span class="quality-summary-key">${escapeHtml(clean.slice(0, idx))}</span><span class="quality-summary-value">${escapeHtml(clean.slice(idx + 1).trim())}</span></li>`;
-          }
-          return `<li><span class="quality-summary-key">Not</span><span class="quality-summary-value">${escapeHtml(clean)}</span></li>`;
-        })
-        .join('');
-
-      body.innerHTML = `
-        <div class="quality-modal-grid">
-          <div class="quality-score-line"><span>Kalite skoru</span><strong>${Number(a.quality_score || 0).toFixed(1)} / 100</strong></div>
-          ${setup}
-          ${summary}
-          ${opposing}
-          ${renderTeamContext(a.team_context)}
-          ${reasons ? `<div class="quality-section"><div class="quality-section-title">Analist Notları</div><ul class="quality-note-list">${reasons}</ul></div>` : '<div class="quality-section">Detay notu bulunmuyor.</div>'}
-        </div>
-      `;
-      modal.classList.add('active');
-    }
-
-    function renderQualitySummary(raw) {
-      const text = String(raw || '').trim();
-      if (!text) return '';
-
-      const rows = [];
-      const addRow = (key, value) => {
-        const clean = String(value || '').trim();
-        if (!clean) return;
-        rows.push(`<li><span class="quality-summary-key">${escapeHtml(key)}</span><span class="quality-summary-value">${escapeHtml(clean)}</span></li>`);
-      };
-
-      const pieces = text.split(/\s+\|\s+/).map(item => item.trim()).filter(Boolean);
-      const main = pieces.shift() || text;
-      const riskParts = main.split(/\s+Risk:\s+/i);
-      const decisionText = riskParts[0] || main;
-      const riskText = riskParts[1] || '';
-      const directionMatch = decisionText.match(/^(ALT|ÜST|UST)\s*:\s*(.*)$/i);
-      const direction = directionMatch ? directionMatch[1].replace('UST', 'ÜST') : '';
-      const bodyText = directionMatch ? directionMatch[2] : decisionText;
-      const segments = bodyText.split(';').map(item => item.trim()).filter(Boolean);
-
-      if (direction) addRow('Sinyal', direction);
-      for (const segment of segments) {
-        const lower = segment.toLowerCase();
-        if (lower.includes('barem')) addRow('Barem', segment);
-        else if (lower.includes('projeksiyon')) addRow('Projeksiyon', segment);
-        else if (lower.includes('kaynak')) addRow('Kaynaklar', segment);
-        else if (lower.includes('son pencere')) addRow('Son Tempo', segment);
-        else if (lower.includes('market hareket')) addRow('Senaryo', segment);
-        else addRow('Not', segment);
-      }
-      if (riskText) addRow('Risk', riskText);
-      pieces.forEach(piece => addRow('Ek Not', piece));
-
-      if (!rows.length) addRow('Özet', text);
-      return `<div class="quality-section"><div class="quality-section-title">Özet</div><ul class="quality-summary-list">${rows.join('')}</ul></div>`;
-    }
-
-    function renderOpposingSignals(raw) {
-      if (!raw) return '';
-      let rows = [];
-      try {
-        rows = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      } catch (e) {
-        rows = [];
-      }
-      if (!Array.isArray(rows) || rows.length === 0) return '';
-      const items = rows
-        .map(item => `<li><strong>${escapeHtml(item.name || '-')}:</strong> ${escapeHtml(item.detail || '')}</li>`)
-        .join('');
-      return `<div class="opposing-warning"><strong>Karşı sinyaller</strong><ul style="padding-left:18px; margin:6px 0 0;">${items}</ul></div>`;
-    }
-
-    function renderTeamContext(raw) {
-      if (!raw) return '';
-      let ctx;
-      try {
-        ctx = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      } catch (e) {
-        return '';
-      }
-      if (!ctx || (!ctx.home_profile && !ctx.away_profile && !ctx.regression_note && !ctx.h2h_note)) return '';
-
-      const alignCode = ctx.alignment_code || 'neutral';
-      const alignText = ctx.alignment || '';
-      const alignBadge = alignText
-        ? `<div class="team-context-align ${escapeHtml(alignCode)}">${escapeHtml(alignText)}</div>`
-        : '';
-
-      const regressionDir = (ctx.regression_direction || '').toLowerCase() === 'alt' ? 'alt'
-        : (ctx.regression_direction || '').toLowerCase() === 'üst' ? 'ust' : '';
-      const regression = ctx.regression_note
-        ? `<div class="team-context-regression ${regressionDir}">📉 ${escapeHtml(ctx.regression_note)}</div>`
-        : '';
-
-      const renderCard = (profile, prefix) => {
-        if (!profile || profile.avg_total == null) return '';
-        const ppg = Number(profile.ppg || 0);
-        const oppg = Number(profile.oppg || 0);
-        const overPct = profile.over_pct != null ? Math.round(Number(profile.over_pct)) : null;
-        return `
-          <div class="team-context-card">
-            <div class="team-context-card-head">${escapeHtml(prefix)} ${escapeHtml(profile.team || '-')}</div>
-            <div class="team-context-card-total">${Number(profile.avg_total).toFixed(1)}</div>
-            <div class="team-context-card-breakdown">${ppg.toFixed(0)} attığı + ${oppg.toFixed(0)} yediği${overPct != null ? ` · over %${overPct}` : ''}</div>
-            <div class="team-context-card-label">${escapeHtml(profile.label || '')}</div>
-          </div>
-        `;
-      };
-
-      const homeCard = renderCard(ctx.home_profile, '🏠');
-      const awayCard = renderCard(ctx.away_profile, '🚌');
-      const teams = (homeCard || awayCard)
-        ? `<div class="team-context-teams">${homeCard}${awayCard}</div>`
-        : '';
-
-      const h2h = ctx.h2h_note
-        ? `<div class="team-context-h2h">🤝 ${escapeHtml(ctx.h2h_note)}</div>`
-        : '';
-
-      return `
-        <div class="team-context">
-          <div class="team-context-title">Takım Profili & Geçmiş</div>
-          ${alignBadge}
-          ${regression}
-          ${teams}
-          ${h2h}
-        </div>
-      `;
-    }
-
-    function closeQualityModal() {
-      document.getElementById('qualityModal').classList.remove('active');
     }
 
     function openBetBuilder() {
@@ -2422,20 +2231,13 @@
       return `${line}-${dir} (${t})`;
     }
 
-    function betSlipQualityText(item) {
-      const grade = String(item?.quality_grade || '').trim();
-      const score = Number(item?.quality_score || 0);
-      if (grade) return score > 0 ? `${grade} (${score.toFixed(1)})` : grade;
-      const tier = String(item?.signal_tier || '').trim();
-      return tier ? tier : '-';
+    function betSlipFairLineText(item) {
+      const fair = Number(item?.fair_line);
+      return Number.isFinite(fair) ? fair.toFixed(1) : '-';
     }
 
-    function betSlipTrustText(item) {
-      const label = String(item?.trust_label || '').trim();
-      if (label) return label;
-      const grade = String(item?.quality_grade || item?.signal_tier || '').trim().toUpperCase();
-      if (grade === 'A++' || grade === 'A+' || grade === 'A' || grade === 'B') return 'İZLE';
-      return 'SİNYAL';
+    function betSlipRecommendationText(item) {
+      return String(item?.recommendation || '').trim() || '-';
     }
 
     function buildMatchStateNote(item) {
@@ -2557,14 +2359,14 @@
         const recommendation = buildBetRecommendation(
           itemLeg.live,
           itemLeg.direction,
-          itemLeg.quality_grade || itemLeg.signal_tier
+          itemLeg.signal_tier
         );
         return `
           <tr>
             <td>${idx + 1}</td>
             <td>${matchLink}${matchStateNote}<span class="saved-match-subtitle">(${escapeHtml(itemLeg.tournament || '-')})</span></td>
             <td>${escapeHtml(recommendation)}</td>
-            <td>${escapeHtml(betSlipQualityText(itemLeg))}</td>
+            <td>${escapeHtml(betSlipFairLineText(itemLeg))}</td>
             <td><span class="${resultMeta.className}">${escapeHtml(resultMeta.label)}</span></td>
             <td>${savedResultActionsHtml(itemId, itemLeg)}</td>
           </tr>
@@ -2581,7 +2383,7 @@
                   <th>#</th>
                   <th>Maç</th>
                   <th>Oynanacak</th>
-                  <th>Kalite</th>
+                  <th>Adil Barem</th>
                   <th>Sonuç</th>
                   <th>İşaretle</th>
                 </tr>
@@ -2781,7 +2583,7 @@
 
       const rows = payload.slip.map(item => {
         const matchText = cleanMatchName(item.match_name || '-');
-        const recommendation = buildBetRecommendation(item.live, item.direction, item.quality_grade || item.signal_tier);
+        const recommendation = buildBetRecommendation(item.live, item.direction, item.signal_tier);
         const matchStateNote = buildMatchStateNote(item);
         const matchIdArg = JSON.stringify(String(item.match_id || ''));
         const matchBlock = item.url
@@ -2791,8 +2593,8 @@
           <tr>
             <td class="match-col">${matchBlock}${matchStateNote}<span class="bet-slip-tournament">(${escapeHtml(item.tournament || '-')})</span></td>
             <td><span class="bet-slip-code">${escapeHtml(recommendation)}</span></td>
-            <td>${escapeHtml(betSlipQualityText(item))}</td>
-            <td>${escapeHtml(betSlipTrustText(item))}</td>
+            <td>${escapeHtml(betSlipFairLineText(item))}</td>
+            <td>${escapeHtml(betSlipRecommendationText(item))}</td>
             <td>${Number(item.opening || 0).toFixed(1)}</td>
             <td>${formatSignedNumber(item.diff || item.opening_gap || 0)}</td>
             <td>${escapeHtml(item.score || '-')}</td>
@@ -2810,8 +2612,8 @@
               <tr>
                 <th>Maç</th>
                 <th>Oynanacak</th>
-                <th>Kalite</th>
-                <th>Güven</th>
+                <th>Adil Barem</th>
+                <th>Tavsiye</th>
                 <th>Açılış</th>
                 <th>Fark</th>
                 <th>Skor</th>
@@ -2921,20 +2723,13 @@
       else if (currentFilter === 'ignored') filtered = filtered.filter(a => a.ignored);
       else if (currentFilter === 'alt') filtered = filtered.filter(a => a.direction === 'ALT');
       else if (currentFilter === 'ust') filtered = filtered.filter(a => a.direction === 'ÜST');
-      else if (currentFilter === 'a2') filtered = filtered.filter(a => (a.quality_grade || '').toUpperCase() === 'A++');
-      else if (currentFilter === 'a1') filtered = filtered.filter(a => (a.quality_grade || '').toUpperCase() === 'A+');
-      else if (currentFilter === 'a') filtered = filtered.filter(a => (a.quality_grade || '').toUpperCase() === 'A');
-      else if (currentFilter === 'b') filtered = filtered.filter(a => (a.quality_grade || '').toUpperCase() === 'B');
-      else if (currentFilter === 'c') filtered = filtered.filter(a => !a.quality_grade || (a.quality_grade || '').toUpperCase() === 'C');
-      else if (currentFilter === 'd') filtered = filtered.filter(a => (a.quality_grade || '').toUpperCase() === 'D');
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         filtered = filtered.filter(a =>
           (a.match_name || '').toLowerCase().includes(q) ||
           (a.tournament || '').toLowerCase().includes(q) ||
-          (a.quality_setup || '').toLowerCase().includes(q) ||
-          (a.quality_summary || '').toLowerCase().includes(q) ||
-          (a.opposing_signals || '').toLowerCase().includes(q)
+          (a.recommendation || '').toLowerCase().includes(q) ||
+          (a.quality_summary || '').toLowerCase().includes(q)
         );
       }
       filtered.sort((a, b) => {
@@ -3051,7 +2846,7 @@
             <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
             ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
           </td>
-          <td>${qualityBadgeHtml(a)}</td>
+          <td>${fairLineHtml(a)}</td>
           <td class="col-match">
             <div class="match-cell-wrap">
               ${matchFocusButton}
@@ -3133,8 +2928,6 @@
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
               <span class="badge ${dirClass}">${dirIcon} ${a.direction}</span>
               ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
-              <span class="${qualityMeta(a).className}" onclick="showQuality(${a.id})">${escapeHtml(qualityMeta(a).label)}</span>
-              ${trustLabelHtml(a)}
             </div>
           </div>
           <div class="card-meta">
@@ -3143,8 +2936,7 @@
             <span class="card-meta-item">📡 ${escapeHtml(a.status || '-')}</span>
             <span class="card-meta-item">🏀 ${escapeHtml(a.score || '-')}</span>
           </div>
-          ${a.quality_setup ? `<div class="quality-summary"><strong>${escapeHtml(a.quality_setup)}</strong></div>` : ''}
-          ${renderOpposingSignals(a.opposing_signals)}
+          ${a.recommendation ? `<div class="quality-summary"><strong>${escapeHtml(a.recommendation)}</strong></div>` : ''}
           <div class="card-odds">
             <div class="card-odds-value">
               <div class="card-odds-label">Açılış</div>
@@ -3157,8 +2949,8 @@
             </div>
             <div class="card-odds-arrow">→</div>
             <div class="card-odds-value">
-              <div class="card-odds-label">Proj</div>
-              <div class="card-odds-num" style="color: ${!a.projected ? '#999' : (a.projected > a.live ? '#ef4444' : '#22c55e')}">${a.projected ? a.projected.toFixed(1) : '-'}</div>
+              <div class="card-odds-label">Adil</div>
+              <div class="card-odds-num">${Number.isFinite(Number(a.fair_line)) ? Number(a.fair_line).toFixed(1) : '-'}</div>
             </div>
             <div class="card-odds-arrow">＝</div>
             <div class="card-diff">

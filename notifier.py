@@ -7,7 +7,6 @@ import logging
 from telegram import Bot
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
-from signal_reliability import alert_reliability
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +46,7 @@ class TelegramNotifier:
         status: str,
         score: str = "",
         signal_count: int = 1,
-        quality: dict | None = None,
+        analysis: dict | None = None,
         prematch: float | None = None,
         baseline: float | None = None,
         baseline_label: str = "Açılış",
@@ -64,90 +63,34 @@ class TelegramNotifier:
             emoji = "🔺"
             tip = f"Canlı barem {baseline_label.lower()} referansına göre düştü"
 
-        reliability = alert_reliability(
-            direction=direction,
-            quality_grade=(quality or {}).get("grade", ""),
-            quality_score=(quality or {}).get("score", 0),
-            status=status,
-            diff=diff,
-            threshold=threshold,
-            opening=opening,
-            live=live,
-        )
+        analysis = analysis or {}
+        fair_line = analysis.get("fair_line")
+        fair_edge = analysis.get("fair_edge")
+        projected = analysis.get("projected_total")
+        history_total = analysis.get("history_total")
+        weights = analysis.get("weights") or {}
+        recommendation = analysis.get("recommendation") or "Tavsiye üretilemedi."
+        warnings = analysis.get("warnings") or []
 
         score_line = f"📊 Skor: <b>{score}</b>\n" if score else ""
         signal_line = f"🔁 <b>{signal_count}. sinyal</b>\n" if signal_count > 1 else ""
-        summary_line = ""
-        reasons_line = ""
-        team_line = ""
-        quality_grade = (quality or {}).get("grade", "-")
-        reliability_label = reliability["label"]
-        if quality:
-            decision = quality.get("decision") or {}
-            if decision:
-                scenario_label = {
-                    "continuation": "market devamı",
-                    "contrarian": "ters ama kaynak destekli",
-                    "pass": "pas",
-                }.get(decision.get("scenario"), decision.get("scenario", ""))
-                if scenario_label:
-                    summary_line += f"🎚️ <b>Karar:</b> {scenario_label} · güven {float(decision.get('confidence') or 0):.1f}/100\n"
-                if decision.get("risk_note"):
-                    summary_line += f"⚠️ <b>Risk:</b> {decision['risk_note']}\n"
-            if quality.get("setup"):
-                summary_line += f"🧩 <b>Setup:</b> {quality['setup']}\n"
-            if quality.get("history_average_note"):
-                summary_line += f"📚 <b>Geçmiş ort:</b> {quality['history_average_note']}\n"
-            supporting = quality.get("supporting_signals") or []
-            opposing = quality.get("opposing_signals") or []
-            neutral = quality.get("neutral_signals") or []
-            support_names = ", ".join(item.get("name", "-") for item in supporting) or "-"
-            opposing_names = ", ".join(item.get("name", "-") for item in opposing) or "-"
-            reasons_line += f"✅ <b>Destekleyen ({len(supporting)}):</b> {support_names}\n"
-            reasons_line += f"⚠️ <b>Karşı ({len(opposing)}):</b> {opposing_names}\n"
-            if neutral:
-                neutral_names = ", ".join(item.get("name", "-") for item in neutral)
-                reasons_line += f"➖ <b>Nötr ({len(neutral)}):</b> {neutral_names}\n"
-            if quality.get("reverse_risk"):
-                reasons_line += "🟥 <b>TERS RİSKİ VAR</b>\n"
-            if quality.get("script_note"):
-                summary_line += f"📝 {quality['script_note']}\n"
-            elif quality.get("summary"):
-                summary_line += f"📝 {quality['summary']}\n"
-            ctx = quality.get("team_context") or {}
-            if ctx:
-                lines = ["📚 <b>Takım Profili</b>"]
-                align_code = ctx.get("alignment_code")
-                align_icon = {"support": "✅", "against": "⚠️", "mixed": "🔀", "neutral": "➖"}.get(align_code, "➖")
-                if ctx.get("alignment"):
-                    lines.append(f"{align_icon} {ctx['alignment']}")
-                if ctx.get("regression_note"):
-                    lines.append(f"📉 {ctx['regression_note']}")
-                home = ctx.get("home_profile") or {}
-                away = ctx.get("away_profile") or {}
-                if home.get("avg_total") is not None:
-                    lines.append(
-                        f"🏠 <b>{home.get('team','Ev')}</b> · son 5 ort "
-                        f"<b>{home['avg_total']:.1f}</b> ({home.get('ppg',0):.0f}+{home.get('oppg',0):.0f})"
-                        f" · over %{int(home.get('over_pct') or 0)} · <i>{home.get('label','')}</i>"
-                    )
-                if away.get("avg_total") is not None:
-                    lines.append(
-                        f"🚌 <b>{away.get('team','Dep')}</b> · son 5 ort "
-                        f"<b>{away['avg_total']:.1f}</b> ({away.get('ppg',0):.0f}+{away.get('oppg',0):.0f})"
-                        f" · over %{int(away.get('over_pct') or 0)} · <i>{away.get('label','')}</i>"
-                    )
-                if ctx.get("h2h_note"):
-                    lines.append(f"🤝 {ctx['h2h_note']}")
-                team_line = "\n".join(lines) + "\n"
+        fair_line_text = f"{float(fair_line):.1f}" if fair_line is not None else "Hesaplanamadı"
+        fair_edge_line = f"Canlıya Göre:  <b>{float(fair_edge):+.1f}</b>\n" if fair_edge is not None else ""
+        projected_line = f"Projeksiyon:   <b>{float(projected):.1f}</b>\n" if projected is not None else ""
+        history_line = f"H2H/Son Maç:   <b>{float(history_total):.1f}</b>\n" if history_total is not None else ""
+        weights_line = (
+            f"Ağırlık:       <b>%{int(weights.get('projection') or 0)} projeksiyon / %{int(weights.get('history') or 0)} geçmiş</b>\n"
+            if weights else ""
+        )
+        warning_line = "\n".join(f"❔ {item}" for item in warnings[:6])
+        if warning_line:
+            warning_line += "\n"
 
         prematch_line = f"Maç Öncesi:    <b>{prematch:.1f}</b>\n" if prematch is not None else ""
         reference_value = baseline if baseline is not None else opening
         reference_line = f"Referans:      <b>{baseline_label} {reference_value:.1f}</b>\n"
-        projected = (quality or {}).get("projected_total")
-        projected_line = f"Projeksiyon:   <b>{projected:.1f}</b>\n" if projected is not None else ""
         text = (
-            f"🎯 <b>Sinyal: {direction} ({quality_grade}) — {reliability_label}</b>\n"
+            f"🎯 <b>Sinyal: {direction}</b>\n"
             f"{signal_line}\n"
             f"🏀 <b>{match_name}</b>\n"
             f"🏆 {tournament} | {status}\n"
@@ -157,10 +100,13 @@ class TelegramNotifier:
             f"{reference_line}"
             f"Güncel Barem:  <b>{live:.1f}</b>\n"
             f"{projected_line}"
+            f"{history_line}"
+            f"Adil Barem:    <b>{fair_line_text}</b>\n"
+            f"{fair_edge_line}"
+            f"{weights_line}"
             f"Fark: <b>{diff:+.1f}</b> puan\n\n"
-            f"{summary_line}"
-            f"{reasons_line}"
-            f"{team_line}"
+            f"💡 <b>Tavsiye:</b> {recommendation}\n"
+            f"{warning_line}"
             f"💡 <i>{tip}</i>"
             f"\n"
         )

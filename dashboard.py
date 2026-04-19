@@ -9,6 +9,7 @@ Usage:
 import asyncio
 import csv
 import io
+import json
 import os
 import re
 from datetime import datetime, timedelta
@@ -17,7 +18,6 @@ from db import Database
 from config import Config
 from finished_match_service import run_deleted_match_result_cycle, run_single_deleted_match_result_check
 from projection import calculate_projected_total
-from signal_reliability import alert_reliability
 
 config = Config()
 db = Database(config.DB_PATH)
@@ -28,32 +28,43 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 BET_BUILDER_ALERT_WINDOW_MINUTES = 240
 
 
-def enrich_alerts_with_reliability(alerts: list[dict]) -> list[dict]:
+def _parse_analysis(raw) -> dict:
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def enrich_alerts_with_analysis(alerts: list[dict]) -> list[dict]:
     for alert in alerts:
-        reliability = alert_reliability(
-            direction=alert.get("direction", ""),
-            quality_grade=alert.get("quality_grade", ""),
-            quality_score=alert.get("quality_score", 0),
-            status=alert.get("status", ""),
-            diff=alert.get("diff", 0),
-            threshold=config.THRESHOLD,
-            opening=alert.get("opening"),
-            live=alert.get("live"),
-        )
-        alert["trust_label"] = reliability["label"]
-        alert["trust_code"] = reliability["code"]
+        analysis = _parse_analysis(alert.get("ai_analysis"))
+        alert["analysis"] = analysis
+        alert["fair_line"] = analysis.get("fair_line")
+        alert["fair_edge"] = analysis.get("fair_edge")
+        alert["history_total"] = analysis.get("history_total")
+        alert["recommendation"] = analysis.get("recommendation") or alert.get("quality_summary", "")
+        alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
     return alerts
 
 
 def enrich_alerts_with_projection(alerts: list[dict]) -> list[dict]:
     for alert in alerts:
-        alert["projected"] = calculate_projected_total(
-            score=alert.get("score", ""),
-            status=alert.get("status", ""),
-            match_name=alert.get("match_name", ""),
-            tournament=alert.get("tournament", "")
-        )
-    return enrich_alerts_with_reliability(alerts)
+        analysis = _parse_analysis(alert.get("ai_analysis"))
+        if analysis.get("projected_total") is not None:
+            alert["projected"] = analysis.get("projected_total")
+        else:
+            alert["projected"] = calculate_projected_total(
+                score=alert.get("score", ""),
+                status=alert.get("status", ""),
+                match_name=alert.get("match_name", ""),
+                tournament=alert.get("tournament", "")
+            )
+    return enrich_alerts_with_analysis(alerts)
 
 
 def _is_live_basketball_status(status: str) -> bool:
@@ -92,23 +103,10 @@ def _safe_float(value, default: float = 0.0) -> float:
         return default
 
 
-def _bet_builder_grade_priority(grade: str) -> int:
-    normalized = str(grade or "").strip().upper()
-    priorities = {
-        "A++": 6,
-        "A+": 5,
-        "A": 4,
-        "B": 3,
-        "C": 2,
-        "D": 1,
-    }
-    return priorities.get(normalized, 0)
-
-
 def build_bet_builder(max_count: int) -> dict:
     alerts = [
         alert
-        for alert in enrich_alerts_with_reliability(db.recent_alerts(limit=500))
+        for alert in enrich_alerts_with_analysis(db.recent_alerts(limit=500))
         if _is_live_basketball_status(alert.get("status", ""))
         and _is_recent_alert(alert.get("alerted_at", ""))
     ]
@@ -155,9 +153,10 @@ def build_bet_builder(max_count: int) -> dict:
         opening = _safe_float(alert.get("opening"))
         live = _safe_float(alert.get("live"))
         diff = _safe_float(alert.get("diff"))
-        quality_grade = str(alert.get("quality_grade") or "").strip().upper()
-        quality_score = _safe_float(alert.get("quality_score"))
-        grade_priority = _bet_builder_grade_priority(quality_grade)
+        fair_line = alert.get("fair_line")
+        fair_edge = _safe_float(alert.get("fair_edge"))
+        projected = alert.get("projected")
+        history_total = alert.get("history_total")
         opening_gap = round(live - opening, 1)
         candidates.append({
             "match_id": alert.get("match_id"),
@@ -165,23 +164,22 @@ def build_bet_builder(max_count: int) -> dict:
             "tournament": alert.get("tournament", ""),
             "url": alert.get("url", ""),
             "direction": direction,
-            "signal_tier": quality_grade or "SİNYAL",
-            "signal_code": f"{direction}-{quality_grade or 'SİNYAL'}",
+            "signal_tier": "Adil Barem",
+            "signal_code": f"{direction}-ADİL",
             "opening": round(opening, 1),
             "live": round(live, 1),
-            "projected": None,
+            "projected": round(float(projected), 1) if projected is not None else None,
+            "fair_line": round(float(fair_line), 1) if fair_line is not None else None,
+            "fair_edge": round(fair_edge, 1),
+            "history_total": round(float(history_total), 1) if history_total is not None else None,
+            "recommendation": alert.get("recommendation", ""),
             "status": alert.get("status", ""),
             "score": alert.get("score", ""),
             "opening_gap": opening_gap,
             "projection_gap": None,
             "projection_edge": None,
             "diff": round(diff, 1),
-            "quality_grade": quality_grade,
-            "quality_score": round(quality_score, 1),
-            "quality_setup": alert.get("quality_setup", ""),
-            "trust_label": alert.get("trust_label", ""),
-            "trust_code": alert.get("trust_code", ""),
-            "signal_priority": grade_priority,
+            "signal_priority": abs(fair_edge),
             "bet_placed": int(alert.get("bet_placed") or 0),
             "followed": int(alert.get("followed") or 0),
             "ignored": int(alert.get("ignored") or 0),
@@ -190,7 +188,6 @@ def build_bet_builder(max_count: int) -> dict:
     candidates.sort(
         key=lambda item: (
             item["signal_priority"],
-            item["quality_score"],
             item["diff"],
         ),
         reverse=True,
@@ -261,7 +258,9 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
         "projection_gap",
         "projection_edge",
         "diff",
-        "quality_score",
+        "fair_line",
+        "fair_edge",
+        "history_total",
     }
     numeric_int_fields = {"signal_priority"}
     keep_fields = {
@@ -274,10 +273,7 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
         "signal_code",
         "status",
         "score",
-        "quality_grade",
-        "quality_setup",
-        "trust_label",
-        "trust_code",
+        "recommendation",
     }
     bool_fields = {"bet_placed", "followed", "ignored"}
 
@@ -356,9 +352,8 @@ def api_export_finished_deleted_matches_csv():
     writer.writerow(["Maç", "Lig", "Sinyal", "Açılış", "Canlı", "Skor", "Sonuç"])
 
     for row in rows:
-        grade = str(row.get("quality_grade") or "").strip()
         direction = str(row.get("direction") or "").strip()
-        signal = f"{direction} ({grade})" if grade else direction
+        signal = direction
         match_name = re.sub(r"\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}\s*", "", str(row.get("match_name") or ""))
         match_name = re.sub(r"\s*betting odds\s*", "", match_name, flags=re.IGNORECASE).strip()
         writer.writerow([
@@ -504,14 +499,6 @@ _PERIOD_BUCKET_ORDER = [
 ]
 
 
-def _quality_grade_key(value) -> str:
-    key = str(value or "").strip().upper()
-    return key if key else "YOK"
-
-
-_GRADE_ORDER = ["A", "B", "C", "D", "A++", "A+", "YOK"]
-
-
 def _parse_ts(value):
     if not value:
         return None
@@ -580,12 +567,6 @@ def build_deleted_matches_report(signals: list) -> dict:
         and any(_fold(r.get("result")) == "basarisiz" for r in rows)
     ]
 
-    quality_good = [s for s in signals if str(s.get("quality_grade") or "").upper() in {"A", "B"}]
-    quality_good_success = sum(1 for s in quality_good if _fold(s.get("result")) == "basarili")
-    quality_good_resolved = sum(
-        1 for s in quality_good if _fold(s.get("result")) in {"basarili", "basarisiz"}
-    )
-
     first_signals = [s for s in signals if int(s.get("signal_count") or 1) == 1]
     first_success = sum(1 for s in first_signals if _fold(s.get("result")) == "basarili")
     first_resolved = sum(1 for s in first_signals if _fold(s.get("result")) in {"basarili", "basarisiz"})
@@ -624,24 +605,7 @@ def build_deleted_matches_report(signals: list) -> dict:
         stats["label"] = label
         period_buckets.append(stats)
 
-    # ── Kalite grade detayı (her grade ayrı) ────────────────────────────────
-    grade_groups: dict[str, list] = {}
-    for s in signals:
-        grade_groups.setdefault(_quality_grade_key(s.get("quality_grade")), []).append(s)
     grade_buckets = []
-    for label in _GRADE_ORDER:
-        rows = grade_groups.get(label) or []
-        if not rows:
-            continue
-        stats = _bucket_stats(rows)
-        stats["label"] = label
-        grade_buckets.append(stats)
-    for label, rows in grade_groups.items():
-        if label in _GRADE_ORDER or not rows:
-            continue
-        stats = _bucket_stats(rows)
-        stats["label"] = label
-        grade_buckets.append(stats)
 
     # ── Fade / ters sinyal analizi ──────────────────────────────────────────
     fade_analysis = {
@@ -676,15 +640,7 @@ def build_deleted_matches_report(signals: list) -> dict:
             }
             for b in diff_buckets if b["resolved"] > 0
         ],
-        "by_grade": [
-            {
-                "label": b["label"],
-                "resolved": b["resolved"],
-                "original_rate": b["rate"],
-                "fade_rate": b["fade_rate"],
-            }
-            for b in grade_buckets if b["resolved"] > 0
-        ],
+        "by_grade": [],
     }
 
     # ── Turnuva top/bottom ──────────────────────────────────────────────────
@@ -746,7 +702,7 @@ def build_deleted_matches_report(signals: list) -> dict:
         elif abs(overall_fade_rate - overall_rate) < 3:
             actions.append(
                 "Genel başarı %50 civarında — sistem neredeyse yazı-tura. "
-                "Kalite ve periyot filtresiyle örneklem daraltılmalı."
+                "Fark bandı, periyot ve adil barem mesafesiyle örneklem daraltılmalı."
             )
 
     # Direction fade
@@ -788,17 +744,8 @@ def build_deleted_matches_report(signals: list) -> dict:
     if worst_period and worst_period["rate"] < 40:
         actions.append(
             f"{worst_period['label']} sinyalleri %{worst_period['rate']:.1f} başarı — "
-            f"bu periyotta sinyalleri filtrele veya kalite çubuğunu yükselt."
+            f"bu periyotta sinyalleri filtrele veya adil barem mesafesini yükselt."
         )
-
-    # Worst grade
-    for b in grade_buckets:
-        if b["resolved"] >= 5 and b["rate"] < 35 and b["label"] not in {"A++", "A+"}:
-            actions.append(
-                f"Grade {b['label']} %{b['rate']:.1f} başarı ({b['resolved']} sonuçlanan) — "
-                f"bu seviyeyi sinyal listesinden çıkarmayı düşün."
-            )
-            break
 
     # Tournament action
     if tournament_bottom:
@@ -877,11 +824,6 @@ def build_deleted_matches_report(signals: list) -> dict:
             "detail": f"ALT {alt_stats['success']}/{alt_stats['total']} | ÜST {ust_stats['success']}/{ust_stats['total']}.",
         },
         {
-            "title": "Kalite A/B",
-            "value": f"%{_pct(quality_good_success, quality_good_resolved):.1f}",
-            "detail": f"{len(quality_good)} sinyalde kalite A veya B.",
-        },
-        {
             "title": "#1 Sinyal",
             "value": f"%{_pct(first_success, first_resolved):.1f}",
             "detail": f"{len(first_signals)} ilk sinyal kaydı.",
@@ -904,9 +846,6 @@ def build_deleted_matches_report(signals: list) -> dict:
 
         f"İlk sinyal (#1) başarı oranı %{_pct(first_success, first_resolved):.1f}, "
         f"tekrar sinyaller (#2+) başarı oranı %{_pct(repeat_success, repeat_resolved):.1f}.",
-
-        f"Kalite A/B sinyallerin başarı oranı %{_pct(quality_good_success, quality_good_resolved):.1f} "
-        f"({quality_good_resolved} sonuçlanan kayıt).",
 
         fade_analysis["overall"]["verdict"],
     ]

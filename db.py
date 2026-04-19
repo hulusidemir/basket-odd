@@ -477,6 +477,7 @@ class Database:
         quality_reasons: str = "",
         opposing_signals: str = "",
         team_context: str = "",
+        ai_analysis: str = "",
         prematch: float | None = None,
     ) -> int:
         with self._conn() as conn:
@@ -494,15 +495,15 @@ class Database:
                 INSERT INTO alerts (
                     match_id, match_name, opening, prematch, live, direction, diff, tournament, status, url, score,
                     signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
-                    opposing_signals, team_context,
+                    opposing_signals, team_context, ai_analysis,
                     bet_placed, ignored, followed, deleted_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     match_id, match_name, opening, prematch, live, direction, diff, tournament, status, url, score,
                     signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
-                    opposing_signals, team_context,
+                    opposing_signals, team_context, ai_analysis,
                     bet, ign, fol, deleted_at,
                 ),
             )

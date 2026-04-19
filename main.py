@@ -17,9 +17,8 @@ from config import Config
 from db import Database
 from notifier import TelegramNotifier
 from projection import game_clock
-from signal_engine import decide_signal
 from signal_features import build_signal_features
-from signal_quality import assess_signal_quality
+from signal_quality import build_signal_analysis
 
 
 def setup_logging(level: str):
@@ -39,9 +38,9 @@ async def process_match(
 ) -> None:
     """
     Processes a single match:
-    - Calculates the difference between reference and in-play total lines.
+    - Calculates the difference between opening and in-play total lines.
     - Sends a Telegram notification if the difference exceeds the threshold.
-    - Scores the signal with live context and market projection.
+    - Builds a fair-line recommendation from projection and history context.
     """
     match_id = match["match_id"]
     match_name = match["match_name"]
@@ -82,9 +81,9 @@ async def process_match(
                 log.debug("Blacklisted (%s): %s", term, match_name)
                 return
 
-    # PRIMARY comparison: in-play vs prematch (fallback: in-play vs opening)
-    baseline = prematch_total if prematch_total is not None else opening_total
-    baseline_label = "Maç Öncesi" if prematch_total is not None else "Açılış"
+    # PRIMARY comparison: in-play vs opening. The threshold is configured by THRESHOLD in .env.
+    baseline = opening_total
+    baseline_label = "Açılış"
     diff = inplay_total - baseline
     abs_diff = abs(diff)
     recent_snapshots = db.recent_match_snapshots(match_id, limit=8)
@@ -132,31 +131,19 @@ async def process_match(
         log.debug("Could not fetch AIScore insights for %s: %s", match_name, exc)
         insights = {}
 
-    quality_by_direction = {}
-    for candidate_direction in ("ALT", "ÜST"):
-        quality_by_direction[candidate_direction] = assess_signal_quality(
-            {
-                **match,
-                "direction": candidate_direction,
-                "baseline": baseline,
-                "baseline_label": baseline_label,
-            },
-            insights,
-            config.THRESHOLD,
-        )
-
-    decision = decide_signal(features, quality_by_direction, config)
-    if not decision.should_alert or not decision.direction:
-        log.info(
-            "PASS: %s | action=%s | confidence=%.1f | reason=%s",
-            match_name,
-            decision.action,
-            decision.confidence,
-            decision.reason,
-        )
+    analysis = build_signal_analysis(
+        {
+            **match,
+            "baseline": baseline,
+            "baseline_label": baseline_label,
+        },
+        insights,
+        config.THRESHOLD,
+    )
+    direction = analysis.get("direction")
+    if direction not in {"ALT", "ÜST"}:
+        log.info("PASS: %s | fair-line direction could not be calculated", match_name)
         return
-
-    direction = decision.direction
 
     if db.was_alerted_recently(match_id, direction, config.ALERT_COOLDOWN_MINUTES):
         log.debug(
@@ -168,27 +155,12 @@ async def process_match(
     # 1) Count previous alerts for this match (signal number)
     signal_count = db.count_match_alerts(match_id) + 1
 
-    quality = quality_by_direction[direction]
-    original_summary = quality.get("summary", "")
-    setup_label = {
-        "OVER": "Continuation ÜST",
-        "UNDER": "Continuation ALT",
-        "CONTRARIAN_OVER": "Contrarian ÜST",
-        "CONTRARIAN_UNDER": "Contrarian ALT",
-    }.get(decision.action, decision.action)
-    quality["grade"] = decision.grade
-    quality["score"] = decision.confidence
-    quality["setup"] = setup_label
-    quality["summary"] = f"{decision.reason} Risk: {decision.risk_note}" + (
-        f" | {original_summary}" if original_summary else ""
-    )
-    quality["decision"] = decision.to_dict()
-    quality["features"] = features.to_dict()
+    analysis["features"] = features.to_dict()
 
     # 2) Send Telegram alert
     await notifier.send_alert(
         match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
-        score=score, signal_count=signal_count, quality=quality,
+        score=score, signal_count=signal_count, analysis=analysis,
         prematch=prematch_total,
         baseline=baseline,
         baseline_label=baseline_label,
@@ -196,24 +168,25 @@ async def process_match(
     )
 
     # 3) Save to database
-    team_context_json = json.dumps(quality.get("team_context") or {}, ensure_ascii=False) if quality.get("team_context") else ""
-    opposing_signals_json = json.dumps(quality.get("opposing_signals") or [], ensure_ascii=False)
+    team_context_json = json.dumps(analysis.get("team_context") or {}, ensure_ascii=False) if analysis.get("team_context") else ""
+    analysis_json = json.dumps(analysis, ensure_ascii=False)
     db.save_alert(
         match_id, match_name, opening_total, inplay_total, direction, abs_diff,
         tournament=tournament, status=status, url=url, score=score, signal_count=signal_count,
-        quality_grade=quality["grade"],
-        quality_score=quality["score"],
-        quality_setup=quality["setup"],
-        quality_summary=quality["summary"],
-        quality_reasons=quality["reasons_text"],
-        opposing_signals=opposing_signals_json,
+        quality_grade="",
+        quality_score=0,
+        quality_setup="Adil Barem",
+        quality_summary=analysis.get("summary", ""),
+        quality_reasons=analysis.get("reasons_text", ""),
+        opposing_signals="",
         team_context=team_context_json,
+        ai_analysis=analysis_json,
         prematch=prematch_total,
     )
 
     log.info(
-        "Alert sent: id=%s | name=%s | direction=%s | diff=%.2f | kalite=%s %.1f",
-        match_id, match_name, direction, abs_diff, quality["grade"], quality["score"],
+        "Alert sent: id=%s | name=%s | direction=%s | diff=%.2f | fair_line=%s",
+        match_id, match_name, direction, abs_diff, analysis.get("fair_line"),
     )
 
 
