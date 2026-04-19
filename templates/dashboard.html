@@ -1193,7 +1193,7 @@
       z-index: 100;
       justify-content: center;
       align-items: center;
-      padding: 20px;
+      padding: 10px;
     }
 
     .modal-overlay.active { display: flex; }
@@ -1212,8 +1212,9 @@
     }
 
     .bet-builder-box {
-      max-width: 1320px;
-      width: min(98vw, 1320px);
+      max-width: none;
+      width: min(99vw, 1680px);
+      max-height: 95vh;
     }
 
     .modal-header {
@@ -1264,7 +1265,7 @@
     }
 
     .bet-builder-body {
-      padding: 12px;
+      padding: 14px;
       font-size: 12px;
       line-height: 1.4;
       white-space: normal;
@@ -1279,9 +1280,9 @@
     .bet-builder-toolbar {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       flex-wrap: wrap;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
 
     .bet-builder-toolbar label {
@@ -1324,8 +1325,8 @@
     }
 
     .builder-summary {
-      margin-bottom: 8px;
-      padding: 8px 10px;
+      margin-bottom: 10px;
+      padding: 10px 12px;
       border-radius: 12px;
       border: 1px solid rgba(95, 167, 255, 0.14);
       background: rgba(22, 49, 78, 0.68);
@@ -1355,33 +1356,40 @@
       border-radius: 12px;
       overflow: auto;
       background: rgba(14, 26, 42, 0.92);
+      max-height: min(58vh, 620px);
     }
 
     .bet-slip-table {
       width: 100%;
-      min-width: 1120px;
+      min-width: 1360px;
       border-collapse: collapse;
+      table-layout: fixed;
     }
 
     .bet-slip-table th {
-      text-align: center;
-      padding: 6px 7px;
+      text-align: left;
+      padding: 9px 10px;
       font-size: 10px;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0;
       color: var(--text-dim);
       border-bottom: 1px solid rgba(110, 146, 187, 0.16);
       white-space: nowrap;
+      background: rgba(11, 24, 38, 0.98);
+      position: sticky;
+      top: 0;
+      z-index: 2;
     }
 
     .bet-slip-table td {
-      padding: 5px 7px;
-      font-size: 11px;
-      line-height: 1.25;
+      padding: 10px;
+      font-size: 12px;
+      line-height: 1.35;
       border-bottom: 1px solid rgba(110, 146, 187, 0.1);
-      vertical-align: middle;
-      white-space: nowrap;
-      text-align: center;
+      vertical-align: top;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      text-align: left;
     }
 
     .bet-slip-table tr:last-child td {
@@ -1389,23 +1397,22 @@
     }
 
     .bet-slip-table .match-col {
-      min-width: 340px;
-      max-width: 560px;
+      min-width: 0;
       white-space: normal;
-      line-height: 1.25;
+      line-height: 1.35;
       text-align: left;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 700;
     }
 
     .bet-slip-tournament {
       display: block;
-      margin-top: 2px;
-      font-size: 10px;
+      margin-top: 4px;
+      font-size: 11px;
       font-style: italic;
       color: var(--text-dim);
-      overflow: hidden;
-      text-overflow: ellipsis;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
 
     .match-state-note {
@@ -1416,6 +1423,30 @@
       color: #f8d06f;
       font-weight: 600;
       white-space: nowrap;
+    }
+
+    .bet-slip-pick-col,
+    .bet-slip-fair-col,
+    .bet-slip-num-col,
+    .bet-slip-score-col,
+    .bet-slip-status-col,
+    .bet-slip-action-col {
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .bet-slip-rec-col {
+      color: #dbeafe;
+      font-weight: 700;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .bet-slip-fair-col strong,
+    .bet-slip-num-col strong {
+      display: block;
+      font-size: 13px;
+      color: var(--text);
     }
 
     .bet-slip-signal {
@@ -1429,40 +1460,40 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 3px 7px;
-      border-radius: 999px;
+      padding: 5px 8px;
+      border-radius: 8px;
       background: rgba(52, 211, 153, 0.12);
       border: 1px solid rgba(52, 211, 153, 0.18);
       color: #9df0d2;
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 700;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
 
     .bet-slip-table th:nth-child(1),
-    .bet-slip-table td:nth-child(1) { width: 42%; }
+    .bet-slip-table td:nth-child(1) { width: 29%; }
 
     .bet-slip-table th:nth-child(2),
-    .bet-slip-table td:nth-child(2) { width: 120px; }
-
-    .bet-slip-table td:nth-child(2) {
-      font-size: 10px;
-      letter-spacing: 0.01em;
-    }
+    .bet-slip-table td:nth-child(2) { width: 150px; }
 
     .bet-slip-table th:nth-child(3),
-    .bet-slip-table td:nth-child(3) { width: 70px; }
+    .bet-slip-table td:nth-child(3) { width: 95px; }
 
     .bet-slip-table th:nth-child(4),
-    .bet-slip-table td:nth-child(4),
+    .bet-slip-table td:nth-child(4) { width: 32%; }
+
     .bet-slip-table th:nth-child(5),
-    .bet-slip-table td:nth-child(5),
+    .bet-slip-table td:nth-child(5) { width: 90px; }
+
     .bet-slip-table th:nth-child(6),
-    .bet-slip-table td:nth-child(6) { width: 84px; }
+    .bet-slip-table td:nth-child(6) { width: 90px; }
 
     .bet-slip-table th:nth-child(7),
-    .bet-slip-table td:nth-child(7),
+    .bet-slip-table td:nth-child(7) { width: 110px; }
+
     .bet-slip-table th:nth-child(8),
-    .bet-slip-table td:nth-child(8) { width: 110px; }
+    .bet-slip-table td:nth-child(8) { width: 120px; }
 
     .bet-slip-table th:nth-child(9),
     .bet-slip-table td:nth-child(9) { width: 52px; }
@@ -1613,28 +1644,31 @@
 
     .saved-detail-table {
       width: 100%;
-      min-width: 980px;
+      min-width: 1120px;
       border-collapse: collapse;
+      table-layout: fixed;
     }
 
     .saved-detail-table th {
-      text-align: center;
-      padding: 6px 7px;
+      text-align: left;
+      padding: 8px 9px;
       font-size: 10px;
       color: var(--text-dim);
       border-bottom: 1px solid rgba(110, 146, 187, 0.14);
       white-space: nowrap;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0;
+      background: rgba(11, 24, 38, 0.96);
     }
 
     .saved-detail-table td {
-      padding: 6px 7px;
+      padding: 8px 9px;
       font-size: 11px;
       border-bottom: 1px solid rgba(110, 146, 187, 0.09);
-      white-space: nowrap;
-      vertical-align: middle;
-      text-align: center;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      vertical-align: top;
+      text-align: left;
     }
 
     .saved-detail-table tr:last-child td {
@@ -1737,31 +1771,37 @@
 
     .saved-detail-table th:nth-child(2),
     .saved-detail-table td:nth-child(2) {
-      width: 42%;
+      width: 34%;
       white-space: normal;
-      line-height: 1.25;
+      line-height: 1.35;
       text-align: left;
       font-size: 12px;
       font-weight: 600;
     }
 
+    .saved-detail-table th:nth-child(1),
+    .saved-detail-table td:nth-child(1) {
+      width: 44px;
+      text-align: center;
+      white-space: nowrap;
+    }
+
     .saved-detail-table th:nth-child(3),
-    .saved-detail-table td:nth-child(3) { width: 120px; }
+    .saved-detail-table td:nth-child(3) { width: 190px; }
 
     .saved-detail-table td:nth-child(3) {
       font-size: 11px;
-      letter-spacing: 0.01em;
+      letter-spacing: 0;
     }
 
     .saved-detail-table th:nth-child(4),
-    .saved-detail-table td:nth-child(4),
-    .saved-detail-table th:nth-child(5),
-    .saved-detail-table td:nth-child(5),
-    .saved-detail-table th:nth-child(6),
-    .saved-detail-table td:nth-child(6) { width: 90px; }
+    .saved-detail-table td:nth-child(4) { width: 100px; text-align: center; white-space: nowrap; }
 
-    .saved-detail-table th:nth-child(7),
-    .saved-detail-table td:nth-child(7) { width: 110px; }
+    .saved-detail-table th:nth-child(5),
+    .saved-detail-table td:nth-child(5) { width: 110px; text-align: center; white-space: nowrap; }
+
+    .saved-detail-table th:nth-child(6),
+    .saved-detail-table td:nth-child(6) { width: 120px; text-align: center; white-space: nowrap; }
 
     @media (max-width: 1100px) {
       .stats {
@@ -2592,14 +2632,14 @@
         return `
           <tr>
             <td class="match-col">${matchBlock}${matchStateNote}<span class="bet-slip-tournament">(${escapeHtml(item.tournament || '-')})</span></td>
-            <td><span class="bet-slip-code">${escapeHtml(recommendation)}</span></td>
-            <td>${escapeHtml(betSlipFairLineText(item))}</td>
-            <td>${escapeHtml(betSlipRecommendationText(item))}</td>
-            <td>${Number(item.opening || 0).toFixed(1)}</td>
-            <td>${formatSignedNumber(item.diff || item.opening_gap || 0)}</td>
-            <td>${escapeHtml(item.score || '-')}</td>
-            <td>${escapeHtml(item.status || '-')}</td>
-            <td><button class="slip-remove-btn" type="button" title="Kupondan çıkar ve gözardı et" onclick='removeSlipMatch(${matchIdArg})'>🗑</button></td>
+            <td class="bet-slip-pick-col"><span class="bet-slip-code">${escapeHtml(recommendation)}</span></td>
+            <td class="bet-slip-fair-col"><strong>${escapeHtml(betSlipFairLineText(item))}</strong></td>
+            <td class="bet-slip-rec-col">${escapeHtml(betSlipRecommendationText(item))}</td>
+            <td class="bet-slip-num-col"><strong>${Number(item.opening || 0).toFixed(1)}</strong></td>
+            <td class="bet-slip-num-col"><strong>${formatSignedNumber(item.diff || item.opening_gap || 0)}</strong></td>
+            <td class="bet-slip-score-col">${escapeHtml(item.score || '-')}</td>
+            <td class="bet-slip-status-col">${escapeHtml(item.status || '-')}</td>
+            <td class="bet-slip-action-col"><button class="slip-remove-btn" type="button" title="Kupondan çıkar ve gözardı et" onclick='removeSlipMatch(${matchIdArg})'>🗑</button></td>
           </tr>
         `;
       }).join('');
@@ -2728,8 +2768,7 @@
         filtered = filtered.filter(a =>
           (a.match_name || '').toLowerCase().includes(q) ||
           (a.tournament || '').toLowerCase().includes(q) ||
-          (a.recommendation || '').toLowerCase().includes(q) ||
-          (a.quality_summary || '').toLowerCase().includes(q)
+          (a.recommendation || '').toLowerCase().includes(q)
         );
       }
       filtered.sort((a, b) => {

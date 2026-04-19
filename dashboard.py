@@ -46,8 +46,11 @@ def enrich_alerts_with_analysis(alerts: list[dict]) -> list[dict]:
         alert["analysis"] = analysis
         alert["fair_line"] = analysis.get("fair_line")
         alert["fair_edge"] = analysis.get("fair_edge")
+        alert["market_total"] = analysis.get("market_total")
+        alert["team_recent_total"] = analysis.get("team_recent_total")
+        alert["h2h_total"] = analysis.get("h2h_total")
         alert["history_total"] = analysis.get("history_total")
-        alert["recommendation"] = analysis.get("recommendation") or alert.get("quality_summary", "")
+        alert["recommendation"] = analysis.get("recommendation") or ""
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
     return alerts
 
@@ -536,7 +539,6 @@ def build_deleted_matches_report(signals: list) -> dict:
             "mixed_examples": [],
             "diff_buckets": [],
             "period_buckets": [],
-            "grade_buckets": [],
             "fade_analysis": None,
             "tournament_top": [],
             "tournament_bottom": [],
@@ -605,8 +607,6 @@ def build_deleted_matches_report(signals: list) -> dict:
         stats["label"] = label
         period_buckets.append(stats)
 
-    grade_buckets = []
-
     # ── Fade / ters sinyal analizi ──────────────────────────────────────────
     fade_analysis = {
         "overall": {
@@ -640,7 +640,6 @@ def build_deleted_matches_report(signals: list) -> dict:
             }
             for b in diff_buckets if b["resolved"] > 0
         ],
-        "by_grade": [],
     }
 
     # ── Turnuva top/bottom ──────────────────────────────────────────────────
@@ -767,7 +766,7 @@ def build_deleted_matches_report(signals: list) -> dict:
     if trend_7d and trend_7d.get("delta") is not None and trend_7d["delta"] <= -8:
         actions.append(
             f"Son 7 günde başarı %{-trend_7d['delta']:.1f} puan düştü — "
-            f"son değişiklikleri (kalite eşiği, threshold) gözden geçir."
+            f"son değişiklikleri (threshold, adil barem, periyot) gözden geçir."
         )
 
     if not actions and resolved > 0:
@@ -877,7 +876,6 @@ def build_deleted_matches_report(signals: list) -> dict:
         "mixed_examples": mixed_examples,
         "diff_buckets": diff_buckets,
         "period_buckets": period_buckets,
-        "grade_buckets": grade_buckets,
         "fade_analysis": fade_analysis,
         "tournament_top": tournament_top,
         "tournament_bottom": tournament_bottom,

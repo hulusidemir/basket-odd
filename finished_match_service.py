@@ -4,11 +4,16 @@ Used by both the background worker and manual UI-triggered checks.
 """
 
 import asyncio
+import json
 import logging
 import re
 
-from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-from playwright.async_api import async_playwright
+try:
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+    from playwright.async_api import async_playwright
+except ModuleNotFoundError:
+    PlaywrightTimeoutError = TimeoutError
+    async_playwright = None
 
 
 logger = logging.getLogger("finished_match_service")
@@ -61,8 +66,8 @@ def evaluate_signal_professionally(
         margin: Barem ile final toplam arasındaki fark (pozitif = bahisçi lehine)
         signal_timing_grade: Sinyalin zamanlaması ne kadar isabetli (A/B/C/D)
         market_read_correct: Market hareketi doğru okunmuş mu? (1/0)
-        projection_accuracy: Kalite projeksiyon vs gerçek farkı
-        quality_accuracy: Verilen kalite notunun sonuçla uyumu
+        projection_accuracy: Projeksiyon vs gerçek farkı
+        quality_accuracy: Eski kolon uyumluluğu için boş bırakılır
         verdict: Kısa profesyonel yorum
         lesson: Gelecek sinyaller için çıkarılacak ders
     """
@@ -71,8 +76,6 @@ def evaluate_signal_professionally(
     opening = float(alert.get("opening") or 0)
     diff = float(alert.get("diff") or 0)
     status = alert.get("status") or ""
-    quality_grade = (alert.get("quality_grade") or "").strip().upper()
-    quality_score = float(alert.get("quality_score") or 0)
     signal_count = int(alert.get("signal_count") or 1)
 
     is_success = signal_result == "Başarılı"
@@ -112,35 +115,24 @@ def evaluate_signal_professionally(
     else:
         market_read_correct = None
 
-    # ── 4. Quality Accuracy ──
-    # Kalite notu sonucu doğru tahmin etti mi?
-    high_quality = quality_grade in {"A++", "A+", "A", "B"}
-    if is_success and high_quality:
-        quality_accuracy = "İsabetli"
-    elif is_fail and high_quality:
-        quality_accuracy = "Yanıltıcı"
-    elif is_success and not high_quality:
-        quality_accuracy = "Sürpriz Başarı"
-    elif is_fail and not high_quality:
-        quality_accuracy = "Beklenen Başarısızlık"
-    else:
-        quality_accuracy = ""
-
-    # ── 5. Projection Accuracy ──
-    # quality_summary'den projeksiyon değerini çıkarmaya çalış
+    # ── 4. Projection Accuracy ──
     projection_accuracy = None
-    quality_summary = alert.get("quality_summary") or ""
-    proj_match = re.search(r"(\d+\.?\d*)\s*[<>]", quality_summary)
-    if not proj_match:
-        proj_match = re.search(r"projeksiyonu?\s*[^(]*\((\d+\.?\d*)", quality_summary, re.IGNORECASE)
-    if proj_match:
+    analysis = {}
+    if alert.get("ai_analysis"):
         try:
-            projected = float(proj_match.group(1))
+            parsed = json.loads(alert.get("ai_analysis") or "{}")
+            analysis = parsed if isinstance(parsed, dict) else {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            analysis = {}
+    projected_total = analysis.get("projected_total")
+    if projected_total is not None:
+        try:
+            projected = float(projected_total)
             projection_accuracy = round(abs(final_total - projected), 1)
         except (ValueError, TypeError):
             pass
 
-    # ── 6. Verdict: Profesyonel yorum ──
+    # ── 5. Verdict: Profesyonel yorum ──
     verdict_parts = []
     if is_success:
         if margin is not None and margin >= 10:
@@ -170,12 +162,8 @@ def evaluate_signal_professionally(
 
     verdict = " — ".join(verdict_parts)
 
-    # ── 7. Lesson: Çıkarılacak ders ──
+    # ── 6. Lesson: Çıkarılacak ders ──
     lessons = []
-    if is_fail and high_quality:
-        lessons.append("Yüksek kalite notu tek başına yeterli değil, maç dinamiğini de izle")
-    if is_fail and quality_grade == "D":
-        lessons.append("D kalite ters risk bayrağı olan sinyallerde daha dikkatli ol")
     if is_success and signal_count >= 3:
         lessons.append("Tekrarlayan sinyaller (3+) güvenilirliği artırıyor")
     if is_fail and period == 1:
@@ -194,7 +182,7 @@ def evaluate_signal_professionally(
         "signal_timing_grade": timing_grade,
         "market_read_correct": market_read_correct,
         "projection_accuracy": projection_accuracy,
-        "quality_accuracy": quality_accuracy,
+        "quality_accuracy": "",
         "verdict": verdict,
         "lesson": lesson,
     }
@@ -242,6 +230,8 @@ class AiscoreFinishedMatchChecker:
     async def check_matches(self, tracked_matches: list[dict]) -> list[dict]:
         if not tracked_matches:
             return []
+        if async_playwright is None:
+            raise RuntimeError("Playwright is not installed. Run 'pip install playwright' and 'playwright install chromium'.")
 
         results = []
         async with async_playwright() as playwright:

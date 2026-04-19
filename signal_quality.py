@@ -399,17 +399,60 @@ def _history_total_from_metrics(h2h_metrics: dict) -> float | None:
     return round(mean(values), 1)
 
 
-def _weighted_fair_line(projected_total: float | None, history_total: float | None) -> tuple[float | None, dict]:
-    if projected_total is not None and history_total is not None:
-        return round((projected_total * 0.60) + (history_total * 0.40), 1), {
-            "projection": 60,
-            "history": 40,
-        }
-    if projected_total is not None:
-        return round(projected_total, 1), {"projection": 100, "history": 0}
-    if history_total is not None:
-        return round(history_total, 1), {"projection": 0, "history": 100}
-    return None, {"projection": 0, "history": 0}
+def _market_total(match: dict, baseline: float, opening: float) -> float | None:
+    for key in ("prematch_total", "prematch", "baseline", "opening_total"):
+        value = match.get(key)
+        if value is None:
+            continue
+        parsed = _safe_float(value)
+        if parsed is not None:
+            return round(parsed, 1)
+    return round(_safe_float(baseline) or _safe_float(opening), 1)
+
+
+def _fair_weight_profile(status: str, match_name: str, tournament: str) -> dict:
+    clock = game_clock(status, match_name, tournament)
+    period = clock["period"]
+    if period == 1:
+        return {"projection": 35, "market": 40, "team_recent": 15, "h2h": 10}
+    if period in {2, 3}:
+        return {"projection": 55, "market": 25, "team_recent": 15, "h2h": 5}
+    if period and period >= 4:
+        return {"projection": 65, "market": 20, "team_recent": 10, "h2h": 5}
+    return {"projection": 45, "market": 35, "team_recent": 15, "h2h": 5}
+
+
+def _normalized_percentages(raw_weights: dict) -> dict:
+    total = sum(raw_weights.values())
+    if total <= 0:
+        return {key: 0 for key in raw_weights}
+
+    exact = {key: (value / total) * 100 for key, value in raw_weights.items()}
+    floors = {key: int(value) for key, value in exact.items()}
+    remainder = 100 - sum(floors.values())
+    ranked = sorted(
+        exact,
+        key=lambda key: (exact[key] - floors[key], raw_weights[key]),
+        reverse=True,
+    )
+    for key in ranked[:remainder]:
+        floors[key] += 1
+    return floors
+
+
+def _weighted_fair_line(components: dict, base_weights: dict) -> tuple[float | None, dict]:
+    usable = {
+        key: float(value)
+        for key, value in components.items()
+        if value is not None and key in base_weights
+    }
+    if not usable:
+        return None, {key: 0 for key in base_weights}
+
+    active_weights = {key: base_weights[key] for key in usable}
+    weight_sum = sum(active_weights.values())
+    fair_line = sum(usable[key] * active_weights[key] for key in usable) / weight_sum
+    return round(fair_line, 1), _normalized_percentages(active_weights)
 
 
 def _pace_note(projected_total: float | None, live: float, fair_line: float | None) -> str:
@@ -454,8 +497,18 @@ def build_signal_analysis(match: dict, context: dict, threshold: float) -> dict:
 
     h2h_metrics = _extract_h2h_metrics((context.get("h2h") or {}).get("body_text", ""), match_name)
     projected_total = calculate_projected_total(score, status, match_name, tournament)
+    market_total = _market_total(match, baseline, opening)
+    team_recent_total = h2h_metrics.get("expected_total")
+    h2h_total = h2h_metrics.get("h2h_avg_total")
     history_total = _history_total_from_metrics(h2h_metrics)
-    fair_line, weights = _weighted_fair_line(projected_total, history_total)
+    fair_components = {
+        "projection": projected_total,
+        "market": market_total,
+        "team_recent": team_recent_total,
+        "h2h": h2h_total,
+    }
+    base_weights = _fair_weight_profile(status, match_name, tournament)
+    fair_line, weights = _weighted_fair_line(fair_components, base_weights)
     line_delta_open = round(live - opening, 1)
     line_delta_baseline = round(live - baseline, 1)
 
@@ -503,15 +556,23 @@ def build_signal_analysis(match: dict, context: dict, threshold: float) -> dict:
     )
     if fair_edge is not None:
         summary += f" | Canlıya göre {fair_edge:+.1f}"
-    summary += f" | Projeksiyon ağırlığı %{weights['projection']}, geçmiş ağırlığı %{weights['history']}"
+    summary += (
+        f" | Ağırlık: proj %{weights.get('projection', 0)}, piyasa %{weights.get('market', 0)}, "
+        f"son maç %{weights.get('team_recent', 0)}, H2H %{weights.get('h2h', 0)}"
+    )
 
     return {
         "direction": direction,
         "fair_line": fair_line,
         "fair_edge": fair_edge,
         "projected_total": _safe_round(projected_total),
+        "market_total": _safe_round(market_total),
+        "team_recent_total": _safe_round(team_recent_total),
+        "h2h_total": _safe_round(h2h_total),
         "history_total": _safe_round(history_total),
         "weights": weights,
+        "base_weights": base_weights,
+        "fair_components": {key: _safe_round(value) for key, value in fair_components.items()},
         "opening_delta": line_delta_open,
         "baseline_delta": line_delta_baseline,
         "baseline_label": baseline_label,

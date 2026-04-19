@@ -67,6 +67,9 @@ class TelegramNotifier:
         fair_line = analysis.get("fair_line")
         fair_edge = analysis.get("fair_edge")
         projected = analysis.get("projected_total")
+        market_total = analysis.get("market_total")
+        team_recent_total = analysis.get("team_recent_total")
+        h2h_total = analysis.get("h2h_total")
         history_total = analysis.get("history_total")
         weights = analysis.get("weights") or {}
         recommendation = analysis.get("recommendation") or "Tavsiye üretilemedi."
@@ -77,11 +80,25 @@ class TelegramNotifier:
         fair_line_text = f"{float(fair_line):.1f}" if fair_line is not None else "Hesaplanamadı"
         fair_edge_line = f"Canlıya Göre:  <b>{float(fair_edge):+.1f}</b>\n" if fair_edge is not None else ""
         projected_line = f"Projeksiyon:   <b>{float(projected):.1f}</b>\n" if projected is not None else ""
-        history_line = f"H2H/Son Maç:   <b>{float(history_total):.1f}</b>\n" if history_total is not None else ""
-        weights_line = (
-            f"Ağırlık:       <b>%{int(weights.get('projection') or 0)} projeksiyon / %{int(weights.get('history') or 0)} geçmiş</b>\n"
-            if weights else ""
+        market_line = f"Piyasa Bazı:   <b>{float(market_total):.1f}</b>\n" if market_total is not None else ""
+        team_line = f"Son Maç:       <b>{float(team_recent_total):.1f}</b>\n" if team_recent_total is not None else ""
+        h2h_line = f"H2H:           <b>{float(h2h_total):.1f}</b>\n" if h2h_total is not None else ""
+        history_line = (
+            f"H2H/Son Maç:   <b>{float(history_total):.1f}</b>\n"
+            if history_total is not None and team_recent_total is None and h2h_total is None else ""
         )
+        weight_labels = {
+            "projection": "projeksiyon",
+            "market": "piyasa",
+            "team_recent": "son maç",
+            "h2h": "H2H",
+        }
+        weight_parts = [
+            f"%{int(value)} {weight_labels[key]}"
+            for key, value in weights.items()
+            if int(value or 0) > 0 and key in weight_labels
+        ]
+        weights_line = f"Ağırlık:       <b>{' / '.join(weight_parts)}</b>\n" if weight_parts else ""
         warning_line = "\n".join(f"❔ {item}" for item in warnings[:6])
         if warning_line:
             warning_line += "\n"
@@ -100,6 +117,9 @@ class TelegramNotifier:
             f"{reference_line}"
             f"Güncel Barem:  <b>{live:.1f}</b>\n"
             f"{projected_line}"
+            f"{market_line}"
+            f"{team_line}"
+            f"{h2h_line}"
             f"{history_line}"
             f"Adil Barem:    <b>{fair_line_text}</b>\n"
             f"{fair_edge_line}"

@@ -218,7 +218,7 @@
     .stat-chip.fail strong { color: var(--accent-red); }
     .stat-chip.rate strong { color: var(--accent-yellow); }
 
-    .quality-breakdown {
+    .signal-breakdown {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
@@ -335,62 +335,6 @@
     .direction-mini-stat strong {
       font-size: 17px;
       font-weight: 900;
-    }
-
-    .grade-list {
-      display: grid;
-      gap: 7px;
-    }
-
-    .grade-row {
-      display: grid;
-      grid-template-columns: 46px repeat(4, minmax(0, 1fr));
-      gap: 8px;
-      align-items: center;
-      border: 1px solid rgba(129, 162, 198, 0.12);
-      border-radius: 10px;
-      padding: 8px;
-      background: rgba(7, 16, 27, 0.34);
-      color: var(--text);
-      cursor: pointer;
-      font: inherit;
-      transition: border-color 0.15s ease, background 0.15s ease;
-    }
-
-    .grade-row:hover,
-    .grade-row.active {
-      border-color: rgba(95, 167, 255, 0.56);
-      background: rgba(95, 167, 255, 0.10);
-    }
-
-    .grade-name {
-      font-weight: 900;
-      color: var(--accent-yellow);
-    }
-
-    .grade-metric {
-      min-width: 0;
-    }
-
-    .grade-metric span {
-      display: block;
-      color: var(--text-soft);
-      font-size: 10px;
-      font-weight: 800;
-      margin-bottom: 4px;
-      text-transform: uppercase;
-    }
-
-    .grade-metric strong {
-      font-size: 13px;
-      font-weight: 900;
-    }
-
-    .grade-empty {
-      color: var(--text-soft);
-      font-size: 12px;
-      font-weight: 700;
-      padding: 8px;
     }
 
     .summary-reset {
@@ -562,33 +506,6 @@
       background: rgba(34, 197, 94, 0.14);
       color: #9df0bd;
       border: 1px solid rgba(34, 197, 94, 0.28);
-    }
-
-    .badge-quality {
-      min-width: 34px;
-      margin-left: 6px;
-      padding: 6px 9px;
-      border: 1px solid rgba(148, 163, 184, 0.22);
-      background: rgba(148, 163, 184, 0.14);
-      color: #c0cbda;
-    }
-
-    .badge-quality-a {
-      background: rgba(79, 139, 223, 0.14);
-      color: #86b7ff;
-      border-color: rgba(79, 139, 223, 0.24);
-    }
-
-    .badge-quality-b {
-      background: rgba(251, 191, 36, 0.14);
-      color: #f8d06f;
-      border-color: rgba(251, 191, 36, 0.24);
-    }
-
-    .badge-quality-d {
-      background: rgba(255, 107, 99, 0.14);
-      color: #ffb1aa;
-      border-color: rgba(255, 107, 99, 0.24);
     }
 
     .mono {
@@ -1018,9 +935,8 @@
       .btn,
       .nav-tab { flex: 1 1 auto; text-align: center; }
       .stat-chip { flex: 1 1 120px; }
-      .quality-breakdown { grid-template-columns: 1fr; }
+      .signal-breakdown { grid-template-columns: 1fr; }
       .direction-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .grade-row { grid-template-columns: 42px repeat(2, minmax(0, 1fr)); }
     }
   </style>
 </head>
@@ -1046,7 +962,7 @@
     <main class="section-shell">
 
       <section class="panel">
-        <div class="quality-breakdown" id="qualityBreakdown"></div>
+        <div class="signal-breakdown" id="signalBreakdown"></div>
       </section>
 
       <section class="panel stats">
@@ -1101,7 +1017,7 @@
               <th data-sort="opening">Açılış</th>
               <th data-sort="live">Canlı</th>
               <th data-sort="diff">Fark</th>
-              <th data-sort="quality_score">Kalite</th>
+              <th data-sort="fair_line">Adil Barem</th>
               <th data-sort="result">Sonuç</th>
             </tr>
           </thead>
@@ -1129,7 +1045,7 @@
   <div class="modal-overlay" id="reportModal" onclick="handleModalClick(event)">
     <div class="modal-box">
       <div class="modal-header">
-        <h2>Sinyal Kalite Raporu</h2>
+        <h2>Sinyal Raporu</h2>
         <button class="modal-close" onclick="closeReport()">Kapat</button>
       </div>
       <div id="reportContent">
@@ -1186,36 +1102,53 @@
       return Number.isFinite(num) ? num.toFixed(1) : '-';
     }
 
+    function alertAnalysis(alert) {
+      if (alert.analysis && typeof alert.analysis === 'object') return alert.analysis;
+      if (!alert.ai_analysis) return {};
+      try {
+        const parsed = JSON.parse(alert.ai_analysis);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (err) {
+        return {};
+      }
+    }
+
+    function fairLineValue(alert) {
+      const analysis = alertAnalysis(alert);
+      const value = analysis.fair_line ?? alert.fair_line;
+      const num = Number(value);
+      return Number.isFinite(num) ? num : null;
+    }
+
+    function fairEdgeValue(alert) {
+      const analysis = alertAnalysis(alert);
+      const value = analysis.fair_edge ?? alert.fair_edge;
+      const num = Number(value);
+      return Number.isFinite(num) ? num : null;
+    }
+
+    function recommendationText(alert) {
+      const analysis = alertAnalysis(alert);
+      return analysis.recommendation || alert.recommendation || '';
+    }
+
     function signalBadge(alert) {
       const direction = alert.direction || '-';
       const cls = direction === 'ALT' ? 'badge-alt' : 'badge-ust';
-      return `<span class="badge ${cls}">${escapeHtml(direction)}</span>${qualityBadge(alert)}`;
+      return `<span class="badge ${cls}">${escapeHtml(direction)}</span>`;
     }
 
-    function qualityGrade(alert) {
-      return String(alert.quality_grade || '').trim().toUpperCase() || 'YOK';
-    }
-
-    function qualityBadge(alert) {
-      const grade = qualityGrade(alert);
-      const cls = grade === 'A' ? 'badge-quality-a'
-        : grade === 'B' ? 'badge-quality-b'
-          : grade === 'D' ? 'badge-quality-d'
-            : '';
-      return `<span class="badge badge-quality ${cls}" title="Sinyal kalitesi">${escapeHtml(grade)}</span>`;
-    }
-
-    function gradeRank(grade) {
-      const order = ['A', 'B', 'C', 'D', 'A++', 'A+', 'YOK'];
-      const idx = order.indexOf(grade);
-      return idx === -1 ? order.length : idx;
-    }
-
-    function qualityLabel(alert) {
-      const grade = (alert.quality_grade || '').trim();
-      const score = Number(alert.quality_score || 0);
-      if (!grade) return '-';
-      return `${escapeHtml(grade)} ${Number.isFinite(score) && score > 0 ? `<span class="mono">${score.toFixed(1)}</span>` : ''}`;
+    function fairLineCell(alert) {
+      const fair = fairLineValue(alert);
+      const edge = fairEdgeValue(alert);
+      const recommendation = recommendationText(alert);
+      const fairLabel = fair !== null ? formatNumber(fair) : '-';
+      const edgeLabel = edge !== null ? `${edge >= 0 ? '+' : ''}${edge.toFixed(1)}` : '';
+      const detail = [
+        edgeLabel ? `Canlı farkı ${edgeLabel}` : '',
+        recommendation,
+      ].filter(Boolean).join(' · ');
+      return `<div class="mono">${fairLabel}</div>${detail ? `<div class="subline">${escapeHtml(detail)}</div>` : ''}`;
     }
 
     function isFocusedMatch(alert) {
@@ -1259,7 +1192,6 @@
       if (activeFilter) {
         rows = rows.filter(alert => {
           if (activeFilter.direction && alert.direction !== activeFilter.direction) return false;
-          if (activeFilter.grade && qualityGrade(alert) !== activeFilter.grade) return false;
           if (activeFilter.result && alert.result !== activeFilter.result) return false;
           if (activeFilter.matchKey && matchKey(alert) !== activeFilter.matchKey) return false;
           return true;
@@ -1272,8 +1204,8 @@
         alert.tournament,
         alert.status,
         alert.score,
-        alert.quality_grade,
-        alert.quality_summary,
+        recommendationText(alert),
+        fairLineValue(alert),
         alert.result,
       ].some(value => String(value || '').toLowerCase().includes(q)));
       return sortedAlerts(rows);
@@ -1287,8 +1219,10 @@
 
     function sortValue(alert, field) {
       if (field === 'deleted_at' || field === 'alerted_at') return parseDateValue(alert[field]);
-      if (['opening', 'live', 'diff', 'quality_score', 'signal_count'].includes(field)) {
-        const num = Number(alert[field]);
+      if (['opening', 'live', 'diff', 'fair_line', 'fair_edge', 'signal_count'].includes(field)) {
+        const num = field === 'fair_line' ? fairLineValue(alert)
+          : field === 'fair_edge' ? fairEdgeValue(alert)
+            : Number(alert[field]);
         return Number.isFinite(num) ? num : -Infinity;
       }
       if (field === 'match_name') return cleanMatchName(alert.match_name || '').toLocaleLowerCase('tr-TR');
@@ -1329,7 +1263,7 @@
       document.getElementById('statSuccess').textContent = successList.length;
       document.getElementById('statFail').textContent = failList.length;
       document.getElementById('statRate').textContent = rate !== null ? `%${rate.toFixed(1)}` : '-';
-      renderQualityBreakdown();
+      renderSignalBreakdown();
     }
 
     function uniqueMatchCount(rows) {
@@ -1357,28 +1291,11 @@
       return baseStats(scoped);
     }
 
-    function qualityStats(direction, grade) {
-      const scoped = deletedAlerts.filter(item => item.direction === direction && qualityGrade(item) === grade);
-      return baseStats(scoped);
-    }
-
-    function gradesForDirection(direction) {
-      return Array.from(new Set(
-        deletedAlerts
-          .filter(item => item.direction === direction)
-          .map(item => qualityGrade(item))
-      )).sort((a, b) => {
-        const rankDiff = gradeRank(a) - gradeRank(b);
-        return rankDiff !== 0 ? rankDiff : a.localeCompare(b, 'tr-TR');
-      });
-    }
-
-    function renderQualityBreakdown() {
-      const target = document.getElementById('qualityBreakdown');
+    function renderSignalBreakdown() {
+      const target = document.getElementById('signalBreakdown');
       const directions = ['ALT', 'ÜST'];
       const activeKey = activeFilter ? [
         activeFilter.direction || '',
-        activeFilter.grade || '',
         activeFilter.result || '',
         activeFilter.matchKey || '',
       ].join('|') : '';
@@ -1386,22 +1303,9 @@
         const stats = directionStats(direction);
         const badgeClass = direction === 'ALT' ? 'badge-alt' : 'badge-ust';
         const rateText = stats.rate !== null ? `%${stats.rate.toFixed(1)}` : '-';
-        const directionActive = activeKey === `${direction}|||`;
-        const successActive = activeKey === `${direction}||Başarılı|`;
-        const failActive = activeKey === `${direction}||Başarısız|`;
-        const gradeRows = gradesForDirection(direction).map(grade => {
-          const stats = qualityStats(direction, grade);
-          const key = `${direction}|${grade}||`;
-          return `
-            <button class="grade-row ${activeKey === key ? 'active' : ''}" onclick='setSummaryFilter(${escapeHtml(JSON.stringify({ direction, grade }))})'>
-              <div class="grade-name">${escapeHtml(grade)}</div>
-              <div class="grade-metric"><span>Toplam</span><strong>${stats.total}</strong></div>
-              <div class="grade-metric"><span>Maç</span><strong>${stats.unique}</strong></div>
-              <div class="grade-metric"><span>Başarılı</span><strong>${stats.success} (${stats.successUnique})</strong></div>
-              <div class="grade-metric"><span>Başarısız</span><strong>${stats.fail} (${stats.failUnique})</strong></div>
-            </button>
-          `;
-        }).join('') || '<div class="grade-empty">Bu yönde sinyal yok.</div>';
+        const directionActive = activeKey === `${direction}||`;
+        const successActive = activeKey === `${direction}|Başarılı|`;
+        const failActive = activeKey === `${direction}|Başarısız|`;
 
         return `
           <div class="direction-summary ${direction === 'ALT' ? 'alt' : 'ust'}">
@@ -1417,9 +1321,6 @@
               <button class="direction-mini-stat ${successActive ? 'active' : ''}" onclick='setSummaryFilter(${escapeHtml(JSON.stringify({ direction, result: 'Başarılı' }))})'><span>Başarılı</span><strong>${stats.success} (${stats.successUnique})</strong></button>
               <button class="direction-mini-stat ${failActive ? 'active' : ''}" onclick='setSummaryFilter(${escapeHtml(JSON.stringify({ direction, result: 'Başarısız' }))})'><span>Başarısız</span><strong>${stats.fail} (${stats.failUnique})</strong></button>
               <div class="direction-mini-stat static"><span>Başarı</span><strong>${rateText}</strong></div>
-            </div>
-            <div class="grade-list">
-              ${gradeRows}
             </div>
             ${activeFilter ? `
               <button class="summary-reset" onclick="clearSummaryFilter()">Filtreyi kaldır</button>
@@ -1499,7 +1400,7 @@
             <td class="mono">${formatNumber(alert.opening)}</td>
             <td class="mono">${formatNumber(alert.live)}</td>
             <td class="mono">${formatNumber(alert.diff)}</td>
-            <td>${qualityLabel(alert)}</td>
+            <td>${fairLineCell(alert)}</td>
             <td>${resultCell(alert)}</td>
           </tr>
         `;
@@ -1775,7 +1676,6 @@
         const delta = fadeRate - orig;
         const byDirection = (fade.by_direction || []).filter(d => d.resolved > 0).map(fadeCard).join('');
         const byDiff = (fade.by_diff || []).filter(d => d.resolved > 0).map(fadeCard).join('');
-        const byGrade = (fade.by_grade || []).filter(d => d.resolved > 0).map(fadeCard).join('');
         fadeBlock = `
           <div class="report-section-title">Ters Sinyal (Fade) Analizi</div>
           <div class="report-headline" style="font-size:13px;margin-bottom:10px">
@@ -1784,7 +1684,6 @@
           </div>
           ${byDirection ? `<div class="report-card-title" style="margin:10px 0 6px">Yöne Göre</div><div class="report-fade-grid">${byDirection}</div>` : ''}
           ${byDiff ? `<div class="report-card-title" style="margin:10px 0 6px">Fark Aralığına Göre</div><div class="report-fade-grid">${byDiff}</div>` : ''}
-          ${byGrade ? `<div class="report-card-title" style="margin:10px 0 6px">Kalite Grade'e Göre</div><div class="report-fade-grid">${byGrade}</div>` : ''}
         `;
       }
 
@@ -1801,13 +1700,6 @@
       const periodSection = periodBars ? `
         <div class="report-section-title">Periyoda Göre Başarı</div>
         <div class="report-bar-list">${periodBars}</div>
-      ` : '';
-
-      const gradeBars = (data.grade_buckets || [])
-        .map(b => barRow(b.label, b)).join('');
-      const gradeSection = gradeBars ? `
-        <div class="report-section-title">Kalite Grade Detayı</div>
-        <div class="report-bar-list">${gradeBars}</div>
       ` : '';
 
       const top = (data.tournament_top || []).map(tourRow).join('');
@@ -1835,7 +1727,6 @@
         ${fadeBlock}
         ${diffSection}
         ${periodSection}
-        ${gradeSection}
         ${tourSection}
         ${highlights ? `<div class="report-section-title">Öne Çıkanlar</div>${highlights}` : ''}
         ${mixedSection}
