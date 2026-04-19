@@ -28,14 +28,8 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 BET_BUILDER_ALERT_WINDOW_MINUTES = 240
 
 
-def enrich_alerts_with_projection(alerts: list[dict]) -> list[dict]:
+def enrich_alerts_with_reliability(alerts: list[dict]) -> list[dict]:
     for alert in alerts:
-        alert["projected"] = calculate_projected_total(
-            score=alert.get("score", ""),
-            status=alert.get("status", ""),
-            match_name=alert.get("match_name", ""),
-            tournament=alert.get("tournament", "")
-        )
         reliability = alert_reliability(
             direction=alert.get("direction", ""),
             quality_grade=alert.get("quality_grade", ""),
@@ -48,32 +42,15 @@ def enrich_alerts_with_projection(alerts: list[dict]) -> list[dict]:
     return alerts
 
 
-def _classify_projection_signal(projected: float, live: float) -> dict | None:
-    projection_gap = round(live - projected, 1)
-    absolute_gap = abs(projection_gap)
-
-    if absolute_gap < 2:
-        return None
-
-    if absolute_gap >= 10:
-        tier = "A"
-        priority = 3
-    elif absolute_gap >= 5:
-        tier = "B"
-        priority = 2
-    else:
-        tier = "C"
-        priority = 1
-
-    direction = "ALT" if projection_gap > 0 else "ÜST"
-    return {
-        "direction": direction,
-        "tier": tier,
-        "signal_code": f"{direction}-{tier}",
-        "priority": priority,
-        "projection_gap": projection_gap,
-        "projection_edge": round(absolute_gap, 1),
-    }
+def enrich_alerts_with_projection(alerts: list[dict]) -> list[dict]:
+    for alert in alerts:
+        alert["projected"] = calculate_projected_total(
+            score=alert.get("score", ""),
+            status=alert.get("status", ""),
+            match_name=alert.get("match_name", ""),
+            tournament=alert.get("tournament", "")
+        )
+    return enrich_alerts_with_reliability(alerts)
 
 
 def _is_live_basketball_status(status: str) -> bool:
@@ -105,10 +82,30 @@ def _is_recent_alert(alerted_at: str, window_minutes: int = BET_BUILDER_ALERT_WI
     return alert_time >= (datetime.utcnow() - timedelta(minutes=window_minutes))
 
 
+def _safe_float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _bet_builder_grade_priority(grade: str) -> int:
+    normalized = str(grade or "").strip().upper()
+    priorities = {
+        "A++": 6,
+        "A+": 5,
+        "A": 4,
+        "B": 3,
+        "C": 2,
+        "D": 1,
+    }
+    return priorities.get(normalized, 0)
+
+
 def build_bet_builder(max_count: int) -> dict:
     alerts = [
         alert
-        for alert in enrich_alerts_with_projection(db.recent_alerts(limit=500))
+        for alert in enrich_alerts_with_reliability(db.recent_alerts(limit=500))
         if _is_live_basketball_status(alert.get("status", ""))
         and _is_recent_alert(alert.get("alerted_at", ""))
     ]
@@ -148,34 +145,40 @@ def build_bet_builder(max_count: int) -> dict:
             excluded_saved += 1
             continue
 
-        projected = alert.get("projected")
-        if projected is None:
+        direction = str(alert.get("direction") or "").strip().upper().replace("UST", "ÜST")
+        if direction not in {"ALT", "ÜST"}:
             continue
 
-        opening = float(alert.get("opening") or 0)
-        live = float(alert.get("live") or 0)
-        signal = _classify_projection_signal(float(projected), live)
-        if signal is None:
-            continue
-
+        opening = _safe_float(alert.get("opening"))
+        live = _safe_float(alert.get("live"))
+        diff = _safe_float(alert.get("diff"))
+        quality_grade = str(alert.get("quality_grade") or "").strip().upper()
+        quality_score = _safe_float(alert.get("quality_score"))
+        grade_priority = _bet_builder_grade_priority(quality_grade)
         opening_gap = round(live - opening, 1)
         candidates.append({
             "match_id": alert.get("match_id"),
             "match_name": alert.get("match_name", ""),
             "tournament": alert.get("tournament", ""),
             "url": alert.get("url", ""),
-            "direction": signal["direction"],
-            "signal_tier": signal["tier"],
-            "signal_code": signal["signal_code"],
+            "direction": direction,
+            "signal_tier": quality_grade or "SİNYAL",
+            "signal_code": f"{direction}-{quality_grade or 'SİNYAL'}",
             "opening": round(opening, 1),
             "live": round(live, 1),
-            "projected": round(float(projected), 1),
+            "projected": None,
             "status": alert.get("status", ""),
             "score": alert.get("score", ""),
             "opening_gap": opening_gap,
-            "projection_gap": signal["projection_gap"],
-            "projection_edge": signal["projection_edge"],
-            "signal_priority": signal["priority"],
+            "projection_gap": None,
+            "projection_edge": None,
+            "diff": round(diff, 1),
+            "quality_grade": quality_grade,
+            "quality_score": round(quality_score, 1),
+            "quality_setup": alert.get("quality_setup", ""),
+            "trust_label": alert.get("trust_label", ""),
+            "trust_code": alert.get("trust_code", ""),
+            "signal_priority": grade_priority,
             "bet_placed": int(alert.get("bet_placed") or 0),
             "followed": int(alert.get("followed") or 0),
             "ignored": int(alert.get("ignored") or 0),
@@ -184,7 +187,8 @@ def build_bet_builder(max_count: int) -> dict:
     candidates.sort(
         key=lambda item: (
             item["signal_priority"],
-            item["projection_edge"],
+            item["quality_score"],
+            item["diff"],
         ),
         reverse=True,
     )
@@ -197,11 +201,11 @@ def build_bet_builder(max_count: int) -> dict:
     if not can_build:
         message = (
             f"Kupon oluşturulmadı. Canlı maçlar içinde en az 1 uygun maç gerekiyor; şu an yalnızca "
-            f"{len(eligible_candidates)} maç projeksiyon-canlı barem farkı kriterini geçti."
+            f"{len(eligible_candidates)} aktif dashboard sinyali uygun göründü."
         )
     else:
         message = (
-            f"Kupon hazır. Canlı {len(eligible_candidates)} uygun maç içinden en güçlü {leg_count} seçim alındı."
+            f"Kupon hazır. Canlı {len(eligible_candidates)} dashboard sinyali içinden en güçlü {leg_count} seçim alındı."
         )
 
     excluded_total = excluded_finished + excluded_ignored + excluded_bet + excluded_follow + excluded_saved
@@ -253,6 +257,8 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
         "opening_gap",
         "projection_gap",
         "projection_edge",
+        "diff",
+        "quality_score",
     }
     numeric_int_fields = {"signal_priority"}
     keep_fields = {
@@ -265,6 +271,10 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
         "signal_code",
         "status",
         "score",
+        "quality_grade",
+        "quality_setup",
+        "trust_label",
+        "trust_code",
     }
     bool_fields = {"bet_placed", "followed", "ignored"}
 

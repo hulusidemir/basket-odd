@@ -2422,6 +2422,23 @@
       return `${line}-${dir} (${t})`;
     }
 
+    function betSlipQualityText(item) {
+      const grade = String(item?.quality_grade || '').trim();
+      const score = Number(item?.quality_score || 0);
+      if (grade) return score > 0 ? `${grade} (${score.toFixed(1)})` : grade;
+      const tier = String(item?.signal_tier || '').trim();
+      return tier ? tier : '-';
+    }
+
+    function betSlipTrustText(item) {
+      const label = String(item?.trust_label || '').trim();
+      if (label) return label;
+      const grade = String(item?.quality_grade || item?.signal_tier || '').trim().toUpperCase();
+      if (grade === 'A' || grade === 'A+' || grade === 'A++') return 'GÜVENİLİR';
+      if (grade === 'B') return 'İZLE';
+      return 'SİNYAL';
+    }
+
     function buildMatchStateNote(item) {
       const notes = [];
       if (Number(item?.bet_placed || 0) > 0) notes.push('Bahis Oynandı');
@@ -2538,13 +2555,17 @@
           bet_placed: Number(itemLeg.bet_placed ?? 0),
           followed: Number(itemLeg.followed ?? 0),
         });
-        const recommendation = buildBetRecommendation(itemLeg.live, itemLeg.direction, itemLeg.signal_tier);
+        const recommendation = buildBetRecommendation(
+          itemLeg.live,
+          itemLeg.direction,
+          itemLeg.quality_grade || itemLeg.signal_tier
+        );
         return `
           <tr>
             <td>${idx + 1}</td>
             <td>${matchLink}${matchStateNote}<span class="saved-match-subtitle">(${escapeHtml(itemLeg.tournament || '-')})</span></td>
             <td>${escapeHtml(recommendation)}</td>
-            <td>${Number(itemLeg.projected || 0).toFixed(1)}</td>
+            <td>${escapeHtml(betSlipQualityText(itemLeg))}</td>
             <td><span class="${resultMeta.className}">${escapeHtml(resultMeta.label)}</span></td>
             <td>${savedResultActionsHtml(itemId, itemLeg)}</td>
           </tr>
@@ -2561,7 +2582,7 @@
                   <th>#</th>
                   <th>Maç</th>
                   <th>Oynanacak</th>
-                  <th>Proj</th>
+                  <th>Kalite</th>
                   <th>Sonuç</th>
                   <th>İşaretle</th>
                 </tr>
@@ -2750,18 +2771,18 @@
       const summary = `
         <div class="builder-summary">
           <strong>${escapeHtml(payload.message || '')}</strong><br>
-          Canlı uygun maç: ${Number(payload.eligible_count || 0)} | Seçilen: ${Number(payload.selected_count || 0)} | İstenen üst sınır: ${Number(payload.requested_max_count || 0)}
+          Canlı uygun sinyal: ${Number(payload.eligible_count || 0)} | Seçilen: ${Number(payload.selected_count || 0)} | İstenen üst sınır: ${Number(payload.requested_max_count || 0)}
         </div>
       `;
 
       if (!hasSlip) {
-        target.innerHTML = `${summary}<div class="builder-empty">Şu an canlı maçlar içinde projeksiyon-canlı barem farkı kriterini geçen maç yok.</div>`;
+        target.innerHTML = `${summary}<div class="builder-empty">Şu an canlı dashboard sinyalleri içinde kupona uygun maç yok.</div>`;
         return;
       }
 
       const rows = payload.slip.map(item => {
         const matchText = cleanMatchName(item.match_name || '-');
-        const recommendation = buildBetRecommendation(item.live, item.direction, item.signal_tier);
+        const recommendation = buildBetRecommendation(item.live, item.direction, item.quality_grade || item.signal_tier);
         const matchStateNote = buildMatchStateNote(item);
         const matchIdArg = JSON.stringify(String(item.match_id || ''));
         const matchBlock = item.url
@@ -2771,10 +2792,10 @@
           <tr>
             <td class="match-col">${matchBlock}${matchStateNote}<span class="bet-slip-tournament">(${escapeHtml(item.tournament || '-')})</span></td>
             <td><span class="bet-slip-code">${escapeHtml(recommendation)}</span></td>
-            <td>${Number(item.projected || 0).toFixed(1)}</td>
-            <td>${formatSignedNumber(item.projection_gap || 0)}</td>
+            <td>${escapeHtml(betSlipQualityText(item))}</td>
+            <td>${escapeHtml(betSlipTrustText(item))}</td>
             <td>${Number(item.opening || 0).toFixed(1)}</td>
-            <td>${formatSignedNumber(item.opening_gap || 0)}</td>
+            <td>${formatSignedNumber(item.diff || item.opening_gap || 0)}</td>
             <td>${escapeHtml(item.score || '-')}</td>
             <td>${escapeHtml(item.status || '-')}</td>
             <td><button class="slip-remove-btn" type="button" title="Kupondan çıkar ve gözardı et" onclick='removeSlipMatch(${matchIdArg})'>🗑</button></td>
@@ -2790,10 +2811,10 @@
               <tr>
                 <th>Maç</th>
                 <th>Oynanacak</th>
-                <th>Proj</th>
-                <th>P. Fark</th>
+                <th>Kalite</th>
+                <th>Güven</th>
                 <th>Açılış</th>
-                <th>A. Fark</th>
+                <th>Fark</th>
                 <th>Skor</th>
                 <th>Durum</th>
                 <th></th>
@@ -2810,7 +2831,7 @@
       const maxCount = Number(document.getElementById('betBuilderCount').value || 4);
       latestBetBuilderPayload = null;
       showBetBuilderStatus('', 'info');
-      target.innerHTML = '<div class="loading">Sadece projeksiyon-canlı barem farkına göre kupon hazırlanıyor...</div>';
+      target.innerHTML = '<div class="loading">Dashboard sinyallerine göre kupon hazırlanıyor...</div>';
 
       try {
         const response = await fetch(`/api/bet-builder?max_count=${maxCount}`);
