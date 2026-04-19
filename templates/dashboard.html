@@ -799,7 +799,13 @@
 
     .quality-modal-grid {
       display: grid;
-      gap: 10px;
+      gap: 12px;
+    }
+
+    .signal-info-box {
+      max-width: none;
+      width: min(96vw, 980px);
+      max-height: 92vh;
     }
 
     .quality-score-line {
@@ -863,8 +869,7 @@
       list-style: none;
     }
 
-    .quality-summary-list li,
-    .quality-note-list li {
+    .quality-summary-list li {
       display: grid;
       grid-template-columns: minmax(86px, 130px) 1fr;
       gap: 8px;
@@ -874,6 +879,44 @@
       border: 1px solid rgba(110, 146, 187, 0.08);
       font-size: 12px;
       line-height: 1.45;
+    }
+
+    .signal-metrics-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .signal-metrics-grid li {
+      grid-template-columns: minmax(92px, 120px) 1fr;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .quality-note-list li {
+      display: block;
+      padding: 8px 10px;
+      border-radius: 9px;
+      background: rgba(7, 17, 29, 0.7);
+      border: 1px solid rgba(110, 146, 187, 0.08);
+      font-size: 12px;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }
+
+    .signal-weights-line {
+      margin-top: 9px;
+      padding: 8px 10px;
+      border-radius: 9px;
+      background: rgba(95, 167, 255, 0.09);
+      border: 1px solid rgba(95, 167, 255, 0.16);
+      color: #dbeafe;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .signal-weights-line strong {
+      color: var(--text);
+      margin-right: 6px;
     }
 
     .quality-summary-key {
@@ -2117,7 +2160,7 @@
   </div>
 
   <div class="modal-overlay" id="signalInfoModal" onclick="if(event.target===this)closeQualityModal()">
-    <div class="modal-box">
+    <div class="modal-box signal-info-box">
       <div class="modal-header">
         <h3>Sinyal Bilgileri</h3>
         <button class="modal-close" onclick="closeQualityModal()">&times;</button>
@@ -2343,7 +2386,13 @@
     }
 
     function modalNoteList(items) {
-      const cleanItems = (items || []).filter(Boolean);
+      const seen = new Set();
+      const cleanItems = (items || []).filter(Boolean).filter(item => {
+        const key = String(item).replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
       if (!cleanItems.length) return '<div class="builder-empty">Bu sinyal için ek uyarı yok.</div>';
       return `<ul class="quality-note-list">${cleanItems.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
     }
@@ -2401,15 +2450,13 @@
         : (Array.isArray(analysis.warnings) ? analysis.warnings : []);
       const notes = [
         analysis.recommendation || alert.recommendation,
-        analysis.h2h_note,
-        analysis.history_note,
         analysis.pace_note,
         analysis.script_note,
+        analysis.h2h_note,
+        analysis.history_note,
         ...warnings,
       ].filter(Boolean);
       const matchName = cleanMatchName(alert.match_name || '-');
-      const fairEdge = alert.fair_edge ?? analysis.fair_edge;
-      const warningTone = fairWarningClass(alert) === 'red' ? 'Kırmızı uyarı' : 'Sarı uyarı';
 
       content.innerHTML = `
         <div class="quality-modal-headline">
@@ -2417,28 +2464,22 @@
           <div class="quality-modal-meta">${escapeHtml(alert.tournament || '-')} | ${escapeHtml(alert.status || '-')} | Skor: ${escapeHtml(alert.score || '-')}</div>
         </div>
         <div class="quality-modal-grid">
+          ${teamContextHtml(analysis.team_context || alert.team_context)}
           <div class="quality-section">
             <div class="quality-section-title">Adil Barem / Sinyal</div>
-            <ul class="quality-summary-list">
-              ${modalListItem('Sinyal', alert.direction || '-')}
+            <ul class="quality-summary-list signal-metrics-grid">
               ${modalListItem('Açılış', formatModalNumber(alert.opening))}
               ${modalListItem('Canlı', formatModalNumber(alert.live))}
-              ${modalListItem('Fark', formatModalSigned(alert.diff))}
               ${modalListItem('Projeksiyon', formatModalNumber(alert.projected ?? analysis.projected_total))}
-              ${modalListItem('Piyasa Bazı', formatModalNumber(alert.market_total ?? analysis.market_total))}
-              ${modalListItem('Son Maç', formatModalNumber(alert.team_recent_total ?? analysis.team_recent_total))}
-              ${modalListItem('H2H', formatModalNumber(alert.h2h_total ?? analysis.h2h_total))}
+              ${modalListItem('H2H Ort.', formatModalNumber(alert.h2h_total ?? analysis.h2h_total))}
               ${modalListItem('Adil Barem', formatModalNumber(alert.fair_line ?? analysis.fair_line))}
-              ${modalListItem('Canlıya Göre', formatModalSigned(fairEdge))}
-              ${modalListItem('Uyarı Seviyesi', warningTone)}
-              ${modalListItem('Ağırlık', weightsText(analysis.weights))}
             </ul>
+            <div class="signal-weights-line"><strong>Ağırlık</strong>${escapeHtml(weightsText(analysis.weights))}</div>
           </div>
           <div class="quality-section">
             <div class="quality-section-title">Uyarılar / Beklenti</div>
             ${modalNoteList(notes)}
           </div>
-          ${teamContextHtml(analysis.team_context || alert.team_context)}
         </div>
       `;
       modal.classList.add('active');
