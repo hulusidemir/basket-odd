@@ -90,27 +90,6 @@ def game_clock(status: str, match_name: str = "", tournament: str = "") -> dict:
     }
 
 
-def calculate_projected_total(score: str, status: str, match_name: str = "", tournament: str = "") -> float | None:
-    home_score, away_score = parse_score(score)
-    if home_score is None or away_score is None:
-        return None
-
-    clock = game_clock(status, match_name, tournament)
-    period = clock["period"]
-    remaining_min = clock["remaining_min"]
-    quarter_length = clock["quarter_length"]
-    total_game_min = clock["total_game_min"]
-
-    if period is None or remaining_min is None:
-        return None
-
-    elapsed_min = (period - 1) * quarter_length + (quarter_length - remaining_min)
-    if elapsed_min <= 1:
-        return None
-
-    return round(((home_score + away_score) / elapsed_min) * total_game_min, 1)
-
-
 def game_minutes(match_name: str = "", tournament: str = "") -> int:
     text_to_check = f"{match_name} {tournament}".upper()
     if "NBA" in text_to_check:

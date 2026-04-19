@@ -6,7 +6,6 @@ Usage:
 """
 
 import asyncio
-import json
 import logging
 import random
 import re
@@ -17,8 +16,6 @@ from config import Config
 from db import Database
 from notifier import TelegramNotifier
 from projection import game_clock
-from signal_features import build_signal_features
-from signal_quality import build_signal_analysis
 
 
 def setup_logging(level: str):
@@ -33,21 +30,14 @@ async def process_match(
     match: dict,
     db: Database,
     notifier: TelegramNotifier,
-    scraper: AiscoreScraper,
     config: Config,
 ) -> None:
-    """
-    Processes a single match:
-    - Calculates the difference between opening and in-play total lines.
-    - Sends a Telegram notification if the difference exceeds the threshold.
-    - Builds a fair-line recommendation from projection and history context.
-    """
     match_id = match["match_id"]
     match_name = match["match_name"]
     tournament = match.get("tournament", "")
     opening_total = match["opening_total"]
     inplay_total = match["inplay_total"]
-    prematch_total = match.get("prematch_total")  # None olabilir
+    prematch_total = match.get("prematch_total")
     status = match.get("status", "Canlı")
     url = match.get("url", "")
     score = match.get("score", "")
@@ -58,22 +48,15 @@ async def process_match(
         log.debug("Skipped (deleted match): %s", match_name)
         return
 
-    # Uzatmaya giden (OT) maçları yoksay
     if re.search(r'\bOT\b|Uzatma', status, re.IGNORECASE):
         log.debug("Skipped (Overtime): %s", match_name)
         return
 
     clock = game_clock(status, match_name, tournament)
     if clock["period"] == 4 and clock["remaining_min"] is not None and clock["remaining_min"] < 5:
-        log.debug(
-            "Skipped (Q4 under 5:00): %s | status=%s | remaining=%.2f",
-            match_name,
-            status,
-            clock["remaining_min"],
-        )
+        log.debug("Skipped (Q4 under 5:00): %s", match_name)
         return
 
-    # Blacklist check
     if config.BLACKLIST:
         check_text = f"{match_name} {tournament} {url}".lower()
         for term in config.BLACKLIST:
@@ -81,113 +64,37 @@ async def process_match(
                 log.debug("Blacklisted (%s): %s", term, match_name)
                 return
 
-    # PRIMARY comparison: in-play vs opening. The threshold is configured by THRESHOLD in .env.
-    baseline = opening_total
-    baseline_label = "Açılış"
-    diff = inplay_total - baseline
+    diff = inplay_total - opening_total
     abs_diff = abs(diff)
-    recent_snapshots = db.recent_match_snapshots(match_id, limit=8)
-    features = build_signal_features(
-        match,
-        reference_total=baseline,
-        reference_label=baseline_label,
-        recent_snapshots=recent_snapshots,
-        blowout_margin_threshold=config.BLOWOUT_MARGIN_THRESHOLD,
-        late_game_minutes_threshold=config.LATE_GAME_MINUTES_THRESHOLD,
-        foul_game_score_diff_threshold=config.FOUL_GAME_SCORE_DIFF_THRESHOLD,
-    )
-    db.save_match_snapshot(
-        match_id=match_id,
-        match_name=match_name,
-        tournament=tournament,
-        status=status,
-        score=score,
-        opening=opening_total,
-        prematch=prematch_total,
-        live=inplay_total,
-        elapsed_minutes=features.elapsed_minutes,
-        total_score=features.current_total_score,
-    )
+
     log.info(
-        "📊 %s | Açılış: %.1f | Maç Öncesi: %s | Referans: %s %.1f | Canlı: %.1f | Fark: %+.1f | Skor: %s | Durum: %s | Tempo: %s | Son tempo: %s",
-        match_name,
-        opening_total,
-        f"{prematch_total:.1f}" if prematch_total is not None else "-",
-        baseline_label,
-        baseline,
-        inplay_total,
-        diff,
-        score or "-",
-        status or "-",
-        f"{features.current_points_per_minute:.2f}" if features.current_points_per_minute is not None else "-",
-        f"{features.recent_points_per_minute:.2f} ({features.recent_pace_trend})" if features.recent_points_per_minute is not None else "-",
+        "📊 %s | Açılış: %.1f | Canlı: %.1f | Fark: %+.1f | Skor: %s | Durum: %s",
+        match_name, opening_total, inplay_total, diff, score or "-", status or "-",
     )
+
     if abs_diff < config.THRESHOLD:
         return
 
-    try:
-        insights = await scraper.get_match_insights(url)
-    except Exception as exc:
-        log.debug("Could not fetch AIScore insights for %s: %s", match_name, exc)
-        insights = {}
-
-    analysis = build_signal_analysis(
-        {
-            **match,
-            "baseline": baseline,
-            "baseline_label": baseline_label,
-        },
-        insights,
-        config.THRESHOLD,
-    )
-    direction = analysis.get("direction")
-    if direction not in {"ALT", "ÜST"}:
-        log.info("PASS: %s | fair-line direction could not be calculated", match_name)
-        return
+    direction = "ALT" if diff > 0 else "ÜST"
 
     if db.was_alerted_recently(match_id, direction, config.ALERT_COOLDOWN_MINUTES):
-        log.debug(
-            "Skipped (cooldown active): id=%s | direction=%s | cooldown=%s min",
-            match_id, direction, config.ALERT_COOLDOWN_MINUTES,
-        )
+        log.debug("Skipped (cooldown): id=%s direction=%s", match_id, direction)
         return
 
-    # 1) Count previous alerts for this match (signal number)
     signal_count = db.count_match_alerts(match_id) + 1
 
-    analysis["features"] = features.to_dict()
-
-    # 2) Send Telegram alert
     await notifier.send_alert(
         match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
-        score=score, signal_count=signal_count, analysis=analysis,
-        prematch=prematch_total,
-        baseline=baseline,
-        baseline_label=baseline_label,
-        threshold=config.THRESHOLD,
+        score=score, signal_count=signal_count, prematch=prematch_total,
     )
 
-    # 3) Save to database
-    team_context_json = json.dumps(analysis.get("team_context") or {}, ensure_ascii=False) if analysis.get("team_context") else ""
-    analysis_json = json.dumps(analysis, ensure_ascii=False)
     db.save_alert(
         match_id, match_name, opening_total, inplay_total, direction, abs_diff,
-        tournament=tournament, status=status, url=url, score=score, signal_count=signal_count,
-        quality_grade="",
-        quality_score=0,
-        quality_setup="",
-        quality_summary="",
-        quality_reasons="",
-        opposing_signals="",
-        team_context=team_context_json,
-        ai_analysis=analysis_json,
-        prematch=prematch_total,
+        tournament=tournament, status=status, url=url, score=score,
+        signal_count=signal_count, prematch=prematch_total,
     )
 
-    log.info(
-        "Alert sent: id=%s | name=%s | direction=%s | diff=%.2f | fair_line=%s",
-        match_id, match_name, direction, abs_diff, analysis.get("fair_line"),
-    )
+    log.info("Alert sent: id=%s | %s | %s | diff=%.2f", match_id, match_name, direction, abs_diff)
 
 
 async def run():
@@ -213,10 +120,9 @@ async def run():
 
     await notifier.send_startup()
     log.info(
-        "Bot started. Threshold: %s pts | Poll interval: %s-%ss",
-        config.THRESHOLD,
-        config.POLL_INTERVAL_MIN,
-        config.POLL_INTERVAL_MAX,
+        "Bot started. Threshold: %s pts | Poll: %s-%ss | Cooldown: %smin",
+        config.THRESHOLD, config.POLL_INTERVAL_MIN, config.POLL_INTERVAL_MAX,
+        config.ALERT_COOLDOWN_MINUTES,
     )
 
     consecutive_errors = 0
@@ -227,7 +133,7 @@ async def run():
             log.info("Captured opening/in-play totals for %s matches.", len(matches))
 
             for match in matches:
-                await process_match(match, db, notifier, scraper, config)
+                await process_match(match, db, notifier, config)
 
             consecutive_errors = 0
 
@@ -239,7 +145,7 @@ async def run():
             log.error(f"Loop error (#{consecutive_errors}): {e}", exc_info=True)
             if consecutive_errors >= 5:
                 await notifier.send_error(f"{consecutive_errors} consecutive errors: {e}")
-                consecutive_errors = 0  # Reset and retry
+                consecutive_errors = 0
 
         delay = random.uniform(config.POLL_INTERVAL_MIN, config.POLL_INTERVAL_MAX)
         log.debug(f"Next check in {delay:.0f}s")

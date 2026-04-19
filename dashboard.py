@@ -9,7 +9,6 @@ Usage:
 import asyncio
 import csv
 import io
-import json
 import os
 import re
 from datetime import datetime, timedelta
@@ -17,7 +16,6 @@ from flask import Flask, Response, jsonify, render_template, request
 from db import Database
 from config import Config
 from finished_match_service import run_deleted_match_result_cycle, run_single_deleted_match_result_check
-from projection import calculate_projected_total
 
 config = Config()
 db = Database(config.DB_PATH)
@@ -26,48 +24,6 @@ db.init()
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
 BET_BUILDER_ALERT_WINDOW_MINUTES = 240
-
-
-def _parse_analysis(raw) -> dict:
-    if not raw:
-        return {}
-    if isinstance(raw, dict):
-        return raw
-    try:
-        parsed = json.loads(raw)
-    except Exception:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
-
-
-def enrich_alerts_with_analysis(alerts: list[dict]) -> list[dict]:
-    for alert in alerts:
-        analysis = _parse_analysis(alert.get("ai_analysis"))
-        alert["analysis"] = analysis
-        alert["fair_line"] = analysis.get("fair_line")
-        alert["fair_edge"] = analysis.get("fair_edge")
-        alert["market_total"] = analysis.get("market_total")
-        alert["team_recent_total"] = analysis.get("team_recent_total")
-        alert["h2h_total"] = analysis.get("h2h_total")
-        alert["history_total"] = analysis.get("history_total")
-        alert["recommendation"] = analysis.get("recommendation") or ""
-        alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
-    return alerts
-
-
-def enrich_alerts_with_projection(alerts: list[dict]) -> list[dict]:
-    for alert in alerts:
-        analysis = _parse_analysis(alert.get("ai_analysis"))
-        if analysis.get("projected_total") is not None:
-            alert["projected"] = analysis.get("projected_total")
-        else:
-            alert["projected"] = calculate_projected_total(
-                score=alert.get("score", ""),
-                status=alert.get("status", ""),
-                match_name=alert.get("match_name", ""),
-                tournament=alert.get("tournament", "")
-            )
-    return enrich_alerts_with_analysis(alerts)
 
 
 def _is_live_basketball_status(status: str) -> bool:
@@ -106,20 +62,10 @@ def _safe_float(value, default: float = 0.0) -> float:
         return default
 
 
-def _fair_edge_supports_direction(direction: str, fair_edge: float | None) -> bool:
-    if fair_edge is None:
-        return False
-    if direction == "ÜST":
-        return fair_edge > 0
-    if direction == "ALT":
-        return fair_edge < 0
-    return False
-
-
 def build_bet_builder(max_count: int) -> dict:
     alerts = [
         alert
-        for alert in enrich_alerts_with_analysis(db.recent_alerts(limit=500))
+        for alert in db.recent_alerts(limit=500)
         if _is_live_basketball_status(alert.get("status", ""))
         and _is_recent_alert(alert.get("alerted_at", ""))
     ]
@@ -140,7 +86,6 @@ def build_bet_builder(max_count: int) -> dict:
     excluded_follow = 0
     excluded_saved = 0
     excluded_finished = 0
-    excluded_fair_conflict = 0
 
     for alert in latest_by_match.values():
         match_id = str(alert.get("match_id") or "").strip()
@@ -167,47 +112,29 @@ def build_bet_builder(max_count: int) -> dict:
         opening = _safe_float(alert.get("opening"))
         live = _safe_float(alert.get("live"))
         diff = _safe_float(alert.get("diff"))
-        fair_line = alert.get("fair_line")
-        fair_edge = _safe_float(alert.get("fair_edge")) if alert.get("fair_edge") is not None else None
-        if not _fair_edge_supports_direction(direction, fair_edge):
-            excluded_fair_conflict += 1
-            continue
-        projected = alert.get("projected")
-        history_total = alert.get("history_total")
         opening_gap = round(live - opening, 1)
-        signal_priority = abs(fair_edge)
         candidates.append({
             "match_id": alert.get("match_id"),
             "match_name": alert.get("match_name", ""),
             "tournament": alert.get("tournament", ""),
             "url": alert.get("url", ""),
             "direction": direction,
-            "signal_tier": "Adil Barem",
-            "signal_code": f"{direction}-ADİL",
+            "signal_tier": "Barem Farkı",
+            "signal_code": f"{direction}-FARK",
             "opening": round(opening, 1),
             "live": round(live, 1),
-            "projected": round(float(projected), 1) if projected is not None else None,
-            "fair_line": round(float(fair_line), 1) if fair_line is not None else None,
-            "fair_edge": round(fair_edge, 1),
-            "history_total": round(float(history_total), 1) if history_total is not None else None,
-            "recommendation": alert.get("recommendation", ""),
             "status": alert.get("status", ""),
             "score": alert.get("score", ""),
             "opening_gap": opening_gap,
-            "projection_gap": None,
-            "projection_edge": None,
             "diff": round(diff, 1),
-            "signal_priority": signal_priority,
+            "signal_priority": abs(diff),
             "bet_placed": int(alert.get("bet_placed") or 0),
             "followed": int(alert.get("followed") or 0),
             "ignored": int(alert.get("ignored") or 0),
         })
 
     candidates.sort(
-        key=lambda item: (
-            item["signal_priority"],
-            item["diff"],
-        ),
+        key=lambda item: (item["signal_priority"], item["diff"]),
         reverse=True,
     )
 
@@ -218,25 +145,23 @@ def build_bet_builder(max_count: int) -> dict:
 
     if not can_build:
         message = (
-            f"Kupon oluşturulmadı. En az 1 adil baremle aynı yönde sinyal gerekiyor; şu an "
+            f"Kupon oluşturulmadı. En az 1 uygun sinyal gerekiyor; şu an "
             f"{len(eligible_candidates)} sinyal uygun göründü."
         )
     else:
         message = (
-            f"Kupon hazır. Adil baremle aynı yönde kalan {len(eligible_candidates)} sinyal içinden "
-            f"en güçlü {leg_count} seçim alındı."
+            f"Kupon hazır. Kalan {len(eligible_candidates)} sinyal içinden "
+            f"en büyük barem farkına sahip {leg_count} seçim alındı."
         )
 
     excluded_total = (
-        excluded_finished + excluded_ignored + excluded_bet + excluded_follow +
-        excluded_saved + excluded_fair_conflict
+        excluded_finished + excluded_ignored + excluded_bet + excluded_follow + excluded_saved
     )
     if excluded_total > 0:
         message += (
             f" {excluded_total} maç daha önce işaretlendiği/kaydedildiği için otomatik dışlandı "
-            f"veya adil baremle çeliştiği için alınmadı "
             f"(Biten: {excluded_finished}, Gözardı: {excluded_ignored}, Bahis: {excluded_bet}, "
-            f"Takip: {excluded_follow}, Eski kupon: {excluded_saved}, Çelişki: {excluded_fair_conflict})."
+            f"Takip: {excluded_follow}, Eski kupon: {excluded_saved})."
         )
 
     return {
@@ -246,7 +171,6 @@ def build_bet_builder(max_count: int) -> dict:
         "eligible_count": len(eligible_candidates),
         "total_candidates": len(candidates),
         "excluded_count": excluded_total,
-        "excluded_fair_conflict": excluded_fair_conflict,
         "message": message,
         "slip": slip,
     }
@@ -275,18 +199,7 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
     if not isinstance(raw_slip, list):
         raw_slip = []
 
-    numeric_float_fields = {
-        "opening",
-        "live",
-        "projected",
-        "opening_gap",
-        "projection_gap",
-        "projection_edge",
-        "diff",
-        "fair_line",
-        "fair_edge",
-        "history_total",
-    }
+    numeric_float_fields = {"opening", "live", "opening_gap", "diff"}
     numeric_int_fields = {"signal_priority"}
     keep_fields = {
         "match_id",
@@ -298,7 +211,6 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
         "signal_code",
         "status",
         "score",
-        "recommendation",
     }
     bool_fields = {"bet_placed", "followed", "ignored"}
 
@@ -353,15 +265,14 @@ def deleted_matches():
 
 @app.route("/api/alerts")
 def api_alerts():
-    """Returns all anomaly records with projected scores."""
-    return jsonify(enrich_alerts_with_projection(db.recent_alerts(limit=500)))
+    return jsonify(db.recent_alerts(limit=500))
 
 
 @app.route("/api/deleted-matches")
 def api_deleted_matches():
     limit = request.args.get("limit", default=1000, type=int) or 1000
     limit = max(1, min(limit, 5000))
-    return jsonify(enrich_alerts_with_projection(db.recent_deleted_alerts(limit=limit)))
+    return jsonify(db.recent_deleted_alerts(limit=limit))
 
 
 @app.route("/api/deleted-matches/export.csv")
@@ -378,13 +289,12 @@ def api_export_finished_deleted_matches_csv():
 
     for row in rows:
         direction = str(row.get("direction") or "").strip()
-        signal = direction
         match_name = re.sub(r"\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}\s*", "", str(row.get("match_name") or ""))
         match_name = re.sub(r"\s*betting odds\s*", "", match_name, flags=re.IGNORECASE).strip()
         writer.writerow([
             match_name,
             row.get("tournament") or "",
-            signal,
+            direction,
             row.get("opening") if row.get("opening") is not None else "",
             row.get("live") if row.get("live") is not None else "",
             row.get("score") or "",
@@ -603,7 +513,6 @@ def build_deleted_matches_report(signals: list) -> dict:
     overall_fade_rate = _pct(fail_count, resolved)
     dir_diff = abs(alt_stats["success_rate"] - ust_stats["success_rate"])
 
-    # ── Diff (fark) kova analizi ────────────────────────────────────────────
     diff_groups: dict[str, list] = {label: [] for label in _DIFF_BUCKET_ORDER}
     for s in signals:
         diff_groups[_diff_bucket(s.get("diff"))].append(s)
@@ -616,7 +525,6 @@ def build_deleted_matches_report(signals: list) -> dict:
         stats["label"] = label
         diff_buckets.append(stats)
 
-    # ── Periyot (status) kova analizi ───────────────────────────────────────
     period_groups: dict[str, list] = {label: [] for label in _PERIOD_BUCKET_ORDER}
     for s in signals:
         period_groups[_period_bucket(s.get("status"))].append(s)
@@ -629,7 +537,6 @@ def build_deleted_matches_report(signals: list) -> dict:
         stats["label"] = label
         period_buckets.append(stats)
 
-    # ── Fade / ters sinyal analizi ──────────────────────────────────────────
     fade_analysis = {
         "overall": {
             "original_rate": overall_rate,
@@ -664,7 +571,6 @@ def build_deleted_matches_report(signals: list) -> dict:
         ],
     }
 
-    # ── Turnuva top/bottom ──────────────────────────────────────────────────
     tour_groups: dict[str, list] = {}
     for s in signals:
         name = (s.get("tournament") or "").strip()
@@ -682,7 +588,6 @@ def build_deleted_matches_report(signals: list) -> dict:
     tournament_top = tour_stats[:3]
     tournament_bottom = sorted(tour_stats, key=lambda x: (x["rate"], -x["resolved"]))[:3]
 
-    # ── Son 7 gün trendi ────────────────────────────────────────────────────
     now = datetime.now()
     last7_cutoff = now - timedelta(days=7)
     prior_cutoff = now - timedelta(days=14)
@@ -711,7 +616,6 @@ def build_deleted_matches_report(signals: list) -> dict:
             "verdict": verdict,
         }
 
-    # ── Aksiyon önerileri ───────────────────────────────────────────────────
     actions: list[str] = []
 
     if resolved >= 5:
@@ -723,10 +627,9 @@ def build_deleted_matches_report(signals: list) -> dict:
         elif abs(overall_fade_rate - overall_rate) < 3:
             actions.append(
                 "Genel başarı %50 civarında — sistem neredeyse yazı-tura. "
-                "Fark bandı, periyot ve adil barem mesafesiyle örneklem daraltılmalı."
+                "Fark bandı ve periyotla örneklem daraltılmalı."
             )
 
-    # Direction fade
     for d in fade_analysis["by_direction"]:
         if d["resolved"] >= 5 and d["fade_rate"] - d["original_rate"] >= 8:
             actions.append(
@@ -734,7 +637,6 @@ def build_deleted_matches_report(signals: list) -> dict:
                 f"({d['resolved']} sonuçlanan)."
             )
 
-    # Worst diff bucket
     worst_diff = None
     best_diff = None
     for b in diff_buckets:
@@ -755,7 +657,6 @@ def build_deleted_matches_report(signals: list) -> dict:
             f"bahisleri buraya yoğunlaştır."
         )
 
-    # Worst period
     worst_period = None
     for b in period_buckets:
         if b["resolved"] < 4 or b["label"] == "Bilinmiyor":
@@ -765,10 +666,9 @@ def build_deleted_matches_report(signals: list) -> dict:
     if worst_period and worst_period["rate"] < 40:
         actions.append(
             f"{worst_period['label']} sinyalleri %{worst_period['rate']:.1f} başarı — "
-            f"bu periyotta sinyalleri filtrele veya adil barem mesafesini yükselt."
+            f"bu periyotta sinyalleri filtrele."
         )
 
-    # Tournament action
     if tournament_bottom:
         worst_t = tournament_bottom[0]
         if worst_t["rate"] < 30 and worst_t["resolved"] >= 4:
@@ -784,17 +684,15 @@ def build_deleted_matches_report(signals: list) -> dict:
                 f"en güvenilir liga, önceliklendir."
             )
 
-    # Trend action
     if trend_7d and trend_7d.get("delta") is not None and trend_7d["delta"] <= -8:
         actions.append(
             f"Son 7 günde başarı %{-trend_7d['delta']:.1f} puan düştü — "
-            f"son değişiklikleri (threshold, adil barem, periyot) gözden geçir."
+            f"son değişiklikleri gözden geçir."
         )
 
     if not actions and resolved > 0:
         actions.append("Belirgin bir aksiyon sinyali yok — mevcut stratejiye devam, örneklemi büyüt.")
 
-    # ── Headline / Summary ──────────────────────────────────────────────────
     if resolved == 0:
         headline = "Sonuçlar işaretlenmemiş. Sinyal başarılarını işaretleyerek raporu oluşturun."
     elif overall_fade_rate - overall_rate >= 6:
@@ -999,7 +897,6 @@ def api_ignore_match(match_id: str):
 
 @app.route("/api/alerts/<int:alert_id>/bet", methods=["POST"])
 def api_toggle_bet(alert_id: int):
-    """Toggle bet placed/not placed for all alerts of the same match."""
     alert = db.get_alert(alert_id)
     if not alert:
         return jsonify({"error": "not found"}), 404
@@ -1022,7 +919,6 @@ def api_toggle_bet(alert_id: int):
 
 @app.route("/api/alerts/<int:alert_id>/ignore", methods=["POST"])
 def api_toggle_ignore(alert_id: int):
-    """Toggle ignore status for all alerts of the same match."""
     alert = db.get_alert(alert_id)
     if not alert:
         return jsonify({"error": "not found"}), 404
@@ -1045,7 +941,6 @@ def api_toggle_ignore(alert_id: int):
 
 @app.route("/api/alerts/<int:alert_id>/follow", methods=["POST"])
 def api_toggle_follow(alert_id: int):
-    """Toggle follow status for all alerts of the same match."""
     alert = db.get_alert(alert_id)
     if not alert:
         return jsonify({"error": "not found"}), 404
@@ -1068,7 +963,6 @@ def api_toggle_follow(alert_id: int):
 
 @app.route("/api/alerts/<int:alert_id>", methods=["DELETE"])
 def api_delete_alert(alert_id: int):
-    """Delete all records belonging to the same match."""
     alert = db.get_alert(alert_id)
     if not alert:
         return jsonify({"error": "not found"}), 404
@@ -1083,7 +977,6 @@ def api_delete_alert(alert_id: int):
 
 @app.route("/api/clear", methods=["POST"])
 def api_clear_db():
-    """Move every active alert into deleted matches."""
     moved_count = db.clear_all()
     return jsonify({"cleared": True, "moved_count": moved_count})
 

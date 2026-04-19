@@ -4,7 +4,6 @@ Used by both the background worker and manual UI-triggered checks.
 """
 
 import asyncio
-import json
 import logging
 import re
 
@@ -35,157 +34,6 @@ def evaluate_signal_result(direction: str, live_line: float, final_total: float)
     if direction_key in {"ÜST", "UST"}:
         return "Başarılı" if final_total > live_line else "Başarısız"
     return ""
-
-
-def _parse_period_from_status(status: str) -> int | None:
-    """Extract period number from alert status string."""
-    s = (status or "").strip().upper()
-    m = re.match(r"Q([1-4])", s)
-    if m:
-        return int(m.group(1))
-    m = re.match(r"([1-4])Q", s)
-    if m:
-        return int(m.group(1))
-    if s == "HT":
-        return 2
-    m = re.match(r"([1-4])", s)
-    if m:
-        return int(m.group(1))
-    return None
-
-
-def evaluate_signal_professionally(
-    alert: dict,
-    final_total: float,
-    signal_result: str,
-) -> dict:
-    """
-    Profesyonel basketbol bahisçisi gözüyle sinyal değerlendirmesi.
-
-    Çıktı:
-        margin: Barem ile final toplam arasındaki fark (pozitif = bahisçi lehine)
-        signal_timing_grade: Sinyalin zamanlaması ne kadar isabetli (A/B/C/D)
-        market_read_correct: Market hareketi doğru okunmuş mu? (1/0)
-        projection_accuracy: Projeksiyon vs gerçek farkı
-        quality_accuracy: Eski kolon uyumluluğu için boş bırakılır
-        verdict: Kısa profesyonel yorum
-        lesson: Gelecek sinyaller için çıkarılacak ders
-    """
-    direction = (alert.get("direction") or "").strip().upper()
-    live = float(alert.get("live") or 0)
-    opening = float(alert.get("opening") or 0)
-    diff = float(alert.get("diff") or 0)
-    status = alert.get("status") or ""
-    signal_count = int(alert.get("signal_count") or 1)
-
-    is_success = signal_result == "Başarılı"
-    is_fail = signal_result == "Başarısız"
-
-    # ── 1. Margin: Barem ile final toplam farkı ──
-    if direction == "ALT":
-        margin = round(live - final_total, 1)  # pozitif = kazanç
-    elif direction in {"ÜST", "UST"}:
-        margin = round(final_total - live, 1)  # pozitif = kazanç
-    else:
-        margin = None
-
-    # ── 2. Signal Timing Grade ──
-    period = _parse_period_from_status(status)
-    if period == 2:
-        timing_grade = "A"  # Q2: en ideal pencere
-    elif period == 3:
-        timing_grade = "A"  # Q3: ana fiyatlama penceresi
-    elif period == 1:
-        timing_grade = "C"  # Q1: çok erken, veri az
-    elif period == 4:
-        timing_grade = "B"  # Q4: geç ama varyanslı
-    else:
-        timing_grade = "D"  # Bilinmiyor
-
-    # ── 3. Market Read Correct ──
-    # Referans → Canlı hareketi doğru yönde mi okunmuş?
-    reference = float(alert.get("prematch") or opening)
-    reference_to_live_diff = live - reference
-    if direction == "ALT":
-        # ALT: barem yükselmiş olmalı.
-        market_read_correct = 1 if reference_to_live_diff > 0 else 0
-    elif direction in {"ÜST", "UST"}:
-        # ÜST: barem düşmüş olmalı.
-        market_read_correct = 1 if reference_to_live_diff < 0 else 0
-    else:
-        market_read_correct = None
-
-    # ── 4. Projection Accuracy ──
-    projection_accuracy = None
-    analysis = {}
-    if alert.get("ai_analysis"):
-        try:
-            parsed = json.loads(alert.get("ai_analysis") or "{}")
-            analysis = parsed if isinstance(parsed, dict) else {}
-        except (TypeError, ValueError, json.JSONDecodeError):
-            analysis = {}
-    projected_total = analysis.get("projected_total")
-    if projected_total is not None:
-        try:
-            projected = float(projected_total)
-            projection_accuracy = round(abs(final_total - projected), 1)
-        except (ValueError, TypeError):
-            pass
-
-    # ── 5. Verdict: Profesyonel yorum ──
-    verdict_parts = []
-    if is_success:
-        if margin is not None and margin >= 10:
-            verdict_parts.append(f"Güçlü kazanç ({margin:+.1f} puan marjla)")
-        elif margin is not None and margin >= 3:
-            verdict_parts.append(f"Rahat kazanç ({margin:+.1f} puan)")
-        elif margin is not None:
-            verdict_parts.append(f"Kıl payı kazanç ({margin:+.1f} puan)")
-        else:
-            verdict_parts.append("Başarılı sinyal")
-    elif is_fail:
-        if margin is not None and margin <= -10:
-            verdict_parts.append(f"Ağır kayıp ({margin:+.1f} puan farkla)")
-        elif margin is not None and margin <= -3:
-            verdict_parts.append(f"Net kayıp ({margin:+.1f} puan)")
-        elif margin is not None:
-            verdict_parts.append(f"Kıl payı kayıp ({margin:+.1f} puan)")
-        else:
-            verdict_parts.append("Başarısız sinyal")
-    else:
-        verdict_parts.append("İade/Beklemede")
-
-    if timing_grade in {"A"}:
-        verdict_parts.append("zamanlama iyi")
-    elif timing_grade == "C":
-        verdict_parts.append("erken sinyal riski")
-
-    verdict = " — ".join(verdict_parts)
-
-    # ── 6. Lesson: Çıkarılacak ders ──
-    lessons = []
-    if is_success and signal_count >= 3:
-        lessons.append("Tekrarlayan sinyaller (3+) güvenilirliği artırıyor")
-    if is_fail and period == 1:
-        lessons.append("Q1 sinyallerine daha az güven, veri penceresi yetersiz")
-    if is_success and period in {2, 3}:
-        lessons.append("Q2-Q3 penceresi en güvenilir zamanlama")
-    if is_fail and diff < 12:
-        lessons.append("Düşük fark (<12) sinyallerinde riskleri daha dikkatli tart")
-    if margin is not None and abs(margin) <= 2 and is_fail:
-        lessons.append("Kıl payı kayıp — sinyal yönünde hareket vardı, biraz şanssızlık")
-
-    lesson = ". ".join(lessons[:2]) if lessons else ""
-
-    return {
-        "margin": margin,
-        "signal_timing_grade": timing_grade,
-        "market_read_correct": market_read_correct,
-        "projection_accuracy": projection_accuracy,
-        "quality_accuracy": "",
-        "verdict": verdict,
-        "lesson": lesson,
-    }
 
 
 
@@ -395,16 +243,12 @@ async def run_finished_match_cycle(db, config) -> dict:
                 float(alert.get("live") or 0),
                 final_total,
             )
-            evaluation = evaluate_signal_professionally(
-                alert, final_total, signal_result,
-            )
             inserted_id = db.archive_finished_alert(
                 alert,
                 final_status=result.get("status", ""),
                 final_score=final_score,
                 final_total=final_total,
                 result=signal_result,
-                evaluation=evaluation,
             )
             if not inserted_id:
                 continue
@@ -427,9 +271,6 @@ async def run_finished_match_cycle(db, config) -> dict:
                 "final_score": final_score,
                 "final_total": final_total,
                 "result": signal_result,
-                "verdict": evaluation.get("verdict", ""),
-                "margin": evaluation.get("margin"),
-                "lesson": evaluation.get("lesson", ""),
             })
 
     return summary

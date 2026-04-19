@@ -28,33 +28,25 @@ class Database:
                 );
 
                 CREATE TABLE IF NOT EXISTS alerts (
-                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    match_id    TEXT NOT NULL,
-                    match_name  TEXT NOT NULL,
-                    tournament  TEXT NOT NULL DEFAULT '',
-                    status      TEXT NOT NULL DEFAULT '',
-                    opening     REAL NOT NULL,
-                    prematch    REAL,
-                    live        REAL NOT NULL,
-                    direction   TEXT NOT NULL,
-                    diff        REAL NOT NULL,
-                    url         TEXT NOT NULL DEFAULT '',
-                    score       TEXT NOT NULL DEFAULT '',
-                    ai_analysis TEXT NOT NULL DEFAULT '',
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    match_id     TEXT NOT NULL,
+                    match_name   TEXT NOT NULL,
+                    tournament   TEXT NOT NULL DEFAULT '',
+                    status       TEXT NOT NULL DEFAULT '',
+                    opening      REAL NOT NULL,
+                    prematch     REAL,
+                    live         REAL NOT NULL,
+                    direction    TEXT NOT NULL,
+                    diff         REAL NOT NULL,
+                    url          TEXT NOT NULL DEFAULT '',
+                    score        TEXT NOT NULL DEFAULT '',
                     signal_count INTEGER NOT NULL DEFAULT 1,
-                    bet_placed  INTEGER NOT NULL DEFAULT 0,
-                    ignored     INTEGER NOT NULL DEFAULT 0,
-                    followed    INTEGER NOT NULL DEFAULT 0,
-                    quality_grade TEXT NOT NULL DEFAULT '',
-                    quality_score REAL NOT NULL DEFAULT 0,
-                    quality_setup TEXT NOT NULL DEFAULT '',
-                    quality_summary TEXT NOT NULL DEFAULT '',
-                    quality_reasons TEXT NOT NULL DEFAULT '',
-                    opposing_signals TEXT NOT NULL DEFAULT '',
-                    team_context TEXT NOT NULL DEFAULT '',
-                    deleted_at  TIMESTAMP,
-                    result      TEXT NOT NULL DEFAULT '',
-                    alerted_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    bet_placed   INTEGER NOT NULL DEFAULT 0,
+                    ignored      INTEGER NOT NULL DEFAULT 0,
+                    followed     INTEGER NOT NULL DEFAULT 0,
+                    deleted_at   TIMESTAMP,
+                    result       TEXT NOT NULL DEFAULT '',
+                    alerted_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
                 CREATE TABLE IF NOT EXISTS match_actions (
@@ -64,24 +56,6 @@ class Database:
                     followed    INTEGER NOT NULL DEFAULT 0,
                     deleted_at  TIMESTAMP
                 );
-
-                CREATE TABLE IF NOT EXISTS match_snapshots (
-                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                    match_id        TEXT NOT NULL,
-                    match_name      TEXT NOT NULL DEFAULT '',
-                    tournament      TEXT NOT NULL DEFAULT '',
-                    status          TEXT NOT NULL DEFAULT '',
-                    score           TEXT NOT NULL DEFAULT '',
-                    opening         REAL,
-                    prematch        REAL,
-                    live            REAL,
-                    elapsed_minutes REAL,
-                    total_score     INTEGER,
-                    captured_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_match_snapshots_match_id
-                ON match_snapshots(match_id, captured_at DESC, id DESC);
 
                 CREATE TABLE IF NOT EXISTS finished_matches (
                     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,13 +77,6 @@ class Database:
                     alerted_at      TIMESTAMP,
                     score           TEXT NOT NULL DEFAULT '',
                     signal_count    INTEGER NOT NULL DEFAULT 1,
-                    quality_grade   TEXT NOT NULL DEFAULT '',
-                    quality_score   REAL NOT NULL DEFAULT 0,
-                    quality_setup   TEXT NOT NULL DEFAULT '',
-                    quality_summary TEXT NOT NULL DEFAULT '',
-                    quality_reasons TEXT NOT NULL DEFAULT '',
-                    opposing_signals TEXT NOT NULL DEFAULT '',
-                    team_context    TEXT NOT NULL DEFAULT '',
                     final_score     TEXT NOT NULL DEFAULT '',
                     final_total     REAL,
                     result          TEXT NOT NULL DEFAULT '',
@@ -136,209 +103,34 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_saved_bet_slips_created_at
                 ON saved_bet_slips(created_at DESC, id DESC);
             """)
-            # Migrate: add new columns if they don't exist yet
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN tournament TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN status TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN url TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN bet_placed INTEGER NOT NULL DEFAULT 0")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN followed INTEGER NOT NULL DEFAULT 0")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN score TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN ai_analysis TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN signal_count INTEGER NOT NULL DEFAULT 1")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN quality_grade TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN quality_score REAL NOT NULL DEFAULT 0")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN quality_setup TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN quality_summary TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN quality_reasons TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN opposing_signals TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN deleted_at TIMESTAMP")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN final_status TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN final_score TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN final_total REAL")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN result TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN quality_grade TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN quality_score REAL NOT NULL DEFAULT 0")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN quality_setup TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN quality_summary TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN quality_reasons TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN opposing_signals TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            # Professional evaluation columns
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN margin REAL")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN signal_timing_grade TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN market_read_correct INTEGER")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN projection_accuracy REAL")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN quality_accuracy TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN verdict TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN lesson TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            # Team context (H2H + son 5 maç profili) — JSON encoded
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN team_context TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN team_context TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
-            # Ensure match_actions table exists for action inheritance
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS match_actions (
-                    match_id    TEXT PRIMARY KEY,
-                    bet_placed  INTEGER NOT NULL DEFAULT 0,
-                    ignored     INTEGER NOT NULL DEFAULT 0,
-                    followed    INTEGER NOT NULL DEFAULT 0,
-                    deleted_at  TIMESTAMP
-                )
-            """)
-            try:
-                conn.execute("ALTER TABLE match_actions ADD COLUMN deleted_at TIMESTAMP")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN prematch REAL")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE finished_matches ADD COLUMN prematch REAL")
-            except Exception:
-                pass
-            for table in ("alerts", "finished_matches"):
-                for column in (
-                    "counter_direction",
-                    "counter_level",
-                    "counter_score",
-                    "counter_note",
-                    "counter_reasons",
-                    "counter_triggered",
-                ):
-                    try:
-                        conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
-                    except Exception:
-                        pass
-            try:
-                conn.execute("ALTER TABLE alerts ADD COLUMN result TEXT NOT NULL DEFAULT ''")
-            except Exception:
-                pass
+            # Backward-compatible migrations for older DB files. New installs
+            # get the clean schema above; old installs keep their extra quality_*
+            # columns as ignored dead data — we don't try to DROP them because
+            # SQLite support varies by version.
+            for alter in (
+                "ALTER TABLE alerts ADD COLUMN tournament TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE alerts ADD COLUMN status TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE alerts ADD COLUMN url TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE alerts ADD COLUMN bet_placed INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE alerts ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE alerts ADD COLUMN followed INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE alerts ADD COLUMN score TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE alerts ADD COLUMN signal_count INTEGER NOT NULL DEFAULT 1",
+                "ALTER TABLE alerts ADD COLUMN deleted_at TIMESTAMP",
+                "ALTER TABLE alerts ADD COLUMN prematch REAL",
+                "ALTER TABLE alerts ADD COLUMN result TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE finished_matches ADD COLUMN final_status TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE finished_matches ADD COLUMN final_score TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE finished_matches ADD COLUMN final_total REAL",
+                "ALTER TABLE finished_matches ADD COLUMN result TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE finished_matches ADD COLUMN prematch REAL",
+                "ALTER TABLE match_actions ADD COLUMN deleted_at TIMESTAMP",
+            ):
+                try:
+                    conn.execute(alter)
+                except Exception:
+                    pass
             conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_deleted_at ON alerts(deleted_at)")
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS match_snapshots (
-                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                    match_id        TEXT NOT NULL,
-                    match_name      TEXT NOT NULL DEFAULT '',
-                    tournament      TEXT NOT NULL DEFAULT '',
-                    status          TEXT NOT NULL DEFAULT '',
-                    score           TEXT NOT NULL DEFAULT '',
-                    opening         REAL,
-                    prematch        REAL,
-                    live            REAL,
-                    elapsed_minutes REAL,
-                    total_score     INTEGER,
-                    captured_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_match_snapshots_match_id
-                ON match_snapshots(match_id, captured_at DESC, id DESC)
-            """)
 
     # ---------- opening line ----------
 
@@ -358,66 +150,8 @@ class Database:
             )
 
     def delete_opening(self, match_id: str):
-        """Call after a match ends to clean up stale records."""
         with self._conn() as conn:
             conn.execute("DELETE FROM opening_lines WHERE match_id = ?", (match_id,))
-
-    # ---------- live snapshots ----------
-
-    def save_match_snapshot(
-        self,
-        *,
-        match_id: str,
-        match_name: str,
-        tournament: str,
-        status: str,
-        score: str,
-        opening: float,
-        prematch: float | None,
-        live: float,
-        elapsed_minutes: float | None,
-        total_score: int | None,
-    ) -> int:
-        with self._conn() as conn:
-            cursor = conn.execute(
-                """
-                INSERT INTO match_snapshots (
-                    match_id, match_name, tournament, status, score,
-                    opening, prematch, live, elapsed_minutes, total_score
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    match_id,
-                    match_name,
-                    tournament,
-                    status,
-                    score,
-                    opening,
-                    prematch,
-                    live,
-                    elapsed_minutes,
-                    total_score,
-                ),
-            )
-            conn.execute(
-                "DELETE FROM match_snapshots WHERE captured_at < datetime('now', '-2 days')"
-            )
-            return cursor.lastrowid
-
-    def recent_match_snapshots(self, match_id: str, limit: int = 8) -> list[dict]:
-        with self._conn() as conn:
-            rows = conn.execute(
-                """
-                SELECT *
-                FROM match_snapshots
-                WHERE match_id = ?
-                ORDER BY captured_at DESC, id DESC
-                LIMIT ?
-                """,
-                (match_id, max(1, limit)),
-            ).fetchall()
-        return [dict(r) for r in rows]
 
     # ---------- alerts ----------
 
@@ -449,7 +183,6 @@ class Database:
         return row is not None
 
     def count_match_alerts(self, match_id: str) -> int:
-        """Count how many active (non-deleted) alerts have been sent for this match."""
         with self._conn() as conn:
             row = conn.execute(
                 "SELECT COUNT(*) as cnt FROM alerts WHERE match_id = ? AND (deleted_at IS NULL OR deleted_at = '')",
@@ -470,18 +203,9 @@ class Database:
         url: str = "",
         score: str = "",
         signal_count: int = 1,
-        quality_grade: str = "",
-        quality_score: float = 0.0,
-        quality_setup: str = "",
-        quality_summary: str = "",
-        quality_reasons: str = "",
-        opposing_signals: str = "",
-        team_context: str = "",
-        ai_analysis: str = "",
         prematch: float | None = None,
     ) -> int:
         with self._conn() as conn:
-            # Inherit match-level actions if previously set
             action = conn.execute(
                 "SELECT bet_placed, ignored, followed, deleted_at FROM match_actions WHERE match_id = ?",
                 (match_id,),
@@ -493,17 +217,15 @@ class Database:
             cursor = conn.execute(
                 """
                 INSERT INTO alerts (
-                    match_id, match_name, opening, prematch, live, direction, diff, tournament, status, url, score,
-                    signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
-                    opposing_signals, team_context, ai_analysis,
+                    match_id, match_name, opening, prematch, live, direction, diff,
+                    tournament, status, url, score, signal_count,
                     bet_placed, ignored, followed, deleted_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    match_id, match_name, opening, prematch, live, direction, diff, tournament, status, url, score,
-                    signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
-                    opposing_signals, team_context, ai_analysis,
+                    match_id, match_name, opening, prematch, live, direction, diff,
+                    tournament, status, url, score, signal_count,
                     bet, ign, fol, deleted_at,
                 ),
             )
@@ -530,7 +252,6 @@ class Database:
         ignored: bool | None = None,
         followed: bool | None = None,
     ) -> int:
-        """Update one or more status flags for all alerts of the same match."""
         updates = []
         params = []
 
@@ -553,7 +274,6 @@ class Database:
                 f"UPDATE alerts SET {', '.join(updates)} WHERE match_id = ? AND (deleted_at IS NULL OR deleted_at = '')",
                 tuple(params),
             )
-            # Persist match-level actions for future alerts
             ma_cols = ["match_id"]
             ma_vals = [match_id]
             ma_updates = []
@@ -588,11 +308,10 @@ class Database:
 
     def delete_alert(self, alert_id: int) -> bool:
         with self._conn() as conn:
-            cursor = conn.execute("DELETE FROM alerts WHERE id = ?",(alert_id,))
+            cursor = conn.execute("DELETE FROM alerts WHERE id = ?", (alert_id,))
         return cursor.rowcount > 0
 
     def delete_match_data(self, match_id: str) -> int:
-        """Move all active alert/state records for the same match into deleted matches."""
         with self._conn() as conn:
             cursor = conn.execute(
                 """
@@ -615,7 +334,6 @@ class Database:
         return cursor.rowcount
 
     def clear_all(self):
-        """Move every active alert to deleted matches, preserving the rows for review."""
         with self._conn() as conn:
             rows = conn.execute(
                 """
@@ -962,10 +680,6 @@ class Database:
         return cursor.rowcount > 0
 
     def get_tracked_deleted_matches(self, limit: int = 200) -> list:
-        """
-        Return one latest deleted alert row per match where at least one deleted
-        signal has not been copied into finished_matches yet.
-        """
         with self._conn() as conn:
             rows = conn.execute(
                 """
@@ -1013,7 +727,6 @@ class Database:
         return [dict(r) for r in rows]
 
     def get_deleted_matches_for_result_check(self, limit: int | None = 200) -> list:
-        """Return one deleted row per match where at least one result is still blank."""
         with self._conn() as conn:
             sql = """
                 SELECT a.match_id, a.match_name, a.tournament, a.url, a.status, a.score, a.alerted_at, a.deleted_at
@@ -1088,14 +801,6 @@ class Database:
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_tracked_live_matches(self, limit: int = 200) -> list:
-        """Backward-compatible alias for the deleted-match finished queue."""
-        return self.get_tracked_deleted_matches(limit=limit)
-
-    def get_pending_alerts_for_match(self, match_id: str) -> list:
-        """Backward-compatible alias for deleted alerts waiting for FT archive."""
-        return self.get_pending_deleted_alerts_for_match(match_id)
-
     def archive_finished_alert(
         self,
         alert: dict,
@@ -1104,22 +809,17 @@ class Database:
         final_score: str,
         final_total: float | None,
         result: str,
-        evaluation: dict | None = None,
     ) -> int:
-        eval_data = evaluation or {}
         with self._conn() as conn:
             cursor = conn.execute(
                 """
                 INSERT OR IGNORE INTO finished_matches (
                     source_alert_id, match_id, match_name, tournament, status, final_status,
                     opening, prematch, live, direction, diff, url, bet_placed, ignored, followed,
-                    alerted_at, score, signal_count, quality_grade, quality_score, quality_setup, quality_summary, quality_reasons,
-                    opposing_signals, team_context,
-                    final_score, final_total, result,
-                    margin, signal_timing_grade, market_read_correct, projection_accuracy,
-                    quality_accuracy, verdict, lesson
+                    alerted_at, score, signal_count,
+                    final_score, final_total, result
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     alert["id"],
@@ -1140,23 +840,9 @@ class Database:
                     alert.get("alerted_at"),
                     alert.get("score", ""),
                     alert.get("signal_count", 1),
-                    alert.get("quality_grade", ""),
-                    alert.get("quality_score", 0),
-                    alert.get("quality_setup", ""),
-                    alert.get("quality_summary", ""),
-                    alert.get("quality_reasons", ""),
-                    alert.get("opposing_signals", ""),
-                    alert.get("team_context", ""),
                     final_score,
                     final_total,
                     result,
-                    eval_data.get("margin"),
-                    eval_data.get("signal_timing_grade", ""),
-                    eval_data.get("market_read_correct"),
-                    eval_data.get("projection_accuracy"),
-                    eval_data.get("quality_accuracy", ""),
-                    eval_data.get("verdict", ""),
-                    eval_data.get("lesson", ""),
                 ),
             )
         return cursor.lastrowid if cursor.rowcount > 0 else 0
