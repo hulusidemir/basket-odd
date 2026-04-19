@@ -505,7 +505,32 @@
       font-size: 12px;
       font-weight: 900;
       line-height: 1;
-      cursor: help;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .fair-info-dot.yellow {
+      color: #fde68a;
+      border-color: rgba(251, 191, 36, 0.38);
+      background: rgba(251, 191, 36, 0.13);
+    }
+
+    .fair-info-dot.red {
+      color: #fecaca;
+      border-color: rgba(248, 113, 113, 0.42);
+      background: rgba(248, 113, 113, 0.14);
+    }
+
+    .signal-open-btn {
+      cursor: pointer;
+      font-family: inherit;
+      border: 1px solid transparent;
+    }
+
+    .fair-info-dot:hover,
+    .signal-open-btn:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.08);
     }
 
     .badge {
@@ -618,6 +643,10 @@
       box-shadow: 0 32px 80px rgba(0, 0, 0, 0.55);
     }
 
+    .signal-info-box {
+      max-width: 980px;
+    }
+
     .modal-header {
       display: flex;
       align-items: center;
@@ -638,6 +667,183 @@
       white-space: nowrap;
     }
     .modal-close:hover { border-color: var(--border-strong); color: var(--text); }
+
+    .signal-info-headline {
+      display: grid;
+      gap: 5px;
+      margin-bottom: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(19, 34, 54, 0.92);
+      border: 1px solid rgba(110, 146, 187, 0.14);
+    }
+
+    .signal-info-match {
+      font-size: 16px;
+      font-weight: 900;
+      color: var(--text);
+    }
+
+    .signal-info-meta {
+      color: var(--text-soft);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .signal-info-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .signal-info-section,
+    .team-context {
+      padding: 11px 12px;
+      border-radius: 14px;
+      background: rgba(11, 24, 38, 0.76);
+      border: 1px solid rgba(110, 146, 187, 0.12);
+    }
+
+    .signal-info-section-title,
+    .team-context-title {
+      margin-bottom: 8px;
+      color: var(--text-soft);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .signal-metrics-list,
+    .signal-note-list {
+      display: grid;
+      gap: 8px;
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+
+    .signal-metrics-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .signal-metrics-list li {
+      display: grid;
+      grid-template-columns: minmax(92px, 120px) 1fr;
+      align-items: center;
+      min-width: 0;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(7, 17, 29, 0.7);
+      border: 1px solid rgba(110, 146, 187, 0.08);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .signal-info-key {
+      color: var(--text-soft);
+      font-weight: 800;
+    }
+
+    .signal-info-value {
+      color: var(--text);
+      overflow-wrap: anywhere;
+    }
+
+    .signal-weights-line {
+      margin-top: 9px;
+      padding: 8px 10px;
+      border-radius: 9px;
+      background: rgba(95, 167, 255, 0.09);
+      border: 1px solid rgba(95, 167, 255, 0.16);
+      color: #dbeafe;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .signal-weights-line strong {
+      color: var(--text);
+      margin-right: 6px;
+    }
+
+    .signal-note-list li {
+      display: block;
+      padding: 8px 10px;
+      border-radius: 9px;
+      background: rgba(7, 17, 29, 0.7);
+      border: 1px solid rgba(110, 146, 187, 0.08);
+      font-size: 12px;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }
+
+    .team-context-align {
+      display: inline-block;
+      font-weight: 800;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 8px;
+      border: 1px solid transparent;
+    }
+    .team-context-align.support { background: rgba(52, 211, 153, 0.16); color: #9df0bd; border-color: rgba(52, 211, 153, 0.32); }
+    .team-context-align.against { background: rgba(255, 107, 99, 0.14); color: #ffc0bc; border-color: rgba(255, 107, 99, 0.32); }
+    .team-context-align.mixed { background: rgba(251, 191, 36, 0.14); color: #fde68a; border-color: rgba(251, 191, 36, 0.32); }
+    .team-context-align.neutral { background: rgba(95, 167, 255, 0.12); color: #b9dcff; border-color: rgba(95, 167, 255, 0.28); }
+    .team-context-regression {
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      border-radius: 10px;
+      background: rgba(13, 26, 42, 0.72);
+      border-left: 3px solid #fbbf24;
+      font-size: 12px;
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .team-context-regression.alt { border-left-color: #ff6b63; }
+    .team-context-regression.ust { border-left-color: #34d399; }
+    .team-context-teams {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .team-context-card {
+      background: rgba(7, 17, 29, 0.76);
+      border: 1px solid rgba(110, 146, 187, 0.14);
+      border-radius: 10px;
+      padding: 9px 10px;
+      font-size: 12px;
+    }
+    .team-context-card-head {
+      font-weight: 800;
+      margin-bottom: 4px;
+      color: var(--text);
+    }
+    .team-context-card-total {
+      font-size: 18px;
+      font-weight: 900;
+      color: var(--accent-blue);
+    }
+    .team-context-card-breakdown {
+      color: var(--text-soft);
+      font-size: 11px;
+      margin-top: 2px;
+    }
+    .team-context-card-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #fde68a;
+      margin-top: 4px;
+    }
+    .team-context-h2h {
+      font-size: 12px;
+      color: var(--text-soft);
+      padding: 7px 10px;
+      background: rgba(13, 26, 42, 0.6);
+      border-radius: 8px;
+      line-height: 1.45;
+    }
 
     .report-headline {
       padding: 14px 16px;
@@ -960,6 +1166,7 @@
       .stat-chip { flex: 1 1 120px; }
       .signal-breakdown { grid-template-columns: 1fr; }
       .direction-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .signal-metrics-list { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -1077,6 +1284,18 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="signalInfoModal" onclick="if(event.target===this)closeSignalInfo()">
+    <div class="modal-box signal-info-box">
+      <div class="modal-header">
+        <h2>Sinyal Bilgileri</h2>
+        <button class="modal-close" onclick="closeSignalInfo()">Kapat</button>
+      </div>
+      <div id="signalInfoContent">
+        <div class="report-loading">Sinyal bilgileri yükleniyor…</div>
+      </div>
+    </div>
+  </div>
+
   <script>
     let deletedAlerts = [];
     let searchQuery = '';
@@ -1155,10 +1374,31 @@
       return analysis.recommendation || alert.recommendation || '';
     }
 
+    function numericOrNull(value) {
+      const num = Number(value);
+      return Number.isFinite(num) ? num : null;
+    }
+
+    function formatSignedNumber(value) {
+      const num = numericOrNull(value);
+      return num === null ? '-' : `${num >= 0 ? '+' : ''}${num.toFixed(1)}`;
+    }
+
+    function fairInfoClass(alert) {
+      const edge = Math.abs(Number(fairEdgeValue(alert)));
+      return Number.isFinite(edge) && edge > 10 ? 'red' : 'yellow';
+    }
+
+    function fairInfoTitle(alert) {
+      const edge = fairEdgeValue(alert);
+      const recommendation = recommendationText(alert) || 'Sinyal bilgilerini aç';
+      return `Adil barem farkı ${formatSignedNumber(edge)}. ${recommendation}`;
+    }
+
     function signalBadge(alert) {
       const direction = alert.direction || '-';
       const cls = direction === 'ALT' ? 'badge-alt' : 'badge-ust';
-      return `<span class="badge ${cls}">${escapeHtml(direction)}</span>`;
+      return `<button class="badge ${cls} signal-open-btn" type="button" title="Sinyal bilgilerini aç" onclick="openSignalInfo(${Number(alert.id || 0)})">${escapeHtml(direction)}</button>`;
     }
 
     function fairLineCell(alert) {
@@ -1171,10 +1411,117 @@
         edgeLabel ? `Canlı farkı ${edgeLabel}` : '',
         recommendation,
       ].filter(Boolean).join(' · ');
-      const info = detail
-        ? `<span class="fair-info-dot" title="${escapeHtml(detail)}" aria-label="${escapeHtml(detail)}">?</span>`
-        : '';
+      const info = `<button class="fair-info-dot ${fairInfoClass(alert)}" type="button" title="${escapeHtml(detail || fairInfoTitle(alert))}" aria-label="Sinyal bilgilerini aç" onclick="openSignalInfo(${Number(alert.id || 0)})">?</button>`;
       return `<span class="fair-line-cell"><span class="mono">${fairLabel}</span>${info}</span>`;
+    }
+
+    function modalListItem(key, value) {
+      return `<li><span class="signal-info-key">${escapeHtml(key)}</span><span class="signal-info-value">${escapeHtml(value ?? '-')}</span></li>`;
+    }
+
+    function weightsText(weights) {
+      const labels = {
+        projection: 'Projeksiyon',
+        market: 'Piyasa',
+        team_recent: 'Son maç',
+        h2h: 'H2H',
+      };
+      const parts = Object.entries(weights || {})
+        .filter(([key, value]) => labels[key] && Number(value) > 0)
+        .map(([key, value]) => `${labels[key]} %${Number(value).toFixed(0)}`);
+      return parts.length ? parts.join(' / ') : '-';
+    }
+
+    function modalNoteList(items) {
+      const seen = new Set();
+      const cleanItems = (items || []).filter(Boolean).filter(item => {
+        const key = String(item).replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      if (!cleanItems.length) return '<div class="empty-state" style="display:block;padding:16px">Bu sinyal için ek uyarı yok.</div>';
+      return `<ul class="signal-note-list">${cleanItems.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+    }
+
+    function teamContextHtml(context) {
+      if (!context || typeof context !== 'object') return '';
+      const home = context.home_profile || {};
+      const away = context.away_profile || {};
+      const alignCode = context.alignment_code || 'neutral';
+      const teamCard = profile => {
+        if (!profile || !profile.team) return '';
+        return `
+          <div class="team-context-card">
+            <div class="team-context-card-head">${escapeHtml(profile.team || '-')}</div>
+            <div class="team-context-card-total">${formatNumber(profile.avg_total)}</div>
+            <div class="team-context-card-breakdown">PPG ${formatNumber(profile.ppg)} / Rakip ${formatNumber(profile.oppg)}</div>
+            <div class="team-context-card-label">${escapeHtml(profile.label || '-')}</div>
+          </div>
+        `;
+      };
+      const teams = [teamCard(home), teamCard(away)].filter(Boolean).join('');
+      return `
+        <div class="team-context">
+          <div class="team-context-title">Takım / H2H Profili</div>
+          <span class="team-context-align ${escapeHtml(alignCode)}">${escapeHtml(context.alignment || 'Nötr')}</span>
+          ${context.regression_note ? `<div class="team-context-regression ${(context.regression_direction || '').toLowerCase().replace('ü', 'u')}">${escapeHtml(context.regression_note)}</div>` : ''}
+          ${teams ? `<div class="team-context-teams">${teams}</div>` : ''}
+          ${context.h2h_note ? `<div class="team-context-h2h">${escapeHtml(context.h2h_note)}</div>` : ''}
+        </div>
+      `;
+    }
+
+    function openSignalInfo(alertId) {
+      const alert = deletedAlerts.find(item => Number(item.id || 0) === Number(alertId || 0));
+      const modal = document.getElementById('signalInfoModal');
+      const content = document.getElementById('signalInfoContent');
+      if (!modal || !content || !alert) return;
+
+      const analysis = alertAnalysis(alert);
+      const warnings = Array.isArray(alert.warnings) && alert.warnings.length
+        ? alert.warnings
+        : (Array.isArray(analysis.warnings) ? analysis.warnings : []);
+      const notes = [
+        analysis.recommendation || alert.recommendation,
+        analysis.pace_note,
+        analysis.script_note,
+        analysis.h2h_note,
+        analysis.history_note,
+        ...warnings,
+      ].filter(Boolean);
+      const matchName = cleanMatchName(alert.match_name || '-');
+
+      content.innerHTML = `
+        <div class="signal-info-headline">
+          <div class="signal-info-match">${escapeHtml(matchName)}</div>
+          <div class="signal-info-meta">${escapeHtml(alert.tournament || '-')} | ${escapeHtml(alert.status || '-')} | Skor: ${escapeHtml(alert.score || '-')} | Sonuç: ${escapeHtml(alert.result || '-')}</div>
+        </div>
+        <div class="signal-info-grid">
+          ${teamContextHtml(analysis.team_context || alert.team_context)}
+          <div class="signal-info-section">
+            <div class="signal-info-section-title">Adil Barem / Sinyal</div>
+            <ul class="signal-metrics-list">
+              ${modalListItem('Açılış', formatNumber(alert.opening))}
+              ${modalListItem('Canlı', formatNumber(alert.live))}
+              ${modalListItem('Projeksiyon', formatNumber(alert.projected ?? analysis.projected_total))}
+              ${modalListItem('H2H Ort.', formatNumber(alert.h2h_total ?? analysis.h2h_total))}
+              ${modalListItem('Adil Barem', formatNumber(alert.fair_line ?? analysis.fair_line))}
+            </ul>
+            <div class="signal-weights-line"><strong>Ağırlık</strong>${escapeHtml(weightsText(analysis.weights))}</div>
+          </div>
+          <div class="signal-info-section">
+            <div class="signal-info-section-title">Uyarılar / Beklenti</div>
+            ${modalNoteList(notes)}
+          </div>
+        </div>
+      `;
+      modal.classList.add('open');
+    }
+
+    function closeSignalInfo() {
+      const modal = document.getElementById('signalInfoModal');
+      if (modal) modal.classList.remove('open');
     }
 
     function isFocusedMatch(alert) {
@@ -1781,7 +2128,10 @@
     });
 
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') closeReport();
+      if (e.key === 'Escape') {
+        closeReport();
+        closeSignalInfo();
+      }
     });
 
     loadDeletedMatches();
