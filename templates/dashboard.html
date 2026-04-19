@@ -99,6 +99,8 @@
       background: rgba(19, 37, 58, 0.94);
       color: var(--text);
       cursor: pointer;
+      touch-action: manipulation;
+      user-select: none;
       transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
     }
 
@@ -552,6 +554,7 @@
     }
 
     .alert-card {
+      position: relative;
       background: rgba(18, 30, 47, 0.94);
       border: 1px solid var(--line);
       border-radius: 22px;
@@ -654,6 +657,8 @@
     }
 
     .card-actions {
+      position: relative;
+      z-index: 3;
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
@@ -1044,6 +1049,13 @@
 
     .action-btn:active { transform: scale(0.98); }
 
+    .action-btn:disabled {
+      opacity: 0.58;
+      cursor: wait;
+      transform: none;
+      box-shadow: none;
+    }
+
     .action-btn.active-bet {
       color: var(--text);
       background: rgba(36, 74, 111, 0.98);
@@ -1155,6 +1167,7 @@
       font-size: 12px;
       font-weight: 700;
       cursor: pointer;
+      touch-action: manipulation;
       user-select: none;
       padding: 0 10px;
     }
@@ -1968,6 +1981,11 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
+      .card-actions .action-btn,
+      .card-select-chip {
+        min-height: 46px;
+      }
+
       .card-odds {
         flex-wrap: wrap;
       }
@@ -2480,7 +2498,7 @@
     function matchFocusButtonHtml(alert) {
       const active = isFocusedMatch(alert.match_id);
       const title = active ? 'Maç filtresini kaldır' : 'Sadece bu maçın sinyallerini göster';
-      return `<button class="match-focus-btn ${active ? 'active' : ''}" onclick="toggleMatchFocusByAlert(${alert.id})" title="${title}" aria-label="${title}">${active ? '◉' : '◎'}</button>`;
+      return `<button class="match-focus-btn ${active ? 'active' : ''}" type="button" data-alert-action="focus" data-alert-id="${Number(alert.id || 0)}" title="${title}" aria-label="${title}">${active ? '◉' : '◎'}</button>`;
     }
 
     function sortValue(alert, field) {
@@ -3147,10 +3165,10 @@
           <td class="diff-val ${diffClass}">${diffSign}${a.diff.toFixed(1)}</td>
           <td>
             <div class="actions-wrap">
-              <button class="action-btn ${betBtnClass}" onclick="toggleBet(${a.id})" title="${betBtnTitle}" aria-label="${betBtnTitle}">💰</button>
-              <button class="action-btn follow-btn ${followBtnClass}" onclick="toggleFollow(${a.id})" title="${followBtnTitle}" aria-label="${followBtnTitle}">👁</button>
-              <button class="action-btn ${ignoreBtnClass}" onclick="toggleIgnore(${a.id})" title="${ignoreBtnTitle}" aria-label="${ignoreBtnTitle}">🚫</button>
-              <button class="action-btn delete-btn" onclick="deleteMatch(${a.id})" title="Maçı sil" aria-label="Maçı sil">🗑</button>
+              <button class="action-btn ${betBtnClass}" type="button" data-alert-action="bet" data-alert-id="${Number(a.id || 0)}" title="${betBtnTitle}" aria-label="${betBtnTitle}">💰</button>
+              <button class="action-btn follow-btn ${followBtnClass}" type="button" data-alert-action="follow" data-alert-id="${Number(a.id || 0)}" title="${followBtnTitle}" aria-label="${followBtnTitle}">👁</button>
+              <button class="action-btn ${ignoreBtnClass}" type="button" data-alert-action="ignore" data-alert-id="${Number(a.id || 0)}" title="${ignoreBtnTitle}" aria-label="${ignoreBtnTitle}">🚫</button>
+              <button class="action-btn delete-btn" type="button" data-alert-action="delete" data-alert-id="${Number(a.id || 0)}" title="Maçı sil" aria-label="Maçı sil">🗑</button>
             </div>
           </td>
         </tr>`;
@@ -3247,10 +3265,10 @@
               <input class="match-select-box" type="checkbox" ${checkedAttr} onchange="toggleMatchSelectionByAlert(${a.id}, this.checked)" aria-label="Maçı seç">
               Seç
             </label>
-            <button class="action-btn ${betBtnClass}" onclick="toggleBet(${a.id})" title="${betBtnTitle}" aria-label="${betBtnTitle}">💰</button>
-            <button class="action-btn follow-btn ${followBtnClass}" onclick="toggleFollow(${a.id})" title="${followBtnTitle}" aria-label="${followBtnTitle}">👁</button>
-            <button class="action-btn ${ignoreBtnClass}" onclick="toggleIgnore(${a.id})" title="${ignoreBtnTitle}" aria-label="${ignoreBtnTitle}">🚫</button>
-            <button class="action-btn delete-btn" onclick="deleteMatch(${a.id})" title="Maçı sil" aria-label="Maçı sil">🗑</button>
+            <button class="action-btn ${betBtnClass}" type="button" data-alert-action="bet" data-alert-id="${Number(a.id || 0)}" title="${betBtnTitle}" aria-label="${betBtnTitle}">💰</button>
+            <button class="action-btn follow-btn ${followBtnClass}" type="button" data-alert-action="follow" data-alert-id="${Number(a.id || 0)}" title="${followBtnTitle}" aria-label="${followBtnTitle}">👁</button>
+            <button class="action-btn ${ignoreBtnClass}" type="button" data-alert-action="ignore" data-alert-id="${Number(a.id || 0)}" title="${ignoreBtnTitle}" aria-label="${ignoreBtnTitle}">🚫</button>
+            <button class="action-btn delete-btn" type="button" data-alert-action="delete" data-alert-id="${Number(a.id || 0)}" title="Maçı sil" aria-label="Maçı sil">🗑</button>
           </div>
         </div>`;
       }).join('');
@@ -3277,23 +3295,56 @@
 
     async function toggleBet(id) {
       const resp = await fetch(`/api/alerts/${id}/bet`, { method: 'POST' });
-      applyMatchStatusUpdate(await resp.json());
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(payload?.error || 'Bahis durumu güncellenemedi.');
+      applyMatchStatusUpdate(payload);
       render();
       updateStats();
     }
 
     async function toggleIgnore(id) {
       const resp = await fetch(`/api/alerts/${id}/ignore`, { method: 'POST' });
-      applyMatchStatusUpdate(await resp.json());
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(payload?.error || 'Gözardı durumu güncellenemedi.');
+      applyMatchStatusUpdate(payload);
       render();
       updateStats();
     }
 
     async function toggleFollow(id) {
       const resp = await fetch(`/api/alerts/${id}/follow`, { method: 'POST' });
-      applyMatchStatusUpdate(await resp.json());
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(payload?.error || 'Takip durumu güncellenemedi.');
+      applyMatchStatusUpdate(payload);
       render();
       updateStats();
+    }
+
+    async function runAlertAction(action, id, button) {
+      if (!id) return;
+      if (action === 'focus') {
+        toggleMatchFocusByAlert(id);
+        return;
+      }
+
+      const actions = {
+        bet: toggleBet,
+        ignore: toggleIgnore,
+        follow: toggleFollow,
+        delete: deleteMatch,
+      };
+      const handler = actions[action];
+      if (!handler) return;
+
+      if (button) button.disabled = true;
+      try {
+        await handler(id);
+      } catch (error) {
+        console.error(error);
+        alert(error?.message || 'İşlem tamamlanamadı.');
+      } finally {
+        if (button && document.body.contains(button)) button.disabled = false;
+      }
     }
 
     async function deleteSelectedMatches() {
@@ -3362,10 +3413,9 @@
       const matchName = cleanMatchName(alertItem.match_name);
       if (!confirm(`"${matchName}" maçına ait tüm uyarılar Silinen Maçlar'a aktarılsın mı?`)) return;
       const resp = await fetch(`/api/alerts/${id}`, { method: 'DELETE' });
-      const payload = await resp.json();
+      const payload = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        alert('Maç Silinen Maçlar alanına aktarılırken hata oluştu.');
-        return;
+        throw new Error(payload?.error || 'Maç Silinen Maçlar alanına aktarılırken hata oluştu.');
       }
       if (isFocusedMatch(payload.match_id)) {
         focusedMatchId = null;
@@ -3392,6 +3442,19 @@
       render();
       updateStats();
     }
+
+    document.addEventListener('click', event => {
+      const button = event.target.closest('[data-alert-action]');
+      if (!button) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (button.disabled) return;
+      runAlertAction(
+        button.dataset.alertAction,
+        Number(button.dataset.alertId || 0),
+        button
+      );
+    });
 
     // Filter buttons
     document.querySelectorAll('.filter-btn[data-filter]').forEach(btn => {
