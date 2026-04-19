@@ -106,6 +106,16 @@ def _safe_float(value, default: float = 0.0) -> float:
         return default
 
 
+def _fair_edge_supports_direction(direction: str, fair_edge: float | None) -> bool:
+    if fair_edge is None:
+        return False
+    if direction == "ÜST":
+        return fair_edge > 0
+    if direction == "ALT":
+        return fair_edge < 0
+    return False
+
+
 def build_bet_builder(max_count: int) -> dict:
     alerts = [
         alert
@@ -130,6 +140,7 @@ def build_bet_builder(max_count: int) -> dict:
     excluded_follow = 0
     excluded_saved = 0
     excluded_finished = 0
+    excluded_fair_conflict = 0
 
     for alert in latest_by_match.values():
         match_id = str(alert.get("match_id") or "").strip()
@@ -157,10 +168,14 @@ def build_bet_builder(max_count: int) -> dict:
         live = _safe_float(alert.get("live"))
         diff = _safe_float(alert.get("diff"))
         fair_line = alert.get("fair_line")
-        fair_edge = _safe_float(alert.get("fair_edge"))
+        fair_edge = _safe_float(alert.get("fair_edge")) if alert.get("fair_edge") is not None else None
+        if not _fair_edge_supports_direction(direction, fair_edge):
+            excluded_fair_conflict += 1
+            continue
         projected = alert.get("projected")
         history_total = alert.get("history_total")
         opening_gap = round(live - opening, 1)
+        signal_priority = abs(fair_edge)
         candidates.append({
             "match_id": alert.get("match_id"),
             "match_name": alert.get("match_name", ""),
@@ -182,7 +197,7 @@ def build_bet_builder(max_count: int) -> dict:
             "projection_gap": None,
             "projection_edge": None,
             "diff": round(diff, 1),
-            "signal_priority": abs(fair_edge),
+            "signal_priority": signal_priority,
             "bet_placed": int(alert.get("bet_placed") or 0),
             "followed": int(alert.get("followed") or 0),
             "ignored": int(alert.get("ignored") or 0),
@@ -203,19 +218,25 @@ def build_bet_builder(max_count: int) -> dict:
 
     if not can_build:
         message = (
-            f"Kupon oluşturulmadı. Canlı maçlar içinde en az 1 uygun maç gerekiyor; şu an yalnızca "
-            f"{len(eligible_candidates)} aktif dashboard sinyali uygun göründü."
+            f"Kupon oluşturulmadı. En az 1 adil baremle aynı yönde sinyal gerekiyor; şu an "
+            f"{len(eligible_candidates)} sinyal uygun göründü."
         )
     else:
         message = (
-            f"Kupon hazır. Canlı {len(eligible_candidates)} dashboard sinyali içinden en güçlü {leg_count} seçim alındı."
+            f"Kupon hazır. Adil baremle aynı yönde kalan {len(eligible_candidates)} sinyal içinden "
+            f"en güçlü {leg_count} seçim alındı."
         )
 
-    excluded_total = excluded_finished + excluded_ignored + excluded_bet + excluded_follow + excluded_saved
+    excluded_total = (
+        excluded_finished + excluded_ignored + excluded_bet + excluded_follow +
+        excluded_saved + excluded_fair_conflict
+    )
     if excluded_total > 0:
         message += (
             f" {excluded_total} maç daha önce işaretlendiği/kaydedildiği için otomatik dışlandı "
-            f"(Biten: {excluded_finished}, Gözardı: {excluded_ignored}, Bahis: {excluded_bet}, Takip: {excluded_follow}, Eski kupon: {excluded_saved})."
+            f"veya adil baremle çeliştiği için alınmadı "
+            f"(Biten: {excluded_finished}, Gözardı: {excluded_ignored}, Bahis: {excluded_bet}, "
+            f"Takip: {excluded_follow}, Eski kupon: {excluded_saved}, Çelişki: {excluded_fair_conflict})."
         )
 
     return {
@@ -225,6 +246,7 @@ def build_bet_builder(max_count: int) -> dict:
         "eligible_count": len(eligible_candidates),
         "total_candidates": len(candidates),
         "excluded_count": excluded_total,
+        "excluded_fair_conflict": excluded_fair_conflict,
         "message": message,
         "slip": slip,
     }
