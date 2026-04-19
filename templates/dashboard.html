@@ -2085,6 +2085,7 @@
             </th>
             <th data-sort="alerted_at">Zaman ▼</th>
             <th data-sort="direction">Sinyal</th>
+            <th data-sort="fair_line">Adil Barem</th>
             <th data-sort="match_name">Maç</th>
             <th data-sort="tournament">Turnuva</th>
             <th data-sort="status">Durum</th>
@@ -2157,6 +2158,18 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="signalInfoModal" onclick="if(event.target===this)closeSignalInfoModal()">
+    <div class="modal-box signal-info-box">
+      <div class="modal-header">
+        <h3>Sinyal Bilgileri</h3>
+        <button class="modal-close" onclick="closeSignalInfoModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="signalInfoContent">
+        <div class="loading">Sinyal bilgileri yükleniyor...</div>
+      </div>
+    </div>
+  </div>
+
   <script>
     let allAlerts = [];
     let currentFilter = 'all';
@@ -2188,10 +2201,174 @@
       return d.innerHTML;
     }
 
+    function analysisForAlert(alert) {
+      if (alert?.analysis && typeof alert.analysis === 'object') return alert.analysis;
+      if (!alert?.ai_analysis) return {};
+      try {
+        const parsed = JSON.parse(alert.ai_analysis);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (err) {
+        return {};
+      }
+    }
+
+    function numericOrNull(value) {
+      const num = Number(value);
+      return Number.isFinite(num) ? num : null;
+    }
+
+    function formatModalNumber(value) {
+      const num = numericOrNull(value);
+      return num === null ? '-' : num.toFixed(1);
+    }
+
+    function fairWarningClass(alert) {
+      const edge = Math.abs(Number(alert?.fair_edge));
+      return Number.isFinite(edge) && edge > 10 ? 'red' : 'yellow';
+    }
+
+    function fairWarningTitle(alert) {
+      const edge = numericOrNull(alert?.fair_edge);
+      const recommendation = alert?.recommendation || analysisForAlert(alert).recommendation || 'Sinyal bilgilerini aç';
+      return `Adil barem farkı ${edge === null ? '-' : formatSignedNumber(edge)}. ${recommendation}`;
+    }
+
+    function fairWarningButtonHtml(alert) {
+      return `<button class="fair-warning-btn ${fairWarningClass(alert)}" type="button" title="${escapeHtml(fairWarningTitle(alert))}" aria-label="Sinyal uyarılarını aç" onclick="openSignalInfoModal(${Number(alert.id || 0)})">?</button>`;
+    }
+
     function signalBadgeHtml(alert, icon = '') {
       const dirClass = alert.direction === 'ALT' ? 'badge-alt' : 'badge-ust';
       const label = `${icon ? `${icon} ` : ''}${alert.direction || '-'}`;
-      return `<span class="badge ${dirClass}">${escapeHtml(label)}</span>`;
+      return `<button class="badge ${dirClass} signal-open-btn" type="button" title="Sinyal bilgilerini aç" onclick="openSignalInfoModal(${Number(alert.id || 0)})">${escapeHtml(label)}</button>`;
+    }
+
+    function fairLineHtml(a) {
+      const fair = Number(a.fair_line);
+      const fairText = Number.isFinite(fair) ? fair.toFixed(1) : '-';
+      return `
+        <div class="quality-cell">
+          <div class="quality-row">
+            <span class="badge badge-quality-c quality-badge" title="Adil barem">${fairText}</span>
+            ${fairWarningButtonHtml(a)}
+          </div>
+        </div>
+      `;
+    }
+
+    function cardFairLineHtml(a) {
+      const fair = Number(a.fair_line);
+      const fairText = Number.isFinite(fair) ? fair.toFixed(1) : '-';
+      return `<span class="card-fair-inline"><span>${fairText}</span>${fairWarningButtonHtml(a)}</span>`;
+    }
+
+    function modalListItem(key, value) {
+      return `<li><span class="quality-summary-key">${escapeHtml(key)}</span><span class="quality-summary-value">${escapeHtml(value ?? '-')}</span></li>`;
+    }
+
+    function modalNoteList(items) {
+      const seen = new Set();
+      const cleanItems = (items || []).filter(Boolean).filter(item => {
+        const key = String(item).replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      if (!cleanItems.length) return '<div class="builder-empty">Bu sinyal için ek uyarı yok.</div>';
+      return `<ul class="quality-note-list">${cleanItems.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+    }
+
+    function weightsText(weights) {
+      const labels = {
+        projection: 'Projeksiyon',
+        market: 'Piyasa',
+        team_recent: 'Son maç',
+        h2h: 'H2H',
+      };
+      const parts = Object.entries(weights || {})
+        .filter(([key, value]) => labels[key] && Number(value) > 0)
+        .map(([key, value]) => `${labels[key]} %${Number(value).toFixed(0)}`);
+      return parts.length ? parts.join(' / ') : '-';
+    }
+
+    function teamContextHtml(context) {
+      if (!context || typeof context !== 'object') return '';
+      const home = context.home_profile || {};
+      const away = context.away_profile || {};
+      const alignCode = context.alignment_code || 'neutral';
+      const teamCard = profile => {
+        if (!profile || !profile.team) return '';
+        return `
+          <div class="team-context-card">
+            <div class="team-context-card-head">${escapeHtml(profile.team || '-')}</div>
+            <div class="team-context-card-total">${formatModalNumber(profile.avg_total)}</div>
+            <div class="team-context-card-breakdown">PPG ${formatModalNumber(profile.ppg)} / Rakip ${formatModalNumber(profile.oppg)}</div>
+            <div class="team-context-card-label">${escapeHtml(profile.label || '-')}</div>
+          </div>
+        `;
+      };
+      const teams = [teamCard(home), teamCard(away)].filter(Boolean).join('');
+      return `
+        <div class="team-context">
+          <div class="team-context-title">Takım / H2H Profili</div>
+          <span class="team-context-align ${escapeHtml(alignCode)}">${escapeHtml(context.alignment || 'Nötr')}</span>
+          ${context.regression_note ? `<div class="team-context-regression ${(context.regression_direction || '').toLowerCase().replace('ü', 'u')}">${escapeHtml(context.regression_note)}</div>` : ''}
+          ${teams ? `<div class="team-context-teams">${teams}</div>` : ''}
+          ${context.h2h_note ? `<div class="team-context-h2h">${escapeHtml(context.h2h_note)}</div>` : ''}
+        </div>
+      `;
+    }
+
+    function openSignalInfoModal(alertId) {
+      const alert = allAlerts.find(item => Number(item.id || 0) === Number(alertId || 0));
+      const modal = document.getElementById('signalInfoModal');
+      const content = document.getElementById('signalInfoContent');
+      if (!modal || !content || !alert) return;
+
+      const analysis = analysisForAlert(alert);
+      const warnings = Array.isArray(alert.warnings) && alert.warnings.length
+        ? alert.warnings
+        : (Array.isArray(analysis.warnings) ? analysis.warnings : []);
+      const notes = [
+        analysis.recommendation || alert.recommendation,
+        analysis.pace_note,
+        analysis.script_note,
+        analysis.h2h_note,
+        analysis.history_note,
+        ...warnings,
+      ].filter(Boolean);
+      const matchName = cleanMatchName(alert.match_name || '-');
+
+      content.innerHTML = `
+        <div class="quality-modal-headline">
+          <div class="quality-modal-match">${escapeHtml(matchName)}</div>
+          <div class="quality-modal-meta">${escapeHtml(alert.tournament || '-')} | ${escapeHtml(alert.status || '-')} | Skor: ${escapeHtml(alert.score || '-')}</div>
+        </div>
+        <div class="quality-modal-grid">
+          ${teamContextHtml(analysis.team_context || alert.team_context)}
+          <div class="quality-section">
+            <div class="quality-section-title">Adil Barem / Sinyal</div>
+            <ul class="quality-summary-list signal-metrics-grid">
+              ${modalListItem('Açılış', formatModalNumber(alert.opening))}
+              ${modalListItem('Canlı', formatModalNumber(alert.live))}
+              ${modalListItem('Projeksiyon', formatModalNumber(alert.projected ?? analysis.projected_total))}
+              ${modalListItem('H2H Ort.', formatModalNumber(alert.h2h_total ?? analysis.h2h_total))}
+              ${modalListItem('Adil Barem', formatModalNumber(alert.fair_line ?? analysis.fair_line))}
+            </ul>
+            <div class="signal-weights-line"><strong>Ağırlık</strong>${escapeHtml(weightsText(analysis.weights))}</div>
+          </div>
+          <div class="quality-section">
+            <div class="quality-section-title">Uyarılar / Beklenti</div>
+            ${modalNoteList(notes)}
+          </div>
+        </div>
+      `;
+      modal.classList.add('active');
+    }
+
+    function closeSignalInfoModal() {
+      const modal = document.getElementById('signalInfoModal');
+      if (modal) modal.classList.remove('active');
     }
 
     function isFocusedMatch(matchId) {
@@ -2307,7 +2484,7 @@
     }
 
     function sortValue(alert, field) {
-      const numericFields = new Set(['opening', 'live', 'diff', 'signal_count']);
+      const numericFields = new Set(['opening', 'live', 'diff', 'projected', 'fair_line', 'fair_edge', 'signal_count']);
       const value = alert[field];
 
       if (numericFields.has(field)) {
@@ -2837,7 +3014,8 @@
         const q = searchQuery.toLowerCase();
         filtered = filtered.filter(a =>
           (a.match_name || '').toLowerCase().includes(q) ||
-          (a.tournament || '').toLowerCase().includes(q)
+          (a.tournament || '').toLowerCase().includes(q) ||
+          (a.recommendation || '').toLowerCase().includes(q)
         );
       }
       filtered.sort((a, b) => {
@@ -2954,6 +3132,7 @@
             ${signalBadgeHtml(a, dirIcon)}
             ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
           </td>
+          <td>${fairLineHtml(a)}</td>
           <td class="col-match">
             <div class="match-cell-wrap">
               ${matchFocusButton}
@@ -3052,6 +3231,11 @@
               <div class="card-odds-label">Canlı</div>
               <div class="card-odds-num">${a.live.toFixed(1)}</div>
             </div>
+            <div class="card-odds-arrow">→</div>
+            <div class="card-odds-value">
+              <div class="card-odds-label">Adil</div>
+              <div class="card-odds-num">${cardFairLineHtml(a)}</div>
+            </div>
             <div class="card-odds-arrow">＝</div>
             <div class="card-diff">
               <div class="card-diff-label">Fark (${escapeHtml(diffSource)})</div>
@@ -3074,6 +3258,7 @@
 
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
+        closeSignalInfoModal();
         closeBetBuilder();
       }
     });

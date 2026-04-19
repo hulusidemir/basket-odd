@@ -41,6 +41,7 @@ class Database:
                     url          TEXT NOT NULL DEFAULT '',
                     score        TEXT NOT NULL DEFAULT '',
                     signal_count INTEGER NOT NULL DEFAULT 1,
+                    ai_analysis  TEXT NOT NULL DEFAULT '',
                     bet_placed   INTEGER NOT NULL DEFAULT 0,
                     ignored      INTEGER NOT NULL DEFAULT 0,
                     followed     INTEGER NOT NULL DEFAULT 0,
@@ -77,6 +78,7 @@ class Database:
                     alerted_at      TIMESTAMP,
                     score           TEXT NOT NULL DEFAULT '',
                     signal_count    INTEGER NOT NULL DEFAULT 1,
+                    ai_analysis     TEXT NOT NULL DEFAULT '',
                     final_score     TEXT NOT NULL DEFAULT '',
                     final_total     REAL,
                     result          TEXT NOT NULL DEFAULT '',
@@ -116,6 +118,7 @@ class Database:
                 "ALTER TABLE alerts ADD COLUMN followed INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE alerts ADD COLUMN score TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE alerts ADD COLUMN signal_count INTEGER NOT NULL DEFAULT 1",
+                "ALTER TABLE alerts ADD COLUMN ai_analysis TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE alerts ADD COLUMN deleted_at TIMESTAMP",
                 "ALTER TABLE alerts ADD COLUMN prematch REAL",
                 "ALTER TABLE alerts ADD COLUMN result TEXT NOT NULL DEFAULT ''",
@@ -124,6 +127,7 @@ class Database:
                 "ALTER TABLE finished_matches ADD COLUMN final_total REAL",
                 "ALTER TABLE finished_matches ADD COLUMN result TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE finished_matches ADD COLUMN prematch REAL",
+                "ALTER TABLE finished_matches ADD COLUMN ai_analysis TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE match_actions ADD COLUMN deleted_at TIMESTAMP",
             ):
                 try:
@@ -204,6 +208,7 @@ class Database:
         score: str = "",
         signal_count: int = 1,
         prematch: float | None = None,
+        ai_analysis: str = "",
     ) -> int:
         with self._conn() as conn:
             action = conn.execute(
@@ -218,14 +223,14 @@ class Database:
                 """
                 INSERT INTO alerts (
                     match_id, match_name, opening, prematch, live, direction, diff,
-                    tournament, status, url, score, signal_count,
+                    tournament, status, url, score, signal_count, ai_analysis,
                     bet_placed, ignored, followed, deleted_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     match_id, match_name, opening, prematch, live, direction, diff,
-                    tournament, status, url, score, signal_count,
+                    tournament, status, url, score, signal_count, ai_analysis,
                     bet, ign, fol, deleted_at,
                 ),
             )
@@ -816,10 +821,10 @@ class Database:
                 INSERT OR IGNORE INTO finished_matches (
                     source_alert_id, match_id, match_name, tournament, status, final_status,
                     opening, prematch, live, direction, diff, url, bet_placed, ignored, followed,
-                    alerted_at, score, signal_count,
+                    alerted_at, score, signal_count, ai_analysis,
                     final_score, final_total, result
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     alert["id"],
@@ -840,6 +845,7 @@ class Database:
                     alert.get("alerted_at"),
                     alert.get("score", ""),
                     alert.get("signal_count", 1),
+                    alert.get("ai_analysis", ""),
                     final_score,
                     final_total,
                     result,

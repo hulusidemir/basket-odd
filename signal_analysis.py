@@ -1,0 +1,372 @@
+import re
+from statistics import mean
+
+from projection import calculate_projected_total, game_clock, parse_score
+
+
+def _safe_float(value) -> float | None:
+    if value is None:
+        return None
+    match = re.search(r"-?\d+(?:\.\d+)?", str(value).replace(",", "."))
+    if not match:
+        return None
+    try:
+        return float(match.group(0))
+    except ValueError:
+        return None
+
+
+def _safe_round(value, digits: int = 1):
+    try:
+        return round(float(value), digits)
+    except (TypeError, ValueError):
+        return None
+
+
+def _split_match_name(match_name: str) -> tuple[str, str]:
+    parts = [part.strip() for part in (match_name or "").split(" - ", 1)]
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return match_name or "Home", "Away"
+
+
+def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
+    text = re.sub(r"\s+", " ", body_text or "").strip()
+    home_team, away_team = _split_match_name(match_name)
+
+    def team_metrics(team_name: str) -> dict:
+        if not team_name:
+            return {}
+        escaped = re.escape(team_name)
+        patterns = [
+            (
+                rf"Last 5[, ]+{escaped}.*?"
+                rf"(\d+(?:\.\d+)?) points per match,\s*"
+                rf"(\d+(?:\.\d+)?) opponent points per game,.*?"
+                rf"Total points over%:\s*(\d+(?:\.\d+)?)%"
+            ),
+            (
+                rf"{escaped}\s+\d+\s+(?:Home|Away|All)\s+This league.*?"
+                rf"pts\s+(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s+per game"
+            ),
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if not match:
+                continue
+            ppg = float(match.group(1))
+            oppg = float(match.group(2))
+            over_pct = float(match.group(3)) if match.lastindex and match.lastindex >= 3 else None
+            return {
+                "team": team_name,
+                "ppg": ppg,
+                "oppg": oppg,
+                "avg_total": round(ppg + oppg, 1),
+                "over_pct": over_pct,
+            }
+        return {}
+
+    h2h_games = None
+    h2h_avg_total = None
+    h2h_over_pct = None
+
+    over_match = re.search(r"Past H2H Results.*?Total Points Over%:\s*(\d+(?:\.\d+)?)%", text, re.IGNORECASE)
+    if over_match:
+        h2h_over_pct = float(over_match.group(1))
+
+    games_match = re.search(r"Total Matches\s+(\d+)", text, re.IGNORECASE) or re.search(r"\bH2H\s+(\d+)\b", text, re.IGNORECASE)
+    if games_match:
+        h2h_games = int(games_match.group(1))
+
+    if home_team:
+        home_pattern = (
+            rf"\bH2H\b.*?Home\s*-\s*{re.escape(home_team)}\s+This league.*?"
+            rf"pts\s+(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s+per game"
+        )
+        h2h_match = re.search(home_pattern, text, re.IGNORECASE)
+        if h2h_match:
+            h2h_avg_total = round(float(h2h_match.group(1)) + float(h2h_match.group(2)), 1)
+
+    home = team_metrics(home_team)
+    away = team_metrics(away_team)
+    expected_total = None
+    if home and away:
+        expected_total = round(mean([home["avg_total"], away["avg_total"]]), 1)
+
+    return {
+        "home_last5": home,
+        "away_last5": away,
+        "expected_total": expected_total,
+        "h2h_avg_total": h2h_avg_total,
+        "h2h_over_pct": h2h_over_pct,
+        "h2h_games": h2h_games,
+    }
+
+
+def _team_profile_label(avg_total: float | None, over_pct: float | None) -> str:
+    if avg_total is None:
+        return "veri yok"
+    label = f"son 5 toplam ort {avg_total:.1f}"
+    if over_pct is None:
+        return label
+    if over_pct >= 60:
+        return f"{label} · over eğilimli"
+    if over_pct <= 40:
+        return f"{label} · under eğilimli"
+    return f"{label} · dengeli"
+
+
+def build_team_context(h2h_metrics: dict, live: float, direction: str) -> dict | None:
+    home = h2h_metrics.get("home_last5") or {}
+    away = h2h_metrics.get("away_last5") or {}
+    if not home and not away and h2h_metrics.get("h2h_avg_total") is None and h2h_metrics.get("h2h_over_pct") is None:
+        return None
+
+    expected = h2h_metrics.get("expected_total")
+    regression_direction = None
+    regression_note = None
+    regression_delta = None
+    if expected is not None:
+        regression_delta = round(live - expected, 1)
+        if regression_delta >= 4:
+            regression_direction = "ALT"
+            regression_note = f"Son 5 maç ortalaması {expected:.1f}, canlı barem {live:.1f} (+{regression_delta:.1f}). Ortalamaya dönüş ALT tarafını destekler."
+        elif regression_delta <= -4:
+            regression_direction = "ÜST"
+            regression_note = f"Son 5 maç ortalaması {expected:.1f}, canlı barem {live:.1f} ({regression_delta:.1f}). Ortalamaya dönüş ÜST tarafını destekler."
+        else:
+            regression_note = f"Son 5 maç ortalaması {expected:.1f}, canlı barem {live:.1f} ({regression_delta:+.1f}). Barem tarihsel profile yakın."
+
+    def profile(raw: dict) -> dict | None:
+        if not raw:
+            return None
+        return {
+            "team": raw.get("team", "-"),
+            "avg_total": raw.get("avg_total"),
+            "ppg": raw.get("ppg"),
+            "oppg": raw.get("oppg"),
+            "over_pct": raw.get("over_pct"),
+            "label": _team_profile_label(raw.get("avg_total"), raw.get("over_pct")),
+        }
+
+    h2h_note = None
+    h2h_games = h2h_metrics.get("h2h_games")
+    h2h_over = h2h_metrics.get("h2h_over_pct")
+    h2h_avg = h2h_metrics.get("h2h_avg_total")
+    if h2h_over is not None:
+        game_part = f"{int(h2h_games)} maç" if h2h_games else "geçmiş maçlar"
+        if h2h_over >= 60:
+            tilt = "ÜST tarafına eğilimli"
+        elif h2h_over <= 40:
+            tilt = "ALT tarafına eğilimli"
+        else:
+            tilt = "dengeli"
+        h2h_note = f"Karşılaşma geçmişi ({game_part}): %{h2h_over:.0f} over — {tilt}."
+    elif h2h_avg is not None:
+        game_part = f"{int(h2h_games)} maç" if h2h_games else "geçmiş maçlar"
+        h2h_note = f"Karşılaşma geçmişi ({game_part}): ortalama toplam {h2h_avg:.1f}."
+
+    support_points = 0
+    against_points = 0
+    if regression_direction:
+        if regression_direction == direction:
+            support_points += 1
+        else:
+            against_points += 1
+    if h2h_over is not None:
+        if direction == "ÜST" and h2h_over >= 60:
+            support_points += 1
+        elif direction == "ALT" and h2h_over <= 40:
+            support_points += 1
+        elif direction == "ÜST" and h2h_over <= 40:
+            against_points += 1
+        elif direction == "ALT" and h2h_over >= 60:
+            against_points += 1
+
+    if support_points == 0 and against_points == 0:
+        alignment, alignment_code = "Takım profili nötr", "neutral"
+    elif support_points > against_points:
+        alignment, alignment_code = f"Takım profili {direction} sinyalini destekliyor", "support"
+    elif against_points > support_points:
+        alignment, alignment_code = f"Takım profili {direction} sinyaline karşı", "against"
+    else:
+        alignment, alignment_code = "Takım profili karışık sinyal veriyor", "mixed"
+
+    return {
+        "expected_total": expected,
+        "regression_delta": regression_delta,
+        "regression_direction": regression_direction,
+        "regression_note": regression_note,
+        "home_profile": profile(home),
+        "away_profile": profile(away),
+        "h2h_games": h2h_games,
+        "h2h_over_pct": h2h_over,
+        "h2h_avg_total": h2h_avg,
+        "h2h_note": h2h_note,
+        "alignment": alignment,
+        "alignment_code": alignment_code,
+        "signal_direction": direction,
+    }
+
+
+def _market_total(match: dict, opening: float) -> float | None:
+    for key in ("prematch_total", "prematch", "baseline", "opening_total", "opening"):
+        value = match.get(key)
+        parsed = _safe_float(value)
+        if parsed is not None:
+            return round(parsed, 1)
+    return round(opening, 1)
+
+
+def _fair_weight_profile(status: str, match_name: str, tournament: str) -> dict:
+    period = game_clock(status, match_name, tournament)["period"]
+    if period == 1:
+        return {"projection": 35, "market": 40, "team_recent": 15, "h2h": 10}
+    if period in {2, 3}:
+        return {"projection": 55, "market": 25, "team_recent": 15, "h2h": 5}
+    if period and period >= 4:
+        return {"projection": 65, "market": 20, "team_recent": 10, "h2h": 5}
+    return {"projection": 45, "market": 35, "team_recent": 15, "h2h": 5}
+
+
+def _normalize_weights(weights: dict) -> dict:
+    total = sum(weights.values())
+    if total <= 0:
+        return {key: 0 for key in weights}
+    exact = {key: (value / total) * 100 for key, value in weights.items()}
+    rounded = {key: int(value) for key, value in exact.items()}
+    remainder = 100 - sum(rounded.values())
+    ranked = sorted(exact, key=lambda key: exact[key] - rounded[key], reverse=True)
+    for key in ranked[:remainder]:
+        rounded[key] += 1
+    return rounded
+
+
+def _weighted_fair_line(components: dict, base_weights: dict) -> tuple[float | None, dict]:
+    usable = {
+        key: float(value)
+        for key, value in components.items()
+        if value is not None and key in base_weights
+    }
+    if not usable:
+        return None, {key: 0 for key in base_weights}
+    active_weights = {key: base_weights[key] for key in usable}
+    weight_sum = sum(active_weights.values())
+    fair_line = sum(usable[key] * active_weights[key] for key in usable) / weight_sum
+    return round(fair_line, 1), _normalize_weights(active_weights)
+
+
+def _pace_note(projected_total: float | None, live: float) -> str:
+    if projected_total is None:
+        return "Maç içi projeksiyon hesaplanamadı; pace yorumu sınırlı."
+    gap = round(projected_total - live, 1)
+    if gap >= 6:
+        return f"Maç hızlı gidiyor: mevcut tempo {projected_total:.1f} final gösteriyor, canlı baremin {gap:.1f} üstü."
+    if gap <= -6:
+        return f"Maç yavaş gidiyor: mevcut tempo {projected_total:.1f} final gösteriyor, canlı baremin {abs(gap):.1f} altı."
+    return f"Pace nötr: mevcut tempo {projected_total:.1f}, canlı bareme yakın."
+
+
+def _script_warning(score: str, status: str, match_name: str, tournament: str) -> str:
+    clock = game_clock(status, match_name, tournament)
+    period = clock["period"]
+    remaining_min = clock["remaining_min"]
+    home_score, away_score = parse_score(score)
+    if home_score is None or away_score is None:
+        return "Skor okunamadı; maç script uyarısı sınırlı."
+    score_gap = abs(home_score - away_score)
+    if score_gap >= 18 and period == 4 and remaining_min is not None and remaining_min <= 5:
+        return f"Blowout/garbage time riski: fark {score_gap}, son bölümde tempo düşebilir."
+    if score_gap >= 15:
+        return f"Blowout riski: fark {score_gap}; önde olan takım tempoyu düşürebilir."
+    if period == 4 and remaining_min is not None and remaining_min <= 6 and score_gap <= 8:
+        return f"Yakın maç riski: fark {score_gap}; faul oyunu ve ekstra pozisyonlar maçı hızlandırabilir."
+    return "Maç scriptinde belirgin ekstra risk yok."
+
+
+def build_signal_analysis(match: dict, context: dict | None = None, threshold: float = 0) -> dict:
+    context = context or {}
+    opening = float(match.get("opening_total", match.get("opening")))
+    live = float(match.get("inplay_total", match.get("live")))
+    match_name = match.get("match_name", "")
+    tournament = match.get("tournament", "")
+    status = match.get("status", "")
+    score = match.get("score", "")
+
+    direction = str(match.get("direction") or ("ALT" if live - opening > 0 else "ÜST")).replace("UST", "ÜST")
+    line_delta_open = round(live - opening, 1)
+    h2h_body = (context.get("h2h") or {}).get("body_text", "") if isinstance(context, dict) else ""
+    h2h_metrics = _extract_h2h_metrics(h2h_body, match_name)
+    projected_total = calculate_projected_total(score, status, match_name, tournament)
+    market_total = _market_total(match, opening)
+    team_recent_total = h2h_metrics.get("expected_total")
+    h2h_total = h2h_metrics.get("h2h_avg_total")
+    history_values = [value for value in (team_recent_total, h2h_total) if value is not None]
+    history_total = round(mean(history_values), 1) if history_values else None
+
+    components = {
+        "projection": projected_total,
+        "market": market_total,
+        "team_recent": team_recent_total,
+        "h2h": h2h_total,
+    }
+    base_weights = _fair_weight_profile(status, match_name, tournament)
+    fair_line, weights = _weighted_fair_line(components, base_weights)
+    fair_edge = round(fair_line - live, 1) if fair_line is not None else None
+
+    team_context = build_team_context(h2h_metrics, live, direction)
+    h2h_note = (team_context or {}).get("h2h_note") or "H2H verisi yok veya okunamadı."
+    history_note = (
+        f"H2H/son maç adil toplamı {history_total:.1f}."
+        if history_total is not None
+        else "H2H ve son maçlardan adil toplam çıkarılamadı."
+    )
+    pace = _pace_note(projected_total, live)
+    script = _script_warning(score, status, match_name, tournament)
+
+    warnings = [h2h_note, history_note, pace, script]
+    if abs(line_delta_open) >= 20:
+        warnings.append(f"Açılış-canlı farkı çok yüksek ({line_delta_open:+.1f}); bu bölge ekstra riskli.")
+    if fair_edge is not None and abs(fair_edge) <= 3:
+        warnings.append("Adil barem canlıya çok yakın; net değer alanı zayıf.")
+
+    if fair_line is None:
+        recommendation = "Adil barem hesaplanamadı; sadece eşik uyarısı olarak izle."
+    elif fair_edge >= 6:
+        recommendation = "Adil barem canlıdan yüksek: değer ÜST tarafında; maç hızlanabilir."
+    elif fair_edge <= -6:
+        recommendation = "Adil barem canlıdan düşük: değer ALT tarafında; maç yavaşlayabilir."
+    elif fair_edge > 0:
+        recommendation = "Adil barem canlıdan az yüksek: ÜST tarafı hafif değerli, temkinli izle."
+    elif fair_edge < 0:
+        recommendation = "Adil barem canlıdan az düşük: ALT tarafı hafif değerli, temkinli izle."
+    else:
+        recommendation = "Adil barem canlıyla aynı; bahis için net avantaj yok."
+
+    summary = f"Adil Barem: {fair_line:.1f}" if fair_line is not None else "Adil Barem: hesaplanamadı"
+    if fair_edge is not None:
+        summary += f" | Canlıya göre {fair_edge:+.1f}"
+
+    return {
+        "direction": direction,
+        "fair_line": fair_line,
+        "fair_edge": fair_edge,
+        "projected_total": _safe_round(projected_total),
+        "market_total": _safe_round(market_total),
+        "team_recent_total": _safe_round(team_recent_total),
+        "h2h_total": _safe_round(h2h_total),
+        "history_total": _safe_round(history_total),
+        "weights": weights,
+        "base_weights": base_weights,
+        "fair_components": {key: _safe_round(value) for key, value in components.items()},
+        "opening_delta": line_delta_open,
+        "recommendation": recommendation,
+        "pace_note": pace,
+        "h2h_note": h2h_note,
+        "history_note": history_note,
+        "script_note": script,
+        "warnings": warnings,
+        "summary": summary,
+        "team_context": team_context,
+        "threshold": threshold,
+    }

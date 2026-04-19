@@ -6,6 +6,7 @@ Usage:
 """
 
 import asyncio
+import json
 import logging
 import random
 import re
@@ -16,6 +17,7 @@ from config import Config
 from db import Database
 from notifier import TelegramNotifier
 from projection import game_clock
+from signal_analysis import build_signal_analysis
 
 
 def setup_logging(level: str):
@@ -82,19 +84,34 @@ async def process_match(
         return
 
     signal_count = db.count_match_alerts(match_id) + 1
+    analysis = build_signal_analysis(
+        {
+            **match,
+            "direction": direction,
+            "opening_total": opening_total,
+            "inplay_total": inplay_total,
+            "prematch_total": prematch_total,
+        },
+        {},
+        config.THRESHOLD,
+    )
 
     await notifier.send_alert(
         match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
-        score=score, signal_count=signal_count, prematch=prematch_total,
+        score=score, signal_count=signal_count, prematch=prematch_total, analysis=analysis,
     )
 
     db.save_alert(
         match_id, match_name, opening_total, inplay_total, direction, abs_diff,
         tournament=tournament, status=status, url=url, score=score,
         signal_count=signal_count, prematch=prematch_total,
+        ai_analysis=json.dumps(analysis, ensure_ascii=False),
     )
 
-    log.info("Alert sent: id=%s | %s | %s | diff=%.2f", match_id, match_name, direction, abs_diff)
+    log.info(
+        "Alert sent: id=%s | %s | %s | diff=%.2f | fair_line=%s",
+        match_id, match_name, direction, abs_diff, analysis.get("fair_line"),
+    )
 
 
 async def run():

@@ -9,6 +9,7 @@ Usage:
 import asyncio
 import csv
 import io
+import json
 import os
 import re
 from datetime import datetime, timedelta
@@ -16,6 +17,7 @@ from flask import Flask, Response, jsonify, render_template, request
 from db import Database
 from config import Config
 from finished_match_service import run_deleted_match_result_cycle, run_single_deleted_match_result_check
+from signal_analysis import build_signal_analysis
 
 config = Config()
 db = Database(config.DB_PATH)
@@ -24,6 +26,45 @@ db.init()
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
 BET_BUILDER_ALERT_WINDOW_MINUTES = 240
+
+
+def _parse_analysis(raw) -> dict:
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def enrich_alerts_with_analysis(alerts: list[dict]) -> list[dict]:
+    for alert in alerts:
+        analysis = _parse_analysis(alert.get("ai_analysis"))
+        if not analysis:
+            analysis = build_signal_analysis(
+                {
+                    **alert,
+                    "opening_total": alert.get("opening"),
+                    "inplay_total": alert.get("live"),
+                    "prematch_total": alert.get("prematch"),
+                },
+                {},
+                config.THRESHOLD,
+            )
+        alert["analysis"] = analysis
+        alert["fair_line"] = analysis.get("fair_line")
+        alert["fair_edge"] = analysis.get("fair_edge")
+        alert["projected"] = analysis.get("projected_total")
+        alert["market_total"] = analysis.get("market_total")
+        alert["team_recent_total"] = analysis.get("team_recent_total")
+        alert["h2h_total"] = analysis.get("h2h_total")
+        alert["history_total"] = analysis.get("history_total")
+        alert["recommendation"] = analysis.get("recommendation") or ""
+        alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
+    return alerts
 
 
 def _is_live_basketball_status(status: str) -> bool:
@@ -65,7 +106,7 @@ def _safe_float(value, default: float = 0.0) -> float:
 def build_bet_builder(max_count: int) -> dict:
     alerts = [
         alert
-        for alert in db.recent_alerts(limit=500)
+        for alert in enrich_alerts_with_analysis(db.recent_alerts(limit=500))
         if _is_live_basketball_status(alert.get("status", ""))
         and _is_recent_alert(alert.get("alerted_at", ""))
     ]
@@ -112,22 +153,32 @@ def build_bet_builder(max_count: int) -> dict:
         opening = _safe_float(alert.get("opening"))
         live = _safe_float(alert.get("live"))
         diff = _safe_float(alert.get("diff"))
+        fair_line = alert.get("fair_line")
+        fair_edge = _safe_float(alert.get("fair_edge")) if alert.get("fair_edge") is not None else None
+        projected = alert.get("projected")
+        history_total = alert.get("history_total")
         opening_gap = round(live - opening, 1)
+        signal_priority = abs(fair_edge) if fair_edge is not None else abs(diff)
         candidates.append({
             "match_id": alert.get("match_id"),
             "match_name": alert.get("match_name", ""),
             "tournament": alert.get("tournament", ""),
             "url": alert.get("url", ""),
             "direction": direction,
-            "signal_tier": "Barem Farkı",
-            "signal_code": f"{direction}-FARK",
+            "signal_tier": "Adil Barem",
+            "signal_code": f"{direction}-ADİL",
             "opening": round(opening, 1),
             "live": round(live, 1),
+            "projected": round(float(projected), 1) if projected is not None else None,
+            "fair_line": round(float(fair_line), 1) if fair_line is not None else None,
+            "fair_edge": round(fair_edge, 1) if fair_edge is not None else None,
+            "history_total": round(float(history_total), 1) if history_total is not None else None,
+            "recommendation": alert.get("recommendation", ""),
             "status": alert.get("status", ""),
             "score": alert.get("score", ""),
             "opening_gap": opening_gap,
             "diff": round(diff, 1),
-            "signal_priority": abs(diff),
+            "signal_priority": signal_priority,
             "bet_placed": int(alert.get("bet_placed") or 0),
             "followed": int(alert.get("followed") or 0),
             "ignored": int(alert.get("ignored") or 0),
@@ -199,7 +250,10 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
     if not isinstance(raw_slip, list):
         raw_slip = []
 
-    numeric_float_fields = {"opening", "live", "opening_gap", "diff"}
+    numeric_float_fields = {
+        "opening", "live", "projected", "fair_line", "fair_edge",
+        "history_total", "opening_gap", "diff",
+    }
     numeric_int_fields = {"signal_priority"}
     keep_fields = {
         "match_id",
@@ -211,6 +265,7 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
         "signal_code",
         "status",
         "score",
+        "recommendation",
     }
     bool_fields = {"bet_placed", "followed", "ignored"}
 
@@ -265,14 +320,14 @@ def deleted_matches():
 
 @app.route("/api/alerts")
 def api_alerts():
-    return jsonify(db.recent_alerts(limit=500))
+    return jsonify(enrich_alerts_with_analysis(db.recent_alerts(limit=500)))
 
 
 @app.route("/api/deleted-matches")
 def api_deleted_matches():
     limit = request.args.get("limit", default=1000, type=int) or 1000
     limit = max(1, min(limit, 5000))
-    return jsonify(db.recent_deleted_alerts(limit=limit))
+    return jsonify(enrich_alerts_with_analysis(db.recent_deleted_alerts(limit=limit)))
 
 
 @app.route("/api/deleted-matches/export.csv")
