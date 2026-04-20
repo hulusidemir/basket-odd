@@ -41,33 +41,41 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         if not team_name:
             return {}
         escaped = re.escape(team_name)
-        # pts separator: hyphen, en-dash, em-dash
-        pts_sep = r"[-–—]"
+        # Unicode dash + hyphen variants
+        pts_sep = r"[-–—\u2012\u2015]"
+        # Suffix tolerates "per game", "/game", "pts/game", "points/game"
+        per_game = r"(?:per\s*game|/\s*game|pts?/game|points?/game)"
         patterns = [
             # AiScore: "Last 5, Team 90.5 points per match, 88.2 opponent points per game"
             (
-                rf"Last 5[,\s]+{escaped}.{{0,200}}"
-                rf"(\d+(?:\.\d+)?)\s*points per match[,\s]*"
-                rf"(\d+(?:\.\d+)?)\s*opponent points per game.{{0,200}}"
-                rf"Total points over%[:\s]*(\d+(?:\.\d+)?)%",
+                rf"Last\s*5[,\s]+{escaped}.{{0,200}}"
+                rf"(\d+(?:\.\d+)?)\s*points?\s*per\s*match[,\s]*"
+                rf"(\d+(?:\.\d+)?)\s*opponent\s*points?\s*per\s*game.{{0,200}}"
+                rf"Total\s*points?\s*over%[:\s]*(\d+(?:\.\d+)?)%",
                 3,
             ),
             # AiScore format 1: "Team 6 Away This league ... pts 79.4 – 94.4 per game"
             (
                 rf"{escaped}\s+\d+\s+(?:Home|Away|All).{{0,150}}"
-                rf"pts\s+(\d+(?:\.\d+)?)\s*{pts_sep}\s*(\d+(?:\.\d+)?)\s+per game",
+                rf"pts\s+(\d+(?:\.\d+)?)\s*{pts_sep}\s*(\d+(?:\.\d+)?)\s+{per_game}",
                 2,
             ),
             # AiScore format 2: "H2H 6 Home — Team This league ... pts 96.2 – 88.0 per game"
             (
-                rf"H2H\s+\d+\s+(?:Home|Away|All).{{0,6}}{escaped}.{{0,150}}"
-                rf"pts\s+(\d+(?:\.\d+)?)\s*{pts_sep}\s*(\d+(?:\.\d+)?)\s+per game",
+                rf"H2H\s+\d+\s+(?:Home|Away|All).{{0,12}}{escaped}.{{0,200}}"
+                rf"pts\s+(\d+(?:\.\d+)?)\s*{pts_sep}\s*(\d+(?:\.\d+)?)\s+{per_game}",
                 2,
             ),
             # AiScore format 3: "Team ... pts 96.2 – 88.0 per game" (any proximity)
             (
-                rf"{escaped}.{{0,200}}"
-                rf"pts\s+(\d+(?:\.\d+)?)\s*{pts_sep}\s*(\d+(?:\.\d+)?)\s+per game",
+                rf"{escaped}.{{0,250}}"
+                rf"pts\s+(\d+(?:\.\d+)?)\s*{pts_sep}\s*(\d+(?:\.\d+)?)\s+{per_game}",
+                2,
+            ),
+            # Loose fallback: "TeamName ... 90.5 - 88.2 per game" (no 'pts' marker)
+            (
+                rf"{escaped}.{{0,180}}"
+                rf"(\d{{2,3}}(?:\.\d+)?)\s*{pts_sep}\s*(\d{{2,3}}(?:\.\d+)?)\s+{per_game}",
                 2,
             ),
         ]
@@ -110,10 +118,11 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
     # Handles: "H2H 6 Home — Team This league ... pts 96.2 – 88.0 per game"
     #       or: "H2H ... Home - Team ... pts X – Y per game"
     pts_sep = r"[-–—\u2012\u2015]"
+    per_game = r"(?:per\s*game|/\s*game|pts?/game|points?/game)"
     if home_team:
         h2h_home_pattern = (
-            rf"\bH2H\b.{{0,200}}Home.{{0,8}}{re.escape(home_team)}.{{0,200}}"
-            rf"pts\s+(\d+(?:\.\d+)?)\s*{pts_sep}\s*(\d+(?:\.\d+)?)\s+per game"
+            rf"\bH2H\b.{{0,250}}Home.{{0,12}}{re.escape(home_team)}.{{0,250}}"
+            rf"pts\s+(\d+(?:\.\d+)?)\s*{pts_sep}\s*(\d+(?:\.\d+)?)\s+{per_game}"
         )
         h2h_m = re.search(h2h_home_pattern, text, re.IGNORECASE)
         if h2h_m:
@@ -132,7 +141,11 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
     away = team_metrics(away_team)
     expected_total = None
     if home and away:
-        expected_total = round(mean([home["avg_total"], away["avg_total"]]), 1)
+        # Cross-pair: home'un attığı + away'in yediği ≈ home skoru beklentisi (ve tersi).
+        # Ham mean([home_avg, away_avg]) yerine bu karşılıklı eşleştirme daha doğrudur.
+        home_expected = (home["ppg"] + away["oppg"]) / 2
+        away_expected = (away["ppg"] + home["oppg"]) / 2
+        expected_total = round(home_expected + away_expected, 1)
 
     return {
         "home_last5": home,
@@ -260,14 +273,18 @@ def _market_total(match: dict, opening: float) -> float | None:
 
 
 def _fair_weight_profile(status: str, match_name: str, tournament: str) -> dict:
+    # Erken periyotta pace numunesi küçük, projeksiyon varyansı çok yüksek.
+    # Bu yüzden Q1'de piyasa ağırlıklı, Q4'te pace ağırlıklı kalıyoruz.
     period = game_clock(status, match_name, tournament)["period"]
     if period == 1:
-        return {"projection": 35, "market": 40, "team_recent": 15, "h2h": 10}
-    if period in {2, 3}:
+        return {"projection": 15, "market": 60, "team_recent": 15, "h2h": 10}
+    if period == 2:
+        return {"projection": 40, "market": 40, "team_recent": 15, "h2h": 5}
+    if period == 3:
         return {"projection": 55, "market": 25, "team_recent": 15, "h2h": 5}
     if period and period >= 4:
         return {"projection": 65, "market": 20, "team_recent": 10, "h2h": 5}
-    return {"projection": 45, "market": 35, "team_recent": 15, "h2h": 5}
+    return {"projection": 30, "market": 50, "team_recent": 15, "h2h": 5}
 
 
 def _normalize_weights(weights: dict) -> dict:
@@ -308,6 +325,28 @@ def _pace_note(projected_total: float | None, live: float) -> str:
     return f"Pace nötr: mevcut tempo {projected_total:.1f}, canlı bareme yakın."
 
 
+def _script_pace_adjustment(score: str, status: str, match_name: str, tournament: str) -> float:
+    """Skor farkı ve periyot durumuna göre projeksiyona çarpan döndürür.
+    1.0 = değişiklik yok. 0.85 = pace %15 düşer (blowout). 1.10 = pace %10 artar (faul oyunu)."""
+    clock = game_clock(status, match_name, tournament)
+    period = clock["period"]
+    remaining_min = clock["remaining_min"]
+    home_score, away_score = parse_score(score)
+    if home_score is None or away_score is None or period is None:
+        return 1.0
+    gap = abs(home_score - away_score)
+    if period >= 4 and remaining_min is not None and remaining_min <= 6:
+        if gap >= 18:
+            return 0.85
+        if gap >= 12:
+            return 0.92
+        if gap <= 6:
+            return 1.08
+    elif period >= 3 and gap >= 20:
+        return 0.93
+    return 1.0
+
+
 def _script_warning(score: str, status: str, match_name: str, tournament: str) -> str:
     clock = game_clock(status, match_name, tournament)
     period = clock["period"]
@@ -338,10 +377,13 @@ def build_signal_analysis(match: dict, context: dict | None = None, threshold: f
     line_delta_open = round(live - opening, 1)
     h2h_body = (context.get("h2h") or {}).get("body_text", "") if isinstance(context, dict) else ""
     h2h_metrics = _extract_h2h_metrics(h2h_body, match_name)
-    projected_total = calculate_projected_total(score, status, match_name, tournament)
+    raw_projected = calculate_projected_total(score, status, match_name, tournament)
+    pace_adj = _script_pace_adjustment(score, status, match_name, tournament)
+    projected_total = round(raw_projected * pace_adj, 1) if raw_projected is not None else None
     market_total = _market_total(match, opening)
     team_recent_total = h2h_metrics.get("expected_total")
     h2h_total = h2h_metrics.get("h2h_avg_total")
+    h2h_games = h2h_metrics.get("h2h_games")
     history_values = [value for value in (team_recent_total, h2h_total) if value is not None]
     history_total = round(mean(history_values), 1) if history_values else None
 
@@ -352,6 +394,11 @@ def build_signal_analysis(match: dict, context: dict | None = None, threshold: f
         "h2h": h2h_total,
     }
     base_weights = _fair_weight_profile(status, match_name, tournament)
+    # H2H numunesi 3'ten az ise güvenilmez — ağırlığını sıfırla.
+    if h2h_games is not None and h2h_games < 3:
+        base_weights = {**base_weights, "h2h": 0}
+        h2h_total = None
+        components["h2h"] = None
     fair_line, weights = _weighted_fair_line(components, base_weights)
     fair_edge = round(fair_line - live, 1) if fair_line is not None else None
 

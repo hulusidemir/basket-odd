@@ -122,6 +122,7 @@ class Database:
                 "ALTER TABLE alerts ADD COLUMN deleted_at TIMESTAMP",
                 "ALTER TABLE alerts ADD COLUMN prematch REAL",
                 "ALTER TABLE alerts ADD COLUMN result TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE alerts ADD COLUMN alert_period INTEGER",
                 "ALTER TABLE finished_matches ADD COLUMN final_status TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE finished_matches ADD COLUMN final_score TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE finished_matches ADD COLUMN final_total REAL",
@@ -159,16 +160,19 @@ class Database:
 
     # ---------- alerts ----------
 
-    def was_alerted_recently(self, match_id: str, direction: str, cooldown_minutes: int) -> bool:
+    def was_alerted_in_period(self, match_id: str, period: int) -> bool:
+        if period is None:
+            return False
         with self._conn() as conn:
             row = conn.execute(
                 """
                 SELECT 1 FROM alerts
-                WHERE match_id = ? AND direction = ?
-                  AND alerted_at > datetime('now', ? || ' minutes')
+                WHERE match_id = ?
+                  AND alert_period = ?
+                  AND (deleted_at IS NULL OR deleted_at = '')
                 LIMIT 1
                 """,
-                (match_id, direction, f"-{cooldown_minutes}"),
+                (match_id, int(period)),
             ).fetchone()
         return row is not None
 
@@ -209,6 +213,7 @@ class Database:
         signal_count: int = 1,
         prematch: float | None = None,
         ai_analysis: str = "",
+        alert_period: int | None = None,
     ) -> int:
         with self._conn() as conn:
             action = conn.execute(
@@ -224,14 +229,14 @@ class Database:
                 INSERT INTO alerts (
                     match_id, match_name, opening, prematch, live, direction, diff,
                     tournament, status, url, score, signal_count, ai_analysis,
-                    bet_placed, ignored, followed, deleted_at
+                    bet_placed, ignored, followed, deleted_at, alert_period
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     match_id, match_name, opening, prematch, live, direction, diff,
                     tournament, status, url, score, signal_count, ai_analysis,
-                    bet, ign, fol, deleted_at,
+                    bet, ign, fol, deleted_at, alert_period,
                 ),
             )
             return cursor.lastrowid

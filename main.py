@@ -55,8 +55,16 @@ async def process_match(
         return
 
     clock = game_clock(status, match_name, tournament)
-    if clock["period"] == 4 and clock["remaining_min"] is not None and clock["remaining_min"] < 5:
+    period = clock["period"]
+    remaining_min = clock["remaining_min"]
+    quarter_length = clock["quarter_length"]
+
+    if period == 4 and remaining_min is not None and remaining_min < 5:
         log.debug("Skipped (Q4 under 5:00): %s", match_name)
+        return
+
+    if period == 1 and remaining_min is not None and (quarter_length - remaining_min) < 4:
+        log.debug("Skipped (Q1 first 4:00 — pace unstable): %s", match_name)
         return
 
     if config.BLACKLIST:
@@ -79,11 +87,16 @@ async def process_match(
 
     direction = "ALT" if diff > 0 else "ÜST"
 
-    if db.was_alerted_recently(match_id, direction, config.ALERT_COOLDOWN_MINUTES):
-        log.debug("Skipped (cooldown): id=%s direction=%s", match_id, direction)
+    total_alerts = db.count_match_alerts(match_id)
+    if total_alerts >= config.MAX_SIGNALS_PER_MATCH:
+        log.debug("Skipped (match cap %s reached): id=%s", config.MAX_SIGNALS_PER_MATCH, match_id)
         return
 
-    signal_count = db.count_match_alerts(match_id) + 1
+    if period is not None and db.was_alerted_in_period(match_id, period):
+        log.debug("Skipped (period %s already alerted): id=%s", period, match_id)
+        return
+
+    signal_count = total_alerts + 1
     context = {"h2h": {"body_text": match.get("h2h_body_text", "")}}
     analysis = build_signal_analysis(
         {
@@ -107,6 +120,7 @@ async def process_match(
         tournament=tournament, status=status, url=url, score=score,
         signal_count=signal_count, prematch=prematch_total,
         ai_analysis=json.dumps(analysis, ensure_ascii=False),
+        alert_period=period,
     )
 
     log.info(
@@ -138,9 +152,9 @@ async def run():
 
     await notifier.send_startup()
     log.info(
-        "Bot started. Threshold: %s pts | Poll: %s-%ss | Cooldown: %smin",
+        "Bot started. Threshold: %s pts | Poll: %s-%ss | Max/match: %s | 1 alert per period",
         config.THRESHOLD, config.POLL_INTERVAL_MIN, config.POLL_INTERVAL_MAX,
-        config.ALERT_COOLDOWN_MINUTES,
+        config.MAX_SIGNALS_PER_MATCH,
     )
 
     consecutive_errors = 0

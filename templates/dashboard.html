@@ -389,28 +389,27 @@
       font-size: 14px;
     }
 
-    thead th:nth-child(1) { width: 56px; }
-    thead th:nth-child(2) { width: 130px; }
-    thead th:nth-child(3) { width: 130px; }
-    thead th:nth-child(4) { width: 136px; }
-    thead th:nth-child(5) { width: 19%; }
-    thead th:nth-child(6) { width: 23%; }
-    thead th:nth-child(7) { width: 96px; }
-    thead th:nth-child(8) { width: 104px; }
+    thead th:nth-child(1) { width: 40px; }
+    thead th:nth-child(2) { width: 96px; }
+    thead th:nth-child(3) { width: 110px; }
+    thead th:nth-child(4) { width: 112px; }
+    thead th:nth-child(5) { width: auto; }
+    thead th:nth-child(6) { width: 130px; }
+    thead th:nth-child(7) { width: 80px; }
+    thead th:nth-child(8) { width: 84px; }
     thead th:nth-child(9),
     thead th:nth-child(10),
-    thead th:nth-child(11),
-    thead th:nth-child(12) { width: 92px; }
-    thead th:nth-child(13) { width: 180px; }
+    thead th:nth-child(11) { width: 72px; }
+    thead th:nth-child(12) { width: 176px; }
 
     thead th {
       text-align: left;
-      padding: 16px 18px;
+      padding: 12px 10px;
       color: var(--text-dim);
       font-weight: 700;
-      font-size: 12px;
+      font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.06em;
       white-space: nowrap;
       cursor: pointer;
       user-select: none;
@@ -436,7 +435,7 @@
     }
 
     tbody td {
-      padding: 12px 14px;
+      padding: 10px 10px;
       vertical-align: middle;
       white-space: nowrap;
       overflow: hidden;
@@ -1084,7 +1083,7 @@
       display: flex;
       align-items: center;
       justify-content: flex-start;
-      gap: 8px;
+      gap: 4px;
       min-width: 0;
       flex-wrap: nowrap;
     }
@@ -1097,10 +1096,10 @@
       flex: 0 0 auto;
       text-align: center;
       white-space: nowrap;
-      width: 38px;
-      height: 38px;
+      width: 34px;
+      height: 34px;
       padding: 0;
-      font-size: 15px;
+      font-size: 14px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -1217,6 +1216,8 @@
     .col-tournament {
       overflow: hidden;
       text-overflow: ellipsis;
+      font-size: 12px;
+      color: var(--text-dim);
     }
 
     .signal-cell {

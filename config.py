@@ -10,7 +10,7 @@ class Config:
     THRESHOLD: float = float(os.getenv("THRESHOLD", "10"))
     POLL_INTERVAL_MIN: int = int(os.getenv("POLL_INTERVAL_MIN", "25"))
     POLL_INTERVAL_MAX: int = int(os.getenv("POLL_INTERVAL_MAX", "40"))
-    ALERT_COOLDOWN_MINUTES: int = int(os.getenv("ALERT_COOLDOWN_MINUTES", "10"))
+    MAX_SIGNALS_PER_MATCH: int = int(os.getenv("MAX_SIGNALS_PER_MATCH", "3"))
     DB_PATH: str = os.getenv("DB_PATH", "basketball.db")
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     AISCORE_URL: str = os.getenv("AISCORE_URL", "https://www.aiscore.com/basketball")

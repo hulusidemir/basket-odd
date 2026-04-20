@@ -631,38 +631,78 @@ class AiscoreScraper:
         }
 
     async def _fetch_h2h_body(self, page, url: str) -> str:
+        h2h_url = url.rstrip("/") + "/h2h"
         try:
-            h2h_url = url.rstrip("/") + "/h2h"
             await page.goto(h2h_url, wait_until="domcontentloaded")
-            await page.wait_for_timeout(4000)
+            await page.wait_for_timeout(3500)
 
-            # Scroll to trigger lazy-loaded sections
-            await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
+            # Try to click an H2H tab if the page lands on a different sub-section
+            try:
+                await page.evaluate(r"""
+                    () => {
+                        const text = s => (s || '').replace(/\s+/g, ' ').trim();
+                        const candidates = Array.from(document.querySelectorAll('a, button, div, span'))
+                            .filter(el => el.children.length <= 3);
+                        for (const el of candidates) {
+                            const t = text(el.innerText || '').toLowerCase();
+                            if (!t || t.length > 18) continue;
+                            if (/^h2h\b|head.?to.?head|karş.?la.?ma/.test(t)) {
+                                try { el.click(); return true; } catch(e) {}
+                            }
+                        }
+                        return false;
+                    }
+                """)
+            except Exception:
+                pass
             await page.wait_for_timeout(1500)
-            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            await page.wait_for_timeout(1000)
+
+            # Progressive scroll to trigger lazy-loaded last-5 / h2h tables
+            for _ in range(3):
+                await page.evaluate("window.scrollBy(0, document.body.scrollHeight / 3)")
+                await page.wait_for_timeout(900)
 
             body = await page.evaluate(r"""
                 () => {
-                    // Collect text from the largest meaningful content block
+                    const keyHits = (txt) => {
+                        const t = (txt || '').toLowerCase();
+                        let score = 0;
+                        if (/per game/.test(t)) score += 2;
+                        if (/points per match/.test(t)) score += 2;
+                        if (/opponent points/.test(t)) score += 2;
+                        if (/\bh2h\b/.test(t)) score += 1;
+                        if (/total points over%/.test(t)) score += 2;
+                        if (/last\s*5/.test(t)) score += 1;
+                        return score;
+                    };
                     const candidates = Array.from(document.querySelectorAll(
                         'main, [class*="matchDetail"], [class*="match-detail"], ' +
                         '[class*="h2h"], [class*="H2H"], [class*="head-to-head"], ' +
                         '[class*="statistics"], [class*="stats"], article, #main, ' +
                         '[class*="content"]'
-                    )).map(el => ({el, len: (el.innerText || '').trim().length}))
-                      .filter(c => c.len > 200)
-                      .sort((a, b) => b.len - a.len);
-
-                    if (candidates.length > 0) {
+                    )).map(el => ({
+                        el,
+                        len: (el.innerText || '').trim().length,
+                        hits: keyHits(el.innerText || '')
+                    })).filter(c => c.len > 200);
+                    // Prefer blocks with H2H keywords, fall back to largest.
+                    candidates.sort((a, b) => (b.hits - a.hits) || (b.len - a.len));
+                    if (candidates.length > 0 && candidates[0].hits > 0) {
                         return candidates[0].el.innerText.replace(/\s+/g, ' ').trim();
                     }
+                    // If no candidate has relevant keywords, use whole body
                     return (document.body.innerText || '').replace(/\s+/g, ' ').trim();
                 }
             """)
             body = body or ""
-            logger.info("H2H body fetched for %s: %d chars | preview: %s",
-                        url, len(body), body[:400].replace('\n', ' '))
+            low = body.lower()
+            keyword_hits = sum(kw in low for kw in (
+                "per game", "points per match", "opponent points", "total points over", "h2h"
+            ))
+            logger.info(
+                "H2H body for %s: %d chars, %d/5 key markers | preview: %s",
+                url, len(body), keyword_hits, body[:300].replace("\n", " "),
+            )
             return body
         except Exception as exc:
             logger.warning("H2H page fetch failed for %s: %s", url, exc)
