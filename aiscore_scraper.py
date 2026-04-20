@@ -634,30 +634,38 @@ class AiscoreScraper:
         try:
             h2h_url = url.rstrip("/") + "/h2h"
             await page.goto(h2h_url, wait_until="domcontentloaded")
-            await page.wait_for_timeout(2500)
+            await page.wait_for_timeout(4000)
+
+            # Scroll to trigger lazy-loaded sections
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
+            await page.wait_for_timeout(1500)
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            await page.wait_for_timeout(1000)
+
             body = await page.evaluate(r"""
                 () => {
-                    const selectors = [
-                        'main',
-                        '[class*="matchDetail"]',
-                        '[class*="match-detail"]',
-                        '[class*="content"]',
-                        'article',
-                        '#main',
-                    ];
-                    for (const sel of selectors) {
-                        const el = document.querySelector(sel);
-                        if (el && (el.innerText || '').trim().length > 100) {
-                            return el.innerText.replace(/\s+/g, ' ').trim();
-                        }
+                    // Collect text from the largest meaningful content block
+                    const candidates = Array.from(document.querySelectorAll(
+                        'main, [class*="matchDetail"], [class*="match-detail"], ' +
+                        '[class*="h2h"], [class*="H2H"], [class*="head-to-head"], ' +
+                        '[class*="statistics"], [class*="stats"], article, #main, ' +
+                        '[class*="content"]'
+                    )).map(el => ({el, len: (el.innerText || '').trim().length}))
+                      .filter(c => c.len > 200)
+                      .sort((a, b) => b.len - a.len);
+
+                    if (candidates.length > 0) {
+                        return candidates[0].el.innerText.replace(/\s+/g, ' ').trim();
                     }
                     return (document.body.innerText || '').replace(/\s+/g, ' ').trim();
                 }
             """)
-            logger.debug("H2H body fetched for %s (%d chars).", url, len(body or ""))
-            return body or ""
+            body = body or ""
+            logger.info("H2H body fetched for %s: %d chars | preview: %s",
+                        url, len(body), body[:400].replace('\n', ' '))
+            return body
         except Exception as exc:
-            logger.debug("H2H page fetch failed for %s: %s", url, exc)
+            logger.warning("H2H page fetch failed for %s: %s", url, exc)
             return ""
 
     @staticmethod
