@@ -230,6 +230,22 @@
     .stat-chip.fail strong { color: var(--accent-red); }
     .stat-chip.rate strong { color: var(--accent-yellow); }
 
+    .stat-chip.clickable {
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+    }
+    .stat-chip.clickable:hover {
+      border-color: rgba(95, 167, 255, 0.45);
+      background: rgba(24, 43, 67, 0.98);
+      transform: translateY(-1px);
+    }
+    .stat-chip.clickable.active {
+      border-color: rgba(95, 167, 255, 0.7);
+      background: rgba(95, 167, 255, 0.14);
+    }
+    .stat-chip.clickable.active.success { border-color: rgba(52, 211, 153, 0.6); background: rgba(52, 211, 153, 0.12); }
+    .stat-chip.clickable.active.fail { border-color: rgba(255, 107, 99, 0.6); background: rgba(255, 107, 99, 0.12); }
+
     .signal-breakdown {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1216,19 +1232,19 @@
           <span>Benzersiz Maç</span>
           <strong id="statMatches">0</strong>
         </div>
-        <div class="stat-chip">
+        <div class="stat-chip clickable" id="chipAlt" onclick="toggleStatFilter('direction','ALT')" title="Sadece ALT sinyalleri göster">
           <span>ALT</span>
           <strong id="statAlt">0</strong>
         </div>
-        <div class="stat-chip">
+        <div class="stat-chip clickable" id="chipUst" onclick="toggleStatFilter('direction','ÜST')" title="Sadece ÜST sinyalleri göster">
           <span>ÜST</span>
           <strong id="statUst">0</strong>
         </div>
-        <div class="stat-chip success">
+        <div class="stat-chip success clickable" id="chipSuccess" onclick="toggleStatFilter('result','Başarılı')" title="Sadece başarılı sinyalleri göster">
           <span>Başarılı</span>
           <strong id="statSuccess">0</strong>
         </div>
-        <div class="stat-chip fail">
+        <div class="stat-chip fail clickable" id="chipFail" onclick="toggleStatFilter('result','Başarısız')" title="Sadece başarısız sinyalleri göster">
           <span>Başarısız</span>
           <strong id="statFail">0</strong>
         </div>
@@ -1711,6 +1727,26 @@
       target.innerHTML = panels.join('');
     }
 
+    function toggleStatFilter(key, value) {
+      const isSame = activeFilter && activeFilter[key] === value && Object.keys(activeFilter).length === 1;
+      activeFilter = isSame ? null : { [key]: value };
+      currentPage = 1;
+      render();
+    }
+
+    function updateStatChips() {
+      const chipAlt = document.getElementById('chipAlt');
+      const chipUst = document.getElementById('chipUst');
+      const chipSuccess = document.getElementById('chipSuccess');
+      const chipFail = document.getElementById('chipFail');
+      const isDir = activeFilter && !activeFilter.result && !activeFilter.matchKey;
+      const isRes = activeFilter && !activeFilter.direction && !activeFilter.matchKey;
+      if (chipAlt) chipAlt.classList.toggle('active', isDir && activeFilter.direction === 'ALT');
+      if (chipUst) chipUst.classList.toggle('active', isDir && activeFilter.direction === 'ÜST');
+      if (chipSuccess) chipSuccess.classList.toggle('active', isRes && activeFilter.result === 'Başarılı');
+      if (chipFail) chipFail.classList.toggle('active', isRes && activeFilter.result === 'Başarısız');
+    }
+
     function setSummaryFilter(filter) {
       activeFilter = filter && Object.keys(filter).length ? filter : null;
       currentPage = 1;
@@ -1732,6 +1768,7 @@
 
       updateStats();
       updateSortHeaders();
+      updateStatChips();
 
       if (rows.length === 0) {
         body.innerHTML = '';
