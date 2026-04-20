@@ -1356,6 +1356,15 @@
       return Number.isFinite(num) ? num.toFixed(1) : '-';
     }
 
+    function calculateScoreTotal(score) {
+      if (!score || typeof score !== 'string') return null;
+      const parts = score.split('-').map(s => Number(s.trim()));
+      if (parts.length === 2 && parts.every(p => Number.isFinite(p))) {
+        return parts[0] + parts[1];
+      }
+      return null;
+    }
+
     function alertAnalysis(alert) {
       if (alert?.analysis && typeof alert.analysis === 'object') return alert.analysis;
       if (!alert?.ai_analysis) return {};
@@ -1766,7 +1775,7 @@
               ${Number(alert.signal_count || 0) > 1 ? `<div class="subline">${Number(alert.signal_count)}. sinyal</div>` : ''}
             </td>
             <td>${escapeHtml(alert.status || '-')}</td>
-            <td class="mono">${escapeHtml(alert.score || '-')}</td>
+            <td class="mono">${escapeHtml(alert.score || '-')}${(() => { const total = calculateScoreTotal(alert.score); return total !== null ? ` (${total})` : ''; })()}</td>
             <td class="mono">${formatNumber(alert.opening)}</td>
             <td class="mono">${formatNumber(alert.live)}</td>
             <td class="mono">${formatNumber(alert.diff)}</td>
