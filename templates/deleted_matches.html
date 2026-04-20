@@ -1775,7 +1775,7 @@
               ${Number(alert.signal_count || 0) > 1 ? `<div class="subline">${Number(alert.signal_count)}. sinyal</div>` : ''}
             </td>
             <td>${escapeHtml(alert.status || '-')}</td>
-            <td class="mono">${escapeHtml(alert.score || '-')}${(() => { const total = calculateScoreTotal(alert.score); return total !== null ? ` (${total})` : ''; })()}</td>
+            <td class="mono">${escapeHtml(alert.score || '-')}${(() => { const total = calculateScoreTotal(alert.score); return total !== null ? ` <span style="font-style: italic; font-size: 0.85em; color: var(--text-dim);">(${total})</span>` : ''; })()}</td>
             <td class="mono">${formatNumber(alert.opening)}</td>
             <td class="mono">${formatNumber(alert.live)}</td>
             <td class="mono">${formatNumber(alert.diff)}</td>
