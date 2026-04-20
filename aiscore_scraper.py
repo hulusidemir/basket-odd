@@ -612,6 +612,8 @@ class AiscoreScraper:
             logger.debug("Q4 <=4min remaining, skipping: %s (%.1f min)", url, remaining)
             return None
 
+        h2h_body = await self._fetch_h2h_body(page, url)
+
         match_id = self._extract_match_id(url)
         return {
             "match_id": match_id,
@@ -625,7 +627,38 @@ class AiscoreScraper:
             "score": parsed.get("score") or "",
             "market_locked": bool(parsed.get("hasLockedRows", False)),
             "has_prematch": prematch is not None,
+            "h2h_body_text": h2h_body,
         }
+
+    async def _fetch_h2h_body(self, page, url: str) -> str:
+        try:
+            h2h_url = url.rstrip("/") + "/h2h"
+            await page.goto(h2h_url, wait_until="domcontentloaded")
+            await page.wait_for_timeout(2500)
+            body = await page.evaluate(r"""
+                () => {
+                    const selectors = [
+                        'main',
+                        '[class*="matchDetail"]',
+                        '[class*="match-detail"]',
+                        '[class*="content"]',
+                        'article',
+                        '#main',
+                    ];
+                    for (const sel of selectors) {
+                        const el = document.querySelector(sel);
+                        if (el && (el.innerText || '').trim().length > 100) {
+                            return el.innerText.replace(/\s+/g, ' ').trim();
+                        }
+                    }
+                    return (document.body.innerText || '').replace(/\s+/g, ' ').trim();
+                }
+            """)
+            logger.debug("H2H body fetched for %s (%d chars).", url, len(body or ""))
+            return body or ""
+        except Exception as exc:
+            logger.debug("H2H page fetch failed for %s: %s", url, exc)
+            return ""
 
     @staticmethod
     def _extract_match_id(url: str) -> str:

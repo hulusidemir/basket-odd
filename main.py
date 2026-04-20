@@ -84,6 +84,7 @@ async def process_match(
         return
 
     signal_count = db.count_match_alerts(match_id) + 1
+    context = {"h2h": {"body_text": match.get("h2h_body_text", "")}}
     analysis = build_signal_analysis(
         {
             **match,
@@ -92,7 +93,7 @@ async def process_match(
             "inplay_total": inplay_total,
             "prematch_total": prematch_total,
         },
-        {},
+        context,
         config.THRESHOLD,
     )
 
