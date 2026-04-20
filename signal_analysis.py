@@ -34,12 +34,17 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
     text = re.sub(r"\s+", " ", body_text or "").strip()
     home_team, away_team = _split_match_name(match_name)
 
+    # Matches any unicode dash/separator between words
+    _DASH = r"[-–—\u2012\u2015]"
+
     def team_metrics(team_name: str) -> dict:
         if not team_name:
             return {}
         escaped = re.escape(team_name)
+        # pts separator: hyphen, en-dash, em-dash
+        pts_sep = r"[-–—]"
         patterns = [
-            # AiScore: "Last 5, Team 90.5 points per match, 88.2 opponent points per game, ... Total points over%: 60%"
+            # AiScore: "Last 5, Team 90.5 points per match, 88.2 opponent points per game"
             (
                 rf"Last 5[,\s]+{escaped}.{{0,200}}"
                 rf"(\d+(?:\.\d+)?)\s*points per match[,\s]*"
@@ -47,16 +52,23 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
                 rf"Total points over%[:\s]*(\d+(?:\.\d+)?)%",
                 3,
             ),
-            # AiScore: "Team 10 Home This league pts 90.5 - 88.2 per game"
+            # AiScore format 1: "Team 6 Away This league ... pts 79.4 – 94.4 per game"
             (
-                rf"{escaped}\s+\d+\s+(?:Home|Away|All).{{0,100}}"
-                rf"pts\s+(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s+per game",
+                rf"{escaped}\s+\d+\s+(?:Home|Away|All).{{0,150}}"
+                rf"pts\s+(\d+(?:\.\d+)?)\s*{pts_sep}\s*(\d+(?:\.\d+)?)\s+per game",
                 2,
             ),
-            # AiScore fallback: "Team ... avg ... 90.5" near the team name within 120 chars
+            # AiScore format 2: "H2H 6 Home — Team This league ... pts 96.2 – 88.0 per game"
             (
-                rf"{escaped}.{{0,120}}avg(?:erage)?\s*(?:total\s*)?(?:pts?|points?)?\s*[:\-]?\s*(\d{{3}}(?:\.\d+)?)",
-                1,
+                rf"H2H\s+\d+\s+(?:Home|Away|All).{{0,6}}{escaped}.{{0,150}}"
+                rf"pts\s+(\d+(?:\.\d+)?)\s*{pts_sep}\s*(\d+(?:\.\d+)?)\s+per game",
+                2,
+            ),
+            # AiScore format 3: "Team ... pts 96.2 – 88.0 per game" (any proximity)
+            (
+                rf"{escaped}.{{0,200}}"
+                rf"pts\s+(\d+(?:\.\d+)?)\s*{pts_sep}\s*(\d+(?:\.\d+)?)\s+per game",
+                2,
             ),
         ]
         for pattern, groups in patterns:
@@ -64,20 +76,12 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
             if not m:
                 continue
             if groups == 3:
-                ppg = float(m.group(1))
-                oppg = float(m.group(2))
-                over_pct = float(m.group(3))
+                ppg, oppg, over_pct = float(m.group(1)), float(m.group(2)), float(m.group(3))
                 return {"team": team_name, "ppg": ppg, "oppg": oppg,
                         "avg_total": round(ppg + oppg, 1), "over_pct": over_pct}
-            if groups == 2:
-                ppg = float(m.group(1))
-                oppg = float(m.group(2))
-                return {"team": team_name, "ppg": ppg, "oppg": oppg,
-                        "avg_total": round(ppg + oppg, 1), "over_pct": None}
-            if groups == 1:
-                avg = float(m.group(1))
-                return {"team": team_name, "ppg": avg / 2, "oppg": avg / 2,
-                        "avg_total": avg, "over_pct": None}
+            ppg, oppg = float(m.group(1)), float(m.group(2))
+            return {"team": team_name, "ppg": ppg, "oppg": oppg,
+                    "avg_total": round(ppg + oppg, 1), "over_pct": None}
         return {}
 
     h2h_games = None
@@ -102,21 +106,23 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
     if games_match:
         h2h_games = int(games_match.group(1))
 
-    # H2H average total scored in past meetings
+    # H2H average total from past meetings
+    # Handles: "H2H 6 Home — Team This league ... pts 96.2 – 88.0 per game"
+    #       or: "H2H ... Home - Team ... pts X – Y per game"
+    pts_sep = r"[-–—\u2012\u2015]"
     if home_team:
         h2h_home_pattern = (
-            rf"\bH2H\b.{{0,200}}Home\s*[-–]?\s*{re.escape(home_team)}.{{0,200}}"
-            rf"pts\s+(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s+per game"
+            rf"\bH2H\b.{{0,200}}Home.{{0,8}}{re.escape(home_team)}.{{0,200}}"
+            rf"pts\s+(\d+(?:\.\d+)?)\s*{pts_sep}\s*(\d+(?:\.\d+)?)\s+per game"
         )
         h2h_m = re.search(h2h_home_pattern, text, re.IGNORECASE)
         if h2h_m:
             h2h_avg_total = round(float(h2h_m.group(1)) + float(h2h_m.group(2)), 1)
 
-    # Generic H2H average total fallback: "H2H avg 215.4" or "H2H 215.4 pts"
+    # Generic H2H average total fallback
     if h2h_avg_total is None:
         generic = (
             re.search(r"\bH2H\b.{0,60}avg(?:erage)?\D{0,10}(\d{3}(?:\.\d+)?)", text, re.IGNORECASE)
-            or re.search(r"\bH2H\b\D{0,20}(\d{3}(?:\.\d+)?)\s*pts?", text, re.IGNORECASE)
             or re.search(r"average\s+total[:\s]*(\d{3}(?:\.\d+)?)", text, re.IGNORECASE)
         )
         if generic:
