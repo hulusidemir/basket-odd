@@ -567,8 +567,8 @@
       </select>
     </div>
     <div class="setup-group">
-      <label>Varsayılan Oran (kâr çarpanı)</label>
-      <input type="number" id="inputRate" value="0.80" min="0.01" max="10" step="0.05">
+      <label>Varsayılan Oran (bahis oranı · toplam çarpanı)</label>
+      <input type="number" id="inputRate" value="2.00" min="1.01" max="50" step="0.05">
     </div>
     <div class="setup-group">
       <label>Oturum Adı</label>
@@ -588,13 +588,13 @@
   <!-- Presets -->
   <div class="presets" id="presetsBar" style="display:none;">
     <span>Hızlı Oran:</span>
-    <button class="preset-btn" onclick="applyPresetRate(0.50)">×0.50</button>
-    <button class="preset-btn" onclick="applyPresetRate(0.65)">×0.65</button>
-    <button class="preset-btn active" onclick="applyPresetRate(0.80)">×0.80</button>
-    <button class="preset-btn" onclick="applyPresetRate(1.00)">×1.00</button>
-    <button class="preset-btn" onclick="applyPresetRate(1.25)">×1.25</button>
     <button class="preset-btn" onclick="applyPresetRate(1.50)">×1.50</button>
-    <button class="preset-btn" onclick="applyPresetRate(2.00)">×2.00</button>
+    <button class="preset-btn" onclick="applyPresetRate(1.80)">×1.80</button>
+    <button class="preset-btn active" onclick="applyPresetRate(2.00)">×2.00</button>
+    <button class="preset-btn" onclick="applyPresetRate(2.50)">×2.50</button>
+    <button class="preset-btn" onclick="applyPresetRate(3.00)">×3.00</button>
+    <button class="preset-btn" onclick="applyPresetRate(4.00)">×4.00</button>
+    <button class="preset-btn" onclick="applyPresetRate(5.00)">×5.00</button>
   </div>
 
   <!-- Summary -->
@@ -621,7 +621,7 @@
       name: '',
       budget: 20000,
       groupCount: 4,
-      defaultRate: 0.80,
+      defaultRate: 2.00,
       started: false,
       groups: []
     };
@@ -677,7 +677,7 @@
       if (!confirm('Bu oturum silinecek. Emin misiniz?')) return;
       await fetch('/api/bankroll/sessions/' + sid, { method: 'DELETE' });
       if (state.id === sid) {
-        state = { id: null, name: '', budget: 20000, groupCount: 4, defaultRate: 0.80, started: false, groups: [] };
+        state = { id: null, name: '', budget: 20000, groupCount: 4, defaultRate: 2.00, started: false, groups: [] };
         renderAll();
       }
       loadSessionsList();
@@ -686,7 +686,7 @@
     async function clearAllSessions() {
       if (!confirm('TÜM oturumlar silinecek. Emin misiniz?')) return;
       await fetch('/api/bankroll/sessions/clear', { method: 'POST' });
-      state = { id: null, name: '', budget: 20000, groupCount: 4, defaultRate: 0.80, started: false, groups: [] };
+      state = { id: null, name: '', budget: 20000, groupCount: 4, defaultRate: 2.00, started: false, groups: [] };
       renderAll();
       loadSessionsList();
     }
@@ -735,7 +735,7 @@
 
     function resetSession() {
       if (!confirm('Yeni boş oturum başlatılacak. Emin misiniz?')) return;
-      state = { id: null, name: '', budget: 20000, groupCount: 4, defaultRate: 0.80, started: false, groups: [] };
+      state = { id: null, name: '', budget: 20000, groupCount: 4, defaultRate: 2.00, started: false, groups: [] };
       renderAll();
     }
 
@@ -747,7 +747,7 @@
 
       // Only add next step if this is the last step
       if (stepIdx === group.steps.length - 1) {
-        const newAmount = step.amount + (step.amount * step.rate);
+        const newAmount = step.amount * step.rate;
         group.steps.push({
           amount: newAmount,
           rate: state.defaultRate,
@@ -834,7 +834,7 @@
     function getGroupCurrentBalance(group) {
       const lastStep = group.steps[group.steps.length - 1];
       if (lastStep.status === 'won') {
-        return lastStep.amount + (lastStep.amount * lastStep.rate);
+        return lastStep.amount * lastStep.rate;
       }
       if (lastStep.status === 'lost') return 0;
       return lastStep.amount;
@@ -848,7 +848,7 @@
 
       let rows = '';
       milestones.forEach(n => {
-        const projected = balance * Math.pow(1 + rate, n);
+        const projected = balance * Math.pow(rate, n);
         rows += `<div class="proj-row"><span class="proj-label">${n}. maç →</span><span class="proj-val">${fmt(projected)}</span></div>`;
       });
 
@@ -928,7 +928,8 @@
           const isWon = step.status === 'won';
           const isLost = step.status === 'lost';
           const rowClass = isWon ? 'won' : (isLost ? 'lost' : (isActive ? 'active' : ''));
-          const profit = step.amount * step.rate;
+          const payout = step.amount * step.rate;
+          const profit = payout - step.amount;
 
           if (isWon) totalWins++;
           if (isLost) totalLosses++;
@@ -937,11 +938,11 @@
           html += `<div class="step-num">${si + 1}</div>`;
           html += `<div class="step-info">`;
           html += `<div class="step-amount">${fmt(step.amount)}</div>`;
-          html += `<div class="step-target">Hedef kâr: ${fmt(profit)} → Toplam: ${fmt(step.amount + profit)}</div>`;
+          html += `<div class="step-target">Net kâr: ${fmt(profit)} → Toplam: ${fmt(payout)}</div>`;
           html += `</div>`;
 
           // Rate input
-          html += `<input class="step-rate-input" type="number" min="0.01" max="10" step="0.05" value="${step.rate}" `;
+          html += `<input class="step-rate-input" type="number" min="1.01" max="50" step="0.05" value="${step.rate}" `;
           html += `onchange="updateStepRate(${gi},${si},this.value)" title="Oran" ${isActive ? '' : 'disabled'}>`;
 
           // Note input
