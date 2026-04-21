@@ -333,26 +333,32 @@ def api_deleted_matches():
 @app.route("/api/deleted-matches/export.csv")
 def api_export_finished_deleted_matches_csv():
     rows = [
-        row for row in db.recent_deleted_alerts(limit=None)
+        row for row in enrich_alerts_with_analysis(db.recent_deleted_alerts(limit=None))
         if str(row.get("result") or "").strip()
     ]
 
     output = io.StringIO()
     output.write("\ufeff")
     writer = csv.writer(output)
-    writer.writerow(["Maç", "Lig", "Sinyal", "Açılış", "Canlı", "Skor", "Sonuç"])
+    writer.writerow([
+        "Maç", "Sinyal Anı", "Sinyal Türü", "Skor",
+        "Açılış", "Canlı", "Adil Barem", "Sonuç",
+    ])
 
     for row in rows:
         direction = str(row.get("direction") or "").strip()
         match_name = re.sub(r"\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}\s*", "", str(row.get("match_name") or ""))
         match_name = re.sub(r"\s*betting odds\s*", "", match_name, flags=re.IGNORECASE).strip()
+        fair_line = row.get("fair_line")
+        fair_line_cell = f"{float(fair_line):.1f}" if fair_line is not None else ""
         writer.writerow([
             match_name,
-            row.get("tournament") or "",
+            row.get("alert_moment") or "",
             direction,
+            row.get("score") or "",
             row.get("opening") if row.get("opening") is not None else "",
             row.get("live") if row.get("live") is not None else "",
-            row.get("score") or "",
+            fair_line_cell,
             row.get("result") or "",
         ])
 
