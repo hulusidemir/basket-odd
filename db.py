@@ -123,6 +123,7 @@ class Database:
                 "ALTER TABLE alerts ADD COLUMN prematch REAL",
                 "ALTER TABLE alerts ADD COLUMN result TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE alerts ADD COLUMN alert_period INTEGER",
+                "ALTER TABLE alerts ADD COLUMN alert_moment TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE finished_matches ADD COLUMN final_status TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE finished_matches ADD COLUMN final_score TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE finished_matches ADD COLUMN final_total REAL",
@@ -214,6 +215,7 @@ class Database:
         prematch: float | None = None,
         ai_analysis: str = "",
         alert_period: int | None = None,
+        alert_moment: str = "",
     ) -> int:
         with self._conn() as conn:
             action = conn.execute(
@@ -229,14 +231,14 @@ class Database:
                 INSERT INTO alerts (
                     match_id, match_name, opening, prematch, live, direction, diff,
                     tournament, status, url, score, signal_count, ai_analysis,
-                    bet_placed, ignored, followed, deleted_at, alert_period
+                    bet_placed, ignored, followed, deleted_at, alert_period, alert_moment
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     match_id, match_name, opening, prematch, live, direction, diff,
                     tournament, status, url, score, signal_count, ai_analysis,
-                    bet, ign, fol, deleted_at, alert_period,
+                    bet, ign, fol, deleted_at, alert_period, alert_moment,
                 ),
             )
             return cursor.lastrowid

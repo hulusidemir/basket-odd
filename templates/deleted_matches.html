@@ -1269,6 +1269,7 @@
             <tr>
               <th data-sort="deleted_at">Silinme ▼</th>
               <th data-sort="match_name">Maç</th>
+              <th data-sort="alert_moment">Sinyal Anı</th>
               <th data-sort="direction">Sinyal</th>
               <th data-sort="status">Durum</th>
               <th data-sort="score">Skor</th>
@@ -1807,6 +1808,7 @@
               </div>
               <div class="subline">${escapeHtml(alert.tournament || '-')}</div>
             </td>
+            <td class="mono">${escapeHtml(alert.alert_moment || '-')}</td>
             <td>
               ${signalBadge(alert)}
               ${Number(alert.signal_count || 0) > 1 ? `<div class="subline">${Number(alert.signal_count)}. sinyal</div>` : ''}
@@ -2163,7 +2165,7 @@
           sortAsc = !sortAsc;
         } else {
           sortField = field;
-          sortAsc = ['match_name', 'direction', 'status', 'score', 'result'].includes(field);
+          sortAsc = ['match_name', 'direction', 'status', 'score', 'result', 'alert_moment'].includes(field);
         }
         currentPage = 1;
         render();

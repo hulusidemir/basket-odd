@@ -393,14 +393,15 @@
     thead th:nth-child(2) { width: 99px; }
     thead th:nth-child(3) { width: 113px; }
     thead th:nth-child(4) { width: 115px; }
-    thead th:nth-child(5) { width: 220px; }
-    thead th:nth-child(6) { width: 143px; }
-    thead th:nth-child(7) { width: 82px; }
-    thead th:nth-child(8) { width: 87px; }
-    thead th:nth-child(9),
+    thead th:nth-child(5) { width: 105px; }
+    thead th:nth-child(6) { width: 220px; }
+    thead th:nth-child(7) { width: 143px; }
+    thead th:nth-child(8) { width: 82px; }
+    thead th:nth-child(9) { width: 87px; }
     thead th:nth-child(10),
-    thead th:nth-child(11) { width: 74px; }
-    thead th:nth-child(12) { width: 181px; }
+    thead th:nth-child(11),
+    thead th:nth-child(12) { width: 74px; }
+    thead th:nth-child(13) { width: 181px; }
 
     thead th {
       text-align: left;
@@ -2105,6 +2106,7 @@
             <th data-sort="alerted_at">Zaman ▼</th>
             <th data-sort="direction">Sinyal</th>
             <th data-sort="fair_line">Adil Barem</th>
+            <th data-sort="projected">Projeksiyon</th>
             <th data-sort="match_name">Maç</th>
             <th data-sort="tournament">Turnuva</th>
             <th data-sort="status">Durum</th>
@@ -2270,6 +2272,31 @@
           <div class="quality-row">
             <span class="badge badge-quality-c quality-badge" title="Adil barem">${fairText}</span>
             ${fairWarningButtonHtml(a)}
+          </div>
+        </div>
+      `;
+    }
+
+    function projectedHtml(a) {
+      const projected = Number(a.projected);
+      const live = Number(a.live);
+      if (!Number.isFinite(projected)) {
+        return `
+          <div class="quality-cell">
+            <div class="quality-row">
+              <span class="badge badge-quality-c quality-badge" title="Mevcut tempoya göre final projeksiyonu">-</span>
+            </div>
+          </div>
+        `;
+      }
+      const diff = Number.isFinite(live) ? projected - live : null;
+      const title = diff !== null
+        ? `Mevcut tempoya göre final projeksiyonu (canlı bareme göre ${diff >= 0 ? '+' : ''}${diff.toFixed(1)})`
+        : 'Mevcut tempoya göre final projeksiyonu';
+      return `
+        <div class="quality-cell">
+          <div class="quality-row">
+            <span class="badge badge-quality-c quality-badge" title="${title}">${projected.toFixed(1)}</span>
           </div>
         </div>
       `;
@@ -3152,6 +3179,7 @@
             ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
           </td>
           <td>${fairLineHtml(a)}</td>
+          <td>${projectedHtml(a)}</td>
           <td class="col-match">
             <div class="match-cell-wrap">
               ${matchFocusButton}
@@ -3254,6 +3282,11 @@
             <div class="card-odds-value">
               <div class="card-odds-label">Adil</div>
               <div class="card-odds-num">${cardFairLineHtml(a)}</div>
+            </div>
+            <div class="card-odds-arrow">→</div>
+            <div class="card-odds-value">
+              <div class="card-odds-label">Proj.</div>
+              <div class="card-odds-num">${Number.isFinite(Number(a.projected)) ? Number(a.projected).toFixed(1) : '-'}</div>
             </div>
             <div class="card-odds-arrow">＝</div>
             <div class="card-diff">
