@@ -649,6 +649,25 @@
     .result-check-btn:hover { opacity: 0.82; border-color: rgba(95, 167, 255, 0.58); }
     .result-check-btn:disabled { opacity: 0.5; cursor: wait; }
 
+    .row-delete-btn {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+      color: #ffb4b0;
+      background: rgba(88, 36, 48, 0.72);
+      border: 1px solid rgba(255, 126, 126, 0.24);
+      transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+    .row-delete-btn:hover { opacity: 0.85; border-color: rgba(255, 126, 126, 0.5); }
+    .row-delete-btn:disabled { opacity: 0.5; cursor: wait; }
+
     /* Report modal */
     .modal-overlay {
       display: none;
@@ -1278,6 +1297,7 @@
               <th data-sort="diff">Fark</th>
               <th data-sort="fair_line">Adil Barem</th>
               <th data-sort="result">Sonuç</th>
+              <th aria-label="Sil"></th>
             </tr>
           </thead>
           <tbody id="deletedBody"></tbody>
@@ -1820,6 +1840,7 @@
             <td class="mono">${formatNumber(alert.diff)}</td>
             <td>${fairLineCell(alert)}</td>
             <td>${resultCell(alert)}</td>
+            <td><button class="row-delete-btn" type="button" onclick="deleteDeletedAlert(${Number(alert.id)}, this)" title="Kaydı sil" aria-label="Kaydı sil">🗑</button></td>
           </tr>
         `;
       }).join('');
@@ -1854,6 +1875,24 @@
       } catch (error) {
         console.error(error);
         showBanner(error.message || 'Silinen maçlar alınamadı.', 'error');
+      }
+    }
+
+    async function deleteDeletedAlert(alertId, button) {
+      if (!alertId) return;
+      if (!confirm('Bu kayıt veritabanından kalıcı olarak silinsin mi?')) return;
+      if (button) button.disabled = true;
+      try {
+        const response = await fetch(`/api/deleted-matches/${alertId}`, { method: 'DELETE' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload?.error || 'Kayıt silinemedi.');
+        deletedAlerts = deletedAlerts.filter(item => Number(item.id) !== Number(alertId));
+        render();
+        showBanner('Kayıt silindi.');
+      } catch (error) {
+        console.error(error);
+        if (button) button.disabled = false;
+        showBanner(error.message || 'Kayıt silinemedi.', 'error');
       }
     }
 

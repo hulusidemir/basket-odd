@@ -376,6 +376,14 @@ def api_clear_deleted_matches():
     return jsonify({"cleared": True, "deleted_count": deleted_count})
 
 
+@app.route("/api/deleted-matches/<int:alert_id>", methods=["DELETE"])
+def api_purge_deleted_alert(alert_id: int):
+    removed = db.delete_alert(alert_id)
+    if not removed:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"id": alert_id, "deleted": True})
+
+
 @app.route("/api/deleted-matches/check-results", methods=["POST"])
 def api_check_deleted_match_results():
     summary = asyncio.run(run_deleted_match_result_cycle(db, config))
