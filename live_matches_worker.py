@@ -130,16 +130,72 @@ def write_snapshot(path: str, payload: dict) -> None:
         raise
 
 
-async def run_worker():
-    config = Config()
-    setup_logging(config.LOG_LEVEL)
+async def run_single_cycle(scraper: AiscoreScraper, snapshot_path: str = SNAPSHOT_PATH) -> dict:
+    cycle_started = datetime.utcnow()
+    status = "ok"
+    error_message = ""
+    rows: list[dict] = []
 
-    scraper = AiscoreScraper(
+    try:
+        matches = await scraper.get_live_basketball_totals()
+        for match in matches:
+            try:
+                rows.append(build_live_row(match))
+            except Exception as exc:
+                logger.debug("Row build failed for %s: %s", match.get("match_id"), exc)
+
+        rows.sort(
+            key=lambda r: (
+                -(r.get("period") or 0),
+                (r.get("tournament") or ""),
+                (r.get("match_name") or ""),
+            )
+        )
+        logger.info("Live matches cycle complete. matches=%s", len(rows))
+    except Exception as exc:
+        status = "error"
+        error_message = str(exc)
+        logger.error("Live matches cycle failed: %s", exc, exc_info=True)
+
+    cycle_finished = datetime.utcnow()
+    payload = {
+        "generated_at": cycle_finished.isoformat(timespec="seconds") + "Z",
+        "cycle_started_at": cycle_started.isoformat(timespec="seconds") + "Z",
+        "cycle_duration_seconds": round((cycle_finished - cycle_started).total_seconds(), 1),
+        "status": status,
+        "error": error_message,
+        "count": len(rows),
+        "matches": rows,
+    }
+    try:
+        write_snapshot(snapshot_path, payload)
+    except Exception as exc:
+        logger.error("Snapshot write failed: %s", exc, exc_info=True)
+        payload["status"] = "error"
+        payload["error"] = (payload.get("error") or "") + f" | snapshot write: {exc}"
+    return payload
+
+
+def build_default_scraper() -> AiscoreScraper:
+    config = Config()
+    return AiscoreScraper(
         aiscore_url=config.AISCORE_URL,
         max_matches_per_cycle=config.MAX_MATCHES_PER_CYCLE,
         page_timeout_ms=config.PAGE_TIMEOUT_MS,
         skip_h2h=True,
     )
+
+
+async def run_manual_cycle(snapshot_path: str = SNAPSHOT_PATH) -> dict:
+    """Dashboard'un manuel tetiklemesi icin tek seferlik cevrim."""
+    return await run_single_cycle(build_default_scraper(), snapshot_path)
+
+
+async def run_worker():
+    config = Config()
+    setup_logging(config.LOG_LEVEL)
+
+    scraper = build_default_scraper()
 
     logger.info(
         "Live matches worker started. snapshot=%s min_cycle=%ss",
@@ -148,49 +204,11 @@ async def run_worker():
 
     while True:
         cycle_started = datetime.utcnow()
-        status = "ok"
-        error_message = ""
-        rows: list[dict] = []
-
         try:
-            matches = await scraper.get_live_basketball_totals()
-            for match in matches:
-                try:
-                    rows.append(build_live_row(match))
-                except Exception as exc:
-                    logger.debug("Row build failed for %s: %s", match.get("match_id"), exc)
-
-            rows.sort(
-                key=lambda r: (
-                    -(r.get("period") or 0),
-                    (r.get("tournament") or ""),
-                    (r.get("match_name") or ""),
-                )
-            )
-            logger.info("Live matches cycle complete. matches=%s", len(rows))
-
+            await run_single_cycle(scraper, SNAPSHOT_PATH)
         except KeyboardInterrupt:
             logger.info("Live matches worker stopped.")
             break
-        except Exception as exc:
-            status = "error"
-            error_message = str(exc)
-            logger.error("Live matches cycle failed: %s", exc, exc_info=True)
-
-        cycle_finished = datetime.utcnow()
-        payload = {
-            "generated_at": cycle_finished.isoformat(timespec="seconds") + "Z",
-            "cycle_started_at": cycle_started.isoformat(timespec="seconds") + "Z",
-            "cycle_duration_seconds": round((cycle_finished - cycle_started).total_seconds(), 1),
-            "status": status,
-            "error": error_message,
-            "count": len(rows),
-            "matches": rows,
-        }
-        try:
-            write_snapshot(SNAPSHOT_PATH, payload)
-        except Exception as exc:
-            logger.error("Snapshot write failed: %s", exc, exc_info=True)
 
         elapsed = (datetime.utcnow() - cycle_started).total_seconds()
         sleep_for = max(MIN_CYCLE_SECONDS - elapsed, 0)

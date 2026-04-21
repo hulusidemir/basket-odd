@@ -352,6 +352,22 @@ def api_live_matches():
     return jsonify(payload)
 
 
+@app.route("/api/live-matches/refresh", methods=["POST"])
+def api_live_matches_refresh():
+    from live_matches_worker import run_manual_cycle
+
+    try:
+        payload = asyncio.run(run_manual_cycle(LIVE_MATCHES_SNAPSHOT_PATH))
+    except Exception as exc:
+        return jsonify({
+            "status": "error",
+            "error": f"Manuel çevrim başarısız: {exc}",
+            "count": 0,
+            "matches": [],
+        }), 500
+    return jsonify(payload)
+
+
 @app.route("/api/alerts")
 def api_alerts():
     return jsonify(enrich_alerts_with_analysis(db.recent_alerts(limit=500)))

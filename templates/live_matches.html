@@ -93,6 +93,7 @@
     .btn:hover { background: rgba(25, 45, 70, 0.95); border-color: var(--border-strong); }
     .btn.primary { background: rgba(52, 211, 153, 0.15); border-color: rgba(52, 211, 153, 0.45); color: var(--accent-ust); }
     .btn.primary:hover { background: rgba(52, 211, 153, 0.25); }
+    .btn:disabled { opacity: 0.55; cursor: progress; pointer-events: none; }
 
     .section-shell { padding: 0 4px; }
 
@@ -278,7 +279,8 @@
         <span class="btn primary">Canlı Maçlar</span>
         <a href="/deleted-matches" class="btn">Silinen</a>
         <a href="/bankroll" class="btn">Bankroll</a>
-        <button class="btn primary" onclick="loadSnapshot()">Yenile</button>
+        <button class="btn" onclick="loadSnapshot()">Yenile</button>
+        <button class="btn primary" id="manualFetchBtn" onclick="manualFetch()">Manuel Çek</button>
       </div>
     </header>
 
@@ -474,6 +476,35 @@
         const errorBanner = document.getElementById('errorBanner');
         errorBanner.style.display = 'block';
         errorBanner.textContent = `Snapshot yüklenemedi: ${e}`;
+      }
+    }
+
+    async function manualFetch() {
+      const btn = document.getElementById('manualFetchBtn');
+      const originalText = btn.textContent;
+      const errorBanner = document.getElementById('errorBanner');
+      btn.disabled = true;
+      btn.textContent = 'Çekiliyor…';
+      if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+      try {
+        const res = await fetch('/api/live-matches/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+        });
+        const payload = await res.json();
+        if (!res.ok) {
+          errorBanner.style.display = 'block';
+          errorBanner.textContent = payload.error || `Manuel çekim başarısız (${res.status}).`;
+        }
+        render(payload);
+      } catch (e) {
+        errorBanner.style.display = 'block';
+        errorBanner.textContent = `Manuel çekim başarısız: ${e}`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+        schedule();
       }
     }
 
