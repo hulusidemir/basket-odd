@@ -121,7 +121,7 @@ async def process_match(
         signal_count=signal_count, prematch=prematch_total,
         ai_analysis=json.dumps(analysis, ensure_ascii=False),
         alert_period=period,
-        alert_moment=status,
+        alert_moment=" | ".join(p for p in (status, score) if p),
     )
 
     log.info(

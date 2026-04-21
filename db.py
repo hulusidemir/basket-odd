@@ -137,6 +137,25 @@ class Database:
                 except Exception:
                     pass
             conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_deleted_at ON alerts(deleted_at)")
+            try:
+                conn.execute(
+                    """
+                    UPDATE alerts
+                    SET alert_moment = TRIM(
+                        CASE
+                            WHEN COALESCE(status, '') != '' AND COALESCE(score, '') != ''
+                                THEN status || ' | ' || score
+                            WHEN COALESCE(status, '') != '' THEN status
+                            WHEN COALESCE(score, '') != '' THEN score
+                            ELSE ''
+                        END
+                    )
+                    WHERE COALESCE(alert_moment, '') = ''
+                      AND TRIM(COALESCE(result, '')) = ''
+                    """
+                )
+            except Exception:
+                pass
 
     # ---------- opening line ----------
 
