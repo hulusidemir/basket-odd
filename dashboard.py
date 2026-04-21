@@ -25,6 +25,11 @@ db.init()
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
+LIVE_MATCHES_SNAPSHOT_PATH = os.getenv(
+    "LIVE_MATCHES_SNAPSHOT_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "live_matches_snapshot.json"),
+)
+
 BET_BUILDER_ALERT_WINDOW_MINUTES = 240
 
 
@@ -316,6 +321,35 @@ def index():
 @app.route("/deleted-matches")
 def deleted_matches():
     return render_template("deleted_matches.html")
+
+
+@app.route("/live-matches")
+def live_matches():
+    return render_template("live_matches.html")
+
+
+@app.route("/api/live-matches")
+def api_live_matches():
+    try:
+        with open(LIVE_MATCHES_SNAPSHOT_PATH, "r", encoding="utf-8") as fh:
+            payload = json.load(fh)
+    except FileNotFoundError:
+        payload = {
+            "generated_at": None,
+            "status": "pending",
+            "error": "Snapshot henüz oluşturulmadı. live_matches_worker.py çalıştırılıyor mu?",
+            "count": 0,
+            "matches": [],
+        }
+    except Exception as exc:
+        payload = {
+            "generated_at": None,
+            "status": "error",
+            "error": f"Snapshot okunamadı: {exc}",
+            "count": 0,
+            "matches": [],
+        }
+    return jsonify(payload)
 
 
 @app.route("/api/alerts")

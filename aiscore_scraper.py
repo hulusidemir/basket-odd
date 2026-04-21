@@ -11,10 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 class AiscoreScraper:
-    def __init__(self, aiscore_url: str, max_matches_per_cycle: int = 40, page_timeout_ms: int = 30000):
+    def __init__(self, aiscore_url: str, max_matches_per_cycle: int = 40, page_timeout_ms: int = 30000, skip_h2h: bool = False):
         self.aiscore_url = aiscore_url
         self.max_matches_per_cycle = max_matches_per_cycle
         self.page_timeout_ms = page_timeout_ms
+        self.skip_h2h = skip_h2h
 
     async def _create_browser_context(self, playwright):
         browser = await playwright.chromium.launch(
@@ -608,11 +609,11 @@ class AiscoreScraper:
 
         is_q4 = parsed.get("isQ4", False)
         remaining = parsed.get("remainingMinutes")
-        if is_q4 and remaining is not None and remaining <= 4.0:
+        if not self.skip_h2h and is_q4 and remaining is not None and remaining <= 4.0:
             logger.debug("Q4 <=4min remaining, skipping: %s (%.1f min)", url, remaining)
             return None
 
-        h2h_body = await self._fetch_h2h_body(page, url)
+        h2h_body = "" if self.skip_h2h else await self._fetch_h2h_body(page, url)
 
         match_id = self._extract_match_id(url)
         return {
