@@ -64,6 +64,8 @@ class TelegramNotifier:
         weights = analysis.get("weights") or {}
         recommendation = analysis.get("recommendation") or ""
         warnings = analysis.get("warnings") or []
+        pace_anomaly_note = analysis.get("pace_anomaly_note") or ""
+        quarter_paces = analysis.get("quarter_paces") or {}
 
         projected_line = f"Projeksiyon: <b>{float(projected):.1f}</b>\n" if projected is not None else ""
         market_line = f"Piyasa Bazı: <b>{float(market_total):.1f}</b>\n" if market_total is not None else ""
@@ -89,6 +91,16 @@ class TelegramNotifier:
             fair_icon = "🔴 ❔" if abs(fair_edge_value) > 10 else "🟡 ❔"
             fair_warning_line = f"{fair_icon} Adil barem canlı farkı: <b>{fair_edge_value:+.1f}</b>\n"
         recommendation_line = f"💡 <b>Tavsiye:</b> {recommendation}\n" if recommendation else ""
+
+        # Çeyrek hız anomali bloğu
+        pace_anomaly_line = ""
+        if pace_anomaly_note:
+            pace_anomaly_line = f"⚡ <b>Hız Anomalisi:</b> {pace_anomaly_note}\n"
+        quarter_pace_line = ""
+        if quarter_paces:
+            qp_parts = [f"Q{q}:{v:.0f}" for q, v in sorted(quarter_paces.items())]
+            quarter_pace_line = f"📈 Çeyrek hız (puan/10dk): <b>{' | '.join(qp_parts)}</b>\n"
+
         warning_line = "\n".join(f"❔ {item}" for item in warnings[:6])
         if warning_line:
             warning_line += "\n"
@@ -110,6 +122,8 @@ class TelegramNotifier:
             f"{fair_edge_line}"
             f"{weights_line}"
             f"Fark: <b>{diff:+.1f}</b> puan\n\n"
+            f"{pace_anomaly_line}"
+            f"{quarter_pace_line}"
             f"{recommendation_line}"
             f"{fair_warning_line}"
             f"{warning_line}"

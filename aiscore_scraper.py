@@ -497,23 +497,61 @@ class AiscoreScraper:
               const statusCandidates = Array.from(document.querySelectorAll('span, div'))
                 .map(e => ({el: e, txt: text(e.innerText)}))
                 .filter(({txt}) => txt.length > 0 && txt.length < 30);
+
+              // Strateji 1: "Q1 03:00" — tek element içinde birleşik
               const periodTime = statusCandidates
                 .map(({txt}) => txt)
                 .find(v => /^(Q[1-4]|[1-4]Q|OT)\s*[-\s]?\s*\d{1,2}:\d{2}$/i.test(v.trim()));
               if (periodTime) {
                 status = periodTime.trim();
-              } else {
+              }
+
+              // Strateji 2: Period ve zaman ayrı elementlerde — birleştir
+              if (!status) {
+                const periodEl = statusCandidates.find(({txt}) =>
+                  /^(Q[1-4]|[1-4]Q|HT|1st|2nd|3rd|4th)$/i.test(txt.trim())
+                );
+                const timeEl = statusCandidates.find(({txt}) =>
+                  /^\d{1,2}:\d{2}$/.test(txt.trim())
+                );
+                if (periodEl && timeEl) {
+                  status = periodEl.txt.trim() + ' ' + timeEl.txt.trim();
+                }
+              }
+
+              // Strateji 3: Zaman var ama period yok — çevreleyen DOM'da ara
+              if (!status) {
+                const timeItem = statusCandidates.find(({txt}) =>
+                  /^\d{1,2}:\d{2}$/.test(txt.trim())
+                );
+                if (timeItem) {
+                  let container2 = timeItem.el;
+                  let foundPeriod = '';
+                  for (let i = 0; i < 6; i++) {
+                    if (!container2 || !container2.parentElement) break;
+                    container2 = container2.parentElement;
+                    const ctxt = text(container2.innerText || '');
+                    const pm = ctxt.match(/\b(Q[1-4]|[1-4]Q|HT|OT|1st|2nd|3rd|4th)\b/i);
+                    if (pm) { foundPeriod = pm[0]; break; }
+                  }
+                  status = foundPeriod
+                    ? foundPeriod + ' ' + timeItem.txt.trim()
+                    : timeItem.txt.trim();
+                }
+              }
+
+              // Strateji 4: Sadece period — zaman bilinmiyor
+              if (!status) {
                 const periodOnly = statusCandidates
                   .map(({txt}) => txt)
                   .find(v => /^(Q[1-4]|[1-4]Q|OT|HT|FT|1st|2nd|3rd|4th)$/i.test(v.trim()));
-                if (periodOnly) {
-                  status = periodOnly.trim();
-                } else {
-                  const timeOnly = statusCandidates
-                    .map(({txt}) => txt)
-                    .find(v => /^\d{1,2}:\d{2}$/.test(v.trim()));
-                  if (timeOnly) status = timeOnly.trim();
-                }
+                if (periodOnly) status = periodOnly.trim();
+              }
+
+              // Strateji 5: Sayfa başlığında period ipucu
+              if (!status) {
+                const titlePm = text(document.title || '').match(/\b(Q[1-4]|[1-4]Q|HT|OT)\b/i);
+                if (titlePm) status = titlePm[0];
               }
 
               let isQ4 = /Q4|4Q|4th/i.test(status);

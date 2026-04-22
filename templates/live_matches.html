@@ -343,6 +343,8 @@
   <script>
     const REFRESH_MS = 5000;
     let refreshTimer = null;
+    let lastGeneratedAt = null;
+    let fastPollTimer = null;
 
     function escapeHtml(text) {
       return String(text ?? '').replace(/[&<>"']/g, (c) => ({
@@ -392,6 +394,7 @@
     }
 
     function render(payload) {
+      if (payload.generated_at) lastGeneratedAt = payload.generated_at;
       const matches = Array.isArray(payload.matches) ? payload.matches : [];
       const body = document.getElementById('matchesBody');
 
@@ -472,10 +475,12 @@
         const res = await fetch('/api/live-matches', { cache: 'no-store' });
         const payload = await res.json();
         render(payload);
+        return payload.generated_at || null;
       } catch (e) {
         const errorBanner = document.getElementById('errorBanner');
         errorBanner.style.display = 'block';
         errorBanner.textContent = `Snapshot yüklenemedi: ${e}`;
+        return null;
       }
     }
 
@@ -484,24 +489,48 @@
       const originalText = btn.textContent;
       const errorBanner = document.getElementById('errorBanner');
       btn.disabled = true;
-      btn.textContent = 'Çekiliyor…';
+      btn.textContent = 'Başlatılıyor…';
+      errorBanner.style.display = 'none';
       if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+      if (fastPollTimer) { clearInterval(fastPollTimer); fastPollTimer = null; }
+
       try {
+        const snapshotBefore = lastGeneratedAt;
         const res = await fetch('/api/live-matches/refresh', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           cache: 'no-store',
         });
-        const payload = await res.json();
-        if (!res.ok) {
+        // Server returns 202 immediately — start fast polling for snapshot update
+        if (res.status === 202 || res.ok) {
+          btn.textContent = 'Güncelleniyor…';
+          let elapsed = 0;
+          fastPollTimer = setInterval(async () => {
+            elapsed += 2;
+            const genAt = await loadSnapshot();
+            if ((genAt && genAt !== snapshotBefore) || elapsed >= 120) {
+              clearInterval(fastPollTimer);
+              fastPollTimer = null;
+              btn.disabled = false;
+              btn.textContent = originalText;
+              if (elapsed >= 120) {
+                errorBanner.style.display = 'block';
+                errorBanner.textContent = 'Veri çekme zaman aşımına uğradı. Worker çalışıyor mu?';
+              }
+              schedule();
+            }
+          }, 2000);
+        } else {
+          const payload = await res.json().catch(() => ({}));
           errorBanner.style.display = 'block';
           errorBanner.textContent = payload.error || `Manuel çekim başarısız (${res.status}).`;
+          btn.disabled = false;
+          btn.textContent = originalText;
+          schedule();
         }
-        render(payload);
       } catch (e) {
         errorBanner.style.display = 'block';
         errorBanner.textContent = `Manuel çekim başarısız: ${e}`;
-      } finally {
         btn.disabled = false;
         btn.textContent = originalText;
         schedule();

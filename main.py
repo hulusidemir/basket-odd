@@ -16,7 +16,8 @@ from aiscore_scraper import AiscoreScraper
 from config import Config
 from db import Database
 from notifier import TelegramNotifier
-from projection import game_clock
+from pace_tracker import PaceTracker
+from projection import game_clock, parse_score
 from signal_analysis import build_signal_analysis
 
 
@@ -33,6 +34,7 @@ async def process_match(
     db: Database,
     notifier: TelegramNotifier,
     config: Config,
+    pace_tracker: PaceTracker | None = None,
 ) -> None:
     match_id = match["match_id"]
     match_name = match["match_name"]
@@ -66,6 +68,15 @@ async def process_match(
     if period == 1 and remaining_min is not None and (quarter_length - remaining_min) < 4:
         log.debug("Skipped (Q1 first 4:00 — pace unstable): %s", match_name)
         return
+
+    # Çeyrek hız takibini güncelle
+    pace_data: dict | None = None
+    if pace_tracker is not None and period is not None:
+        home_score, away_score = parse_score(match.get("score", ""))
+        if home_score is not None and away_score is not None:
+            pace_data = pace_tracker.update(
+                match_id, period, home_score + away_score, quarter_length
+            )
 
     if config.BLACKLIST:
         check_text = f"{match_name} {tournament} {url}".lower()
@@ -108,6 +119,7 @@ async def process_match(
         },
         context,
         config.THRESHOLD,
+        pace_data=pace_data,
     )
 
     await notifier.send_alert(
@@ -150,6 +162,7 @@ async def run():
         max_matches_per_cycle=config.MAX_MATCHES_PER_CYCLE,
         page_timeout_ms=config.PAGE_TIMEOUT_MS,
     )
+    pace_tracker = PaceTracker()
 
     await notifier.send_startup()
     log.info(
@@ -166,7 +179,7 @@ async def run():
             log.info("Captured opening/in-play totals for %s matches.", len(matches))
 
             for match in matches:
-                await process_match(match, db, notifier, config)
+                await process_match(match, db, notifier, config, pace_tracker)
 
             consecutive_errors = 0
 

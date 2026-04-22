@@ -274,8 +274,14 @@ def _market_total(match: dict, opening: float) -> float | None:
 
 def _fair_weight_profile(status: str, match_name: str, tournament: str) -> dict:
     # Erken periyotta pace numunesi küçük, projeksiyon varyansı çok yüksek.
-    # Bu yüzden Q1'de piyasa ağırlıklı, Q4'te pace ağırlıklı kalıyoruz.
+    # Q1'de piyasa ağırlıklı, Q4'te pace ağırlıklı kalıyoruz.
+    # "Live" statüsünde çeyrek bilinmiyor: projeksiyon tahmini güvenilirliği düşük.
     period = game_clock(status, match_name, tournament)["period"]
+    is_live_unknown = (period is None) and re.match(
+        r"^live\b", (status or "").strip(), re.IGNORECASE
+    )
+    if is_live_unknown:
+        return {"projection": 20, "market": 55, "team_recent": 15, "h2h": 10}
     if period == 1:
         return {"projection": 15, "market": 60, "team_recent": 15, "h2h": 10}
     if period == 2:
@@ -314,15 +320,33 @@ def _weighted_fair_line(components: dict, base_weights: dict) -> tuple[float | N
     return round(fair_line, 1), _normalize_weights(active_weights)
 
 
-def _pace_note(projected_total: float | None, live: float) -> str:
+def _pace_note(projected_total: float | None, live: float, pace_data: dict | None = None) -> str:
+    """
+    Maç hızını yorumlar. Regresyon uygulanmış projeksiyon kullanır:
+    Q1/Q2'deki yüksek tempo doğrusal değil, ortalamaya dönüş varsayımıyla hesaplanır.
+    pace_data sağlanmışsa çeyrek bazlı anomali notu da eklenir.
+    """
+    anomaly_note = (pace_data or {}).get("pace_note", "")
+
     if projected_total is None:
-        return "Maç içi projeksiyon hesaplanamadı; pace yorumu sınırlı."
+        base = "Maç içi projeksiyon hesaplanamadı (çeyrek bilgisi yok); pace yorumu sınırlı."
+        return f"{base} {anomaly_note}".strip() if anomaly_note else base
+
     gap = round(projected_total - live, 1)
     if gap >= 6:
-        return f"Maç hızlı gidiyor: mevcut tempo {projected_total:.1f} final gösteriyor, canlı baremin {gap:.1f} üstü."
-    if gap <= -6:
-        return f"Maç yavaş gidiyor: mevcut tempo {projected_total:.1f} final gösteriyor, canlı baremin {abs(gap):.1f} altı."
-    return f"Pace nötr: mevcut tempo {projected_total:.1f}, canlı bareme yakın."
+        base = (
+            f"Maç hızlı gidiyor: regresyonlu tempo {projected_total:.1f} final gösteriyor, "
+            f"canlı baremin {gap:.1f} üstü → ALT baskısı."
+        )
+    elif gap <= -6:
+        base = (
+            f"Maç yavaş gidiyor: regresyonlu tempo {projected_total:.1f} final gösteriyor, "
+            f"canlı baremin {abs(gap):.1f} altı → ÜST baskısı."
+        )
+    else:
+        base = f"Pace nötr: regresyonlu tempo {projected_total:.1f}, canlı bareme yakın."
+
+    return f"{base} {anomaly_note}".strip() if anomaly_note else base
 
 
 def _script_pace_adjustment(score: str, status: str, match_name: str, tournament: str) -> float:
@@ -364,7 +388,12 @@ def _script_warning(score: str, status: str, match_name: str, tournament: str) -
     return "Maç scriptinde belirgin ekstra risk yok."
 
 
-def build_signal_analysis(match: dict, context: dict | None = None, threshold: float = 0) -> dict:
+def build_signal_analysis(
+    match: dict,
+    context: dict | None = None,
+    threshold: float = 0,
+    pace_data: dict | None = None,
+) -> dict:
     context = context or {}
     opening = float(match.get("opening_total", match.get("opening")))
     live = float(match.get("inplay_total", match.get("live")))
@@ -409,10 +438,23 @@ def build_signal_analysis(match: dict, context: dict | None = None, threshold: f
         if history_total is not None
         else "H2H ve son maçlardan adil toplam çıkarılamadı."
     )
-    pace = _pace_note(projected_total, live)
+    pace = _pace_note(projected_total, live, pace_data)
     script = _script_warning(score, status, match_name, tournament)
 
+    # Çeyrek hız anomalisi uyarısı
+    pace_anomaly_direction = (pace_data or {}).get("anomaly_direction")
+    pace_anomaly_pct = (pace_data or {}).get("anomaly_pct")
+    quarter_paces = (pace_data or {}).get("quarter_paces", {})
+    pace_anomaly_note = ""
+    if pace_anomaly_direction and pace_anomaly_pct is not None:
+        pace_anomaly_note = (
+            f"Çeyrek hız anomalisi (%{abs(int(pace_anomaly_pct))} sapma): "
+            f"ortalamaya dönüş {pace_anomaly_direction} tarafını destekler."
+        )
+
     warnings = [h2h_note, history_note, pace, script]
+    if pace_anomaly_note:
+        warnings.insert(0, pace_anomaly_note)
     if abs(line_delta_open) >= 20:
         warnings.append(f"Açılış-canlı farkı çok yüksek ({line_delta_open:+.1f}); bu bölge ekstra riskli.")
     if fair_edge is not None and abs(fair_edge) <= 3:
@@ -457,4 +499,8 @@ def build_signal_analysis(match: dict, context: dict | None = None, threshold: f
         "summary": summary,
         "team_context": team_context,
         "threshold": threshold,
+        "pace_anomaly_direction": pace_anomaly_direction,
+        "pace_anomaly_pct": pace_anomaly_pct,
+        "quarter_paces": quarter_paces,
+        "pace_anomaly_note": pace_anomaly_note,
     }

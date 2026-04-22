@@ -17,6 +17,7 @@ from datetime import datetime
 
 from aiscore_scraper import AiscoreScraper
 from config import Config
+from pace_tracker import PaceTracker
 from projection import calculate_projected_total, game_clock, parse_score
 from signal_analysis import build_signal_analysis
 
@@ -64,13 +65,27 @@ def _clean_match_name(name: str) -> str:
     return cleaned.strip()
 
 
-def build_live_row(match: dict) -> dict:
+def build_live_row(match: dict, pace_tracker: PaceTracker | None = None) -> dict:
     match_name = _clean_match_name(match.get("match_name") or "")
     tournament = match.get("tournament") or ""
     status = match.get("status") or ""
     score = match.get("score") or ""
     opening = float(match.get("opening_total") or 0.0)
     live = float(match.get("inplay_total") or 0.0)
+
+    # Çeyrek hız takibini güncelle
+    pace_data: dict | None = None
+    clock = game_clock(status, match_name, tournament)
+    period_now = clock.get("period")
+    if pace_tracker is not None and period_now is not None:
+        home_sc, away_sc = parse_score(score)
+        if home_sc is not None and away_sc is not None:
+            pace_data = pace_tracker.update(
+                match.get("match_id", ""),
+                period_now,
+                home_sc + away_sc,
+                clock.get("quarter_length", 10),
+            )
 
     analysis = build_signal_analysis(
         {
@@ -81,12 +96,11 @@ def build_live_row(match: dict) -> dict:
         },
         context={"h2h": {"body_text": ""}},
         threshold=0,
+        pace_data=pace_data,
     )
 
     projected = calculate_projected_total(score, status, match_name, tournament)
     home_score, away_score = parse_score(score)
-
-    clock = game_clock(status, match_name, tournament)
 
     return {
         "match_id": match.get("match_id"),
@@ -130,7 +144,11 @@ def write_snapshot(path: str, payload: dict) -> None:
         raise
 
 
-async def run_single_cycle(scraper: AiscoreScraper, snapshot_path: str = SNAPSHOT_PATH) -> dict:
+async def run_single_cycle(
+    scraper: AiscoreScraper,
+    snapshot_path: str = SNAPSHOT_PATH,
+    pace_tracker: PaceTracker | None = None,
+) -> dict:
     cycle_started = datetime.utcnow()
     status = "ok"
     error_message = ""
@@ -140,7 +158,7 @@ async def run_single_cycle(scraper: AiscoreScraper, snapshot_path: str = SNAPSHO
         matches = await scraper.get_live_basketball_totals()
         for match in matches:
             try:
-                rows.append(build_live_row(match))
+                rows.append(build_live_row(match, pace_tracker))
             except Exception as exc:
                 logger.debug("Row build failed for %s: %s", match.get("match_id"), exc)
 
@@ -196,6 +214,7 @@ async def run_worker():
     setup_logging(config.LOG_LEVEL)
 
     scraper = build_default_scraper()
+    pace_tracker = PaceTracker()
 
     logger.info(
         "Live matches worker started. snapshot=%s min_cycle=%ss",
@@ -205,7 +224,7 @@ async def run_worker():
     while True:
         cycle_started = datetime.utcnow()
         try:
-            await run_single_cycle(scraper, SNAPSHOT_PATH)
+            await run_single_cycle(scraper, SNAPSHOT_PATH, pace_tracker)
         except KeyboardInterrupt:
             logger.info("Live matches worker stopped.")
             break

@@ -10,8 +10,10 @@ import asyncio
 import csv
 import io
 import json
+import logging
 import os
 import re
+import threading
 from datetime import datetime, timedelta
 from flask import Flask, Response, jsonify, render_template, request
 from db import Database
@@ -31,6 +33,10 @@ LIVE_MATCHES_SNAPSHOT_PATH = os.getenv(
 )
 
 BET_BUILDER_ALERT_WINDOW_MINUTES = 240
+
+_refresh_lock = threading.Lock()
+_refresh_running = threading.Event()
+_refresh_last_error: str = ""
 
 
 def _parse_analysis(raw) -> dict:
@@ -354,18 +360,34 @@ def api_live_matches():
 
 @app.route("/api/live-matches/refresh", methods=["POST"])
 def api_live_matches_refresh():
+    global _refresh_last_error
     from live_matches_worker import run_manual_cycle
 
-    try:
-        payload = asyncio.run(run_manual_cycle(LIVE_MATCHES_SNAPSHOT_PATH))
-    except Exception as exc:
-        return jsonify({
-            "status": "error",
-            "error": f"Manuel çevrim başarısız: {exc}",
-            "count": 0,
-            "matches": [],
-        }), 500
-    return jsonify(payload)
+    if _refresh_running.is_set():
+        return jsonify({"status": "refreshing", "message": "Çekim zaten devam ediyor…"}), 202
+
+    def _bg():
+        global _refresh_last_error
+        _refresh_running.set()
+        _refresh_last_error = ""
+        try:
+            asyncio.run(run_manual_cycle(LIVE_MATCHES_SNAPSHOT_PATH))
+        except Exception as exc:
+            _refresh_last_error = str(exc)
+            logging.getLogger("dashboard").error("Manual refresh error: %s", exc, exc_info=True)
+        finally:
+            _refresh_running.clear()
+
+    threading.Thread(target=_bg, daemon=True).start()
+    return jsonify({"status": "refreshing", "message": "Veri çekme başlatıldı…"}), 202
+
+
+@app.route("/api/live-matches/refresh-status")
+def api_live_matches_refresh_status():
+    return jsonify({
+        "running": _refresh_running.is_set(),
+        "last_error": _refresh_last_error,
+    })
 
 
 @app.route("/api/alerts")
