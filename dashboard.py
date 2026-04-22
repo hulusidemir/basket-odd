@@ -343,7 +343,7 @@ def api_live_matches():
         payload = {
             "generated_at": None,
             "status": "pending",
-            "error": "Snapshot henüz oluşturulmadı. live_matches_worker.py çalıştırılıyor mu?",
+            "error": "Henüz veri yok. Manuel Çek butonuna tıklayın.",
             "count": 0,
             "matches": [],
         }

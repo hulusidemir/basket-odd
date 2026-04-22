@@ -279,7 +279,6 @@
         <span class="btn primary">Canlı Maçlar</span>
         <a href="/deleted-matches" class="btn">Silinen</a>
         <a href="/bankroll" class="btn">Bankroll</a>
-        <button class="btn" onclick="loadSnapshot()">Yenile</button>
         <button class="btn primary" id="manualFetchBtn" onclick="manualFetch()">Manuel Çek</button>
       </div>
     </header>
@@ -341,8 +340,6 @@
   </div>
 
   <script>
-    const REFRESH_MS = 5000;
-    let refreshTimer = null;
     let lastGeneratedAt = null;
     let fastPollTimer = null;
 
@@ -441,7 +438,7 @@
       if (!matches.length) {
         body.innerHTML = `<tr><td colspan="8" class="empty-state">
           <h3>Canlı maç bulunamadı</h3>
-          <p>Worker çalışıyor mu kontrol et: <code>python live_matches_worker.py</code></p>
+          <p>Veri çekmek için yukarıdaki <strong>Manuel Çek</strong> butonuna tıklayın.</p>
         </td></tr>`;
         return;
       }
@@ -491,7 +488,6 @@
       btn.disabled = true;
       btn.textContent = 'Başlatılıyor…';
       errorBanner.style.display = 'none';
-      if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
       if (fastPollTimer) { clearInterval(fastPollTimer); fastPollTimer = null; }
 
       try {
@@ -515,9 +511,8 @@
               btn.textContent = originalText;
               if (elapsed >= 120) {
                 errorBanner.style.display = 'block';
-                errorBanner.textContent = 'Veri çekme zaman aşımına uğradı. Worker çalışıyor mu?';
+                errorBanner.textContent = 'Veri çekme zaman aşımına uğradı, tekrar deneyin.';
               }
-              schedule();
             }
           }, 2000);
         } else {
@@ -526,34 +521,17 @@
           errorBanner.textContent = payload.error || `Manuel çekim başarısız (${res.status}).`;
           btn.disabled = false;
           btn.textContent = originalText;
-          schedule();
         }
       } catch (e) {
         errorBanner.style.display = 'block';
         errorBanner.textContent = `Manuel çekim başarısız: ${e}`;
         btn.disabled = false;
         btn.textContent = originalText;
-        schedule();
       }
-    }
-
-    function schedule() {
-      if (refreshTimer) clearInterval(refreshTimer);
-      refreshTimer = setInterval(loadSnapshot, REFRESH_MS);
     }
 
     document.addEventListener('DOMContentLoaded', () => {
       loadSnapshot();
-      schedule();
-    });
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
-      } else {
-        loadSnapshot();
-        schedule();
-      }
     });
   </script>
 </body>

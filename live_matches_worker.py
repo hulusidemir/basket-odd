@@ -1,13 +1,9 @@
 """
-live_matches_worker.py — AIScore anasayfasindaki tum canli maclari periyodik
-olarak tarar ve her macin acilis/canli/adil/projeksiyon bilgilerini JSON
-snapshot dosyasina yazar. Dashboard bu snapshot'i 5 saniyede bir okur.
-
-Usage:
-    python live_matches_worker.py
+live_matches_worker.py — Dashboard'daki "Manuel Çek" butonu için tek seferlik
+canlı maç çekim fonksiyonlarını barındırır. Artık sürekli çalışan bir servis
+değildir; sadece manuel tetikleme ile çalışır.
 """
 
-import asyncio
 import json
 import logging
 import os
@@ -28,14 +24,6 @@ SNAPSHOT_PATH = os.getenv(
     "LIVE_MATCHES_SNAPSHOT_PATH",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "live_matches_snapshot.json"),
 )
-MIN_CYCLE_SECONDS = int(os.getenv("LIVE_MATCHES_MIN_CYCLE_SECONDS", "5"))
-
-
-def setup_logging(level: str):
-    logging.basicConfig(
-        level=getattr(logging, level.upper(), logging.INFO),
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    )
 
 
 def _period_label(status: str, match_name: str, tournament: str) -> str:
@@ -73,7 +61,6 @@ def build_live_row(match: dict, pace_tracker: PaceTracker | None = None) -> dict
     opening = float(match.get("opening_total") or 0.0)
     live = float(match.get("inplay_total") or 0.0)
 
-    # Çeyrek hız takibini güncelle
     pace_data: dict | None = None
     clock = game_clock(status, match_name, tournament)
     period_now = clock.get("period")
@@ -205,35 +192,5 @@ def build_default_scraper() -> AiscoreScraper:
 
 
 async def run_manual_cycle(snapshot_path: str = SNAPSHOT_PATH) -> dict:
-    """Dashboard'un manuel tetiklemesi icin tek seferlik cevrim."""
+    """Dashboard'un manuel tetiklemesi için tek seferlik çevrim."""
     return await run_single_cycle(build_default_scraper(), snapshot_path)
-
-
-async def run_worker():
-    config = Config()
-    setup_logging(config.LOG_LEVEL)
-
-    scraper = build_default_scraper()
-    pace_tracker = PaceTracker()
-
-    logger.info(
-        "Live matches worker started. snapshot=%s min_cycle=%ss",
-        SNAPSHOT_PATH, MIN_CYCLE_SECONDS,
-    )
-
-    while True:
-        cycle_started = datetime.utcnow()
-        try:
-            await run_single_cycle(scraper, SNAPSHOT_PATH, pace_tracker)
-        except KeyboardInterrupt:
-            logger.info("Live matches worker stopped.")
-            break
-
-        elapsed = (datetime.utcnow() - cycle_started).total_seconds()
-        sleep_for = max(MIN_CYCLE_SECONDS - elapsed, 0)
-        if sleep_for > 0:
-            await asyncio.sleep(sleep_for)
-
-
-if __name__ == "__main__":
-    asyncio.run(run_worker())
