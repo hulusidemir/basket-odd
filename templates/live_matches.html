@@ -297,25 +297,6 @@
 
         <div id="errorBanner" class="error-banner" style="display:none;"></div>
 
-        <div class="stats">
-          <div class="stat-chip">
-            <span class="stat-label">Canlı Maç</span>
-            <strong class="stat-value" id="statTotal">0</strong>
-          </div>
-          <div class="stat-chip">
-            <span class="stat-label">Üst Taraf Değer</span>
-            <strong class="stat-value" id="statUst">0</strong>
-          </div>
-          <div class="stat-chip">
-            <span class="stat-label">Alt Taraf Değer</span>
-            <strong class="stat-value" id="statAlt">0</strong>
-          </div>
-          <div class="stat-chip">
-            <span class="stat-label">Kilitli Barem</span>
-            <strong class="stat-value" id="statLocked">0</strong>
-          </div>
-        </div>
-
         <div class="table-wrap">
           <table>
             <thead>
@@ -325,13 +306,10 @@
                 <th>Skor</th>
                 <th style="text-align:right;">Açılış</th>
                 <th style="text-align:right;">Canlı</th>
-                <th style="text-align:right;">Adil</th>
-                <th style="text-align:right;">Projeksiyon</th>
-                <th>Değer</th>
               </tr>
             </thead>
             <tbody id="matchesBody">
-              <tr><td colspan="8" class="empty-state">Veri bekleniyor…</td></tr>
+              <tr><td colspan="5" class="empty-state">Veri bekleniyor…</td></tr>
             </tbody>
           </table>
         </div>
@@ -356,40 +334,6 @@
       return n.toFixed(digits);
     }
 
-    function formatDelta(a, b) {
-      if (a === null || a === undefined || b === null || b === undefined) return '';
-      const d = Number(a) - Number(b);
-      if (!Number.isFinite(d)) return '';
-      if (Math.abs(d) < 0.05) return '<span style="color:var(--text-dim)">±0.0</span>';
-      const cls = d > 0 ? 'delta-up' : 'delta-down';
-      const sign = d > 0 ? '+' : '';
-      return `<span class="${cls}">${sign}${d.toFixed(1)}</span>`;
-    }
-
-    function statusClass(label, period) {
-      const lower = (label || '').toLowerCase();
-      if (lower.includes('devre') || lower.includes('ht')) return 'ht';
-      if (period === 4) return 'q4';
-      return '';
-    }
-
-    function buildValueBadge(row) {
-      if (row.market_locked) {
-        return '<span class="badge lock">Kilitli</span>';
-      }
-      const fair = row.fair_line;
-      const live = row.inplay_total;
-      if (fair === null || fair === undefined || live === null || live === undefined) {
-        return '<span style="color:var(--text-dim)">-</span>';
-      }
-      const edge = Number(fair) - Number(live);
-      if (!Number.isFinite(edge)) return '<span style="color:var(--text-dim)">-</span>';
-      if (Math.abs(edge) < 2) return '<span class="badge lock">Nötr</span>';
-      return edge > 0
-        ? `<span class="badge ust">ÜST değer +${edge.toFixed(1)}</span>`
-        : `<span class="badge alt">ALT değer ${edge.toFixed(1)}</span>`;
-    }
-
     function render(payload) {
       if (payload.generated_at) lastGeneratedAt = payload.generated_at;
       const matches = Array.isArray(payload.matches) ? payload.matches : [];
@@ -402,20 +346,6 @@
       } else {
         errorBanner.style.display = 'none';
       }
-
-      document.getElementById('statTotal').textContent = matches.length;
-      document.getElementById('statLocked').textContent = matches.filter(m => m.market_locked).length;
-
-      let countUst = 0, countAlt = 0;
-      matches.forEach(m => {
-        if (m.market_locked || m.fair_line === null || m.inplay_total === null) return;
-        const edge = Number(m.fair_line) - Number(m.inplay_total);
-        if (!Number.isFinite(edge)) return;
-        if (edge >= 2) countUst += 1;
-        else if (edge <= -2) countAlt += 1;
-      });
-      document.getElementById('statUst').textContent = countUst;
-      document.getElementById('statAlt').textContent = countAlt;
 
       document.getElementById('matchCount').textContent = matches.length;
       document.getElementById('liveStatus').textContent =
@@ -436,7 +366,7 @@
           : '-';
 
       if (!matches.length) {
-        body.innerHTML = `<tr><td colspan="8" class="empty-state">
+        body.innerHTML = `<tr><td colspan="5" class="empty-state">
           <h3>Canlı maç bulunamadı</h3>
           <p>Veri çekmek için yukarıdaki <strong>Manuel Çek</strong> butonuna tıklayın.</p>
         </td></tr>`;
@@ -444,7 +374,6 @@
       }
 
       body.innerHTML = matches.map(m => {
-        const statusCls = statusClass(m.status_label, m.period);
         const matchLink = m.url
           ? `<a class="match-name" href="${escapeHtml(m.url)}" target="_blank" rel="noopener">${escapeHtml(m.match_name)}</a>`
           : `<span class="match-name">${escapeHtml(m.match_name)}</span>`;
@@ -455,13 +384,10 @@
               ${matchLink}
               <span class="tournament">${escapeHtml(m.tournament)}</span>
             </td>
-            <td><span class="status-pill-cell ${statusCls}">${escapeHtml(m.status_label || m.status_raw || '-')}</span></td>
+            <td><span class="status-pill-cell">${escapeHtml(m.status || '-')}</span></td>
             <td style="font-weight:700;">${escapeHtml(m.score || '-')}</td>
             <td class="num-cell">${formatNumber(m.opening_total)}</td>
-            <td class="num-cell live">${formatNumber(m.inplay_total)} ${formatDelta(m.inplay_total, m.opening_total)}</td>
-            <td class="num-cell fair">${formatNumber(m.fair_line)}</td>
-            <td class="num-cell projection">${formatNumber(m.projected_total)}</td>
-            <td>${buildValueBadge(m)}</td>
+            <td class="num-cell live">${formatNumber(m.inplay_total)}</td>
           </tr>
         `;
       }).join('');

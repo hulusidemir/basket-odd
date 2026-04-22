@@ -634,10 +634,6 @@ class AiscoreScraper:
             logger.debug("Skipping finished match: %s (status=%s)", url, status)
             return None
 
-        if not re.search(r"(?i)(Q[1-4]|[1-4]Q|OT|HT|1st|2nd|3rd|4th)", status or ""):
-            logger.debug("Skipping match without parseable period: %s (status=%r)", url, status)
-            return None
-
         opening = parsed.get("opening")
         inplay = parsed.get("inplay")
         prematch = parsed.get("prematch")
