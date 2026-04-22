@@ -634,6 +634,10 @@ class AiscoreScraper:
             logger.debug("Skipping finished match: %s (status=%s)", url, status)
             return None
 
+        if not re.search(r"(?i)(Q[1-4]|[1-4]Q|OT|HT|1st|2nd|3rd|4th)", status or ""):
+            logger.debug("Skipping match without parseable period: %s (status=%r)", url, status)
+            return None
+
         opening = parsed.get("opening")
         inplay = parsed.get("inplay")
         prematch = parsed.get("prematch")
@@ -658,7 +662,7 @@ class AiscoreScraper:
             "match_id": match_id,
             "match_name": parsed.get("matchName") or f"Match {match_id}",
             "tournament": parsed.get("tournament") or "Unknown",
-            "status": parsed.get("status") or "Live",
+            "status": parsed.get("status"),
             "opening_total": float(opening),
             "prematch_total": float(prematch) if prematch is not None else None,
             "inplay_total": float(inplay),
