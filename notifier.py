@@ -86,10 +86,17 @@ class TelegramNotifier:
         ]
         weights_line = f"Ağırlık: <b>{' / '.join(weight_parts)}</b>\n" if weight_parts else ""
         fair_warning_line = ""
+        fair_alert_line = ""
         if fair_edge is not None:
             fair_edge_value = float(fair_edge)
-            fair_icon = "🔴 ❔" if abs(fair_edge_value) > 10 else "🟡 ❔"
+            fair_edge_abs = abs(fair_edge_value)
+            fair_icon = "🔴 ❔" if fair_edge_abs > 10 else "🟡 ❔"
             fair_warning_line = f"{fair_icon} Adil barem canlı farkı: <b>{fair_edge_value:+.1f}</b>\n"
+            if 5 <= fair_edge_abs <= 20:
+                fair_alert_line = (
+                    f"⚠️ <b>UYARI!!!</b> Canlı ile Adil barem arasında "
+                    f"<b>{fair_edge_abs:.1f}</b> puan fark var.\n"
+                )
         recommendation_line = f"💡 <b>Tavsiye:</b> {recommendation}\n" if recommendation else ""
 
         # Çeyrek hız anomali bloğu
@@ -126,6 +133,7 @@ class TelegramNotifier:
             f"{quarter_pace_line}"
             f"{recommendation_line}"
             f"{fair_warning_line}"
+            f"{fair_alert_line}"
             f"{warning_line}"
             f"💡 <i>{tip}</i>\n"
         )

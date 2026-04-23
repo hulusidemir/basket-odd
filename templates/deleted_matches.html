@@ -561,6 +561,14 @@
       filter: brightness(1.08);
     }
 
+    .fair-edge-alert {
+      color: #ef4444;
+      font-weight: 900;
+      letter-spacing: 1px;
+      margin-left: 4px;
+      text-shadow: 0 0 6px rgba(239, 68, 68, 0.55);
+    }
+
     .badge {
       display: inline-flex;
       align-items: center;
@@ -1448,6 +1456,14 @@
       return `<button class="badge ${cls} signal-open-btn" type="button" title="Sinyal bilgilerini aç" onclick="openSignalInfo(${Number(alert.id || 0)})">${escapeHtml(direction)}</button>`;
     }
 
+    function fairEdgeAlertHtml(alert) {
+      const edge = fairEdgeValue(alert);
+      if (edge === null) return '';
+      const abs = Math.abs(edge);
+      if (abs < 5 || abs > 20) return '';
+      return `<span class="fair-edge-alert" title="Canlı ile Adil barem arasında ${abs.toFixed(1)} puan fark var">!!!</span>`;
+    }
+
     function fairLineCell(alert) {
       const fair = fairLineValue(alert);
       const edge = fairEdgeValue(alert);
@@ -1458,7 +1474,7 @@
         recommendation,
       ].filter(Boolean).join(' · ');
       const info = `<button class="fair-info-dot ${fairInfoClass(alert)}" type="button" title="${escapeHtml(detail || 'Sinyal bilgilerini aç')}" aria-label="Sinyal bilgilerini aç" onclick="openSignalInfo(${Number(alert.id || 0)})">?</button>`;
-      return `<span class="fair-line-cell"><span class="mono">${fairLabel}</span>${info}</span>`;
+      return `<span class="fair-line-cell"><span class="mono">${fairLabel}</span>${fairEdgeAlertHtml(alert)}${info}</span>`;
     }
 
     function modalListItem(key, value) {

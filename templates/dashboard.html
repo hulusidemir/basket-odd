@@ -783,6 +783,14 @@
       filter: brightness(1.08);
     }
 
+    .fair-edge-alert {
+      color: #ef4444;
+      font-weight: 900;
+      letter-spacing: 1px;
+      margin-left: 4px;
+      text-shadow: 0 0 6px rgba(239, 68, 68, 0.55);
+    }
+
     .card-fair-inline {
       display: inline-flex;
       align-items: center;
@@ -2265,13 +2273,21 @@
       return `<button class="badge ${dirClass} signal-open-btn" type="button" title="Sinyal bilgilerini aç" onclick="openSignalInfoModal(${Number(alert.id || 0)})">${escapeHtml(label)}</button>`;
     }
 
+    function fairEdgeAlertHtml(a) {
+      const edge = Number(a.fair_edge);
+      if (!Number.isFinite(edge)) return '';
+      const abs = Math.abs(edge);
+      if (abs < 5 || abs > 20) return '';
+      return `<span class="fair-edge-alert" title="Canlı ile Adil barem arasında ${abs.toFixed(1)} puan fark var">!!!</span>`;
+    }
+
     function fairLineHtml(a) {
       const fair = Number(a.fair_line);
       const fairText = Number.isFinite(fair) ? fair.toFixed(1) : '-';
       return `
         <div class="quality-cell">
           <div class="quality-row">
-            <span class="badge badge-quality-c quality-badge" title="Adil barem">${fairText}</span>
+            <span class="badge badge-quality-c quality-badge" title="Adil barem">${fairText}</span>${fairEdgeAlertHtml(a)}
             ${fairWarningButtonHtml(a)}
           </div>
         </div>
@@ -2306,7 +2322,7 @@
     function cardFairLineHtml(a) {
       const fair = Number(a.fair_line);
       const fairText = Number.isFinite(fair) ? fair.toFixed(1) : '-';
-      return `<span class="card-fair-inline"><span>${fairText}</span>${fairWarningButtonHtml(a)}</span>`;
+      return `<span class="card-fair-inline"><span>${fairText}</span>${fairEdgeAlertHtml(a)}${fairWarningButtonHtml(a)}</span>`;
     }
 
     function modalListItem(key, value) {
