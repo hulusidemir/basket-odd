@@ -61,6 +61,13 @@ async def process_match(
     remaining_min = clock["remaining_min"]
     quarter_length = clock["quarter_length"]
 
+    if period is None:
+        log.info(
+            "Skipped (çeyrek bilgisi okunamadı): %s | status=%r | score=%r",
+            match_name, status, score,
+        )
+        return
+
     if period == 4 and remaining_min is not None and remaining_min < 5:
         log.debug("Skipped (Q4 under 5:00): %s", match_name)
         return
