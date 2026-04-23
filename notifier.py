@@ -93,10 +93,21 @@ class TelegramNotifier:
             fair_icon = "🔴 ❔" if fair_edge_abs > 10 else "🟡 ❔"
             fair_warning_line = f"{fair_icon} Adil barem canlı farkı: <b>{fair_edge_value:+.1f}</b>\n"
             if 5 <= fair_edge_abs <= 20:
-                fair_alert_line = (
-                    f"⚠️ <b>UYARI!!!</b> Canlı ile Adil barem arasında "
-                    f"<b>{fair_edge_abs:.1f}</b> puan fark var.\n"
+                aligned = (
+                    (direction == "ALT" and fair_edge_value < 0)
+                    or (direction == "UST" and fair_edge_value > 0)
+                    or (direction == "ÜST" and fair_edge_value > 0)
                 )
+                if aligned:
+                    fair_alert_line = (
+                        f"✅ <b>DEĞERLİ SİNYAL:</b> Adil barem {direction} yönünü destekliyor "
+                        f"(fark {fair_edge_abs:.1f}).\n"
+                    )
+                else:
+                    fair_alert_line = (
+                        f"⚠️ <b>TUZAK UYARISI:</b> Adil barem {direction} sinyalinin TERSİNİ söylüyor "
+                        f"(fark {fair_edge_abs:.1f}). Bu sinyali atlamayı düşün.\n"
+                    )
         recommendation_line = f"💡 <b>Tavsiye:</b> {recommendation}\n" if recommendation else ""
 
         # Çeyrek hız anomali bloğu

@@ -784,11 +784,28 @@
     }
 
     .fair-edge-alert {
-      color: #ef4444;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
       font-weight: 900;
-      letter-spacing: 1px;
+      font-size: 11px;
+      letter-spacing: 0.5px;
       margin-left: 4px;
-      text-shadow: 0 0 6px rgba(239, 68, 68, 0.55);
+      padding: 2px 6px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+    }
+    .fair-edge-alert.align {
+      color: #bbf7d0;
+      border-color: rgba(34, 197, 94, 0.45);
+      background: rgba(34, 197, 94, 0.14);
+      text-shadow: 0 0 4px rgba(34, 197, 94, 0.35);
+    }
+    .fair-edge-alert.contra {
+      color: #fecaca;
+      border-color: rgba(239, 68, 68, 0.5);
+      background: rgba(239, 68, 68, 0.15);
+      text-shadow: 0 0 4px rgba(239, 68, 68, 0.45);
     }
 
     .card-fair-inline {
@@ -2278,7 +2295,15 @@
       if (!Number.isFinite(edge)) return '';
       const abs = Math.abs(edge);
       if (abs < 5 || abs > 20) return '';
-      return `<span class="fair-edge-alert" title="Canlı ile Adil barem arasında ${abs.toFixed(1)} puan fark var">!!!</span>`;
+      const dir = String(a.direction || '').toUpperCase();
+      const isUst = dir === 'ÜST' || dir === 'UST';
+      const aligned = (dir === 'ALT' && edge < 0) || (isUst && edge > 0);
+      if (aligned) {
+        const title = `Adil barem ${dir} yönünü destekliyor (fark ${abs.toFixed(1)}). Değerli sinyal.`;
+        return `<span class="fair-edge-alert align" title="${title}">✓ DEĞER</span>`;
+      }
+      const title = `Adil barem ${dir} sinyalinin tersini söylüyor (fark ${abs.toFixed(1)}). Tuzak olabilir.`;
+      return `<span class="fair-edge-alert contra" title="${title}">⚠ TUZAK</span>`;
     }
 
     function fairLineHtml(a) {
@@ -2288,7 +2313,6 @@
         <div class="quality-cell">
           <div class="quality-row">
             <span class="badge badge-quality-c quality-badge" title="Adil barem">${fairText}</span>${fairEdgeAlertHtml(a)}
-            ${fairWarningButtonHtml(a)}
           </div>
         </div>
       `;
@@ -2322,7 +2346,7 @@
     function cardFairLineHtml(a) {
       const fair = Number(a.fair_line);
       const fairText = Number.isFinite(fair) ? fair.toFixed(1) : '-';
-      return `<span class="card-fair-inline"><span>${fairText}</span>${fairEdgeAlertHtml(a)}${fairWarningButtonHtml(a)}</span>`;
+      return `<span class="card-fair-inline"><span>${fairText}</span>${fairEdgeAlertHtml(a)}</span>`;
     }
 
     function modalListItem(key, value) {
