@@ -561,10 +561,12 @@ class AiscoreScraper:
                 if (tm) remainingMinutes = parseInt(tm[1]) + parseInt(tm[2]) / 60;
               }
 
-              let isFinished = /\b(FT|Finished|Ended)\b/i.test(status);
+              let isFinished = /\b(FT|Finished|Ended|Full Time)\b/i.test(status);
               if (!isFinished) {
+                // Only narrow final-score hooks; [class*="score"] / [class*="ended"] alone
+                // also match the live-score container and helper classes on AiScore.
                 const finishedBadge = document.querySelector(
-                  '[class*="finished"], [class*="Finished"], [class*="ended"], [class*="final-score"]'
+                  '[class*="final-score"], [class*="finalScore"]'
                 );
                 if (finishedBadge) isFinished = true;
               }
@@ -578,49 +580,78 @@ class AiscoreScraper:
               }
 
               // --- Extract live score ---
+              // Layered strategy: AiScore's big score is rendered as two separate
+              // <div class="score ..."> elements (no combined "93-62" string).
+              // See finished_match_service.py for the same logic on finished pages.
               let score = '';
-              const scoreEls = Array.from(document.querySelectorAll('span, div'))
-                .map(e => ({el: e, txt: text(e.innerText)}))
-                .filter(({el, txt}) => {
-                  if (!/^\d{1,3}\s*[-–]\s*\d{1,3}$/.test(txt.trim())) return false;
-                  const parts = txt.trim().split(/\s*[-–]\s*/);
-                  return parts.length === 2 && parseInt(parts[0]) <= 300 && parseInt(parts[1]) <= 300;
-                });
-              if (scoreEls.length > 0) {
-                score = scoreEls[0].txt.trim();
+              const leafAll = Array.from(document.querySelectorAll('span, div, strong, b'))
+                .filter(el => el.children.length === 0);
+              const scoreNums = leafAll
+                .map(el => ({
+                  el,
+                  txt: text(el.innerText),
+                  rect: el.getBoundingClientRect(),
+                  size: parseFloat(window.getComputedStyle(el).fontSize) || 0,
+                  cls: (el.className || '').toString(),
+                }))
+                .filter(o => /^\d{1,3}$/.test(o.txt));
+
+              // Strategy A: class~="score" token match
+              const scoreClassEls = scoreNums.filter(n =>
+                n.cls.split(/\s+/).includes('score') && n.size >= 16
+              );
+              if (scoreClassEls.length >= 2) {
+                scoreClassEls.sort((a, b) => b.size - a.size || a.rect.left - b.rect.left);
+                const home = scoreClassEls[0];
+                let away = null;
+                for (let i = 1; i < scoreClassEls.length; i++) {
+                  const c = scoreClassEls[i];
+                  if (Math.abs(c.rect.top - home.rect.top) < 20 && c.rect.left !== home.rect.left) {
+                    away = c; break;
+                  }
+                }
+                if (!away) away = scoreClassEls[1];
+                const leftEl  = home.rect.left <= away.rect.left ? home : away;
+                const rightEl = home.rect.left <= away.rect.left ? away : home;
+                score = leftEl.txt + ' - ' + rightEl.txt;
               }
+
+              // Strategy B: directly combined "93-62" string element (rare variant)
               if (!score) {
-                const topEls = Array.from(document.querySelectorAll('span, div, b, strong'))
-                  .filter(el => {
-                    const rect = el.getBoundingClientRect();
-                    return rect.top < 200 && el.children.length === 0;
-                  })
-                  .map(el => ({el, txt: text(el.innerText).trim()}))
-                  .filter(({txt}) => /^\d{1,3}$/.test(txt));
-                if (topEls.length >= 2) {
-                  const withSize = topEls.map(({el, txt}) => ({
-                    txt,
-                    size: parseFloat(window.getComputedStyle(el).fontSize) || 0
-                  })).sort((a, b) => b.size - a.size);
-                  if (withSize.length >= 2 && withSize[0].size >= 16) {
-                    score = withSize[0].txt + ' - ' + withSize[1].txt;
+                const combined = Array.from(document.querySelectorAll('span, div'))
+                  .map(el => text(el.innerText))
+                  .find(t => /^\d{1,3}\s*[-–]\s*\d{1,3}$/.test(t));
+                if (combined) {
+                  const parts = combined.split(/\s*[-–]\s*/);
+                  if (parts.length === 2 && parseInt(parts[0]) <= 300 && parseInt(parts[1]) <= 300) {
+                    score = combined.trim();
                   }
                 }
               }
+
+              // Strategy C (last resort): two biggest numbers near the top,
+              // but both must share font size and be visibly large.
               if (!score) {
-                const scoreContainer = document.querySelector(
-                  '[class*="score" i], [class*="Score"], [class*="matchScore"], [class*="match-score"]'
-                );
-                if (scoreContainer) {
-                  const nums = [];
-                  scoreContainer.querySelectorAll('*').forEach(el => {
-                    if (el.children.length === 0) {
-                      const t = text(el.innerText).trim();
-                      if (/^\d{1,3}$/.test(t) && parseInt(t) <= 300) nums.push(t);
-                    }
-                  });
-                  if (nums.length >= 2) score = nums[0] + ' - ' + nums[1];
+                const top = scoreNums
+                  .filter(n => n.rect.top < 260)
+                  .sort((a, b) => b.size - a.size);
+                if (top.length >= 2 && top[0].size >= 20 && Math.abs(top[0].size - top[1].size) < 2) {
+                  const a = top[0], b = top[1];
+                  const leftEl  = a.rect.left <= b.rect.left ? a : b;
+                  const rightEl = a.rect.left <= b.rect.left ? b : a;
+                  score = leftEl.txt + ' - ' + rightEl.txt;
                 }
+              }
+
+              // Basketball-plausibility guard. A live match can legitimately be
+              // below 60 total early on, so only reject absurd totals (> 400) here;
+              // the finished-match path applies a stricter floor before settling.
+              const mScore = score.match(/^\s*(\d{1,3})\s*[-–]\s*(\d{1,3})\s*$/);
+              if (mScore) {
+                const total = parseInt(mScore[1]) + parseInt(mScore[2]);
+                if (total > 400) score = '';
+              } else {
+                score = '';
               }
 
               return { opening, prematch, inplay, matchName, tournament, status, isQ4, remainingMinutes, hasLockedRows, isFinished, score };

@@ -22,7 +22,12 @@ def parse_score_total(score: str) -> float | None:
     match = re.match(r"\s*(\d{1,3})\s*[-–]\s*(\d{1,3})\s*$", score or "")
     if not match:
         return None
-    return float(int(match.group(1)) + int(match.group(2)))
+    total = int(match.group(1)) + int(match.group(2))
+    # A real basketball match final rarely totals below ~100; anything under 60
+    # is almost certainly a misread (single-quarter cell or team-name year digits).
+    if total < 60 or total > 400:
+        return None
+    return float(total)
 
 
 def evaluate_signal_result(direction: str, live_line: float, final_total: float) -> str:
@@ -112,57 +117,129 @@ class AiscoreFinishedMatchChecker:
                 r"""
                 () => {
                   const text = s => (s || '').replace(/\s+/g, ' ').trim();
-                  const smallTexts = Array.from(document.querySelectorAll('span, div, strong, b'))
-                    .map(el => text(el.innerText))
-                    .filter(value => value.length > 0 && value.length < 50);
+                  const leaf = el => el.children.length === 0;
+                  const allLeafs = Array.from(document.querySelectorAll('span, div, strong, b')).filter(leaf);
 
-                  const exactFinished = smallTexts.find(value =>
-                    /^(FT|Finished|Ended|Final|Full Time)$/i.test(value)
-                  ) || '';
+                  const finishedRe = /^(Full Time|FT|Finished|Ended|Final)$/i;
+                  const liveRe     = /^(Q[1-4]|[1-4]Q|OT|HT|1st|2nd|3rd|4th|BT)(\s*[-\s]?\s*\d{1,2}:\d{2})?$/i;
+                  const clockRe    = /^\d{1,2}:\d{2}$/;
 
-                  const liveStatus = smallTexts.find(value =>
-                    /^(Q[1-4]|[1-4]Q|OT|HT|1st|2nd|3rd|4th)\s*[-\s]?\s*\d{1,2}:\d{2}$/i.test(value)
-                    || /^(Q[1-4]|[1-4]Q|OT|HT|1st|2nd|3rd|4th)$/i.test(value)
-                    || /^\d{1,2}:\d{2}$/.test(value)
-                  ) || '';
+                  let statusEl = null;
+                  let status = '';
+                  let isFinished = false;
 
-                  const status = exactFinished || liveStatus;
-
-                  let score = '';
-                  const directScore = smallTexts.find(value => /^\d{1,3}\s*[-–]\s*\d{1,3}$/.test(value));
-                  if (directScore) {
-                    score = directScore;
+                  for (const el of allLeafs) {
+                    const t = text(el.innerText);
+                    if (finishedRe.test(t)) { statusEl = el; status = t; isFinished = true; break; }
+                  }
+                  if (!statusEl) {
+                    for (const el of allLeafs) {
+                      const t = text(el.innerText);
+                      if (liveRe.test(t) || clockRe.test(t)) { statusEl = el; status = t; break; }
+                    }
+                  }
+                  // Only a narrow final-score class hook; [class*="score"] alone is too broad
+                  // (the live-score container also has that substring and triggered false positives).
+                  if (!isFinished) {
+                    const badge = document.querySelector('[class*="final-score"], [class*="finalScore"]');
+                    if (badge) isFinished = true;
                   }
 
-                  if (!score) {
-                    const topNumbers = Array.from(document.querySelectorAll('span, div, strong, b'))
-                      .filter(el => {
-                        const rect = el.getBoundingClientRect();
-                        return rect.top < 220 && el.children.length === 0;
-                      })
-                      .map(el => ({
-                        text: text(el.innerText),
-                        size: parseFloat(window.getComputedStyle(el).fontSize) || 0
-                      }))
-                      .filter(item => /^\d{1,3}$/.test(item.text))
-                      .sort((a, b) => b.size - a.size);
+                  const nums = allLeafs
+                    .map(el => ({
+                      el,
+                      txt: text(el.innerText),
+                      rect: el.getBoundingClientRect(),
+                      size: parseFloat(window.getComputedStyle(el).fontSize) || 0,
+                      cls: (el.className || '').toString(),
+                    }))
+                    .filter(o => /^\d{1,3}$/.test(o.txt));
 
-                    if (topNumbers.length >= 2 && topNumbers[0].size >= 16) {
-                      score = `${topNumbers[0].text} - ${topNumbers[1].text}`;
+                  let score = '';
+
+                  // Strategy A: AiScore renders scores in <div class="score ...">.
+                  // class~="score" is an exact token match (unlike [class*="score"] substring).
+                  const scoreClassEls = nums.filter(n =>
+                    n.cls.split(/\s+/).includes('score') && n.size >= 16
+                  );
+                  if (scoreClassEls.length >= 2) {
+                    scoreClassEls.sort((a, b) => b.size - a.size || a.rect.left - b.rect.left);
+                    const home = scoreClassEls[0];
+                    let away = null;
+                    for (let i = 1; i < scoreClassEls.length; i++) {
+                      const c = scoreClassEls[i];
+                      if (Math.abs(c.rect.top - home.rect.top) < 20 && c.rect.left !== home.rect.left) {
+                        away = c; break;
+                      }
+                    }
+                    if (!away) away = scoreClassEls[1];
+                    const leftEl  = home.rect.left <= away.rect.left ? home : away;
+                    const rightEl = home.rect.left <= away.rect.left ? away : home;
+                    score = `${leftEl.txt} - ${rightEl.txt}`;
+                  }
+
+                  // Strategy B: anchor on the status label and pick one big number each side.
+                  if (!score && statusEl) {
+                    const sr = statusEl.getBoundingClientRect();
+                    const sCenterX = (sr.left + sr.right) / 2;
+                    const sCenterY = (sr.top + sr.bottom) / 2;
+                    const aligned = nums.filter(n => {
+                      const cy = (n.rect.top + n.rect.bottom) / 2;
+                      return Math.abs(cy - sCenterY) < 60 && n.size >= 18;
+                    }).sort((a, b) => b.size - a.size);
+
+                    const lefts  = aligned.filter(n => n.rect.right <= sCenterX);
+                    const rights = aligned.filter(n => n.rect.left  >= sCenterX);
+                    if (lefts.length && rights.length) {
+                      let pair = null;
+                      for (const l of lefts) {
+                        for (const r of rights) {
+                          if (Math.abs(l.size - r.size) < 1) { pair = [l, r]; break; }
+                        }
+                        if (pair) break;
+                      }
+                      if (!pair) pair = [lefts[0], rights[0]];
+                      score = `${pair[0].txt} - ${pair[1].txt}`;
                     }
                   }
 
-                  const finishBadge = document.querySelector(
-                    '[class*="finished"], [class*="Finished"], [class*="ended"], [class*="Ended"], [class*="final-score"], [class*="finalScore"]'
-                  );
+                  // Strategy C: directly combined "93-62" pattern (rare AiScore variants).
+                  if (!score) {
+                    const combined = Array.from(document.querySelectorAll('span, div, strong, b'))
+                      .map(el => text(el.innerText))
+                      .find(t => /^\d{1,3}\s*[-–]\s*\d{1,3}$/.test(t));
+                    if (combined) score = combined;
+                  }
+
+                  // Strategy D (last resort): the old top-of-page biggest-two heuristic,
+                  // but require both numbers to share font size and be clearly large.
+                  if (!score) {
+                    const top = nums.filter(n => n.rect.top < 220)
+                      .sort((a, b) => b.size - a.size);
+                    if (top.length >= 2 && top[0].size >= 20 && Math.abs(top[0].size - top[1].size) < 2) {
+                      const a = top[0], b = top[1];
+                      const leftEl  = a.rect.left <= b.rect.left ? a : b;
+                      const rightEl = a.rect.left <= b.rect.left ? b : a;
+                      score = `${leftEl.txt} - ${rightEl.txt}`;
+                    }
+                  }
+
+                  // Basketball sanity guard: reject absurd totals before writing anywhere.
+                  const m = score.match(/^\s*(\d{1,3})\s*[-–]\s*(\d{1,3})\s*$/);
+                  if (m) {
+                    const total = parseInt(m[1]) + parseInt(m[2]);
+                    if (total < 60 || total > 400) score = '';
+                  } else {
+                    score = '';
+                  }
 
                   const title = text(document.title || '')
                     .replace(/\s*\|.*/, '')
                     .replace(/\s*-\s*AiScore.*/i, '')
                     .replace(/\s*live score.*/i, '')
+                    .replace(/\s*betting odds.*/i, '')
                     .trim();
 
-                  const isFinished = Boolean(exactFinished || finishBadge);
                   return { status, score, isFinished, title };
                 }
                 """
