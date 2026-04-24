@@ -18,7 +18,11 @@ from datetime import datetime, timedelta
 from flask import Flask, Response, jsonify, render_template, request
 from db import Database
 from config import Config
-from finished_match_service import run_deleted_match_result_cycle, run_single_deleted_match_result_check
+from finished_match_service import (
+    run_active_match_finished_scan,
+    run_deleted_match_result_cycle,
+    run_single_deleted_match_result_check,
+)
 from signal_analysis import build_signal_analysis
 
 config = Config()
@@ -454,6 +458,12 @@ def api_purge_deleted_alert(alert_id: int):
     if not removed:
         return jsonify({"error": "not found"}), 404
     return jsonify({"id": alert_id, "deleted": True})
+
+
+@app.route("/api/alerts/check-finished", methods=["POST"])
+def api_check_active_match_finished():
+    summary = asyncio.run(run_active_match_finished_scan(db, config))
+    return jsonify(summary)
 
 
 @app.route("/api/deleted-matches/check-results", methods=["POST"])

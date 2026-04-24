@@ -353,6 +353,58 @@ async def run_finished_match_cycle(db, config) -> dict:
     return summary
 
 
+async def run_active_match_finished_scan(db, config) -> dict:
+    """Scan active (not-yet-deleted) alerts for matches that have ended, and
+    soft-delete them so they flow into the finished-match result pipeline."""
+    tracked_matches = db.get_active_matches_with_urls()
+    summary = {
+        "tracked_count": len(tracked_matches),
+        "checked_count": 0,
+        "finished_match_count": 0,
+        "moved_count": 0,
+        "details": [],
+    }
+    if not tracked_matches:
+        summary["message"] = "Taranacak aktif maç bulunamadı."
+        return summary
+
+    checker = AiscoreFinishedMatchChecker(
+        page_timeout_ms=config.PAGE_TIMEOUT_MS,
+        concurrency=4,
+    )
+    results = await checker.check_matches(tracked_matches)
+    summary["checked_count"] = len(results)
+
+    for result in results:
+        if not result.get("is_finished"):
+            continue
+        summary["finished_match_count"] += 1
+        match_id = result.get("match_id")
+        if not match_id:
+            continue
+        affected = db.delete_match_data(match_id)
+        if affected > 0:
+            summary["moved_count"] += 1
+            summary["details"].append({
+                "match_id": match_id,
+                "match_name": result.get("match_name", ""),
+                "status": result.get("status", ""),
+                "final_score": result.get("score", ""),
+                "affected_alerts": affected,
+            })
+
+    if summary["moved_count"] == 0 and summary["finished_match_count"] == 0:
+        summary["message"] = (
+            f"{summary['tracked_count']} maç tarandı, biten maç bulunamadı."
+        )
+    else:
+        summary["message"] = (
+            f"{summary['moved_count']} biten maç Silinen Maçlar'a taşındı "
+            f"({summary['tracked_count']} maç tarandı)."
+        )
+    return summary
+
+
 async def run_deleted_match_result_cycle(db, config) -> dict:
     tracked_matches = db.get_deleted_matches_for_result_check(limit=None)
     logger.info("Checking %s deleted matches for final results.", len(tracked_matches))
@@ -373,27 +425,92 @@ async def run_deleted_match_result_cycle(db, config) -> dict:
 
 
 async def run_single_deleted_match_result_check(db, config, alert_id: int) -> dict:
-    tracked_match = db.get_deleted_match_for_result_check_by_alert_id(alert_id)
-    if not tracked_match:
-        return {
-            "tracked_count": 0,
-            "checked_count": 0,
-            "finished_match_count": 0,
-            "updated_count": 0,
-            "successful_count": 0,
-            "failed_count": 0,
-            "push_count": 0,
-            "details": [],
-            "message": "Kontrol edilecek maç bulunamadı.",
-        }
+    # Unlike the bulk cycle, a user-triggered single recheck must re-evaluate the
+    # alert regardless of its current `result` — otherwise pre-fix records stuck
+    # with absurd scores (e.g. "8-12") can never be corrected via the UI button.
+    empty_summary = {
+        "tracked_count": 0,
+        "checked_count": 0,
+        "finished_match_count": 0,
+        "updated_count": 0,
+        "successful_count": 0,
+        "failed_count": 0,
+        "push_count": 0,
+        "details": [],
+    }
 
-    summary = await _run_deleted_match_result_check_for_matches(db, config, [tracked_match])
-    if summary["finished_match_count"] == 0:
+    alert = db.get_deleted_alert_by_id(alert_id)
+    tracked_match = db.get_deleted_match_for_result_check_by_alert_id(alert_id)
+    if not alert or not tracked_match:
+        return {**empty_summary, "message": "Kontrol edilecek maç bulunamadı."}
+
+    checker = AiscoreFinishedMatchChecker(
+        page_timeout_ms=config.PAGE_TIMEOUT_MS,
+        concurrency=1,
+    )
+    results = await checker.check_matches([tracked_match])
+    summary = {
+        **empty_summary,
+        "tracked_count": 1,
+        "checked_count": len(results),
+    }
+
+    if not results:
+        summary["message"] = "Maç sayfasına ulaşılamadı."
+        return summary
+
+    result = results[0]
+    if not result.get("is_finished"):
         summary["message"] = "Maç henüz bitmemiş veya final skoru alınamadı."
-    elif summary["updated_count"] == 0:
-        summary["message"] = "Maç bitmiş görünüyor ama güncellenecek boş sonuç bulunamadı."
-    else:
-        summary["message"] = f"{summary['updated_count']} sinyal güncellendi."
+        return summary
+
+    final_score = result.get("score", "")
+    final_total = parse_score_total(final_score)
+    if final_total is None:
+        summary["message"] = (
+            "Maç bitmiş görünüyor ama final skoru güvenilir okunamadı. "
+            "Birkaç dakika sonra tekrar deneyin."
+        )
+        return summary
+
+    summary["finished_match_count"] = 1
+    signal_result = evaluate_signal_result(
+        alert.get("direction", ""),
+        float(alert.get("live") or 0),
+        final_total,
+    )
+    if not signal_result:
+        summary["message"] = "Sinyal yönü tanınmadı."
+        return summary
+
+    updated = db.update_deleted_alert_final_result(
+        alert_id,
+        result=signal_result,
+        final_score=final_score,
+        final_status=result.get("status", "") or "Full Time",
+    )
+    if not updated:
+        summary["message"] = "Güncelleme yapılamadı."
+        return summary
+
+    summary["updated_count"] = 1
+    if signal_result == "Başarılı":
+        summary["successful_count"] = 1
+    elif signal_result == "Başarısız":
+        summary["failed_count"] = 1
+    elif signal_result == "İade":
+        summary["push_count"] = 1
+    summary["details"].append({
+        "id": alert_id,
+        "match_id": alert["match_id"],
+        "match_name": alert["match_name"],
+        "direction": alert["direction"],
+        "live_line": float(alert["live"]),
+        "final_score": final_score,
+        "final_total": final_total,
+        "result": signal_result,
+    })
+    summary["message"] = f"Sinyal güncellendi: {signal_result} ({final_score})"
     return summary
 
 

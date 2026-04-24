@@ -342,6 +342,24 @@ class Database:
             cursor = conn.execute("DELETE FROM alerts WHERE id = ?", (alert_id,))
         return cursor.rowcount > 0
 
+    def get_active_matches_with_urls(self) -> list:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT a.match_id, a.match_name, a.url, a.status
+                FROM alerts a
+                INNER JOIN (
+                    SELECT match_id, MAX(id) AS latest_id
+                    FROM alerts
+                    WHERE (deleted_at IS NULL OR deleted_at = '')
+                      AND url != ''
+                    GROUP BY match_id
+                ) latest ON latest.latest_id = a.id
+                ORDER BY a.alerted_at DESC, a.id DESC
+                """
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def delete_match_data(self, match_id: str) -> int:
         with self._conn() as conn:
             cursor = conn.execute(
@@ -450,6 +468,19 @@ class Database:
                     "DELETE FROM alerts WHERE deleted_at IS NOT NULL AND deleted_at != ''"
                 )
         return cursor.rowcount
+
+    def get_deleted_alert_by_id(self, alert_id: int) -> dict | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM alerts
+                WHERE id = ?
+                  AND deleted_at IS NOT NULL
+                  AND deleted_at != ''
+                """,
+                (alert_id,),
+            ).fetchone()
+        return dict(row) if row else None
 
     def update_deleted_alert_result(self, alert_id: int, result: str) -> bool:
         with self._conn() as conn:

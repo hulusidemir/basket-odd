@@ -2097,6 +2097,7 @@
       </div>
       <button class="filter-btn" onclick="openBetBuilder()">Bahis Oluşturucu</button>
       <button class="filter-btn" onclick="manualRefresh()">Listeyi Yenile</button>
+      <button class="filter-btn" id="checkFinishedBtn" onclick="checkFinishedMatches(this)">Bitenleri Kontrol Et</button>
       <button class="filter-btn bulk-delete-btn" id="bulkDeleteBtn" onclick="deleteSelectedMatches()">İşaretli Olanları Sil</button>
       <button class="cancel-select-btn" id="cancelSelectBtn" onclick="cancelAllSelections()">✕ Seçimi İptal Et</button>
       <button class="match-focus-status" id="matchFocusStatus" onclick="clearMatchFocus()" style="display:none;"></button>
@@ -3477,6 +3478,43 @@
       selectedMatchIds.delete(deletedMatchId);
       render();
       updateStats();
+    }
+
+    async function checkFinishedMatches(button) {
+      if (button?.disabled) return;
+      const originalText = button ? button.textContent : '';
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Kontrol ediliyor...';
+      }
+      try {
+        const response = await fetch('/api/alerts/check-finished', { method: 'POST' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          alert(payload?.error || 'Biten maçlar kontrol edilirken hata oluştu.');
+          return;
+        }
+        const movedIds = new Set((payload.details || []).map(d => normalizeMatchId(d.match_id)));
+        if (movedIds.size > 0) {
+          allAlerts = allAlerts.filter(a => !movedIds.has(normalizeMatchId(a.match_id)));
+          movedIds.forEach(mid => selectedMatchIds.delete(mid));
+          if (focusedMatchId && movedIds.has(normalizeMatchId(focusedMatchId))) {
+            focusedMatchId = null;
+            focusedMatchName = '';
+          }
+          render();
+          updateStats();
+        }
+        alert(payload.message || `${payload.moved_count || 0} maç taşındı.`);
+      } catch (error) {
+        console.error(error);
+        alert('Biten maçlar kontrol edilirken hata oluştu.');
+      } finally {
+        if (button) {
+          button.disabled = false;
+          button.textContent = originalText || 'Bitenleri Kontrol Et';
+        }
+      }
     }
 
     async function clearDatabase() {
