@@ -274,23 +274,23 @@ def _market_total(match: dict, opening: float) -> float | None:
 
 def _fair_weight_profile(status: str, match_name: str, tournament: str) -> dict:
     # Erken periyotta pace numunesi küçük, projeksiyon varyansı çok yüksek.
-    # Q1'de piyasa ağırlıklı, Q4'te pace ağırlıklı kalıyoruz.
-    # "Live" statüsünde çeyrek bilinmiyor: projeksiyon tahmini güvenilirliği düşük.
+    # Geçmiş maç profili erken bölümde daha etkilidir; maç ilerledikçe
+    # canlı tempo daha fazla ağırlık alır.
     period = game_clock(status, match_name, tournament)["period"]
     is_live_unknown = (period is None) and re.match(
         r"^live\b", (status or "").strip(), re.IGNORECASE
     )
     if is_live_unknown:
-        return {"projection": 20, "market": 55, "team_recent": 15, "h2h": 10}
+        return {"projection": 0, "market": 55, "team_recent": 30, "h2h": 15}
     if period == 1:
-        return {"projection": 15, "market": 60, "team_recent": 15, "h2h": 10}
+        return {"projection": 10, "market": 55, "team_recent": 20, "h2h": 15}
     if period == 2:
-        return {"projection": 40, "market": 40, "team_recent": 15, "h2h": 5}
+        return {"projection": 35, "market": 35, "team_recent": 20, "h2h": 10}
     if period == 3:
-        return {"projection": 55, "market": 25, "team_recent": 15, "h2h": 5}
+        return {"projection": 50, "market": 25, "team_recent": 17, "h2h": 8}
     if period and period >= 4:
-        return {"projection": 65, "market": 20, "team_recent": 10, "h2h": 5}
-    return {"projection": 30, "market": 50, "team_recent": 15, "h2h": 5}
+        return {"projection": 60, "market": 20, "team_recent": 15, "h2h": 5}
+    return {"projection": 0, "market": 55, "team_recent": 30, "h2h": 15}
 
 
 def _normalize_weights(weights: dict) -> dict:
@@ -307,10 +307,13 @@ def _normalize_weights(weights: dict) -> dict:
 
 
 def _weighted_fair_line(components: dict, base_weights: dict) -> tuple[float | None, dict]:
+    if components.get("projection") is None:
+        return None, {key: 0 for key in base_weights}
+
     usable = {
         key: float(value)
         for key, value in components.items()
-        if value is not None and key in base_weights
+        if value is not None and key in base_weights and base_weights.get(key, 0) > 0
     }
     if not usable:
         return None, {key: 0 for key in base_weights}
@@ -406,7 +409,13 @@ def build_signal_analysis(
     line_delta_open = round(live - opening, 1)
     h2h_body = (context.get("h2h") or {}).get("body_text", "") if isinstance(context, dict) else ""
     h2h_metrics = _extract_h2h_metrics(h2h_body, match_name)
-    raw_projected = calculate_projected_total(score, status, match_name, tournament)
+    clock = game_clock(status, match_name, tournament)
+    has_reliable_clock = clock.get("period") is not None and clock.get("remaining_min") is not None
+    raw_projected = (
+        calculate_projected_total(score, status, match_name, tournament)
+        if has_reliable_clock
+        else None
+    )
     pace_adj = _script_pace_adjustment(score, status, match_name, tournament)
     projected_total = round(raw_projected * pace_adj, 1) if raw_projected is not None else None
     market_total = _market_total(match, opening)
@@ -457,11 +466,16 @@ def build_signal_analysis(
         warnings.insert(0, pace_anomaly_note)
     if abs(line_delta_open) >= 20:
         warnings.append(f"Açılış-canlı farkı çok yüksek ({line_delta_open:+.1f}); bu bölge ekstra riskli.")
+    if projected_total is None:
+        warnings.append("Adil barem hesaplanamadı: maç süresi/projeksiyon güvenilir okunamadı.")
     if fair_edge is not None and abs(fair_edge) <= 3:
         warnings.append("Adil barem canlıya çok yakın; net değer alanı zayıf.")
 
     if fair_line is None:
-        recommendation = "Adil barem hesaplanamadı; sadece eşik uyarısı olarak izle."
+        if projected_total is None:
+            recommendation = "Adil barem hesaplanamadı: maç süresi/projeksiyon güvenilir okunamadı."
+        else:
+            recommendation = "Adil barem hesaplanamadı; sadece eşik uyarısı olarak izle."
     elif fair_edge >= 6:
         recommendation = "Adil barem canlıdan yüksek: değer ÜST tarafında; maç hızlanabilir."
     elif fair_edge <= -6:

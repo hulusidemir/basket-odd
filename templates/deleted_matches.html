@@ -1446,6 +1446,11 @@
       return `${num >= 0 ? '+' : ''}${num.toFixed(1)}`;
     }
 
+    function formatFairLine(value) {
+      const num = Number(value);
+      return Number.isFinite(num) ? formatNumber(num) : 'Hesaplanamıyor';
+    }
+
     function fairInfoClass(alert) {
       const edge = Math.abs(Number(fairEdgeValue(alert)));
       return Number.isFinite(edge) && edge > 10 ? 'red' : 'yellow';
@@ -1467,7 +1472,7 @@
 
     function fairLineCell(alert) {
       const fair = fairLineValue(alert);
-      const fairLabel = fair !== null ? formatNumber(fair) : '-';
+      const fairLabel = formatFairLine(fair);
       return `<span class="fair-line-cell"><span class="mono">${fairLabel}</span>${fairEdgeAlertHtml(alert)}</span>`;
     }
 
@@ -1562,7 +1567,7 @@
               ${modalListItem('Canlı', formatNumber(alert.live))}
               ${modalListItem('Projeksiyon', formatNumber(alert.projected ?? analysis.projected_total))}
               ${modalListItem('H2H Ort.', formatNumber(alert.h2h_total ?? analysis.h2h_total))}
-              ${modalListItem('Adil Barem', formatNumber(alert.fair_line ?? analysis.fair_line))}
+              ${modalListItem('Adil Barem', formatFairLine(alert.fair_line ?? analysis.fair_line))}
             </ul>
             <div class="signal-weights-line"><strong>Ağırlık</strong>${escapeHtml(weightsText(analysis.weights))}</div>
           </div>
