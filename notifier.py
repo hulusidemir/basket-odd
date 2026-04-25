@@ -43,6 +43,7 @@ class TelegramNotifier:
         signal_count: int = 1,
         prematch: float | None = None,
         analysis: dict | None = None,
+        period: int | None = None,
     ) -> dict:
         emoji = "🔻" if direction == "ALT" else "🔺"
         tip = (
@@ -51,6 +52,8 @@ class TelegramNotifier:
             else "Canlı barem açılışa göre düştü"
         )
 
+        _period_names = {1: "1. Çeyrek (Q1)", 2: "2. Çeyrek (Q2)", 3: "3. Çeyrek (Q3)", 4: "4. Çeyrek (Q4)"}
+        period_line = f"⏱ Periyot: <b>{_period_names.get(period, f'Q{period}')}</b>\n" if period else ""
         score_line = f"📊 Skor: <b>{score}</b>\n" if score else ""
         signal_line = f"🔁 <b>{signal_count}. sinyal</b>\n" if signal_count > 1 else ""
         prematch_line = f"Maç Öncesi: <b>{prematch:.1f}</b>\n" if prematch is not None else ""
@@ -114,7 +117,8 @@ class TelegramNotifier:
 
         text = (
             f"{emoji} <b>Sinyal: {direction}</b>\n"
-            f"{signal_line}\n"
+            f"{signal_line}"
+            f"{period_line}\n"
             f"🏀 <b>{match_name}</b>\n"
             f"🏆 {tournament} | {status}\n"
             f"{score_line}\n"

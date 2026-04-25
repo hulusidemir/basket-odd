@@ -132,6 +132,7 @@ async def process_match(
     await notifier.send_alert(
         match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
         score=score, signal_count=signal_count, prematch=prematch_total, analysis=analysis,
+        period=period,
     )
 
     db.save_alert(

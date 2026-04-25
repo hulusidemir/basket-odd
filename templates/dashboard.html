@@ -264,6 +264,89 @@
       background: linear-gradient(180deg, #ffb37c, #ff9960);
     }
 
+    .period-filter-box {
+      background: rgba(18, 30, 47, 0.94);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .period-filter-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .period-filter-label {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      width: 32px;
+      flex-shrink: 0;
+    }
+
+    .period-filter-label.lbl-alt { color: var(--accent-alt); }
+    .period-filter-label.lbl-ust { color: var(--accent-ust); }
+
+    .period-btn {
+      padding: 8px 14px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+      border: 1px solid var(--line-strong);
+      background: rgba(15, 29, 46, 0.98);
+      color: var(--text-dim);
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: transform 0.13s ease, border-color 0.13s ease, background 0.13s ease;
+    }
+
+    .period-btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(95, 167, 255, 0.4);
+    }
+
+    .period-btn.active-alt {
+      background: rgba(255, 106, 99, 0.18);
+      border-color: rgba(255, 106, 99, 0.55);
+      color: #ff8f8a;
+    }
+
+    .period-btn.active-ust {
+      background: rgba(52, 211, 153, 0.15);
+      border-color: rgba(52, 211, 153, 0.50);
+      color: #5fe8b8;
+    }
+
+    .period-filter-clear {
+      margin-left: auto;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-dim);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 8px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .period-filter-clear.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .period-filter-clear:hover { color: var(--text); }
+
     .toolbar {
       padding: 16px;
       display: flex;
@@ -2237,6 +2320,24 @@
       </div>
     </div>
 
+    <div class="period-filter-box" id="periodFilterBox">
+      <div class="period-filter-row">
+        <span class="period-filter-label lbl-alt">ALT</span>
+        <button class="period-btn" data-dir="ALT" data-period="1">P1</button>
+        <button class="period-btn" data-dir="ALT" data-period="2">P2</button>
+        <button class="period-btn" data-dir="ALT" data-period="3">P3</button>
+        <button class="period-btn" data-dir="ALT" data-period="4">P4</button>
+      </div>
+      <div class="period-filter-row">
+        <span class="period-filter-label lbl-ust">ÜST</span>
+        <button class="period-btn" data-dir="ÜST" data-period="1">P1</button>
+        <button class="period-btn" data-dir="ÜST" data-period="2">P2</button>
+        <button class="period-btn" data-dir="ÜST" data-period="3">P3</button>
+        <button class="period-btn" data-dir="ÜST" data-period="4">P4</button>
+        <button class="period-filter-clear" id="periodFilterClear">✕ Temizle</button>
+      </div>
+    </div>
+
     <div class="filters">
       <button class="filter-btn active" data-filter="all">Tümü</button>
       <button class="filter-btn" data-filter="pending">Bekleyen</button>
@@ -2382,6 +2483,7 @@
   <script>
     let allAlerts = [];
     let currentFilter = 'all';
+    let activePeriodFilters = new Set(); // "ALT-1", "ÜST-2" vb.
     let searchQuery = '';
     let sortField = 'alerted_at';
     let sortAsc = false;
@@ -3390,6 +3492,12 @@
       else if (currentFilter === 'ignored') filtered = filtered.filter(a => a.ignored);
       else if (currentFilter === 'alt') filtered = filtered.filter(a => a.direction === 'ALT');
       else if (currentFilter === 'ust') filtered = filtered.filter(a => a.direction === 'ÜST');
+      if (activePeriodFilters.size > 0) {
+        filtered = filtered.filter(a => {
+          const key = `${a.direction}-${a.alert_period}`;
+          return activePeriodFilters.has(key);
+        });
+      }
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         filtered = filtered.filter(a =>
@@ -3883,6 +3991,42 @@
         render();
       });
     });
+
+    // Period filter buttons
+    function updatePeriodFilterClear() {
+      const clearBtn = document.getElementById('periodFilterClear');
+      if (clearBtn) clearBtn.classList.toggle('visible', activePeriodFilters.size > 0);
+    }
+
+    document.querySelectorAll('.period-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const dir = btn.dataset.dir;
+        const period = btn.dataset.period;
+        const key = `${dir}-${period}`;
+        const activeClass = dir === 'ALT' ? 'active-alt' : 'active-ust';
+        if (activePeriodFilters.has(key)) {
+          activePeriodFilters.delete(key);
+          btn.classList.remove(activeClass);
+        } else {
+          activePeriodFilters.add(key);
+          btn.classList.add(activeClass);
+        }
+        updatePeriodFilterClear();
+        currentPage = 1;
+        render();
+      });
+    });
+
+    const periodFilterClear = document.getElementById('periodFilterClear');
+    if (periodFilterClear) {
+      periodFilterClear.addEventListener('click', () => {
+        activePeriodFilters.clear();
+        document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active-alt', 'active-ust'));
+        updatePeriodFilterClear();
+        currentPage = 1;
+        render();
+      });
+    }
 
     const searchInput = document.getElementById('searchInput');
     const clearSearchBtn = document.getElementById('clearSearchBtn');
