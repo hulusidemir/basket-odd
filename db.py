@@ -55,6 +55,7 @@ class Database:
                     bet_placed  INTEGER NOT NULL DEFAULT 0,
                     ignored     INTEGER NOT NULL DEFAULT 0,
                     followed    INTEGER NOT NULL DEFAULT 0,
+                    note        TEXT NOT NULL DEFAULT '',
                     deleted_at  TIMESTAMP
                 );
 
@@ -130,6 +131,7 @@ class Database:
                 "ALTER TABLE finished_matches ADD COLUMN result TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE finished_matches ADD COLUMN prematch REAL",
                 "ALTER TABLE finished_matches ADD COLUMN ai_analysis TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE match_actions ADD COLUMN note TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE match_actions ADD COLUMN deleted_at TIMESTAMP",
             ):
                 try:
@@ -266,14 +268,33 @@ class Database:
         with self._conn() as conn:
             rows = conn.execute(
                 """
-                SELECT * FROM alerts
-                WHERE deleted_at IS NULL OR deleted_at = ''
-                ORDER BY alerted_at DESC
+                SELECT a.*, COALESCE(ma.note, '') AS note
+                FROM alerts a
+                LEFT JOIN match_actions ma ON ma.match_id = a.match_id
+                WHERE a.deleted_at IS NULL OR a.deleted_at = ''
+                ORDER BY a.alerted_at DESC
                 LIMIT ?
                 """,
                 (limit,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def update_match_note(self, match_id: str, note: str) -> int:
+        clean_note = str(note or "").strip()[:240]
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM alerts WHERE match_id = ?",
+                (match_id,),
+            ).fetchone()
+            conn.execute(
+                """
+                INSERT INTO match_actions (match_id, note)
+                VALUES (?, ?)
+                ON CONFLICT(match_id) DO UPDATE SET note = excluded.note
+                """,
+                (match_id, clean_note),
+            )
+        return int(row["cnt"] if row else 0)
 
     def set_match_statuses(
         self,
@@ -418,17 +439,21 @@ class Database:
             if limit is None:
                 rows = conn.execute(
                     """
-                    SELECT * FROM alerts
-                    WHERE deleted_at IS NOT NULL AND deleted_at != ''
-                    ORDER BY deleted_at DESC, alerted_at DESC, id DESC
+                    SELECT a.*, COALESCE(ma.note, '') AS note
+                    FROM alerts a
+                    LEFT JOIN match_actions ma ON ma.match_id = a.match_id
+                    WHERE a.deleted_at IS NOT NULL AND a.deleted_at != ''
+                    ORDER BY a.deleted_at DESC, a.alerted_at DESC, a.id DESC
                     """
                 ).fetchall()
             else:
                 rows = conn.execute(
                     """
-                    SELECT * FROM alerts
-                    WHERE deleted_at IS NOT NULL AND deleted_at != ''
-                    ORDER BY deleted_at DESC, alerted_at DESC, id DESC
+                    SELECT a.*, COALESCE(ma.note, '') AS note
+                    FROM alerts a
+                    LEFT JOIN match_actions ma ON ma.match_id = a.match_id
+                    WHERE a.deleted_at IS NOT NULL AND a.deleted_at != ''
+                    ORDER BY a.deleted_at DESC, a.alerted_at DESC, a.id DESC
                     LIMIT ?
                     """,
                     (limit,),

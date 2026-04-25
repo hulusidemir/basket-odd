@@ -478,6 +478,26 @@
       min-width: 0;
     }
 
+    .match-note-indicator {
+      width: 28px;
+      height: 28px;
+      flex: 0 0 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      border: 1px solid rgba(251, 191, 36, 0.26);
+      background: rgba(251, 191, 36, 0.12);
+      color: #fde68a;
+      font-size: 13px;
+    }
+
+    .match-note-subline {
+      color: #f8d06f;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+
     .match-focus-btn {
       width: 34px;
       height: 34px;
@@ -1639,6 +1659,7 @@
         alert.status,
         alert.score,
         alert.result,
+        alert.note,
         recommendationText(alert),
         fairLineValue(alert),
       ].some(value => String(value || '').toLowerCase().includes(q)));
@@ -1831,6 +1852,7 @@
 
       body.innerHTML = pagedRows.map(alert => {
         const matchName = cleanMatchName(alert.match_name || '-');
+        const note = String(alert.note || '').trim();
         const matchHtml = alert.url
           ? `<a class="match-link" href="${escapeHtml(alert.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(matchName)}</a>`
           : `<span class="match-link">${escapeHtml(matchName)}</span>`;
@@ -1841,8 +1863,10 @@
               <div class="match-cell-wrap">
                 ${matchFocusButtonHtml(alert)}
                 ${matchHtml}
+                ${note ? `<span class="match-note-indicator" title="${escapeHtml(note)}" aria-label="Maç notu">📝</span>` : ''}
               </div>
               <div class="subline">${escapeHtml(alert.tournament || '-')}</div>
+              ${note ? `<div class="subline match-note-subline">Not: ${escapeHtml(note)}</div>` : ''}
             </td>
             <td class="mono">${escapeHtml(alert.alert_moment || '-')}</td>
             <td>

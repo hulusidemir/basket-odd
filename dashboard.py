@@ -664,7 +664,7 @@ def api_export_finished_deleted_matches_csv():
     writer = csv.writer(output)
     writer.writerow([
         "Maç", "Sinyal Anı", "Sinyal Türü", "Skor",
-        "Açılış", "Canlı", "Adil Barem", "Sonuç",
+        "Açılış", "Canlı", "Adil Barem", "Sonuç", "Not",
     ])
 
     for row in rows:
@@ -682,6 +682,7 @@ def api_export_finished_deleted_matches_csv():
             row.get("live") if row.get("live") is not None else "",
             fair_line_cell,
             row.get("result") or "",
+            row.get("note") or "",
         ])
 
     filename = f"silinen-biten-maclar-{datetime.now().strftime('%Y%m%d-%H%M')}.csv"
@@ -1354,6 +1355,26 @@ def api_toggle_follow(alert_id: int):
         "followed": int(new_val),
         "bet_placed": 0 if new_val else None,
         "ignored": 0 if new_val else None,
+        "affected": affected,
+    })
+
+
+@app.route("/api/alerts/<int:alert_id>/note", methods=["POST"])
+def api_update_alert_note(alert_id: int):
+    alert = db.get_alert(alert_id)
+    if not alert:
+        return jsonify({"error": "not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    note = str(data.get("note") or "").strip()
+    if len(note) > 240:
+        note = note[:240]
+
+    affected = db.update_match_note(alert["match_id"], note)
+    return jsonify({
+        "id": alert_id,
+        "match_id": alert["match_id"],
+        "note": note,
         "affected": affected,
     })
 

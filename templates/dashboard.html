@@ -1291,6 +1291,36 @@
       box-shadow: 0 12px 20px rgba(255, 158, 100, 0.2);
     }
 
+    .match-note-btn {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      border: 1px solid rgba(110, 146, 187, 0.2);
+      background: rgba(12, 27, 43, 0.95);
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 15px;
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .match-note-btn:hover {
+      color: var(--text);
+      border-color: rgba(251, 191, 36, 0.46);
+      box-shadow: 0 10px 18px rgba(0, 0, 0, 0.16);
+      transform: translateY(-1px);
+    }
+
+    .match-note-btn.has-note {
+      color: #1a1b22;
+      border-color: transparent;
+      background: linear-gradient(180deg, #fde68a, #fbbf24);
+      box-shadow: 0 12px 20px rgba(251, 191, 36, 0.18);
+    }
+
     .col-tournament {
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1457,6 +1487,61 @@
       padding: 30px;
       border-radius: 16px;
       background: rgba(11, 24, 38, 0.92);
+    }
+
+    .note-editor-box { max-width: 520px; }
+
+    .note-editor-meta {
+      margin-bottom: 10px;
+      color: var(--text-dim);
+      font-size: 12px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .note-editor-textarea {
+      width: 100%;
+      min-height: 118px;
+      resize: vertical;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(11, 24, 38, 1);
+      color: var(--text);
+      padding: 12px;
+      outline: none;
+      font: inherit;
+      line-height: 1.45;
+    }
+
+    .note-editor-textarea:focus {
+      border-color: rgba(251, 191, 36, 0.42);
+      box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.10);
+    }
+
+    .note-editor-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .note-char-count {
+      color: var(--text-dim);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .note-editor-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .note-editor-actions .action-btn {
+      min-width: 82px;
+      padding: 9px 12px;
+      font-size: 12px;
     }
 
     .bet-builder-body {
@@ -2274,6 +2359,26 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="noteEditorModal" onclick="if(event.target===this)closeNoteEditor()">
+    <div class="modal-box note-editor-box">
+      <div class="modal-header">
+        <h3>Maç Notu</h3>
+        <button class="modal-close" onclick="closeNoteEditor()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="note-editor-meta" id="noteEditorMatch">-</div>
+        <textarea class="note-editor-textarea" id="noteEditorText" maxlength="240" placeholder="Kısa not yaz..."></textarea>
+        <div class="note-editor-footer">
+          <span class="note-char-count" id="noteCharCount">0/240</span>
+          <div class="note-editor-actions">
+            <button class="action-btn" type="button" onclick="clearNoteEditor()">Temizle</button>
+            <button class="action-btn active-follow" id="noteSaveBtn" type="button" onclick="saveNoteEditor()">Kaydet</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     let allAlerts = [];
     let currentFilter = 'all';
@@ -2290,6 +2395,7 @@
     let focusedMatchName = '';
     let selectedMatchIds = new Set();
     let bulkDeleteInProgress = false;
+    let noteEditorAlertId = null;
 
     function cleanMatchName(name) {
       return (name || '')
@@ -2665,6 +2771,96 @@
       const active = isFocusedMatch(alert.match_id);
       const title = active ? 'Maç filtresini kaldır' : 'Sadece bu maçın sinyallerini göster';
       return `<button class="match-focus-btn ${active ? 'active' : ''}" type="button" data-alert-action="focus" data-alert-id="${Number(alert.id || 0)}" title="${title}" aria-label="${title}">${active ? '◉' : '◎'}</button>`;
+    }
+
+    function noteText(alert) {
+      return String(alert?.note || '').trim();
+    }
+
+    function matchNoteButtonHtml(alert) {
+      const note = noteText(alert);
+      const hasNote = note.length > 0;
+      const title = hasNote ? `Notu düzenle: ${note}` : 'Maça not ekle';
+      return `<button class="match-note-btn ${hasNote ? 'has-note' : ''}" type="button" data-alert-action="note" data-alert-id="${Number(alert.id || 0)}" title="${escapeHtml(title)}" aria-label="${hasNote ? 'Maç notunu düzenle' : 'Maça not ekle'}">${hasNote ? '📝' : '✎'}</button>`;
+    }
+
+    function updateNoteCharCount() {
+      const textarea = document.getElementById('noteEditorText');
+      const counter = document.getElementById('noteCharCount');
+      if (!textarea || !counter) return;
+      counter.textContent = `${textarea.value.length}/240`;
+    }
+
+    function openNoteEditor(alertId) {
+      const alert = allAlerts.find(item => Number(item.id || 0) === Number(alertId || 0));
+      const modal = document.getElementById('noteEditorModal');
+      const textarea = document.getElementById('noteEditorText');
+      const matchEl = document.getElementById('noteEditorMatch');
+      if (!alert || !modal || !textarea || !matchEl) return;
+
+      noteEditorAlertId = Number(alert.id || 0);
+      matchEl.textContent = cleanMatchName(alert.match_name || '-');
+      textarea.value = noteText(alert);
+      updateNoteCharCount();
+      modal.classList.add('active');
+      setTimeout(() => textarea.focus(), 0);
+    }
+
+    function closeNoteEditor() {
+      const modal = document.getElementById('noteEditorModal');
+      if (modal) modal.classList.remove('active');
+      noteEditorAlertId = null;
+    }
+
+    function clearNoteEditor() {
+      const textarea = document.getElementById('noteEditorText');
+      if (!textarea) return;
+      textarea.value = '';
+      updateNoteCharCount();
+      textarea.focus();
+    }
+
+    function applyMatchNoteUpdate(payload) {
+      if (!payload || !payload.match_id) return;
+      allAlerts = allAlerts.map(a => {
+        if (a.match_id !== payload.match_id) return a;
+        return { ...a, note: payload.note || '' };
+      });
+    }
+
+    async function saveNoteEditor() {
+      const alertId = Number(noteEditorAlertId || 0);
+      const textarea = document.getElementById('noteEditorText');
+      const button = document.getElementById('noteSaveBtn');
+      if (!alertId || !textarea) return;
+
+      const note = textarea.value.trim().slice(0, 240);
+      const originalText = button ? button.textContent : '';
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Kaydediliyor...';
+      }
+
+      try {
+        const resp = await fetch(`/api/alerts/${alertId}/note`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note }),
+        });
+        const payload = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(payload?.error || 'Not kaydedilemedi.');
+        applyMatchNoteUpdate(payload);
+        closeNoteEditor();
+        render();
+      } catch (error) {
+        console.error(error);
+        alert(error?.message || 'Not kaydedilemedi.');
+      } finally {
+        if (button) {
+          button.disabled = false;
+          button.textContent = originalText || 'Kaydet';
+        }
+      }
     }
 
     function sortValue(alert, field) {
@@ -3199,6 +3395,7 @@
         filtered = filtered.filter(a =>
           (a.match_name || '').toLowerCase().includes(q) ||
           (a.tournament || '').toLowerCase().includes(q) ||
+          (a.note || '').toLowerCase().includes(q) ||
           (a.recommendation || '').toLowerCase().includes(q)
         );
       }
@@ -3293,6 +3490,7 @@
         }) : '-';
         const cleanName = cleanMatchName(a.match_name);
         const matchFocusButton = matchFocusButtonHtml(a);
+        const matchNoteButton = matchNoteButtonHtml(a);
         const matchSelected = isMatchSelected(a.match_id);
         const checkedAttr = matchSelected ? 'checked' : '';
         const matchDisplay = a.url
@@ -3323,6 +3521,7 @@
             <div class="match-cell-wrap">
               ${matchFocusButton}
               ${matchDisplay}
+              ${matchNoteButton}
             </div>
           </td>
           <td class="col-tournament" title="${escapeHtml(a.tournament || '-')}">${escapeHtml(a.tournament || '-')}</td>
@@ -3376,6 +3575,7 @@
         }) : '-';
         const matchName = cleanMatchName(a.match_name);
         const matchFocusButton = matchFocusButtonHtml(a);
+        const matchNoteButton = matchNoteButtonHtml(a);
         const matchSelected = isMatchSelected(a.match_id);
         const checkedAttr = matchSelected ? 'checked' : '';
         const matchDisplay = a.url
@@ -3394,6 +3594,7 @@
               <div class="card-match-row">
                 ${matchFocusButton}
                 ${matchDisplay}
+                ${matchNoteButton}
               </div>
             </div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
@@ -3452,6 +3653,7 @@
       if (e.key === 'Escape') {
         closeSignalInfoModal();
         closeBetBuilder();
+        closeNoteEditor();
       }
     });
 
@@ -3498,6 +3700,10 @@
       if (!id) return;
       if (action === 'focus') {
         toggleMatchFocusByAlert(id);
+        return;
+      }
+      if (action === 'note') {
+        openNoteEditor(id);
         return;
       }
 
@@ -3680,6 +3886,8 @@
 
     const searchInput = document.getElementById('searchInput');
     const clearSearchBtn = document.getElementById('clearSearchBtn');
+    const noteEditorText = document.getElementById('noteEditorText');
+    if (noteEditorText) noteEditorText.addEventListener('input', updateNoteCharCount);
 
     function updateSearchClearButton() {
       clearSearchBtn.classList.toggle('is-visible', searchInput.value.length > 0);
