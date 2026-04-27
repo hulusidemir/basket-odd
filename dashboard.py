@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from flask import Flask, Response, jsonify, render_template, request
 from db import Database
 from config import Config
+from ai_scoring import calculate_ai_score
 from finished_match_service import (
     run_active_match_finished_scan,
     run_deleted_match_result_cycle,
@@ -44,256 +45,7 @@ def _parse_analysis(raw) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _fold_text(value) -> str:
-    return (
-        str(value or "").strip().lower()
-        .replace("ı", "i").replace("ş", "s")
-        .replace("ğ", "g").replace("ü", "u")
-        .replace("ö", "o").replace("ç", "c")
-    )
-
-
-def _direction_key(value) -> str:
-    normalized = str(value or "").strip().upper().replace("UST", "ÜST")
-    return normalized if normalized in {"ALT", "ÜST"} else ""
-
-
-def _diff_band(value) -> str:
-    try:
-        diff = abs(float(value))
-    except (TypeError, ValueError):
-        return "Bilinmiyor"
-    if diff < 12:
-        return "<12"
-    if diff < 16:
-        return "12-16"
-    if diff < 20:
-        return "16-20"
-    return "20+"
-
-
-def _signal_count_band(value) -> str:
-    try:
-        count = int(value)
-    except (TypeError, ValueError):
-        count = 1
-    return "3+" if count >= 3 else str(max(count, 1))
-
-
-def _fair_side(fair_edge) -> str:
-    try:
-        edge = float(fair_edge)
-    except (TypeError, ValueError):
-        return ""
-    if edge >= 1:
-        return "ÜST"
-    if edge <= -1:
-        return "ALT"
-    return ""
-
-
-def _fair_relation(direction: str, fair_side: str) -> str:
-    if not direction or not fair_side:
-        return "neutral"
-    return "same" if direction == fair_side else "opposite"
-
-
-def _new_stat() -> dict:
-    return {"success": 0, "fail": 0}
-
-
-def _add_stat(bucket: dict, key: str, result: str) -> None:
-    if not key:
-        return
-    folded = _fold_text(result)
-    if folded not in {"basarili", "basarisiz"}:
-        return
-    stat = bucket.setdefault(key, _new_stat())
-    if folded == "basarili":
-        stat["success"] += 1
-    else:
-        stat["fail"] += 1
-
-
-def _stat_summary(stat: dict | None) -> dict:
-    stat = stat or {}
-    success = int(stat.get("success") or 0)
-    fail = int(stat.get("fail") or 0)
-    resolved = success + fail
-    rate = round((success / resolved) * 100, 1) if resolved else None
-    fade_rate = round((fail / resolved) * 100, 1) if resolved else None
-    return {
-        "success": success,
-        "fail": fail,
-        "resolved": resolved,
-        "rate": rate,
-        "fade_rate": fade_rate,
-    }
-
-
-def _build_signal_reliability_model(rows: list[dict]) -> dict:
-    model = {
-        "direction": {},
-        "repeat": {},
-        "diff": {},
-        "fair_relation": {},
-        "fair_side": {},
-    }
-    for row in rows:
-        result = row.get("result")
-        if _fold_text(result) not in {"basarili", "basarisiz"}:
-            continue
-
-        direction = _direction_key(row.get("direction"))
-        analysis = _parse_analysis(row.get("ai_analysis"))
-        fair_side = _fair_side(analysis.get("fair_edge") if analysis else row.get("fair_edge"))
-        relation = _fair_relation(direction, fair_side)
-
-        _add_stat(model["direction"], direction, result)
-        _add_stat(model["repeat"], f"{direction}|{_signal_count_band(row.get('signal_count'))}", result)
-        _add_stat(model["diff"], f"{direction}|{_diff_band(row.get('diff'))}", result)
-        _add_stat(model["fair_relation"], f"{direction}|{relation}", result)
-        if fair_side:
-            # Stored result is for the original signal. When the fair side is opposite,
-            # success for fair-side play is the inverse of the original result.
-            fair_result = result
-            if fair_side != direction:
-                fair_result = "Başarılı" if _fold_text(result) == "basarisiz" else "Başarısız"
-            _add_stat(model["fair_side"], fair_side, fair_result)
-
-    return model
-
-
-def _score_from_rate(rate: float | None, resolved: int, weight: float) -> float:
-    if rate is None or resolved <= 0:
-        return 0.0
-    sample_factor = min(1.0, resolved / 20)
-    return (rate - 50) * weight * sample_factor
-
-
-def _rate_text(summary: dict) -> str:
-    if not summary.get("resolved"):
-        return "veri yok"
-    return f"%{summary['rate']:.1f} ({summary['success']}/{summary['resolved']})"
-
-
-def build_signal_reliability(alert: dict, model: dict) -> dict:
-    analysis = _parse_analysis(alert.get("ai_analysis"))
-    if alert.get("analysis") and isinstance(alert.get("analysis"), dict):
-        analysis = alert["analysis"]
-
-    direction = _direction_key(alert.get("direction"))
-    fair_edge = analysis.get("fair_edge", alert.get("fair_edge"))
-    fair_side = _fair_side(fair_edge)
-    relation = _fair_relation(direction, fair_side)
-    signal_band = _signal_count_band(alert.get("signal_count"))
-    diff_band = _diff_band(alert.get("diff"))
-
-    direction_stats = _stat_summary((model.get("direction") or {}).get(direction))
-    repeat_stats = _stat_summary((model.get("repeat") or {}).get(f"{direction}|{signal_band}"))
-    diff_stats = _stat_summary((model.get("diff") or {}).get(f"{direction}|{diff_band}"))
-    relation_stats = _stat_summary((model.get("fair_relation") or {}).get(f"{direction}|{relation}"))
-    fair_side_stats = _stat_summary((model.get("fair_side") or {}).get(fair_side))
-
-    score = 50.0
-    score += _score_from_rate(direction_stats["rate"], direction_stats["resolved"], 0.55)
-    score += _score_from_rate(repeat_stats["rate"], repeat_stats["resolved"], 0.35)
-    score += _score_from_rate(diff_stats["rate"], diff_stats["resolved"], 0.25)
-    score += _score_from_rate(relation_stats["rate"], relation_stats["resolved"], 0.45)
-
-    try:
-        edge_abs = abs(float(fair_edge))
-    except (TypeError, ValueError):
-        edge_abs = 0.0
-
-    if relation == "same":
-        score += 8 if edge_abs >= 6 else 4
-    elif relation == "opposite":
-        score -= 18 if edge_abs >= 6 else 10
-
-    if direction == "ÜST" and direction_stats.get("resolved", 0) >= 10 and direction_stats.get("rate", 50) < 40:
-        score -= 8
-    if direction == "ALT" and direction_stats.get("resolved", 0) >= 10 and direction_stats.get("rate", 50) >= 56:
-        score += 4
-
-    h2h_quality = analysis.get("h2h_quality_score")
-    try:
-        h2h_quality_value = float(h2h_quality)
-    except (TypeError, ValueError):
-        h2h_quality_value = None
-    if h2h_quality_value is not None:
-        if h2h_quality_value < 45:
-            score -= 12
-        elif h2h_quality_value < 70:
-            score -= 6
-    if analysis.get("history_total") is None:
-        score -= 8
-    elif analysis.get("team_recent_total") is None:
-        score -= 3
-
-    score = max(0, min(100, round(score)))
-    if score >= 68:
-        label, class_name = "Güçlü", "reliable"
-    elif score >= 55:
-        label, class_name = "Orta", "watch"
-    elif score >= 42:
-        label, class_name = "Zayıf", "weak"
-    else:
-        label, class_name = "Ters eğilim", "weak"
-
-    if score >= 60:
-        verdict = f"{direction} sinyali destek buluyor; yine de skoru ve maç ritmini kontrol et."
-        suggested_side = direction
-    elif relation == "opposite" and fair_side:
-        verdict = f"Ham sinyal {direction}, ama adil barem {fair_side} tarafını destekliyor."
-        suggested_side = fair_side
-    else:
-        verdict = "Net avantaj zayıf; pas geçmek veya sadece izlemek daha sağlıklı."
-        suggested_side = ""
-
-    reasons = [
-        f"{direction or 'Sinyal'} geçmişi: {_rate_text(direction_stats)}.",
-        f"{signal_band}. sinyal geçmişi: {_rate_text(repeat_stats)}.",
-        f"Fark bandı {diff_band}: {_rate_text(diff_stats)}.",
-    ]
-    if fair_side:
-        fair_note = (
-            f"Adil barem {fair_side} diyor ve sinyalle aynı tarafta."
-            if relation == "same"
-            else f"Adil barem {fair_side} diyor; ham sinyal ile ters."
-        )
-        reasons.append(fair_note)
-    if fair_side_stats.get("resolved"):
-        reasons.append(f"Adil barem tarafı {fair_side}: {_rate_text(fair_side_stats)}.")
-    if h2h_quality_value is not None and h2h_quality_value < 70:
-        reasons.append(f"H2H veri kalitesi düşük: {h2h_quality_value:.0f}/100.")
-    if analysis.get("team_recent_total") is None:
-        reasons.append("Takım son-form bileşeni eksik; adil barem daha temkinli okunmalı.")
-
-    return {
-        "score": score,
-        "label": label,
-        "class_name": class_name,
-        "verdict": verdict,
-        "signal_side": direction,
-        "fair_side": fair_side,
-        "suggested_side": suggested_side,
-        "relation": relation,
-        "diff_band": diff_band,
-        "signal_count_band": signal_band,
-        "reasons": reasons,
-        "historical": {
-            "direction": direction_stats,
-            "repeat": repeat_stats,
-            "diff": diff_stats,
-            "fair_relation": relation_stats,
-            "fair_side": fair_side_stats,
-        },
-    }
-
-
 def enrich_alerts_with_analysis(alerts: list[dict]) -> list[dict]:
-    reliability_model = _build_signal_reliability_model(db.recent_deleted_alerts(limit=None))
     for alert in alerts:
         analysis = _parse_analysis(alert.get("ai_analysis"))
         if not analysis:
@@ -340,7 +92,14 @@ def enrich_alerts_with_analysis(alerts: list[dict]) -> list[dict]:
         alert["history_total"] = analysis.get("history_total")
         alert["recommendation"] = analysis.get("recommendation") or ""
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
-        alert["reliability"] = build_signal_reliability(alert, reliability_model)
+        ai_review = calculate_ai_score(alert, analysis, raw_score=analysis.get("raw_score"))
+        analysis = {**analysis, **ai_review}
+        alert["analysis"] = analysis
+        alert["raw_score"] = ai_review.get("raw_score")
+        alert["ai_score"] = ai_review.get("ai_score")
+        alert["ai_label"] = ai_review.get("ai_label")
+        alert["ai_reason"] = ai_review.get("ai_reason")
+        alert["final_score"] = ai_review.get("final_score")
     return alerts
 
 
@@ -435,7 +194,6 @@ def build_bet_builder(max_count: int) -> dict:
         fair_edge = _safe_float(alert.get("fair_edge")) if alert.get("fair_edge") is not None else None
         projected = alert.get("projected")
         history_total = alert.get("history_total")
-        reliability = alert.get("reliability") if isinstance(alert.get("reliability"), dict) else {}
         opening_gap = round(live - opening, 1)
         signal_priority = abs(diff)
         candidates.append({
@@ -453,10 +211,9 @@ def build_bet_builder(max_count: int) -> dict:
             "fair_edge": round(fair_edge, 1) if fair_edge is not None else None,
             "history_total": round(float(history_total), 1) if history_total is not None else None,
             "recommendation": alert.get("recommendation", ""),
-            "reliability": reliability,
-            "reliability_score": reliability.get("score"),
-            "reliability_label": reliability.get("label"),
-            "suggested_side": reliability.get("suggested_side"),
+            "ai_score": alert.get("ai_score"),
+            "ai_label": alert.get("ai_label"),
+            "final_score": alert.get("final_score"),
             "status": alert.get("status", ""),
             "score": alert.get("score", ""),
             "opening_gap": opening_gap,

@@ -1,6 +1,7 @@
 import re
 from statistics import mean
 
+from ai_scoring import calculate_ai_score
 from projection import calculate_projected_total, game_clock, parse_score
 
 
@@ -597,7 +598,7 @@ def build_signal_analysis(
     if fair_edge is not None:
         summary += f" | Canlıya göre {fair_edge:+.1f}"
 
-    return {
+    result = {
         "direction": direction,
         "fair_line": fair_line,
         "fair_edge": fair_edge,
@@ -629,3 +630,5 @@ def build_signal_analysis(
         "quarter_paces": quarter_paces,
         "pace_anomaly_note": pace_anomaly_note,
     }
+    result.update(calculate_ai_score(match, result))
+    return result

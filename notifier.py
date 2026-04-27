@@ -3,6 +3,7 @@ notifier.py — Sends betting alerts via Telegram.
 """
 
 import logging
+from html import escape
 
 from telegram import Bot
 from telegram.constants import ParseMode
@@ -69,6 +70,10 @@ class TelegramNotifier:
         warnings = analysis.get("warnings") or []
         pace_anomaly_note = analysis.get("pace_anomaly_note") or ""
         quarter_paces = analysis.get("quarter_paces") or {}
+        ai_label = analysis.get("ai_label") or ""
+        ai_score = analysis.get("ai_score")
+        final_score = analysis.get("final_score")
+        ai_reason = analysis.get("ai_reason") or ""
 
         projected_line = f"Projeksiyon: <b>{float(projected):.1f}</b>\n" if projected is not None else ""
         market_line = f"Piyasa Bazı: <b>{float(market_total):.1f}</b>\n" if market_total is not None else ""
@@ -114,6 +119,18 @@ class TelegramNotifier:
         warning_line = "\n".join(f"❔ {item}" for item in warnings[:6])
         if warning_line:
             warning_line += "\n"
+        ai_analysis_line = ""
+        if ai_label or ai_reason:
+            score_parts = []
+            if ai_score is not None:
+                score_parts.append(f"AI {int(float(ai_score))}")
+            if final_score is not None:
+                score_parts.append(f"Nihai {int(float(final_score))}")
+            score_text = f" ({' / '.join(score_parts)})" if score_parts else ""
+            ai_analysis_line = (
+                f"\n<b>AI ANALİZ:</b> {escape(str(ai_label))}{escape(score_text)}"
+                f"\n{escape(str(ai_reason))}\n"
+            )
 
         text = (
             f"{emoji} <b>Sinyal: {direction}</b>\n"
@@ -140,6 +157,7 @@ class TelegramNotifier:
             f"{fair_alert_line}"
             f"{warning_line}"
             f"💡 <i>{tip}</i>\n"
+            f"{ai_analysis_line}"
         )
 
         try:

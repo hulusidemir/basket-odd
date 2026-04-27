@@ -423,7 +423,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 1080px;
+      min-width: 1230px;
     }
 
     th,
@@ -598,6 +598,51 @@
       line-height: 1;
       margin-left: 4px;
       text-shadow: 0 0 6px rgba(239, 68, 68, 0.55);
+    }
+
+    .ai-cell {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      min-width: 130px;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .ai-badge {
+      min-width: 0;
+      max-width: 170px;
+      padding: 5px 8px;
+      font-size: 11px;
+      white-space: normal;
+      text-align: left;
+      justify-content: flex-start;
+      border-color: rgba(95, 167, 255, 0.28);
+      color: #b9dcff;
+      background: rgba(24, 43, 67, 0.9);
+    }
+
+    .ai-badge.ai-100 {
+      color: #07111d;
+      background: linear-gradient(180deg, #fef08a, #fbbf24);
+      border-color: transparent;
+    }
+
+    .ai-badge.pass {
+      color: #ffb2b2;
+      border-color: rgba(239, 68, 68, 0.32);
+      background: rgba(239, 68, 68, 0.13);
+    }
+
+    .ai-score-line {
+      color: var(--text-soft);
+      font-size: 11px;
+      white-space: nowrap;
     }
 
     .badge {
@@ -1322,6 +1367,17 @@
         </div>
       </section>
 
+      <section class="panel">
+        <div class="actions">
+          <button class="btn primary" data-ai-filter="">AI Tümü</button>
+          <button class="btn" data-ai-filter="AI 100">AI 100</button>
+          <button class="btn" data-ai-filter="GÜÇLÜ ADAY">Güçlü Aday</button>
+          <button class="btn" data-ai-filter="ORTA">Orta</button>
+          <button class="btn" data-ai-filter="ZAYIF">Zayıf</button>
+          <button class="btn" data-ai-filter="ÇELİŞKİLİ / PAS">Çelişkili / Pas</button>
+        </div>
+      </section>
+
       <section class="panel toolbar">
         <input class="search-box" id="searchInput" type="text" placeholder="Maç, turnuva veya skor ara">
         <div class="actions">
@@ -1339,6 +1395,7 @@
               <th data-sort="match_name">Maç</th>
               <th data-sort="alert_moment">Sinyal Anı</th>
               <th data-sort="direction">Sinyal</th>
+              <th data-sort="final_score">AI Analiz</th>
               <th data-sort="status">Durum</th>
               <th data-sort="score">Skor</th>
               <th data-sort="opening">Açılış</th>
@@ -1410,6 +1467,7 @@
     let sortField = 'deleted_at';
     let sortAsc = false;
     let activeFilter = null;
+    let activeAiFilter = '';
     let currentPage = 1;
     let pageSize = 100;
 
@@ -1511,6 +1569,35 @@
       return `<button class="badge ${cls} signal-open-btn" type="button" title="Sinyal bilgilerini aç" onclick="openSignalInfo(${Number(alert.id || 0)})">${escapeHtml(direction)}</button>`;
     }
 
+    function aiAnalysisHtml(alert) {
+      const analysis = alertAnalysis(alert);
+      const label = String(alert.ai_label || analysis.ai_label || '-');
+      const reason = String(alert.ai_reason || analysis.ai_reason || '');
+      const raw = Number(alert.raw_score ?? analysis.raw_score);
+      const ai = Number(alert.ai_score ?? analysis.ai_score);
+      const finalScore = Number(alert.final_score ?? analysis.final_score);
+      const cls = label.includes('AI 100') ? 'ai-100' : (label.includes('ÇELİŞKİLİ') ? 'pass' : '');
+      const scoreText = `Eski ${Number.isFinite(raw) ? Math.round(raw) : '-'} | AI ${Number.isFinite(ai) ? Math.round(ai) : '-'} | Nihai ${Number.isFinite(finalScore) ? Math.round(finalScore) : '-'}`;
+      return `
+        <button class="ai-cell" type="button" onclick="openSignalInfo(${Number(alert.id || 0)})" title="${escapeHtml(reason)}">
+          <span class="badge ai-badge ${cls}">${escapeHtml(label)}</span>
+          <span class="ai-score-line">${escapeHtml(scoreText)}</span>
+        </button>
+      `;
+    }
+
+    function aiLabelText(alert) {
+      const analysis = alertAnalysis(alert);
+      return String(alert.ai_label || analysis.ai_label || '').trim();
+    }
+
+    function aiFilterMatches(alert) {
+      if (!activeAiFilter) return true;
+      const label = aiLabelText(alert);
+      if (activeAiFilter === 'AI 100') return label.startsWith('AI 100');
+      return label === activeAiFilter;
+    }
+
     function fairEdgeAlertHtml(alert) {
       const edge = fairEdgeValue(alert);
       if (edge === null) return '';
@@ -1601,6 +1688,8 @@
         ...warnings,
       ].filter(Boolean);
       const matchName = cleanMatchName(alert.match_name || '-');
+      const aiLabel = alert.ai_label || analysis.ai_label || '-';
+      const aiReason = alert.ai_reason || analysis.ai_reason || '-';
 
       content.innerHTML = `
         <div class="signal-info-headline">
@@ -1620,6 +1709,16 @@
               ${modalListItem('Adil Barem', formatFairLine(alert.fair_line ?? analysis.fair_line))}
             </ul>
             <div class="signal-weights-line"><strong>Ağırlık</strong>${escapeHtml(weightsText(analysis.weights))}</div>
+          </div>
+          <div class="signal-info-section">
+            <div class="signal-info-section-title">AI Analiz</div>
+            <ul class="signal-metrics-list">
+              ${modalListItem('Eski Puan', alert.raw_score ?? analysis.raw_score ?? '-')}
+              ${modalListItem('AI Puanı', alert.ai_score ?? analysis.ai_score ?? '-')}
+              ${modalListItem('Nihai Puan', alert.final_score ?? analysis.final_score ?? '-')}
+              ${modalListItem('Etiket', aiLabel)}
+            </ul>
+            <div class="signal-weights-line"><strong>Neden</strong>${escapeHtml(aiReason)}</div>
           </div>
           <div class="signal-info-section">
             <div class="signal-info-section-title">Uyarılar / Beklenti</div>
@@ -1701,6 +1800,7 @@
           return true;
         });
       }
+      rows = rows.filter(aiFilterMatches);
       if (!searchQuery) return sortedAlerts(rows);
       const q = searchQuery.toLowerCase();
       rows = rows.filter(alert => [
@@ -1710,6 +1810,8 @@
         alert.score,
         alert.result,
         alert.note,
+        alert.ai_label,
+        alert.ai_reason,
         recommendationText(alert),
         fairLineValue(alert),
       ].some(value => String(value || '').toLowerCase().includes(q)));
@@ -1724,7 +1826,7 @@
 
     function sortValue(alert, field) {
       if (field === 'deleted_at' || field === 'alerted_at') return parseDateValue(alert[field]);
-      if (['opening', 'live', 'diff', 'signal_count', 'fair_line', 'fair_edge'].includes(field)) {
+      if (['opening', 'live', 'diff', 'signal_count', 'fair_line', 'fair_edge', 'raw_score', 'ai_score', 'final_score'].includes(field)) {
         const num = Number(alert[field]);
         return Number.isFinite(num) ? num : -Infinity;
       }
@@ -1855,6 +1957,12 @@
       if (chipFail) chipFail.classList.toggle('active', isRes && activeFilter.result === 'Başarısız');
     }
 
+    function updateAiFilterButtons() {
+      document.querySelectorAll('[data-ai-filter]').forEach(button => {
+        button.classList.toggle('primary', button.dataset.aiFilter === activeAiFilter);
+      });
+    }
+
     function setSummaryFilter(filter) {
       activeFilter = filter && Object.keys(filter).length ? filter : null;
       currentPage = 1;
@@ -1877,6 +1985,7 @@
       updateStats();
       updateSortHeaders();
       updateStatChips();
+      updateAiFilterButtons();
 
       if (rows.length === 0) {
         body.innerHTML = '';
@@ -1921,6 +2030,7 @@
               ${signalBadge(alert)}
               ${Number(alert.signal_count || 0) > 1 ? `<div class="subline">${Number(alert.signal_count)}. sinyal</div>` : ''}
             </td>
+            <td>${aiAnalysisHtml(alert)}</td>
             <td>${escapeHtml(alert.status || '-')}</td>
             <td class="mono">${escapeHtml(alert.score || '-')}${(() => { const total = calculateScoreTotal(alert.score); return total !== null ? ` <span style="font-style: normal; font-size: 0.85em; color: var(--text-dim);">(${total})</span>` : ''; })()}</td>
             <td class="mono">${formatNumber(alert.opening)}</td>
@@ -1944,6 +2054,14 @@
       currentPage = 1;
       render();
     }
+
+    document.querySelectorAll('[data-ai-filter]').forEach(button => {
+      button.addEventListener('click', () => {
+        activeAiFilter = button.dataset.aiFilter || '';
+        currentPage = 1;
+        render();
+      });
+    });
 
     function showBanner(message, type = 'success') {
       const banner = document.getElementById('statusBanner');
