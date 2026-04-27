@@ -704,7 +704,7 @@ class AiscoreScraper:
         h2h_url = url.rstrip("/") + "/h2h"
         try:
             await page.goto(h2h_url, wait_until="domcontentloaded")
-            await page.wait_for_timeout(3500)
+            await page.wait_for_timeout(2500)
 
             # Try to click an H2H tab if the page lands on a different sub-section
             try:
@@ -725,12 +725,12 @@ class AiscoreScraper:
                 """)
             except Exception:
                 pass
-            await page.wait_for_timeout(1500)
+            await page.wait_for_timeout(1000)
 
             # Progressive scroll to trigger lazy-loaded last-5 / h2h tables
-            for _ in range(3):
+            for _ in range(2):
                 await page.evaluate("window.scrollBy(0, document.body.scrollHeight / 3)")
-                await page.wait_for_timeout(900)
+                await page.wait_for_timeout(700)
 
             body = await page.evaluate(r"""
                 () => {

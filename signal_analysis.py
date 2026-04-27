@@ -111,6 +111,7 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
             return {}
         escaped = re.escape(team_name)
         pts_sep = r"[-–—\u2012\u2015]"
+        per_game = r"(?:per\s*game|/\s*game|pts?/game|points?/game)"
         patterns = [
             rf"(?:Last\s*5|Last\s*Matches|Recent\s*Form).{{0,220}}{escaped}.{{0,220}}"
             rf"(\d{{2,3}}(?:\.\d+)?)\s*points?\s*per\s*match[,\s]*"
@@ -118,7 +119,14 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
             rf"(?:Total\s*points?\s*over%[:\s]*(\d+(?:\.\d+)?)%)?",
             rf"(?:Last\s*5|Last\s*Matches|Recent\s*Form).{{0,260}}{escaped}.{{0,260}}"
             rf"pts\s+(\d{{2,3}}(?:\.\d+)?)\s*{pts_sep}\s*(\d{{2,3}}(?:\.\d+)?)\s+"
-            rf"(?:per\s*game|/\s*game|pts?/game|points?/game)",
+            rf"{per_game}",
+            # AiScore H2H page format: "TeamName N [chars] Home/Away [chars] pts X – Y per game"
+            # \b(?:[1-9]|[12]\d)\b matches game counts (1-29) but NOT basketball scores (50+)
+            # This prevents false matches where a match-row score is followed by the next
+            # section's Home/Away heading within 80 chars.
+            rf"{escaped}.{{0,10}}\b(?:[1-9]|[12]\d)\b.{{0,80}}?(?:Home|Away|All).{{0,250}}?"
+            rf"pts\s+(\d{{2,3}}(?:\.\d+)?)\s*{pts_sep}\s*(\d{{2,3}}(?:\.\d+)?)\s+"
+            rf"{per_game}",
         ]
         for pattern in patterns:
             m = re.search(pattern, text, re.IGNORECASE)
@@ -136,7 +144,6 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
                 "over_pct": over_pct,
             }
         return {}
-
     def h2h_totals_from_match_rows() -> list[int]:
         if not text:
             return []
