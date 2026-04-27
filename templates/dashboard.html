@@ -1777,10 +1777,10 @@
             <ul class="signal-metrics-list">
               ${signalModalListItem('Açılış', fmt(alert.opening))}
               ${signalModalListItem('Canlı', fmt(alert.live))}
+              ${signalModalListItem('Adil Barem', fairLabel)}
               ${signalModalListItem('Projeksiyon', fmt(alert.projected ?? analysis.projected_total))}
               ${signalModalListItem('H2H Ort.', fmt(alert.h2h_total ?? analysis.h2h_total))}
               ${signalModalListItem('H2H Kalite', analysis.h2h_quality_score != null ? `${analysis.h2h_quality_score}/100` : '-')}
-              ${signalModalListItem('Adil Barem', fairLabel)}
             </ul>
             <div class="signal-weights-line"><strong>Ağırlık</strong>${escapeHtml(signalWeightsText(analysis.weights))}</div>
           </div>
