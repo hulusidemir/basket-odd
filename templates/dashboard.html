@@ -475,6 +475,86 @@
 
     .help-section { padding: 14px 16px; margin-bottom: 12px; border-radius: 12px;
       background: rgba(15,23,42,0.55); border: 1px solid rgba(148,163,184,0.18); }
+    /* === Profesyonel Sinyal Modal === */
+    .sig-hero {
+      display: flex; align-items: center; gap: 14px;
+      padding: 16px; border-radius: 14px; margin-bottom: 14px;
+      background: linear-gradient(135deg, rgba(34,211,238,0.10), rgba(124,92,246,0.10));
+      border: 1px solid rgba(124,92,246,0.22);
+    }
+    .sig-hero .hero-icon {
+      width: 64px; height: 64px; border-radius: 16px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 26px; font-weight: 900; flex-shrink: 0;
+    }
+    .sig-hero .hero-text { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+    .sig-hero .hero-tag-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .sig-hero .hero-label { font-size: 22px; font-weight: 900; letter-spacing: 0.5px; line-height: 1.1; }
+    .sig-hero .hero-rule { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(15,23,42,0.55); color: #cbd5e1; font-weight: 700; }
+    .sig-hero .hero-conf {
+      font-size: 13px; font-weight: 800; color: #34d399;
+      padding: 2px 8px; border-radius: 999px; background: rgba(16,185,129,0.15);
+    }
+    .sig-hero .hero-meta { font-size: 12px; color: var(--text-soft); margin-top: 2px; }
+    .sig-hero .hero-action { font-size: 13px; font-weight: 700; margin-top: 4px; }
+
+    .sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .sig-grid.full { grid-template-columns: 1fr; }
+    .sig-card {
+      padding: 12px 14px; border-radius: 10px;
+      background: rgba(15,23,42,0.55); border: 1px solid rgba(148,163,184,0.18);
+    }
+    .sig-card h4 {
+      margin: 0 0 8px; font-size: 11px; font-weight: 800; letter-spacing: 0.6px;
+      text-transform: uppercase; color: var(--text-soft);
+    }
+    .sig-card .row { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; font-size: 13px; }
+    .sig-card .row span { color: var(--text-soft); }
+    .sig-card .row strong { font-weight: 800; }
+    .sig-card .row strong.alt-tag { color: #6ee7b7; }
+    .sig-card .row strong.ust-tag { color: #fca5a5; }
+
+    .sig-edge-box {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 12px; margin-top: 8px; border-radius: 10px;
+      background: rgba(34,211,238,0.10); border: 1px solid rgba(34,211,238,0.30);
+    }
+    .sig-edge-box.alt { background: rgba(16,185,129,0.10); border-color: rgba(16,185,129,0.30); color: #6ee7b7; }
+    .sig-edge-box.ust { background: rgba(239,68,68,0.10); border-color: rgba(239,68,68,0.30); color: #fca5a5; }
+    .sig-edge-box.neutral { background: rgba(148,163,184,0.08); border-color: rgba(148,163,184,0.25); color: #cbd5e1; }
+    .sig-edge-box .arrow { font-size: 22px; font-weight: 900; }
+    .sig-edge-box .text { font-size: 13px; font-weight: 700; }
+
+    .sig-warnings { list-style: none; padding: 0; margin: 0; }
+    .sig-warnings li {
+      padding: 8px 12px; margin-bottom: 6px; border-radius: 8px;
+      background: rgba(251,191,36,0.08); border-left: 3px solid #fbbf24;
+      font-size: 12.5px; line-height: 1.5;
+    }
+    .sig-warnings li:last-child { margin-bottom: 0; }
+
+    .sig-actions {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+      margin-top: 14px; padding-top: 14px;
+      border-top: 1px solid rgba(148,163,184,0.18);
+    }
+    .sig-actions button {
+      padding: 10px 8px; border-radius: 10px; font-weight: 800; font-size: 13px;
+      border: 1px solid rgba(148,163,184,0.25); background: rgba(15,23,42,0.55);
+      color: #e2e8f0; cursor: pointer;
+    }
+    .sig-actions .bet { background: rgba(34,211,238,0.18); border-color: rgba(34,211,238,0.4); color: #67e8f9; }
+    .sig-actions .bet.active { background: linear-gradient(135deg,#22d3ee,#0891b2); color: #052e2b; border-color: transparent; }
+    .sig-actions .follow { background: rgba(251,191,36,0.15); border-color: rgba(251,191,36,0.35); color: #fde68a; }
+    .sig-actions .follow.active {
+      background: linear-gradient(135deg, #fff7a8, #fde047 58%, #facc15);
+      color: #241a00;
+      border-color: #fff7a8;
+      box-shadow: 0 0 0 3px rgba(253, 224, 71, 0.36), 0 8px 18px rgba(250, 204, 21, 0.28);
+    }
+    .sig-actions .ignore { background: rgba(148,163,184,0.10); }
+    .sig-actions .ignore.active { background: rgba(100,116,139,0.40); }
+
     .help-section h3 { margin: 0 0 8px; font-size: 15px; font-weight: 800; color: #e2e8f0; }
     .help-section p { margin: 0 0 6px; color: var(--text-soft); }
     .help-section ul { margin: 6px 0 0 18px; color: var(--text-soft); }
@@ -534,10 +614,10 @@
     }
 
     .row-action.follow-action.active-follow {
-      background: linear-gradient(135deg, #fde68a, #f59e0b);
-      border: 2px solid #fde68a;
-      color: #18100a;
-      box-shadow: 0 0 0 3px rgba(251,191,36,0.4), 0 4px 12px rgba(245,158,11,0.4);
+      background: linear-gradient(135deg, #fff7a8, #fde047 58%, #facc15);
+      border: 2px solid #fff7a8;
+      color: #241a00;
+      box-shadow: 0 0 0 3px rgba(253,224,71,0.48), 0 4px 14px rgba(250,204,21,0.55);
     }
 
     .row-action.ignore-action.active-ignore {
@@ -1692,55 +1772,159 @@
       const alert = allAlerts.find(a => Number(a.id) === Number(id));
       if (!alert) return;
       const analysis = parseAnalysis(alert);
-      const warnings = Array.isArray(alert.warnings) ? alert.warnings : (Array.isArray(analysis.warnings) ? analysis.warnings : []);
-      const notes = [
-        alert.recommendation || analysis.recommendation,
-        analysis.pace_note,
-        analysis.script_note,
-        analysis.h2h_note,
-        analysis.history_note,
-        ...warnings,
-      ].filter(Boolean);
+      const meta = betBadgeMeta(alert);
       const matchName = cleanMatchName(alert.match_name);
+      const sigDir = String(alert.direction || '-');
+      const sigEmoji = sigDir === 'ALT' ? '▼' : (sigDir === 'ÜST' ? '▲' : '·');
+      const sigCls = sigDir === 'ALT' ? 'alt-tag' : (sigDir === 'ÜST' ? 'ust-tag' : '');
+
+      // ==== HERO blok: ana karar + skor + maç anı ====
+      const heroLabel = meta.label || 'BEKLENİYOR';
+      const heroIcon = meta.icon || '?';
+      const heroCls = meta.cls || 'empty';
+      const conf = Number(meta.conf || 0);
+      let actionLine = '';
+      if (meta.dir === 'PAS') actionLine = '❌ <b>Bu sinyale girme — pas geç.</b>';
+      else if (meta.label === 'KONTRA ALT') actionLine = '👉 <b>Sistem ÜST dedi ama veriler ALT diyor → ALT oyna.</b>';
+      else if (meta.dir === 'ALT') actionLine = '👉 <b>ALT yönünde oyna.</b>';
+      else actionLine = '⚠️ Doğrulanmış güçlü kural eşleşmedi.';
+      const confBadge = conf > 0 ? `<span class="hero-conf">%${conf} güven</span>` : '';
+      const ruleBadge = meta.rule ? `<span class="hero-rule">${escapeHtml(meta.rule)}</span>` : '';
+
+      // ==== Piyasa kutusu ====
+      const opening = num(alert.opening);
+      const live = num(alert.live);
+      const lineMove = (live !== null && opening !== null) ? (live - opening) : null;
+      const lineMoveStr = lineMove === null ? '-' : (lineMove >= 0 ? '+' : '') + lineMove.toFixed(1);
+      const moveColor = lineMove === null ? '' : (lineMove > 0 ? 'alt-tag' : 'ust-tag');
+
+      // ==== Adil barem / projeksiyon ====
       const fairNum = num(alert.fair_line ?? analysis.fair_line);
-      const fairLabel = fairNum !== null ? fairNum.toFixed(1) : 'Hesaplanamıyor';
-      const aiLabel = alert.ai_label || analysis.ai_label || '-';
-      const aiReason = alert.ai_reason || analysis.ai_reason || '-';
+      const fairEdge = num(alert.fair_edge ?? analysis.fair_edge);
+      const projected = num(alert.projected ?? analysis.projected_total);
+      const h2h = num(alert.h2h_total ?? analysis.h2h_total);
+      const teamRecent = num(alert.team_recent_total ?? analysis.team_recent_total);
+
+      let edgeBox = '';
+      if (fairEdge !== null) {
+        let cls = 'neutral', arrow = '⇆', text = '';
+        if (fairEdge <= -3) {
+          cls = 'alt'; arrow = '▼';
+          text = `Adil barem canlının ${Math.abs(fairEdge).toFixed(1)} puan altında — <b>ALT yönlü değer</b>.`;
+        } else if (fairEdge >= 3) {
+          cls = 'ust'; arrow = '▲';
+          text = `Adil barem canlının ${fairEdge.toFixed(1)} puan üstünde — <b>ÜST yönlü değer</b>.`;
+        } else {
+          text = `Adil barem canlıya yakın (${fairEdge >= 0 ? '+' : ''}${fairEdge.toFixed(1)}) — net değer alanı dar.`;
+        }
+        edgeBox = `<div class="sig-edge-box ${cls}"><span class="arrow">${arrow}</span><span class="text">${text}</span></div>`;
+      }
+
+      // ==== Takım profili ====
+      const ctx = analysis.team_context || alert.team_context;
+      let teamCard = '';
+      if (ctx) {
+        const home = ctx.home_profile || {};
+        const away = ctx.away_profile || {};
+        const homeRow = home.team
+          ? `<div class="row"><span>${escapeHtml(home.team)}</span><strong>son 5 ort ${fmt(home.avg_total)}${home.over_pct != null ? ' · over %' + Math.round(home.over_pct) : ''}</strong></div>`
+          : '';
+        const awayRow = away.team
+          ? `<div class="row"><span>${escapeHtml(away.team)}</span><strong>son 5 ort ${fmt(away.avg_total)}${away.over_pct != null ? ' · over %' + Math.round(away.over_pct) : ''}</strong></div>`
+          : '';
+        const h2hRow = ctx.h2h_avg_total != null
+          ? `<div class="row"><span>H2H ${ctx.h2h_games || ''} maç</span><strong>ort ${fmt(ctx.h2h_avg_total)}${ctx.h2h_over_pct != null ? ' · over %' + Math.round(ctx.h2h_over_pct) : ''}</strong></div>`
+          : '';
+        const expRow = ctx.expected_total != null
+          ? `<div class="row"><span>Beklenen toplam</span><strong>${fmt(ctx.expected_total)}${ctx.regression_delta != null ? ' (canlı ' + (ctx.regression_delta >= 0 ? '+' : '') + ctx.regression_delta.toFixed(1) + ')' : ''}</strong></div>`
+          : '';
+        teamCard = (homeRow || awayRow || h2hRow || expRow)
+          ? `<div class="sig-card"><h4>🏟 Takım & H2H Profili</h4>${homeRow}${awayRow}${h2hRow}${expRow}</div>`
+          : '';
+      }
+
+      // ==== Risk uyarıları ====
+      const allWarnings = [
+        analysis.pace_anomaly_note,
+        analysis.script_note && !analysis.script_note.includes('belirgin ekstra risk yok') ? analysis.script_note : null,
+        ...(Array.isArray(alert.warnings) ? alert.warnings : (Array.isArray(analysis.warnings) ? analysis.warnings : [])),
+      ];
+      const warnSeen = new Set();
+      const warnings = allWarnings
+        .filter(Boolean)
+        .filter(w => {
+          const key = String(w).replace(/\s+/g, ' ').trim().toLowerCase();
+          if (!key || warnSeen.has(key)) return false;
+          warnSeen.add(key); return true;
+        })
+        .slice(0, 5);
+      const warningsHtml = warnings.length
+        ? `<ul class="sig-warnings">${warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul>`
+        : '<div style="font-size:12.5px;color:var(--text-soft);padding:6px 0;">Belirgin risk uyarısı yok.</div>';
+
+      // ==== Action butonları ====
+      const aid = Number(alert.id || 0);
+      const actionsHtml = `
+        <div class="sig-actions">
+          <button class="bet ${alert.bet_placed ? 'active' : ''}" onclick="runAction('bet', ${aid}, this); closeSignalModal();">
+            ${alert.bet_placed ? '✓ Oynandı' : '🎯 Bahis Oyna'}
+          </button>
+          <button class="follow ${alert.followed ? 'active' : ''}" onclick="runAction('follow', ${aid}, this); closeSignalModal();">
+            ${alert.followed ? '👁 Takipte' : '👁 Takip Et'}
+          </button>
+          <button class="ignore ${alert.ignored ? 'active' : ''}" onclick="runAction('ignore', ${aid}, this); closeSignalModal();">
+            ${alert.ignored ? '⊘ Gözardı' : '⊘ Pas Geç'}
+          </button>
+          <button onclick="closeSignalModal()">Kapat</button>
+        </div>`;
 
       $('signalModalTitle').textContent = matchName;
       $('signalModalBody').innerHTML = `
-        <div class="signal-info-headline">
-          <div class="signal-info-match">${escapeHtml(matchName)}</div>
-          <div class="signal-info-meta">${escapeHtml(alert.tournament || '-')} | ${escapeHtml(alert.status || '-')} | Skor: ${escapeHtml(alert.score || '-')} | AI: ${escapeHtml(aiLabel)}</div>
-        </div>
-        <div class="signal-info-grid">
-          ${signalTeamContextHtml(analysis.team_context || alert.team_context)}
-          <div class="signal-info-section">
-            <div class="signal-info-section-title">Adil Barem / Sinyal</div>
-            <ul class="signal-metrics-list">
-              ${signalModalListItem('Açılış', fmt(alert.opening))}
-              ${signalModalListItem('Canlı', fmt(alert.live))}
-              ${signalModalListItem('Adil Barem', fairLabel)}
-              ${signalModalListItem('Projeksiyon', fmt(alert.projected ?? analysis.projected_total))}
-              ${signalModalListItem('H2H Ort.', fmt(alert.h2h_total ?? analysis.h2h_total))}
-              ${signalModalListItem('H2H Kalite', analysis.h2h_quality_score != null ? `${analysis.h2h_quality_score}/100` : '-')}
-            </ul>
-            <div class="signal-weights-line"><strong>Ağırlık</strong>${escapeHtml(signalWeightsText(analysis.weights))}</div>
-          </div>
-          <div class="signal-info-section">
-            <div class="signal-info-section-title">AI Analiz</div>
-            <ul class="signal-metrics-list">
-              ${signalModalListItem('AI Puanı', alert.ai_score ?? analysis.ai_score ?? '-')}
-              ${signalModalListItem('Nihai Puan', alert.final_score ?? analysis.final_score ?? '-')}
-              ${signalModalListItem('Etiket', aiLabel)}
-            </ul>
-            <div class="signal-weights-line"><strong>Neden</strong>${escapeHtml(aiReason)}</div>
-          </div>
-          <div class="signal-info-section">
-            <div class="signal-info-section-title">Uyarılar / Beklenti</div>
-            ${signalNoteList(notes)}
+        <div class="sig-hero">
+          <span class="bet-badge ${heroCls} hero-icon">${heroIcon}</span>
+          <div class="hero-text">
+            <div class="hero-tag-row">
+              <span class="hero-label">${escapeHtml(heroLabel)}</span>
+              ${confBadge}${ruleBadge}
+            </div>
+            <div class="hero-meta">
+              <strong class="${sigCls}">${sigEmoji} ${escapeHtml(sigDir)}</strong>
+              · ${escapeHtml(alert.status || '-')}
+              · Skor: <b>${escapeHtml(alert.score || '-')}</b>
+              · ${escapeHtml(alert.tournament || '-')}
+            </div>
+            <div class="hero-action">${actionLine}</div>
+            ${meta.reason ? `<div class="hero-meta" style="margin-top:6px;font-style:italic;">${escapeHtml(meta.reason)}</div>` : ''}
           </div>
         </div>
+
+        <div class="sig-grid">
+          <div class="sig-card">
+            <h4>📈 Piyasa Hareketi</h4>
+            <div class="row"><span>Açılış</span><strong>${fmt(alert.opening)}</strong></div>
+            <div class="row"><span>Canlı</span><strong>${fmt(alert.live)}</strong></div>
+            <div class="row"><span>Hareket</span><strong class="${moveColor}">${lineMoveStr}</strong></div>
+            ${alert.signal_count > 1 ? `<div class="row"><span>Tekrar</span><strong>#${alert.signal_count}. sinyal</strong></div>` : ''}
+          </div>
+          <div class="sig-card">
+            <h4>📊 Adil Ölçüler</h4>
+            <div class="row"><span>Adil barem</span><strong>${fairNum !== null ? fairNum.toFixed(1) : '-'}</strong></div>
+            <div class="row"><span>Projeksiyon</span><strong>${projected !== null ? projected.toFixed(1) : '-'}</strong></div>
+            <div class="row"><span>H2H ort.</span><strong>${h2h !== null ? h2h.toFixed(1) : '-'}</strong></div>
+            <div class="row"><span>Son 5 maç ort.</span><strong>${teamRecent !== null ? teamRecent.toFixed(1) : '-'}</strong></div>
+          </div>
+        </div>
+
+        ${edgeBox ? `<div style="margin-bottom:12px;">${edgeBox}</div>` : ''}
+
+        ${teamCard ? `<div style="margin-bottom:12px;">${teamCard}</div>` : ''}
+
+        <div class="sig-card">
+          <h4>⚠️ Risk & Notlar</h4>
+          ${warningsHtml}
+        </div>
+
+        ${actionsHtml}
       `;
       $('signalModal').classList.add('active');
     }
