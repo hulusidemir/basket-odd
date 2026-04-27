@@ -1,7 +1,7 @@
 import re
 from statistics import mean
 
-from ai_scoring import calculate_ai_score
+from ai_scoring import calculate_ai_score, calculate_bet_recommendation
 from projection import calculate_projected_total, game_clock, parse_score
 
 
@@ -638,4 +638,5 @@ def build_signal_analysis(
         "pace_anomaly_note": pace_anomaly_note,
     }
     result.update(calculate_ai_score(match, result))
+    result.update(calculate_bet_recommendation(match, result))
     return result

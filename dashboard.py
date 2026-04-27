@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from flask import Flask, Response, jsonify, render_template, request
 from db import Database
 from config import Config
-from ai_scoring import calculate_ai_score
+from ai_scoring import calculate_ai_score, calculate_bet_recommendation
 from finished_match_service import (
     run_active_match_finished_scan,
     run_deleted_match_result_cycle,
@@ -94,13 +94,19 @@ def enrich_alerts_with_analysis(alerts: list[dict]) -> list[dict]:
         alert["recommendation"] = analysis.get("recommendation") or ""
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
         ai_review = calculate_ai_score(alert, analysis, raw_score=analysis.get("raw_score"))
-        analysis = {**analysis, **ai_review}
+        bet_review = calculate_bet_recommendation(alert, analysis)
+        analysis = {**analysis, **ai_review, **bet_review}
         alert["analysis"] = analysis
         alert["raw_score"] = ai_review.get("raw_score")
         alert["ai_score"] = ai_review.get("ai_score")
         alert["ai_label"] = ai_review.get("ai_label")
         alert["ai_reason"] = ai_review.get("ai_reason")
         alert["final_score"] = ai_review.get("final_score")
+        alert["bet_dir"] = bet_review.get("bet_dir")
+        alert["bet_label"] = bet_review.get("bet_label")
+        alert["bet_confidence"] = bet_review.get("bet_confidence")
+        alert["bet_rule"] = bet_review.get("bet_rule")
+        alert["bet_reason"] = bet_review.get("bet_reason")
     return alerts
 
 
@@ -380,13 +386,19 @@ def _lightweight_enrich_deleted_alerts(alerts: list[dict]) -> list[dict]:
         alert["recommendation"] = analysis.get("recommendation") or ""
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
         ai_review = calculate_ai_score(alert, analysis, raw_score=analysis.get("raw_score"))
-        analysis = {**analysis, **ai_review}
+        bet_review = calculate_bet_recommendation(alert, analysis)
+        analysis = {**analysis, **ai_review, **bet_review}
         alert["analysis"] = analysis
         alert["raw_score"] = ai_review.get("raw_score")
         alert["ai_score"] = ai_review.get("ai_score")
         alert["ai_label"] = ai_review.get("ai_label")
         alert["ai_reason"] = ai_review.get("ai_reason")
         alert["final_score"] = ai_review.get("final_score")
+        alert["bet_dir"] = bet_review.get("bet_dir")
+        alert["bet_label"] = bet_review.get("bet_label")
+        alert["bet_confidence"] = bet_review.get("bet_confidence")
+        alert["bet_rule"] = bet_review.get("bet_rule")
+        alert["bet_reason"] = bet_review.get("bet_reason")
     return alerts
 
 

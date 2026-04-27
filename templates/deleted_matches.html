@@ -1373,10 +1373,9 @@
       <section class="panel">
         <div class="actions">
           <button class="btn primary" data-ai-filter="">AI Tümü</button>
-          <button class="btn" data-ai-filter="AI 100">AI 100</button>
-          <button class="btn" data-ai-filter="GÜÇLÜ ADAY">Güçlü Aday</button>
-          <button class="btn" data-ai-filter="ORTA">Orta</button>
-          <button class="btn" data-ai-filter="ZAYIF">Zayıf</button>
+          <button class="btn" data-ai-filter="GÜÇLÜ ALT">Güçlü ALT</button>
+          <button class="btn" data-ai-filter="ORTA ALT">Orta ALT</button>
+          <button class="btn" data-ai-filter="GÜÇLÜ ÜST">Güçlü ÜST</button>
           <button class="btn" data-ai-filter="ÇELİŞKİLİ / PAS">Çelişkili / Pas</button>
         </div>
       </section>
@@ -1579,7 +1578,7 @@
       const raw = Number(alert.raw_score ?? analysis.raw_score);
       const ai = Number(alert.ai_score ?? analysis.ai_score);
       const finalScore = Number(alert.final_score ?? analysis.final_score);
-      const cls = label.includes('AI 100') ? 'ai-100' : (label.includes('ÇELİŞKİLİ') ? 'pass' : '');
+      const cls = label.startsWith('GÜÇLÜ') ? 'ai-100' : (label.includes('ÇELİŞKİLİ') ? 'pass' : '');
       const scoreText = `Eski ${Number.isFinite(raw) ? Math.round(raw) : '-'} | AI ${Number.isFinite(ai) ? Math.round(ai) : '-'} | Nihai ${Number.isFinite(finalScore) ? Math.round(finalScore) : '-'}`;
       return `
         <button class="ai-cell" type="button" onclick="openSignalInfo(${Number(alert.id || 0)})" title="${escapeHtml(reason)}">
@@ -1596,9 +1595,7 @@
 
     function aiFilterMatches(alert) {
       if (!activeAiFilter) return true;
-      const label = aiLabelText(alert);
-      if (activeAiFilter === 'AI 100') return label.startsWith('AI 100');
-      return label === activeAiFilter;
+      return aiLabelText(alert) === activeAiFilter;
     }
 
     function fairEdgeAlertHtml(alert) {

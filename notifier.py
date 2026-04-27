@@ -132,7 +132,39 @@ class TelegramNotifier:
                 f"\n{escape(str(ai_reason))}\n"
             )
 
+        # ---- Bet öneri bloğu (mesajın EN ÜSTÜ) -----------------------------
+        bet_label = str(analysis.get("bet_label") or "").strip()
+        bet_dir = str(analysis.get("bet_dir") or "").strip()
+        bet_conf = analysis.get("bet_confidence")
+        bet_rule = str(analysis.get("bet_rule") or "").strip()
+        bet_reason = str(analysis.get("bet_reason") or "").strip()
+        bet_block = ""
+        if bet_label:
+            label_emoji = {
+                "KONTRA ALT": "🔵 ⇩",
+                "GÜÇLÜ ALT":  "🟢 ▼",
+                "ORTA ALT":   "🟢 ▽",
+                "PAS":        "⚪ –",
+            }.get(bet_label, "•")
+            conf_text = f" · %{int(bet_conf)} güven" if bet_conf else ""
+            rule_text = f" [{bet_rule}]" if bet_rule else ""
+            headline = (
+                f"════════════════\n"
+                f"🎯 <b>ÖNERİ: {label_emoji} {escape(bet_label)}</b>{escape(conf_text)}{escape(rule_text)}\n"
+            )
+            if bet_dir == "PAS":
+                action = "❗ <b>Bu sinyale girme — pas geç.</b>\n"
+            elif bet_label == "KONTRA ALT":
+                action = "👉 <b>Sistem ÜST dedi ama veriler ALT'ı destekliyor → ALT oyna.</b>\n"
+            elif bet_dir == "ALT":
+                action = "👉 <b>ALT yönünde oyna.</b>\n"
+            else:
+                action = ""
+            reason_block = f"<i>{escape(bet_reason)}</i>\n" if bet_reason else ""
+            bet_block = f"{headline}{action}{reason_block}════════════════\n\n"
+
         text = (
+            f"{bet_block}"
             f"{emoji} <b>Sinyal: {direction}</b>\n"
             f"{signal_line}"
             f"{period_line}\n"
