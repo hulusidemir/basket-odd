@@ -874,6 +874,7 @@ class Database:
                     WHERE pending.match_id = a.match_id
                       AND pending.deleted_at IS NOT NULL
                       AND pending.deleted_at != ''
+                      AND TRIM(COALESCE(pending.result, '')) = ''
                 )
                 ORDER BY a.deleted_at DESC, a.alerted_at DESC, a.id DESC
                 """

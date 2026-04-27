@@ -363,17 +363,41 @@ def api_alerts():
     return jsonify(enrich_alerts_with_analysis(db.recent_alerts(limit=500)))
 
 
+def _lightweight_enrich_deleted_alerts(alerts: list[dict]) -> list[dict]:
+    """Read stored ai_analysis fields without re-running calculate_ai_score."""
+    for alert in alerts:
+        analysis = _parse_analysis(alert.get("ai_analysis"))
+        if not analysis:
+            analysis = {}
+        alert["analysis"] = analysis
+        alert["fair_line"] = analysis.get("fair_line")
+        alert["fair_edge"] = analysis.get("fair_edge")
+        alert["projected"] = analysis.get("projected_total")
+        alert["market_total"] = analysis.get("market_total")
+        alert["team_recent_total"] = analysis.get("team_recent_total")
+        alert["h2h_total"] = analysis.get("h2h_total")
+        alert["history_total"] = analysis.get("history_total")
+        alert["recommendation"] = analysis.get("recommendation") or ""
+        alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
+        alert["raw_score"] = analysis.get("raw_score")
+        alert["ai_score"] = analysis.get("ai_score")
+        alert["ai_label"] = analysis.get("ai_label")
+        alert["ai_reason"] = analysis.get("ai_reason")
+        alert["final_score"] = analysis.get("final_score")
+    return alerts
+
+
 @app.route("/api/deleted-matches")
 def api_deleted_matches():
     limit = request.args.get("limit", default=1000, type=int) or 1000
     limit = max(1, min(limit, 5000))
-    return jsonify(enrich_alerts_with_analysis(db.recent_deleted_alerts(limit=limit)))
+    return jsonify(_lightweight_enrich_deleted_alerts(db.recent_deleted_alerts(limit=limit)))
 
 
 @app.route("/api/deleted-matches/export.csv")
 def api_export_finished_deleted_matches_csv():
     rows = [
-        row for row in enrich_alerts_with_analysis(db.recent_deleted_alerts(limit=None))
+        row for row in _lightweight_enrich_deleted_alerts(db.recent_deleted_alerts(limit=None))
         if str(row.get("result") or "").strip()
     ]
 
