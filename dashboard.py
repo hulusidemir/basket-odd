@@ -364,7 +364,6 @@ def api_alerts():
 
 
 def _lightweight_enrich_deleted_alerts(alerts: list[dict]) -> list[dict]:
-    """Read stored ai_analysis fields without re-running calculate_ai_score."""
     for alert in alerts:
         analysis = _parse_analysis(alert.get("ai_analysis"))
         if not analysis:
@@ -379,11 +378,14 @@ def _lightweight_enrich_deleted_alerts(alerts: list[dict]) -> list[dict]:
         alert["history_total"] = analysis.get("history_total")
         alert["recommendation"] = analysis.get("recommendation") or ""
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
-        alert["raw_score"] = analysis.get("raw_score")
-        alert["ai_score"] = analysis.get("ai_score")
-        alert["ai_label"] = analysis.get("ai_label")
-        alert["ai_reason"] = analysis.get("ai_reason")
-        alert["final_score"] = analysis.get("final_score")
+        ai_review = calculate_ai_score(alert, analysis, raw_score=analysis.get("raw_score"))
+        analysis = {**analysis, **ai_review}
+        alert["analysis"] = analysis
+        alert["raw_score"] = ai_review.get("raw_score")
+        alert["ai_score"] = ai_review.get("ai_score")
+        alert["ai_label"] = ai_review.get("ai_label")
+        alert["ai_reason"] = ai_review.get("ai_reason")
+        alert["final_score"] = ai_review.get("final_score")
     return alerts
 
 
