@@ -6,24 +6,24 @@
   <title>💰 Bankroll Yönetimi — Kümülatif İddia</title>
   <style>
     :root {
-      --bg: #07131f;
-      --surface: #0b1726;
-      --surface-2: #0f1d2f;
-      --surface-3: #13253a;
-      --surface-4: #182c44;
-      --border: rgba(110, 146, 187, 0.18);
-      --border-strong: rgba(110, 146, 187, 0.28);
-      --text: #edf4ff;
-      --text-dim: #8ea2ba;
+      --bg: #0a0a10;
+      --surface: #111118;
+      --surface-2: #16161f;
+      --surface-3: #1e1e2a;
+      --surface-4: #25253400;
+      --border: rgba(120, 100, 220, 0.14);
+      --border-strong: rgba(120, 100, 220, 0.24);
+      --text: #ede9ff;
+      --text-dim: #7870a0;
       --accent-green: #34d399;
-      --accent-red: #ff6a63;
-      --accent-blue: #5fa7ff;
+      --accent-red: #f87171;
+      --accent-blue: #60a5fa;
       --accent-yellow: #fbbf24;
-      --accent-orange: #ff9e64;
-      --shadow: 0 24px 60px rgba(0, 0, 0, 0.26);
-      --radius-xl: 26px;
-      --radius-lg: 20px;
-      --radius-md: 14px;
+      --accent-orange: #a78bfa;
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      --radius-xl: 18px;
+      --radius-lg: 14px;
+      --radius-md: 10px;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -31,9 +31,9 @@
     body {
       font-family: "Inter", "Segoe UI", sans-serif;
       background:
-        radial-gradient(circle at top right, rgba(20, 184, 166, 0.12), transparent 22%),
-        radial-gradient(circle at top left, rgba(255, 158, 100, 0.10), transparent 18%),
-        linear-gradient(180deg, #07131f 0%, #091423 46%, #08111d 100%);
+        radial-gradient(ellipse at 70% 0%, rgba(100,60,220,0.13) 0%, transparent 55%),
+        radial-gradient(ellipse at 0% 100%, rgba(20,180,140,0.07) 0%, transparent 45%),
+        #0a0a10;
       color: var(--text);
       min-height: 100vh;
     }
@@ -46,7 +46,7 @@
 
     .topbar,
     .section-shell {
-      background: rgba(14, 26, 42, 0.96);
+      background: rgba(17, 17, 24, 0.96);
       border: 1px solid var(--border);
       box-shadow: var(--shadow);
     }
@@ -57,7 +57,7 @@
       justify-content: space-between;
       gap: 14px;
       padding: 16px;
-      border-radius: 22px;
+      border-radius: 18px;
       margin-bottom: 14px;
       flex-wrap: wrap;
     }
@@ -71,22 +71,25 @@
     }
 
     .status-pill {
-      width: 42px;
-      height: 42px;
-      border-radius: 50%;
-      background: rgba(24, 43, 67, 0.95);
-      border: 1px solid var(--border);
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: rgba(124, 92, 246, 0.15);
+      border: 1px solid rgba(124, 92, 246, 0.35);
       position: relative;
       flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .status-pill::before {
       content: "";
-      position: absolute;
-      inset: 15px;
+      width: 10px;
+      height: 10px;
       border-radius: 50%;
-      background: var(--accent-orange);
-      box-shadow: 0 0 0 6px rgba(255, 158, 100, 0.14);
+      background: #7c5cf6;
+      box-shadow: 0 0 10px rgba(124, 92, 246, 0.8);
     }
 
     .top-action,
@@ -96,7 +99,7 @@
     .proj-btn,
     .step-btn {
       border: 1px solid var(--border-strong);
-      background: rgba(19, 37, 58, 0.94);
+      background: rgba(22, 20, 36, 0.94);
       color: var(--text);
       cursor: pointer;
       transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
@@ -118,27 +121,27 @@
     .preset-btn:hover,
     .proj-btn:hover,
     .step-btn:hover {
-      border-color: rgba(95, 167, 255, 0.45);
+      border-color: rgba(124, 92, 246, 0.45);
     }
 
     .top-action.active {
-      background: linear-gradient(180deg, #6bb2ff, #5a9cea);
+      background: linear-gradient(135deg, #6d42e8, #7c5cf6);
       border-color: transparent;
-      color: #07111d;
+      color: #fff;
     }
 
     .top-action.primary {
-      background: rgba(25, 52, 81, 0.96);
+      background: rgba(30, 24, 60, 0.96);
     }
 
     .top-action.danger {
-      background: rgba(84, 38, 51, 0.95);
+      background: rgba(60, 20, 40, 0.95);
       border-color: rgba(255, 126, 126, 0.24);
     }
 
     .section-shell {
-      background: rgba(9, 19, 32, 0.88);
-      border-radius: 22px;
+      background: rgba(10, 10, 16, 0.88);
+      border-radius: 18px;
       padding: 18px;
     }
 
@@ -153,7 +156,7 @@
     .nav-tab {
       padding: 14px 18px;
       border-radius: 18px;
-      background: rgba(18, 31, 48, 0.95);
+      background: rgba(16, 14, 28, 0.95);
       border: 1px solid transparent;
       color: var(--text-dim);
       text-decoration: none;
@@ -162,8 +165,8 @@
     }
 
     .nav-tab.active {
-      background: linear-gradient(180deg, #ffb37c, #ff9960);
-      color: #1a1b22;
+      background: linear-gradient(135deg, #7c5cf6, #e879f9);
+      color: #fff;
       box-shadow: 0 14px 24px rgba(255, 158, 100, 0.18);
     }
 
@@ -171,9 +174,9 @@
     .presets,
     .summary-bar,
     .groups-container {
-      background: rgba(18, 30, 47, 0.94);
+      background: rgba(16, 14, 28, 0.94);
       border: 1px solid var(--border);
-      border-radius: 24px;
+      border-radius: 14px;
     }
 
     .setup-panel {
@@ -199,7 +202,7 @@
       padding: 10px 12px;
       border-radius: 12px;
       border: 1px solid var(--border);
-      background: rgba(11, 24, 38, 1);
+      background: rgba(14, 12, 24, 1);
       color: var(--text);
       font-size: 14px;
       outline: none;
@@ -215,8 +218,8 @@
       font-weight: 700;
     }
 
-    .btn-primary { background: rgba(25, 52, 81, 0.96); color: #fff; }
-    .btn-danger { background: rgba(84, 38, 51, 0.95); color: #ffc0c0; border-color: rgba(255, 126, 126, 0.24); }
+    .btn-primary { background: rgba(30, 24, 60, 0.96); color: #fff; }
+    .btn-danger { background: rgba(60, 20, 40, 0.95); color: #ffc0c0; border-color: rgba(255, 126, 126, 0.24); }
 
     .presets {
       padding: 12px 14px;
@@ -237,9 +240,9 @@
     }
 
     .preset-btn.active {
-      background: linear-gradient(180deg, #ffb37c, #ff9960);
+      background: linear-gradient(135deg, #7c5cf6, #e879f9);
       border-color: transparent;
-      color: #1a1b22;
+      color: #fff;
     }
 
     .summary-bar {
@@ -256,8 +259,8 @@
       align-items: center;
       gap: 6px;
       padding: 8px 12px;
-      border-radius: 20px;
-      background: rgba(13, 28, 44, 0.98);
+      border-radius: 10px;
+      background: rgba(12, 10, 22, 0.98);
       border: 1px solid var(--border);
     }
 
@@ -280,7 +283,7 @@
     }
 
     .group-column {
-      background: rgba(13, 28, 44, 0.98);
+      background: rgba(12, 10, 22, 0.98);
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
       overflow: hidden;
@@ -334,7 +337,7 @@
       margin-bottom: 4px;
       transition: background 0.15s, border-color 0.15s;
       flex-wrap: wrap;
-      background: rgba(11, 24, 38, 0.56);
+      background: rgba(14, 12, 24, 0.56);
       border: 1px solid transparent;
     }
 
@@ -396,19 +399,19 @@
 
     .step-btn-win { background: rgba(52, 211, 153, 0.12); color: var(--accent-green); border-color: rgba(52, 211, 153, 0.18); }
     .step-btn-lose { background: rgba(255, 106, 99, 0.12); color: var(--accent-red); border-color: rgba(255, 106, 99, 0.18); }
-    .step-btn-undo { background: rgba(19, 37, 58, 0.94); color: var(--text-dim); }
+    .step-btn-undo { background: rgba(22, 20, 36, 0.94); color: var(--text-dim); }
 
     .step-row.won { background: rgba(52, 211, 153, 0.08); border-color: rgba(52, 211, 153, 0.12); }
     .step-row.won .step-num { background: var(--accent-green); color: #fff; }
     .step-row.lost { background: rgba(255, 106, 99, 0.08); border-color: rgba(255, 106, 99, 0.12); }
     .step-row.lost .step-num { background: var(--accent-red); color: #fff; }
-    .step-row.active { background: rgba(95, 167, 255, 0.08); border: 1px solid rgba(95, 167, 255, 0.18); }
+    .step-row.active { background: rgba(124, 92, 246, 0.08); border: 1px solid rgba(124, 92, 246, 0.18); }
     .step-row.active .step-num { background: var(--accent-blue); color: #fff; }
 
     .proj-btn {
       padding: 6px 10px;
       border-radius: 12px;
-      border-color: rgba(95, 167, 255, 0.22);
+      border-color: rgba(124, 92, 246, 0.22);
       background: rgba(36, 74, 111, 0.98);
       color: var(--accent-blue);
       font-size: 11px;
@@ -428,7 +431,7 @@
     }
 
     .proj-modal {
-      background: rgba(10, 22, 36, 0.98);
+      background: rgba(12, 12, 20, 0.98);
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
       width: 380px;
@@ -449,7 +452,7 @@
     }
 
     .proj-modal-close {
-      background: rgba(19, 37, 58, 0.96);
+      background: rgba(22, 20, 36, 0.96);
       border: 1px solid var(--border);
       border-radius: 50%;
       width: 30px;
@@ -509,7 +512,7 @@
       .presets,
       .summary-bar,
       .groups-container {
-        border-radius: 20px;
+        border-radius: 10px;
       }
 
       .topbar {
@@ -535,7 +538,7 @@
     <div class="topbar">
       <div class="topbar-left">
         <div class="status-pill"></div>
-        <span style="font-size:20px;font-weight:900;letter-spacing:-0.03em;">🏀 Basket Sinyal</span>
+        <span style="font-size:19px;font-weight:900;letter-spacing:-0.3px;background:linear-gradient(90deg,#a78bfa,#e879f9);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">🏀 Basket Sinyal</span>
       </div>
       <div class="topbar-right">
         <a href="/" class="top-action">Canlı</a>

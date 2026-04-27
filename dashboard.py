@@ -29,6 +29,7 @@ db = Database(config.DB_PATH)
 db.init()
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 
 BET_BUILDER_ALERT_WINDOW_MINUTES = 240
 
@@ -408,7 +409,7 @@ def api_export_finished_deleted_matches_csv():
     writer = csv.writer(output)
     writer.writerow([
         "Maç", "Sinyal Anı", "Sinyal Türü", "Skor",
-        "Açılış", "Canlı", "Adil Barem", "Sonuç", "Not",
+        "Açılış", "Canlı", "Adil Barem", "AI Etiket", "AI Puan", "AI Neden", "Sonuç", "Not",
     ])
 
     for row in rows:
@@ -417,6 +418,7 @@ def api_export_finished_deleted_matches_csv():
         match_name = re.sub(r"\s*betting odds\s*", "", match_name, flags=re.IGNORECASE).strip()
         fair_line = row.get("fair_line")
         fair_line_cell = f"{float(fair_line):.1f}" if fair_line is not None else "Hesaplanamıyor"
+        ai_score = row.get("ai_score")
         writer.writerow([
             match_name,
             row.get("alert_moment") or "",
@@ -425,6 +427,9 @@ def api_export_finished_deleted_matches_csv():
             row.get("opening") if row.get("opening") is not None else "",
             row.get("live") if row.get("live") is not None else "",
             fair_line_cell,
+            row.get("ai_label") or "",
+            f"{float(ai_score):.1f}" if ai_score is not None else "",
+            row.get("ai_reason") or "",
             row.get("result") or "",
             row.get("note") or "",
         ])

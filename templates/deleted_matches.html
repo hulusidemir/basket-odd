@@ -6,29 +6,29 @@
   <title>Silinen Maçlar</title>
   <style>
     :root {
-      --bg: #07131f;
-      --surface: #0b1726;
-      --surface-2: #0f1d2f;
-      --surface-3: #13253a;
-      --surface-4: #182c44;
-      --border: rgba(110, 146, 187, 0.18);
-      --border-strong: rgba(110, 146, 187, 0.28);
-      --text: #edf4ff;
-      --text-dim: #8ea2ba;
-      --text-soft: #8ea2ba;
-      --accent: #ff9e64;
-      --accent-alt: #ff6a63;
+      --bg: #0a0a10;
+      --surface: #111118;
+      --surface-2: #16161f;
+      --surface-3: #1e1e2a;
+      --surface-4: #25253400;
+      --border: rgba(120, 100, 220, 0.14);
+      --border-strong: rgba(120, 100, 220, 0.24);
+      --text: #ede9ff;
+      --text-dim: #7870a0;
+      --text-soft: #7870a0;
+      --accent: #7c5cf6;
+      --accent-alt: #f87171;
       --accent-ust: #34d399;
-      --accent-blue: #5fa7ff;
+      --accent-blue: #60a5fa;
       --accent-yellow: #fbbf24;
-      --accent-orange: #ff9e64;
-      --accent-red: #ff6b63;
+      --accent-orange: #a78bfa;
+      --accent-red: #ef4444;
       --accent-green: #34d399;
-      --shadow: 0 24px 60px rgba(0, 0, 0, 0.26);
-      --radius-xl: 26px;
-      --radius-lg: 20px;
-      --radius-md: 14px;
-      --radius-sm: 12px;
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      --radius-xl: 18px;
+      --radius-lg: 14px;
+      --radius-md: 10px;
+      --radius-sm: 8px;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -36,9 +36,9 @@
     body {
       font-family: "Inter", "Segoe UI", sans-serif;
       background:
-        radial-gradient(circle at top right, rgba(20, 184, 166, 0.12), transparent 22%),
-        radial-gradient(circle at top left, rgba(255, 158, 100, 0.10), transparent 18%),
-        linear-gradient(180deg, #07131f 0%, #091423 46%, #08111d 100%);
+        radial-gradient(ellipse at 70% 0%, rgba(100,60,220,0.13) 0%, transparent 55%),
+        radial-gradient(ellipse at 0% 100%, rgba(20,180,140,0.07) 0%, transparent 45%),
+        #0a0a10;
       color: var(--text);
       min-height: 100vh;
       -webkit-tap-highlight-color: transparent;
@@ -63,7 +63,7 @@
 
     .topbar,
     .panel {
-      background: rgba(14, 26, 42, 0.96);
+      background: rgba(17, 17, 24, 0.97);
       border: 1px solid var(--border);
       box-shadow: var(--shadow);
     }
@@ -74,7 +74,7 @@
       justify-content: space-between;
       gap: 14px;
       padding: 16px;
-      border-radius: 22px;
+      border-radius: 14px;
       margin-bottom: 14px;
       flex-wrap: wrap;
     }
@@ -87,22 +87,25 @@
     }
 
     .status-pill {
-      width: 42px;
-      height: 42px;
-      border-radius: 50%;
-      background: rgba(24, 43, 67, 0.95);
-      border: 1px solid var(--border);
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: rgba(124, 92, 246, 0.15);
+      border: 1px solid rgba(124, 92, 246, 0.35);
       position: relative;
       flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .status-pill::after {
       content: "";
-      position: absolute;
-      inset: 15px;
+      width: 10px;
+      height: 10px;
       border-radius: 50%;
-      background: var(--accent-orange);
-      box-shadow: 0 0 0 6px rgba(255, 158, 100, 0.14);
+      background: #7c5cf6;
+      box-shadow: 0 0 10px rgba(124, 92, 246, 0.8);
     }
 
     h1 {
@@ -130,9 +133,9 @@
     .btn,
     .nav-tab {
       border: 1px solid var(--border-strong);
-      background: rgba(24, 43, 67, 0.9);
+      background: rgba(30, 28, 48, 0.9);
       color: var(--text);
-      border-radius: 14px;
+      border-radius: 10px;
       padding: 11px 15px;
       font-size: 13px;
       font-weight: 700;
@@ -145,13 +148,13 @@
     .btn:hover,
     .nav-tab:hover {
       transform: translateY(-1px);
-      border-color: rgba(95, 167, 255, 0.55);
+      border-color: rgba(124, 92, 246, 0.55);
     }
 
     .btn.primary,
     .nav-tab.active {
-      background: linear-gradient(180deg, #6bb2ff, #5a9cea);
-      color: #07111d;
+      background: linear-gradient(135deg, #6d42e8, #7c5cf6);
+      color: #fff;
       border-color: transparent;
     }
 
@@ -172,16 +175,16 @@
     }
 
     .section-shell {
-      background: rgba(9, 19, 32, 0.88);
+      background: rgba(11, 11, 17, 0.95);
       border: 1px solid var(--border);
-      border-radius: 22px;
-      padding: 16px;
+      border-radius: 14px;
+      padding: 14px;
     }
 
     .nav-tabs { margin-bottom: 14px; }
 
     .panel {
-      border-radius: 18px;
+      border-radius: 14px;
       padding: 14px;
       margin-bottom: 14px;
     }
@@ -195,7 +198,7 @@
       min-width: min(420px, 100%);
       flex: 1 1 300px;
       border: 1px solid var(--border-strong);
-      background: rgba(7, 16, 27, 0.96);
+      background: rgba(8, 8, 14, 0.96);
       color: var(--text);
       border-radius: 14px;
       padding: 12px 14px;
@@ -203,11 +206,11 @@
       outline: none;
     }
 
-    .search-box:focus { border-color: rgba(95, 167, 255, 0.62); }
+    .search-box:focus { border-color: rgba(124, 92, 246, 0.62); }
 
     .stat-chip {
       min-width: 120px;
-      background: rgba(19, 34, 54, 0.94);
+      background: rgba(18, 16, 32, 0.94);
       border: 1px solid var(--border);
       border-radius: 14px;
       padding: 12px;
@@ -235,13 +238,13 @@
       transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
     }
     .stat-chip.clickable:hover {
-      border-color: rgba(95, 167, 255, 0.45);
-      background: rgba(24, 43, 67, 0.98);
+      border-color: rgba(124, 92, 246, 0.45);
+      background: rgba(30, 28, 48, 0.98);
       transform: translateY(-1px);
     }
     .stat-chip.clickable.active {
-      border-color: rgba(95, 167, 255, 0.7);
-      background: rgba(95, 167, 255, 0.14);
+      border-color: rgba(124, 92, 246, 0.7);
+      background: rgba(124, 92, 246, 0.14);
     }
     .stat-chip.clickable.active.success { border-color: rgba(52, 211, 153, 0.6); background: rgba(52, 211, 153, 0.12); }
     .stat-chip.clickable.active.fail { border-color: rgba(255, 107, 99, 0.6); background: rgba(255, 107, 99, 0.12); }
@@ -257,7 +260,7 @@
       border: 1px solid var(--border);
       border-radius: 14px;
       padding: 14px;
-      background: rgba(19, 34, 54, 0.94);
+      background: rgba(18, 16, 32, 0.94);
       color: var(--text);
     }
 
@@ -282,7 +285,7 @@
       border: 1px solid rgba(129, 162, 198, 0.12);
       border-radius: 12px;
       padding: 8px;
-      background: rgba(7, 16, 27, 0.26);
+      background: rgba(8, 8, 14, 0.26);
       color: var(--text);
       cursor: pointer;
       font: inherit;
@@ -293,8 +296,8 @@
     .direction-filter-btn.active,
     .direction-mini-stat:hover,
     .direction-mini-stat.active {
-      border-color: rgba(95, 167, 255, 0.56);
-      background: rgba(95, 167, 255, 0.10);
+      border-color: rgba(124, 92, 246, 0.56);
+      background: rgba(124, 92, 246, 0.10);
     }
 
     .direction-filter-btn:hover,
@@ -309,7 +312,7 @@
     .direction-mini-stat.static:hover {
       transform: none;
       border-color: rgba(129, 162, 198, 0.12);
-      background: rgba(7, 16, 27, 0.42);
+      background: rgba(8, 8, 14, 0.42);
     }
 
     .direction-summary-title {
@@ -340,7 +343,7 @@
     }
 
     .direction-mini-stat {
-      background: rgba(7, 16, 27, 0.42);
+      background: rgba(8, 8, 14, 0.42);
       border: 1px solid rgba(129, 162, 198, 0.12);
       border-radius: 10px;
       padding: 8px;
@@ -371,7 +374,7 @@
       border: 1px dashed var(--border-strong);
       border-radius: 10px;
       padding: 8px 10px;
-      background: rgba(7, 16, 27, 0.32);
+      background: rgba(8, 8, 14, 0.32);
       color: var(--text-soft);
       cursor: pointer;
       font-size: 12px;
@@ -382,7 +385,7 @@
       overflow-x: auto;
       border-radius: 16px;
       border: 1px solid var(--border);
-      background: rgba(7, 16, 27, 0.86);
+      background: rgba(8, 8, 14, 0.86);
     }
 
     .pagination {
@@ -397,7 +400,7 @@
     .page-btn,
     .page-size {
       border: 1px solid var(--border-strong);
-      background: rgba(24, 43, 67, 0.9);
+      background: rgba(30, 28, 48, 0.9);
       color: var(--text);
       border-radius: 12px;
       padding: 9px 12px;
@@ -440,7 +443,7 @@
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0;
-      background: rgba(19, 34, 54, 0.92);
+      background: rgba(18, 16, 32, 0.92);
       white-space: nowrap;
     }
 
@@ -453,10 +456,10 @@
     th[data-sort]:hover,
     th.sorted {
       color: var(--text);
-      background: rgba(24, 43, 67, 0.96);
+      background: rgba(30, 28, 48, 0.96);
     }
 
-    tbody tr:hover { background: rgba(95, 167, 255, 0.08); }
+    tbody tr:hover { background: rgba(124, 92, 246, 0.08); }
 
     .match-link {
       color: var(--text);
@@ -486,8 +489,8 @@
       align-items: center;
       justify-content: center;
       border-radius: 50%;
-      border: 1px solid rgba(95, 167, 255, 0.38);
-      background: rgba(95, 167, 255, 0.12);
+      border: 1px solid rgba(124, 92, 246, 0.38);
+      background: rgba(124, 92, 246, 0.12);
       color: #b9dcff;
       font-size: 12px;
       font-weight: 900;
@@ -498,8 +501,8 @@
     }
 
     .match-note-indicator:hover {
-      border-color: rgba(95, 167, 255, 0.7);
-      background: rgba(95, 167, 255, 0.22);
+      border-color: rgba(124, 92, 246, 0.7);
+      background: rgba(124, 92, 246, 0.22);
     }
 
     .match-note-subline {
@@ -526,15 +529,15 @@
 
     .match-focus-btn:hover {
       color: var(--text);
-      border-color: rgba(95, 167, 255, 0.45);
+      border-color: rgba(124, 92, 246, 0.45);
       box-shadow: 0 10px 18px rgba(0, 0, 0, 0.16);
       transform: translateY(-1px);
     }
 
     .match-focus-btn.active {
-      color: #1a1b22;
+      color: #fff;
       border-color: transparent;
-      background: linear-gradient(180deg, #ffb37c, #ff9960);
+      background: linear-gradient(135deg, #7c5cf6, #e879f9);
     }
 
     .subline {
@@ -557,8 +560,8 @@
       align-items: center;
       justify-content: center;
       border-radius: 50%;
-      border: 1px solid rgba(95, 167, 255, 0.28);
-      background: rgba(95, 167, 255, 0.10);
+      border: 1px solid rgba(124, 92, 246, 0.28);
+      background: rgba(124, 92, 246, 0.10);
       color: #b9dcff;
       font-size: 12px;
       font-weight: 900;
@@ -622,13 +625,13 @@
       white-space: normal;
       text-align: left;
       justify-content: flex-start;
-      border-color: rgba(95, 167, 255, 0.28);
+      border-color: rgba(124, 92, 246, 0.28);
       color: #b9dcff;
-      background: rgba(24, 43, 67, 0.9);
+      background: rgba(30, 28, 48, 0.9);
     }
 
     .ai-badge.ai-100 {
-      color: #07111d;
+      color: #fff;
       background: linear-gradient(180deg, #fef08a, #fbbf24);
       border-color: transparent;
     }
@@ -680,7 +683,7 @@
       text-align: center;
       border: 1px dashed var(--border-strong);
       border-radius: 16px;
-      background: rgba(7, 16, 27, 0.62);
+      background: rgba(8, 8, 14, 0.62);
     }
 
     .banner {
@@ -726,11 +729,11 @@
       cursor: pointer;
       transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease;
       margin: 0 2px;
-      background: rgba(95, 167, 255, 0.12);
+      background: rgba(124, 92, 246, 0.12);
       color: #b9dcff;
-      border: 1px solid rgba(95, 167, 255, 0.32);
+      border: 1px solid rgba(124, 92, 246, 0.32);
     }
-    .result-check-btn:hover { opacity: 0.82; border-color: rgba(95, 167, 255, 0.58); }
+    .result-check-btn:hover { opacity: 0.82; border-color: rgba(124, 92, 246, 0.58); }
     .result-check-btn:disabled { opacity: 0.5; cursor: wait; }
 
     .row-delete-btn {
@@ -765,9 +768,9 @@
     .modal-overlay.open { display: flex; align-items: flex-start; justify-content: center; }
 
     .modal-box {
-      background: rgba(9, 19, 32, 0.99);
+      background: rgba(10, 10, 16, 0.99);
       border: 1px solid var(--border-strong);
-      border-radius: 22px;
+      border-radius: 14px;
       padding: 24px;
       width: 100%;
       max-width: 800px;
@@ -802,7 +805,7 @@
     .note-view-text {
       border: 1px solid rgba(129, 162, 198, 0.12);
       border-radius: 14px;
-      background: rgba(7, 16, 27, 0.7);
+      background: rgba(8, 8, 14, 0.7);
       padding: 14px;
       color: var(--text);
       white-space: pre-wrap;
@@ -815,7 +818,7 @@
       margin-bottom: 12px;
       padding: 12px 14px;
       border-radius: 14px;
-      background: rgba(19, 34, 54, 0.92);
+      background: rgba(18, 16, 32, 0.92);
       border: 1px solid rgba(110, 146, 187, 0.14);
     }
 
@@ -840,7 +843,7 @@
     .team-context {
       padding: 11px 12px;
       border-radius: 14px;
-      background: rgba(11, 24, 38, 0.76);
+      background: rgba(14, 12, 24, 0.76);
       border: 1px solid rgba(110, 146, 187, 0.12);
     }
 
@@ -875,7 +878,7 @@
       gap: 8px;
       padding: 8px 10px;
       border-radius: 10px;
-      background: rgba(7, 17, 29, 0.7);
+      background: rgba(8, 8, 16, 0.7);
       border: 1px solid rgba(110, 146, 187, 0.08);
       font-size: 12px;
       line-height: 1.45;
@@ -895,8 +898,8 @@
       margin-top: 9px;
       padding: 8px 10px;
       border-radius: 9px;
-      background: rgba(95, 167, 255, 0.09);
-      border: 1px solid rgba(95, 167, 255, 0.16);
+      background: rgba(124, 92, 246, 0.09);
+      border: 1px solid rgba(124, 92, 246, 0.16);
       color: #dbeafe;
       font-size: 12px;
       line-height: 1.45;
@@ -911,7 +914,7 @@
       display: block;
       padding: 8px 10px;
       border-radius: 9px;
-      background: rgba(7, 17, 29, 0.7);
+      background: rgba(8, 8, 16, 0.7);
       border: 1px solid rgba(110, 146, 187, 0.08);
       font-size: 12px;
       line-height: 1.55;
@@ -930,12 +933,12 @@
     .team-context-align.support { background: rgba(52, 211, 153, 0.16); color: #9df0bd; border-color: rgba(52, 211, 153, 0.32); }
     .team-context-align.against { background: rgba(255, 107, 99, 0.14); color: #ffc0bc; border-color: rgba(255, 107, 99, 0.32); }
     .team-context-align.mixed { background: rgba(251, 191, 36, 0.14); color: #fde68a; border-color: rgba(251, 191, 36, 0.32); }
-    .team-context-align.neutral { background: rgba(95, 167, 255, 0.12); color: #b9dcff; border-color: rgba(95, 167, 255, 0.28); }
+    .team-context-align.neutral { background: rgba(124, 92, 246, 0.12); color: #b9dcff; border-color: rgba(124, 92, 246, 0.28); }
     .team-context-regression {
       padding: 8px 10px;
       margin-bottom: 8px;
       border-radius: 10px;
-      background: rgba(13, 26, 42, 0.72);
+      background: rgba(12, 10, 22, 0.72);
       border-left: 3px solid #fbbf24;
       font-size: 12px;
       color: var(--text);
@@ -950,7 +953,7 @@
       margin-bottom: 8px;
     }
     .team-context-card {
-      background: rgba(7, 17, 29, 0.76);
+      background: rgba(8, 8, 16, 0.76);
       border: 1px solid rgba(110, 146, 187, 0.14);
       border-radius: 10px;
       padding: 9px 10px;
@@ -981,14 +984,14 @@
       font-size: 12px;
       color: var(--text-soft);
       padding: 7px 10px;
-      background: rgba(13, 26, 42, 0.6);
+      background: rgba(12, 10, 22, 0.6);
       border-radius: 8px;
       line-height: 1.45;
     }
 
     .report-headline {
       padding: 14px 16px;
-      background: rgba(19, 34, 54, 0.96);
+      background: rgba(18, 16, 32, 0.96);
       border-radius: 14px;
       font-size: 14px;
       font-weight: 700;
@@ -1009,7 +1012,7 @@
       margin-bottom: 18px;
     }
     .report-card {
-      background: rgba(19, 34, 54, 0.94);
+      background: rgba(18, 16, 32, 0.94);
       border: 1px solid var(--border);
       border-radius: 14px;
       padding: 12px;
@@ -1043,7 +1046,7 @@
       font-size: 13px;
       color: var(--text-dim);
       padding: 9px 12px;
-      background: rgba(13, 26, 42, 0.85);
+      background: rgba(12, 10, 22, 0.85);
       border-radius: 10px;
       margin-bottom: 6px;
       border-left: 3px solid var(--accent-blue);
@@ -1110,7 +1113,7 @@
       padding: 12px 14px;
       border-radius: 12px;
       border: 1px solid var(--border);
-      background: rgba(19, 34, 54, 0.88);
+      background: rgba(18, 16, 32, 0.88);
       margin-bottom: 14px;
       flex-wrap: wrap;
     }
@@ -1167,7 +1170,7 @@
       padding: 8px 10px;
       border: 1px solid rgba(129, 162, 198, 0.14);
       border-radius: 10px;
-      background: rgba(13, 26, 42, 0.78);
+      background: rgba(12, 10, 22, 0.78);
     }
     .report-bar-label {
       font-size: 12px;
@@ -1176,7 +1179,7 @@
     .report-bar-track {
       position: relative;
       height: 22px;
-      background: rgba(7, 16, 27, 0.72);
+      background: rgba(8, 8, 14, 0.72);
       border-radius: 6px;
       overflow: hidden;
       border: 1px solid rgba(129, 162, 198, 0.08);
@@ -1226,10 +1229,10 @@
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 10px 12px;
-      background: rgba(13, 26, 42, 0.86);
+      background: rgba(12, 10, 22, 0.86);
     }
     .report-fade-card.fade-better { border-color: rgba(52, 211, 153, 0.36); }
-    .report-fade-card.orig-better { border-color: rgba(95, 167, 255, 0.36); }
+    .report-fade-card.orig-better { border-color: rgba(124, 92, 246, 0.36); }
     .report-fade-card-label {
       font-size: 11px;
       font-weight: 800;
@@ -1273,7 +1276,7 @@
       padding: 8px 10px;
       border: 1px solid rgba(129, 162, 198, 0.14);
       border-radius: 10px;
-      background: rgba(13, 26, 42, 0.72);
+      background: rgba(12, 10, 22, 0.72);
       font-size: 12px;
     }
     .report-tour-name {
@@ -1316,7 +1319,7 @@
     <header class="topbar">
       <div class="brand">
         <div class="status-pill"></div>
-        <span style="font-size:20px;font-weight:900;letter-spacing:-0.03em;">🏀 Basket Sinyal</span>
+        <span style="font-size:19px;font-weight:900;letter-spacing:-0.3px;background:linear-gradient(90deg,#a78bfa,#e879f9);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">🏀 Basket Sinyal</span>
       </div>
       <div class="actions">
         <a href="/" class="btn">Canlı</a>
