@@ -33,9 +33,21 @@ def _split_match_name(match_name: str) -> tuple[str, str]:
 def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
     text = re.sub(r"\s+", " ", body_text or "").strip()
     home_team, away_team = _split_match_name(match_name)
+    text_lower = text.lower()
+    h2h_source = ""
+    h2h_quality_notes: list[str] = []
 
     # Matches any unicode dash/separator between words
     _DASH = r"[-–—\u2012\u2015]"
+
+    if not text:
+        h2h_quality_notes.append("H2H sayfa metni boş.")
+    if "no data" in text_lower:
+        h2h_quality_notes.append("AiScore H2H sayfası No data döndürdü.")
+    if "invalid date" in text_lower:
+        h2h_quality_notes.append("AiScore H2H sayfası geçersiz/eksik maç sayfası döndürdü.")
+    if re.search(r"\bpts\s+0(?:\.0)?\s*[-–—]\s*0(?:\.0)?\s+per\s+game\b", text, re.IGNORECASE):
+        h2h_quality_notes.append("H2H istatistik satırı 0-0 döndü; yok sayıldı.")
 
     def team_metrics(team_name: str) -> dict:
         if not team_name:
@@ -92,6 +104,59 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
                     "avg_total": round(ppg + oppg, 1), "over_pct": None}
         return {}
 
+    def recent_team_metrics(team_name: str) -> dict:
+        """Strictly parse team recent/last-5 blocks, not H2H aggregate rows."""
+        if not team_name:
+            return {}
+        escaped = re.escape(team_name)
+        pts_sep = r"[-–—\u2012\u2015]"
+        patterns = [
+            rf"(?:Last\s*5|Last\s*Matches|Recent\s*Form).{{0,220}}{escaped}.{{0,220}}"
+            rf"(\d{{2,3}}(?:\.\d+)?)\s*points?\s*per\s*match[,\s]*"
+            rf"(\d{{2,3}}(?:\.\d+)?)\s*opponent\s*points?\s*per\s*game.{{0,160}}"
+            rf"(?:Total\s*points?\s*over%[:\s]*(\d+(?:\.\d+)?)%)?",
+            rf"(?:Last\s*5|Last\s*Matches|Recent\s*Form).{{0,260}}{escaped}.{{0,260}}"
+            rf"pts\s+(\d{{2,3}}(?:\.\d+)?)\s*{pts_sep}\s*(\d{{2,3}}(?:\.\d+)?)\s+"
+            rf"(?:per\s*game|/\s*game|pts?/game|points?/game)",
+        ]
+        for pattern in patterns:
+            m = re.search(pattern, text, re.IGNORECASE)
+            if not m:
+                continue
+            ppg, oppg = float(m.group(1)), float(m.group(2))
+            if ppg <= 0 or oppg <= 0:
+                continue
+            over_pct = float(m.group(3)) if m.lastindex and m.lastindex >= 3 and m.group(3) else None
+            return {
+                "team": team_name,
+                "ppg": ppg,
+                "oppg": oppg,
+                "avg_total": round(ppg + oppg, 1),
+                "over_pct": over_pct,
+            }
+        return {}
+
+    def h2h_totals_from_match_rows() -> list[int]:
+        if not text:
+            return []
+        date_re = (
+            r"(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+"
+            r"(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+"
+            r"\d{1,2},\s+\d{4}"
+        )
+        totals: list[int] = []
+        for match in re.finditer(date_re, text, re.IGNORECASE):
+            chunk = text[match.end():match.end() + 220]
+            if home_team and away_team and (home_team not in chunk or away_team not in chunk):
+                continue
+            nums = [int(n) for n in re.findall(r"\b\d{2,3}\b", chunk)]
+            score_nums = [n for n in nums if 40 <= n <= 180]
+            if len(score_nums) >= 2:
+                total = score_nums[0] + score_nums[1]
+                if 100 <= total <= 320:
+                    totals.append(total)
+        return totals[:12]
+
     h2h_games = None
     h2h_avg_total = None
     h2h_over_pct = None
@@ -126,7 +191,10 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         )
         h2h_m = re.search(h2h_home_pattern, text, re.IGNORECASE)
         if h2h_m:
-            h2h_avg_total = round(float(h2h_m.group(1)) + float(h2h_m.group(2)), 1)
+            left, right = float(h2h_m.group(1)), float(h2h_m.group(2))
+            if left > 0 and right > 0:
+                h2h_avg_total = round(left + right, 1)
+                h2h_source = "stats_row"
 
     # Generic H2H average total fallback
     if h2h_avg_total is None:
@@ -136,9 +204,19 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         )
         if generic:
             h2h_avg_total = float(generic.group(1))
+            h2h_source = "average_text"
 
-    home = team_metrics(home_team)
-    away = team_metrics(away_team)
+    h2h_row_totals = h2h_totals_from_match_rows()
+    if h2h_avg_total is None and h2h_row_totals:
+        h2h_avg_total = round(mean(h2h_row_totals), 1)
+        h2h_source = "score_rows"
+        if h2h_games is None:
+            h2h_games = len(h2h_row_totals)
+    if h2h_games is None and h2h_row_totals:
+        h2h_games = len(h2h_row_totals)
+
+    home = recent_team_metrics(home_team)
+    away = recent_team_metrics(away_team)
     expected_total = None
     if home and away:
         # Cross-pair: home'un attığı + away'in yediği ≈ home skoru beklentisi (ve tersi).
@@ -147,6 +225,24 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         away_expected = (away["ppg"] + home["oppg"]) / 2
         expected_total = round(home_expected + away_expected, 1)
 
+    if not home or not away:
+        h2h_quality_notes.append("Takım son-form verisi eksik; team_recent bileşeni kullanılmadı.")
+    if h2h_avg_total is None:
+        h2h_quality_notes.append("H2H ortalama toplam çıkarılamadı.")
+
+    quality_score = 100
+    if not text:
+        quality_score -= 60
+    if h2h_avg_total is None:
+        quality_score -= 35
+    if expected_total is None:
+        quality_score -= 20
+    if h2h_games is not None and h2h_games < 3:
+        quality_score -= 20
+    if "no data" in text_lower or "invalid date" in text_lower:
+        quality_score -= 25
+    quality_score = max(0, min(100, quality_score))
+
     return {
         "home_last5": home,
         "away_last5": away,
@@ -154,6 +250,11 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         "h2h_avg_total": h2h_avg_total,
         "h2h_over_pct": h2h_over_pct,
         "h2h_games": h2h_games,
+        "h2h_source": h2h_source,
+        "h2h_row_totals": h2h_row_totals,
+        "h2h_body_chars": len(text),
+        "h2h_quality_score": quality_score,
+        "h2h_quality_notes": h2h_quality_notes,
     }
 
 
@@ -422,6 +523,8 @@ def build_signal_analysis(
     team_recent_total = h2h_metrics.get("expected_total")
     h2h_total = h2h_metrics.get("h2h_avg_total")
     h2h_games = h2h_metrics.get("h2h_games")
+    h2h_quality_score = h2h_metrics.get("h2h_quality_score")
+    h2h_quality_notes = h2h_metrics.get("h2h_quality_notes") or []
     history_values = [value for value in (team_recent_total, h2h_total) if value is not None]
     history_total = round(mean(history_values), 1) if history_values else None
 
@@ -442,6 +545,8 @@ def build_signal_analysis(
 
     team_context = build_team_context(h2h_metrics, live, direction)
     h2h_note = (team_context or {}).get("h2h_note") or "H2H verisi yok veya okunamadı."
+    if h2h_quality_score is not None and h2h_quality_score < 70:
+        h2h_note = f"{h2h_note} Veri kalitesi düşük ({h2h_quality_score}/100)."
     history_note = (
         f"H2H/son maç adil toplamı {history_total:.1f}."
         if history_total is not None
@@ -462,6 +567,7 @@ def build_signal_analysis(
         )
 
     warnings = [h2h_note, history_note, pace, script]
+    warnings.extend(h2h_quality_notes[:3])
     if pace_anomaly_note:
         warnings.insert(0, pace_anomaly_note)
     if abs(line_delta_open) >= 20:
@@ -500,6 +606,11 @@ def build_signal_analysis(
         "team_recent_total": _safe_round(team_recent_total),
         "h2h_total": _safe_round(h2h_total),
         "history_total": _safe_round(history_total),
+        "h2h_games": h2h_games,
+        "h2h_source": h2h_metrics.get("h2h_source") or "",
+        "h2h_body_chars": h2h_metrics.get("h2h_body_chars"),
+        "h2h_quality_score": h2h_quality_score,
+        "h2h_quality_notes": h2h_quality_notes,
         "weights": weights,
         "base_weights": base_weights,
         "fair_components": {key: _safe_round(value) for key, value in components.items()},

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🏀 Basket Anomali Dashboard</title>
+  <title>Basket Sinyal Dashboard</title>
   <style>
     :root {
       --bg: #07131f;
@@ -11,27 +11,22 @@
       --surface-2: #0f1d2f;
       --surface-3: #13253a;
       --surface-4: #182c44;
-      --line: rgba(110, 146, 187, 0.18);
-      --line-strong: rgba(110, 146, 187, 0.28);
+      --border: rgba(110, 146, 187, 0.18);
+      --border-strong: rgba(110, 146, 187, 0.28);
       --text: #edf4ff;
       --text-dim: #8ea2ba;
+      --text-soft: #8ea2ba;
       --accent: #ff9e64;
-      --accent-soft: rgba(255, 158, 100, 0.16);
       --accent-alt: #ff6a63;
       --accent-ust: #34d399;
       --accent-blue: #5fa7ff;
-      --accent-follow: #fbbf24;
-      --bet-bg: rgba(95, 167, 255, 0.08);
-      --follow-bg: rgba(251, 191, 36, 0.10);
-      --ignored-bg: rgba(120, 138, 160, 0.10);
+      --accent-yellow: #fbbf24;
+      --accent-red: #ff6b63;
+      --accent-green: #34d399;
       --shadow: 0 24px 60px rgba(0, 0, 0, 0.26);
-      --radius-xl: 26px;
-      --radius-lg: 20px;
-      --radius-md: 14px;
-      --radius-sm: 12px;
     }
 
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: "Inter", "Segoe UI", sans-serif;
@@ -44,161 +39,147 @@
       -webkit-tap-highlight-color: transparent;
     }
 
+    button,
+    .btn,
+    .nav-tab,
+    .badge,
+    .page-btn,
+    .row-action,
+    .icon-btn {
+      touch-action: manipulation;
+      user-select: none;
+    }
+
     .app-shell {
       width: calc(100% - 4px);
       max-width: none;
       margin: 2px auto 12px;
     }
 
+    .topbar,
+    .panel {
+      background: rgba(14, 26, 42, 0.96);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+
     .topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      gap: 14px;
       padding: 16px;
-      border-radius: var(--radius-xl);
-      background: rgba(10, 22, 36, 0.94);
-      border: 1px solid var(--line);
-      box-shadow: var(--shadow);
+      border-radius: 22px;
       margin-bottom: 14px;
+      flex-wrap: wrap;
     }
 
-    .topbar-left,
-    .topbar-right {
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .status-pill {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: rgba(24, 43, 67, 0.95);
+      border: 1px solid var(--border);
+      position: relative;
+      flex: 0 0 auto;
+    }
+
+    .status-pill::after {
+      content: "";
+      position: absolute;
+      inset: 15px;
+      border-radius: 50%;
+      background: var(--accent-orange, #ff9e64);
+      box-shadow: 0 0 0 6px rgba(255, 158, 100, 0.14);
+    }
+
+    .brand-title {
+      font-size: 20px;
+      font-weight: 900;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+
+    .actions,
+    .toolbar,
+    .stats,
+    .filter-row,
+    .period-row,
+    .pagination {
       display: flex;
       align-items: center;
       gap: 10px;
       flex-wrap: wrap;
     }
 
-    .status-pill {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      background: rgba(17, 31, 48, 0.95);
-      border: 1px solid var(--line);
-    }
-
-    .status-pill::before {
-      content: "";
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #4ade80;
-      box-shadow: 0 0 0 6px rgba(74, 222, 128, 0.12);
-    }
-
-    .top-action,
-    .filter-btn,
-    .action-btn,
-    .page-btn {
-      border: 1px solid var(--line-strong);
-      background: rgba(19, 37, 58, 0.94);
+    .btn,
+    .nav-tab,
+    .page-btn,
+    .page-size,
+    .period-btn,
+    .row-action,
+    .icon-btn {
+      border: 1px solid var(--border-strong);
+      background: rgba(24, 43, 67, 0.9);
       color: var(--text);
-      cursor: pointer;
-      touch-action: manipulation;
-      user-select: none;
-      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-    }
-
-    .top-action {
-      padding: 12px 18px;
-      border-radius: 16px;
-      text-decoration: none;
+      border-radius: 14px;
+      padding: 11px 15px;
       font-size: 13px;
       font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
       white-space: nowrap;
     }
 
-    .top-action:hover,
-    .filter-btn:hover,
-    .action-btn:hover,
-    .page-btn:hover:not(:disabled) {
-      transform: translateY(-1px);
-      border-color: rgba(95, 167, 255, 0.45);
-      box-shadow: 0 14px 24px rgba(0, 0, 0, 0.18);
+    .btn:hover,
+    .nav-tab:hover,
+    .page-btn:hover:not(:disabled),
+    .period-btn:hover,
+    .row-action:hover,
+    .icon-btn:hover {
+      border-color: rgba(95, 167, 255, 0.55);
+      background: rgba(31, 55, 84, 0.96);
     }
 
-    .top-action.active {
-      background: rgba(95, 167, 255, 0.15);
-      border-color: rgba(95, 167, 255, 0.38);
-      color: #a8d4ff;
+    .btn.primary,
+    .nav-tab.active,
+    .period-btn.active {
+      background: linear-gradient(180deg, #6bb2ff, #5a9cea);
+      color: #07111d;
+      border-color: transparent;
     }
 
-    .top-action.primary {
-      background: rgba(25, 52, 81, 0.96);
+    .btn.danger,
+    .row-action.danger {
+      background: rgba(255, 107, 99, 0.16);
+      border-color: rgba(255, 107, 99, 0.36);
+      color: #ffd8d5;
     }
 
-    .top-action.danger {
-      background: rgba(84, 38, 51, 0.95);
-      border-color: rgba(255, 126, 126, 0.24);
+    .btn.warning {
+      background: rgba(251, 191, 36, 0.14);
+      border-color: rgba(251, 191, 36, 0.36);
+      color: #fef08a;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: wait;
     }
 
     .section-shell {
-      background: rgba(10, 22, 36, 0.96);
-      border: 1px solid var(--line);
-      border-radius: 30px;
-      box-shadow: var(--shadow);
-      padding: 12px;
-    }
-
-    .header {
-      margin-bottom: 18px;
-    }
-
-    .header-top {
-      display: grid;
-      gap: 16px;
-    }
-
-    .header-copy,
-    .header-side {
-      display: none;
-    }
-
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 10px;
-    }
-
-    .stat-chip {
-      background: rgba(13, 28, 44, 0.98);
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 14px 16px;
-      min-height: 86px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-    }
-
-    .stat-label {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 11px;
-      color: var(--text-dim);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      font-weight: 700;
-    }
-
-    .stat-value {
-      font-size: 28px;
-      font-weight: 900;
-      letter-spacing: -0.04em;
-      line-height: 1;
-    }
-
-    .stat-dot {
-      width: 9px;
-      height: 9px;
-      border-radius: 50%;
-      flex-shrink: 0;
+      background: rgba(9, 19, 32, 0.88);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 16px;
     }
 
     .nav-tabs {
@@ -206,795 +187,737 @@
       align-items: center;
       gap: 10px;
       flex-wrap: wrap;
-      margin-bottom: 18px;
+      margin-bottom: 14px;
     }
 
-    .nav-tab {
-      padding: 14px 18px;
+    .panel {
       border-radius: 18px;
-      background: rgba(18, 31, 48, 0.95);
-      border: 1px solid transparent;
-      color: var(--text-dim);
-      text-decoration: none;
-      font-size: 14px;
-      font-weight: 700;
-    }
-
-    .nav-tab.active {
-      background: linear-gradient(180deg, #ffb37c, #ff9960);
-      color: #1a1b22;
-      box-shadow: 0 14px 24px rgba(255, 158, 100, 0.18);
-    }
-
-    .filters,
-    .toolbar,
-    .table-wrap,
-    .pagination {
-      background: rgba(18, 30, 47, 0.94);
-      border: 1px solid var(--line);
-      border-radius: 24px;
-    }
-
-    .filters {
       padding: 14px;
-      display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-      margin-bottom: 12px;
+      margin-bottom: 14px;
     }
 
-    .filters::-webkit-scrollbar { display: none; }
+    .stats {
+      align-items: stretch;
+    }
 
-    .filter-btn {
-      padding: 10px 14px;
+    .stat-chip {
+      min-width: 130px;
+      flex: 1 1 130px;
+      background: rgba(19, 34, 54, 0.94);
+      border: 1px solid var(--border);
       border-radius: 14px;
+      padding: 12px;
+    }
+
+    .stat-chip span {
+      display: block;
+      color: var(--text-soft);
       font-size: 12px;
-      font-weight: 700;
-      white-space: nowrap;
-      flex-shrink: 0;
-      color: var(--text-dim);
-      background: rgba(15, 29, 46, 0.98);
-    }
-
-    .filter-btn.active {
-      color: #141a22;
-      border-color: transparent;
-      background: linear-gradient(180deg, #ffb37c, #ff9960);
-    }
-
-    .period-filter-box {
-      background: rgba(18, 30, 47, 0.94);
-      border: 1px solid var(--line);
-      border-radius: 24px;
-      padding: 12px 14px;
-      margin-bottom: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .period-filter-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .period-filter-label {
-      font-size: 11px;
       font-weight: 800;
-      letter-spacing: 0.08em;
+      margin-bottom: 4px;
       text-transform: uppercase;
-      width: 32px;
-      flex-shrink: 0;
     }
 
-    .period-filter-label.lbl-alt { color: var(--accent-alt); }
-    .period-filter-label.lbl-ust { color: var(--accent-ust); }
-
-    .period-btn {
-      padding: 8px 14px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 700;
-      white-space: nowrap;
-      border: 1px solid var(--line-strong);
-      background: rgba(15, 29, 46, 0.98);
-      color: var(--text-dim);
-      cursor: pointer;
-      touch-action: manipulation;
-      transition: transform 0.13s ease, border-color 0.13s ease, background 0.13s ease;
+    .stat-chip strong {
+      font-size: 24px;
+      letter-spacing: 0;
     }
 
-    .period-btn:hover {
-      transform: translateY(-1px);
-      border-color: rgba(95, 167, 255, 0.4);
-    }
-
-    .period-btn.active-alt {
-      background: rgba(255, 106, 99, 0.18);
-      border-color: rgba(255, 106, 99, 0.55);
-      color: #ff8f8a;
-    }
-
-    .period-btn.active-ust {
-      background: rgba(52, 211, 153, 0.15);
-      border-color: rgba(52, 211, 153, 0.50);
-      color: #5fe8b8;
-    }
-
-    .period-filter-clear {
-      margin-left: auto;
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--text-dim);
-      background: none;
-      border: none;
-      cursor: pointer;
-      padding: 4px 8px;
-      border-radius: 8px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.2s ease;
-    }
-
-    .period-filter-clear.visible {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .period-filter-clear:hover { color: var(--text); }
+    .stat-chip.alt strong { color: #ffb2b2; }
+    .stat-chip.ust strong { color: #9df0bd; }
+    .stat-chip.bet strong { color: #b9dcff; }
+    .stat-chip.follow strong { color: #fef08a; }
 
     .toolbar {
-      padding: 16px;
+      justify-content: space-between;
+      align-items: stretch;
+    }
+
+    .toolbar-main {
+      display: flex;
+      align-items: stretch;
+      gap: 10px;
+      flex-wrap: wrap;
+      flex: 1 1 720px;
+    }
+
+    .toolbar-side {
       display: flex;
       align-items: center;
       gap: 10px;
       flex-wrap: wrap;
-      margin-bottom: 18px;
-    }
-
-    .search-wrap {
-      position: relative;
-      flex: 1;
-      min-width: 260px;
+      justify-content: flex-end;
     }
 
     .search-box {
-      width: 100%;
-      padding: 12px 16px;
-      padding-right: 42px;
-      border-radius: 14px;
-      border: 1px solid var(--line);
-      background: rgba(11, 24, 38, 1);
+      min-width: min(420px, 100%);
+      flex: 1 1 300px;
+      border: 1px solid var(--border-strong);
+      background: rgba(7, 16, 27, 0.96);
       color: var(--text);
+      border-radius: 14px;
+      padding: 12px 14px;
       font-size: 14px;
       outline: none;
     }
 
-    .search-box::placeholder { color: var(--text-dim); }
-
-    .search-box:focus {
-      border-color: rgba(95, 167, 255, 0.45);
-      box-shadow: 0 0 0 3px rgba(95, 167, 255, 0.10);
-    }
-
-    .search-clear-btn {
-      position: absolute;
-      right: 10px;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 24px;
-      height: 24px;
-      border: none;
-      border-radius: 999px;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      background: rgba(95, 167, 255, 0.12);
-      color: var(--text-dim);
-      font-size: 15px;
-      font-weight: 700;
-      line-height: 1;
-      cursor: pointer;
-      padding: 0;
-    }
-
-    .search-clear-btn.is-visible { display: flex; }
-
-    .search-clear-btn:hover {
-      color: var(--text);
-      background: rgba(95, 167, 255, 0.2);
-    }
-
-    .search-clear-btn:focus-visible {
-      outline: 2px solid rgba(95, 167, 255, 0.5);
-      outline-offset: 1px;
-    }
+    .search-box:focus { border-color: rgba(95, 167, 255, 0.62); }
 
     .refresh-info {
-      margin-left: auto;
-      color: var(--text-dim);
+      color: var(--text-soft);
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 800;
       white-space: nowrap;
+      align-self: center;
     }
 
-    .bulk-delete-btn {
-      display: none;
-      background: rgba(88, 36, 48, 0.95);
-      border-color: rgba(255, 126, 126, 0.24);
-      color: #ffd8d6;
-    }
-
-    .bulk-delete-btn:disabled {
-      opacity: 0.6;
-      cursor: default;
-      transform: none;
-      box-shadow: none;
-    }
-
-    .match-focus-status {
-      display: inline-flex;
+    .filter-row,
+    .period-row {
       align-items: center;
-      gap: 8px;
-      max-width: 280px;
-      padding: 10px 14px;
-      border-radius: 999px;
-      border: 1px solid rgba(95, 167, 255, 0.24);
-      background: rgba(23, 45, 70, 0.92);
-      color: #dcecff;
+    }
+
+    .period-label {
+      width: 38px;
+      color: var(--text-soft);
+      font-size: 11px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    .period-label.alt { color: #ffb2b2; }
+    .period-label.ust { color: #9df0bd; }
+
+    .period-btn {
+      padding: 8px 12px;
+      border-radius: 12px;
       font-size: 12px;
-      font-weight: 700;
-      cursor: pointer;
-      white-space: nowrap;
+    }
+
+    .period-btn.alt.active {
+      background: rgba(255, 107, 99, 0.18);
+      border-color: rgba(255, 107, 99, 0.5);
+      color: #ffd8d5;
+    }
+
+    .period-btn.ust.active {
+      background: rgba(52, 211, 153, 0.16);
+      border-color: rgba(52, 211, 153, 0.5);
+      color: #a7f3d0;
+    }
+
+    .focus-pill {
+      display: none;
+      max-width: min(520px, 100%);
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
-    .match-focus-status:hover {
-      border-color: rgba(95, 167, 255, 0.45);
-      transform: translateY(-1px);
-    }
+    .focus-pill.visible { display: inline-flex; }
 
     .table-wrap {
-      padding: 0;
-      overflow-x: hidden;
+      overflow-x: auto;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: rgba(7, 16, 27, 0.86);
     }
 
     table {
       width: 100%;
-      min-width: 0;
       border-collapse: collapse;
-      table-layout: fixed;
-      font-size: 14px;
+      min-width: 1320px;
     }
 
-    thead th:nth-child(1) { width: 40px; }
-    thead th:nth-child(2) { width: 99px; }
-    thead th:nth-child(3) { width: 113px; }
-    thead th:nth-child(4) { width: 115px; }
-    thead th:nth-child(5) { width: 105px; }
-    thead th:nth-child(6) { width: 220px; }
-    thead th:nth-child(7) { width: 143px; }
-    thead th:nth-child(8) { width: 82px; }
-    thead th:nth-child(9) { width: 87px; }
-    thead th:nth-child(10),
-    thead th:nth-child(11),
-    thead th:nth-child(12) { width: 74px; }
-    thead th:nth-child(13) { width: 181px; }
-
-    thead th {
+    th,
+    td {
+      padding: 12px 14px;
       text-align: left;
-      padding: 12px 10px;
-      color: var(--text-dim);
-      font-weight: 700;
+      border-bottom: 1px solid rgba(129, 162, 198, 0.12);
+      vertical-align: middle;
+      font-size: 13px;
+    }
+
+    th {
+      color: var(--text-soft);
       font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0;
+      background: rgba(19, 34, 54, 0.92);
       white-space: nowrap;
+    }
+
+    th[data-sort] {
       cursor: pointer;
       user-select: none;
-      border-bottom: 1px solid rgba(110, 146, 187, 0.12);
-      background: rgba(11, 23, 38, 0.98);
-      position: sticky;
-      top: 0;
-      z-index: 2;
+      transition: color 0.15s ease, background 0.15s ease;
     }
 
-    thead th:hover { color: var(--text); }
-
-    tbody tr {
-      border-bottom: 1px solid rgba(110, 146, 187, 0.1);
+    th[data-sort]:hover,
+    th.sorted {
+      color: var(--text);
+      background: rgba(24, 43, 67, 0.96);
     }
 
-    tbody tr:last-child {
-      border-bottom: none;
-    }
+    tbody tr:hover { background: rgba(95, 167, 255, 0.08); }
+    tbody tr.bet-placed { background: rgba(95, 167, 255, 0.06); opacity: 0.78; }
+    tbody tr.is-followed { background: rgba(251, 191, 36, 0.06); }
+    tbody tr.is-ignored { opacity: 0.32; }
+    tbody tr.is-ignored td { text-decoration: line-through; text-decoration-color: rgba(255,255,255,0.35); }
+    tbody tr.is-selected { background: rgba(255, 107, 99, 0.12); }
 
-    tbody tr:hover {
-      background: rgba(17, 32, 49, 0.72);
-    }
+    .select-cell { width: 46px; text-align: center; }
 
-    tbody td {
-      padding: 10px 10px;
-      vertical-align: middle;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    thead th.col-select-header {
-      text-align: center;
-      padding: 16px 8px;
-      cursor: default;
-    }
-
-    tbody td.col-select {
-      text-align: center;
-      padding: 10px 8px;
-    }
-
-
-
-    tbody tr.is-selected {
-      background: rgba(220, 38, 38, 0.18) !important;
-      border-left: 3px solid rgba(239, 68, 68, 0.7);
-    }
-
-    tbody tr.is-selected:hover {
-      background: rgba(220, 38, 38, 0.26) !important;
-    }
-
-    tbody tr.is-selected td {
-      color: #fecaca;
-    }
-
-    tbody tr.is-selected td .match-link,
-    tbody tr.is-selected td .badge,
-    tbody tr.is-selected td .quality-badge {
-      opacity: 0.85;
-    }
-
-    .cancel-select-btn {
-      display: none;
-      padding: 10px 16px;
-      border-radius: 14px;
-      font-size: 12px;
-      font-weight: 700;
-      white-space: nowrap;
+    .match-select {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
       cursor: pointer;
-      border: 1px solid rgba(255, 126, 126, 0.32);
-      background: rgba(127, 29, 29, 0.6);
-      color: #fecaca;
-      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-      animation: cancelBtnFadeIn 0.25s ease;
     }
 
-    .cancel-select-btn:hover {
-      transform: translateY(-1px);
-      border-color: rgba(255, 126, 126, 0.55);
-      background: rgba(153, 27, 27, 0.7);
-      box-shadow: 0 10px 20px rgba(220, 38, 38, 0.15);
-    }
-
-    .cancel-select-btn.is-visible {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    @keyframes cancelBtnFadeIn {
-      from { opacity: 0; transform: translateY(4px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    tbody td.col-match,
-    tbody td.col-tournament {
-      white-space: nowrap;
-    }
-
-    tr.bet-placed {
-      background: var(--bet-bg);
-      opacity: 0.62;
-    }
-
-    tr.bet-placed:hover {
-      background: var(--bet-bg);
-      opacity: 0.72;
-    }
-
-    tr.is-followed {
-      background: var(--follow-bg);
-    }
-
-    tr.is-followed:hover {
-      background: var(--follow-bg);
-    }
-
-    tr.is-ignored {
-      background: var(--ignored-bg);
-      opacity: 0.72;
-    }
-
-    tr.is-ignored:hover {
-      background: var(--ignored-bg);
-    }
-
-    tr.is-ignored td.col-match,
-    tr.is-ignored td.col-tournament,
-    tr.is-ignored td.col-direction {
-      text-decoration: line-through;
-    }
-
-    .cards-wrap {
-      display: none;
-      padding: 0;
-      gap: 12px;
-      flex-direction: column;
-    }
-
-    .alert-card {
-      position: relative;
-      background: rgba(18, 30, 47, 0.94);
-      border: 1px solid var(--line);
-      border-radius: 22px;
-      padding: 16px;
-    }
-
-    .alert-card.bet-placed {
-      background: var(--bet-bg);
-      opacity: 0.66;
-    }
-    .alert-card.is-followed { background: var(--follow-bg); }
-    .alert-card.is-ignored { background: var(--ignored-bg); opacity: 0.72; }
-    .alert-card.is-selected {
-      border-color: rgba(239, 68, 68, 0.5);
-      background: rgba(220, 38, 38, 0.14) !important;
-      box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.25);
-    }
-    .alert-card.is-ignored .card-match,
-    .alert-card.is-ignored .card-tournament { text-decoration: line-through; }
-
-    .card-top {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 12px;
-    }
-
-    .card-match {
-      font-weight: 700;
-      font-size: 18px;
-      line-height: 1.25;
-      word-break: break-word;
-      flex: 1;
-      min-width: 0;
-    }
-
-    .card-match a,
-    .card-match-link {
+    .match-link {
       color: var(--text);
       text-decoration: none;
+      font-weight: 750;
+      display: inline-block;
+      max-width: 280px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      vertical-align: middle;
     }
 
-    .card-match a:hover,
-    .card-match-link:hover { color: var(--accent-blue); }
+    .match-link:hover { color: var(--accent-blue); }
 
-    .card-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px 14px;
-      font-size: 12px;
-      color: var(--text-dim);
-      margin-bottom: 12px;
-    }
-
-    .card-meta-item { display: flex; align-items: center; gap: 4px; }
-
-    .card-odds {
+    .match-cell-wrap {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 12px;
-      border-radius: 16px;
-      background: rgba(11, 24, 38, 0.95);
-      border: 1px solid rgba(110, 146, 187, 0.12);
-      margin-bottom: 12px;
-    }
-
-    .card-odds-value,
-    .card-diff {
-      text-align: center;
-      flex: 1;
-    }
-
-    .card-odds-label,
-    .card-diff-label {
-      font-size: 10px;
-      text-transform: uppercase;
-      color: var(--text-dim);
-      letter-spacing: 0.08em;
-      font-weight: 700;
-    }
-
-    .card-odds-num {
-      margin-top: 4px;
-      font-size: 18px;
-      font-weight: 800;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .card-odds-arrow {
-      font-size: 17px;
-      color: var(--text-dim);
-    }
-
-    .card-diff-value {
-      margin-top: 4px;
-      font-size: 22px;
-      font-weight: 900;
-    }
-
-    .card-actions {
-      position: relative;
-      z-index: 3;
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 8px;
-      align-items: stretch;
-    }
-
-    .card-actions .action-btn {
-      width: 100%;
+      gap: 10px;
       min-width: 0;
-      text-align: center;
+    }
+
+    .subline {
+      color: var(--text-soft);
+      margin-top: 4px;
+      font-size: 12px;
+      max-width: 280px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .focus-inline-btn {
+      width: 22px;
+      height: 22px;
+      flex: 0 0 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      border: 1px solid rgba(95, 167, 255, 0.22);
+      background: rgba(95, 167, 255, 0.07);
+      color: var(--text-soft);
+      font-size: 11px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+    }
+    .focus-inline-btn:hover {
+      border-color: rgba(95, 167, 255, 0.55);
+      background: rgba(95, 167, 255, 0.18);
+      color: var(--text);
+    }
+    .focus-inline-btn.active {
+      color: #07111d;
+      border-color: transparent;
+      background: linear-gradient(180deg, #ffb37c, #ff9960);
+    }
+
+    .note-info-btn {
+      width: 22px;
+      height: 22px;
+      flex: 0 0 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      border: 1px solid rgba(95, 167, 255, 0.38);
+      background: rgba(95, 167, 255, 0.12);
+      color: #b9dcff;
+      font-size: 12px;
+      font-weight: 900;
+      font-style: italic;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .note-info-btn:hover {
+      border-color: rgba(95, 167, 255, 0.7);
+      background: rgba(95, 167, 255, 0.22);
+    }
+
+    .mono {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-variant-numeric: tabular-nums;
     }
 
     .badge {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 5px;
-      padding: 5px 10px;
+      gap: 6px;
+      min-width: 54px;
       border-radius: 999px;
-      font-weight: 700;
-      font-size: 11px;
-      white-space: nowrap;
-      flex-shrink: 0;
-      border: 1px solid transparent;
-    }
-
-    .badge-alt { background: rgba(255, 106, 99, 0.12); color: var(--accent-alt); border-color: rgba(255, 106, 99, 0.18); }
-    .badge-ust { background: rgba(52, 211, 153, 0.12); color: var(--accent-ust); border-color: rgba(52, 211, 153, 0.18); }
-    .badge-quality-a2 { background: rgba(52, 211, 153, 0.14); color: #8af0c9; border-color: rgba(52, 211, 153, 0.22); }
-    .badge-quality-a1 { background: rgba(95, 167, 255, 0.14); color: #9dccff; border-color: rgba(95, 167, 255, 0.24); }
-    .badge-quality-a { background: rgba(79, 139, 223, 0.14); color: #86b7ff; border-color: rgba(79, 139, 223, 0.24); }
-    .badge-quality-b { background: rgba(251, 191, 36, 0.14); color: #f8d06f; border-color: rgba(251, 191, 36, 0.24); }
-    .badge-quality-c { background: rgba(148, 163, 184, 0.14); color: #c0cbda; border-color: rgba(148, 163, 184, 0.22); }
-    .badge-quality-d { background: rgba(255, 107, 99, 0.14); color: #ffb1aa; border-color: rgba(255, 107, 99, 0.24); }
-
-    .signal-trust {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 20px;
-      height: 20px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 700;
-      line-height: 1;
-      white-space: nowrap;
-      border: 1px solid transparent;
-    }
-
-    .signal-trust-reliable {
-      color: #8af0c9;
-      background: rgba(52, 211, 153, 0.14);
-      border-color: rgba(52, 211, 153, 0.24);
-    }
-
-    .signal-trust-watch {
-      color: #f8d06f;
-      background: rgba(251, 191, 36, 0.14);
-      border-color: rgba(251, 191, 36, 0.24);
-    }
-
-    .signal-trust-weak {
-      color: #ffb1aa;
-      background: rgba(255, 107, 99, 0.14);
-      border-color: rgba(255, 107, 99, 0.24);
-    }
-
-    .reliability-panel {
-      display: grid;
-      grid-template-columns: minmax(140px, 180px) 1fr;
-      gap: 10px;
-      align-items: stretch;
-      padding: 10px 12px;
-      border-radius: 12px;
-      background: rgba(11, 24, 38, 0.76);
-      border: 1px solid rgba(110, 146, 187, 0.14);
-    }
-
-    .reliability-score {
-      display: grid;
-      place-items: center;
-      gap: 4px;
-      min-height: 96px;
-      border-radius: 10px;
-      background: rgba(7, 17, 29, 0.72);
-      border: 1px solid rgba(110, 146, 187, 0.1);
-      text-align: center;
-    }
-
-    .reliability-score strong {
-      font-size: 34px;
-      line-height: 1;
-      font-weight: 900;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .reliability-score span {
-      color: var(--text-dim);
+      padding: 6px 10px;
       font-size: 12px;
       font-weight: 800;
-    }
-
-    .reliability-score.reliable strong { color: #8af0c9; }
-    .reliability-score.watch strong { color: #f8d06f; }
-    .reliability-score.weak strong { color: #ffb1aa; }
-
-    .reliability-copy {
-      display: grid;
-      gap: 8px;
-      align-content: start;
-      min-width: 0;
-    }
-
-    .reliability-verdict {
+      border: 1px solid transparent;
+      background: rgba(24, 43, 67, 0.9);
       color: var(--text);
-      font-size: 13px;
-      line-height: 1.45;
-      font-weight: 800;
     }
 
-    .reliability-reasons {
-      display: grid;
-      gap: 6px;
-      padding: 0;
-      margin: 0;
-      list-style: none;
+    .badge-alt {
+      background: rgba(239, 68, 68, 0.14);
+      color: #ffb2b2;
+      border-color: rgba(239, 68, 68, 0.28);
     }
 
-    .reliability-reasons li {
-      color: var(--text-dim);
-      font-size: 12px;
-      line-height: 1.45;
-      overflow-wrap: anywhere;
+    .badge-ust {
+      background: rgba(34, 197, 94, 0.14);
+      color: #9df0bd;
+      border-color: rgba(34, 197, 94, 0.28);
     }
 
-    .quality-badge {
+    .small-badge {
+      min-width: 0;
+      padding: 4px 8px;
+      font-size: 11px;
+      color: var(--text-soft);
+    }
+
+    .trust {
+      min-width: 32px;
       cursor: pointer;
-      transition: transform 0.15s ease, border-color 0.15s ease;
     }
 
-    .quality-badge:hover { transform: translateY(-1px); }
+    .trust.reliable { color: #9df0bd; border-color: rgba(52, 211, 153, 0.28); }
+    .trust.watch { color: #fef08a; border-color: rgba(251, 191, 36, 0.28); }
+    .trust.weak { color: #ffb2b2; border-color: rgba(239, 68, 68, 0.28); }
 
-    .quality-cell {
-      min-width: 96px;
-      white-space: nowrap;
-    }
-
-    .quality-row {
+    .fair-cell {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      flex-wrap: nowrap;
+      white-space: nowrap;
     }
 
-    .signal-open-btn {
-      cursor: pointer;
-      font: inherit;
+    .fair-alert {
+      color: #ff8b86;
+      font-weight: 900;
     }
 
-    .fair-warning-btn {
-      width: 22px;
-      height: 22px;
+    .diff-pos { color: #ff8b86; font-weight: 900; }
+    .diff-neg { color: #9df0bd; font-weight: 900; }
+
+    .icon-btn {
+      width: 34px;
+      height: 34px;
+      padding: 0;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       border-radius: 50%;
-      font-size: 12px;
-      font-weight: 900;
+      font-size: 15px;
       line-height: 1;
-      cursor: pointer;
-      border: 1px solid transparent;
-      background: rgba(19, 37, 58, 0.96);
     }
 
-    .fair-warning-btn.yellow {
-      color: #fde68a;
-      border-color: rgba(251, 191, 36, 0.38);
-      background: rgba(251, 191, 36, 0.13);
+    .icon-btn.active {
+      color: #07111d;
+      border-color: transparent;
+      background: linear-gradient(180deg, #ffb37c, #ff9960);
     }
 
-    .fair-warning-btn.red {
-      color: #fecaca;
-      border-color: rgba(248, 113, 113, 0.42);
-      background: rgba(248, 113, 113, 0.14);
-    }
-
-    .fair-warning-btn:hover,
-    .signal-open-btn:hover {
-      transform: translateY(-1px);
-      filter: brightness(1.08);
-    }
-
-    .fair-edge-alert {
-      color: #ef4444;
-      font-weight: 900;
-      font-size: 16px;
-      line-height: 1;
-      margin-left: 4px;
-      text-shadow: 0 0 6px rgba(239, 68, 68, 0.55);
-    }
-
-    .card-fair-inline {
+    .row-actions {
       display: inline-flex;
       align-items: center;
-      justify-content: center;
       gap: 6px;
       white-space: nowrap;
     }
 
-    .quality-summary {
-      margin-top: 10px;
-      padding: 10px 12px;
-      font-size: 12px;
-      color: var(--text-dim);
-      line-height: 1.55;
-      border-radius: 14px;
-      background: rgba(11, 24, 38, 0.92);
-      border: 1px solid rgba(110, 146, 187, 0.12);
+    .row-action {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      font-size: 14px;
+      line-height: 1;
     }
 
-    .quality-modal-grid {
-      display: grid;
+    .row-action.active-bet {
+      background: rgba(95, 167, 255, 0.26);
+      border-color: rgba(95, 167, 255, 0.7);
+      color: #d8ebff;
+    }
+
+    .row-action.active-follow {
+      background: rgba(251, 191, 36, 0.24);
+      border-color: rgba(251, 191, 36, 0.68);
+      color: #fff3b0;
+    }
+
+    .row-action.active-ignore {
+      background: rgba(255, 107, 99, 0.24);
+      border-color: rgba(255, 107, 99, 0.66);
+      color: #ffe0dd;
+    }
+
+    .row-action.bet-action {
+      background: rgba(95, 167, 255, 0.12);
+      border-color: rgba(95, 167, 255, 0.34);
+      color: #b9dcff;
+    }
+
+    .row-action.follow-action {
+      background: rgba(251, 191, 36, 0.12);
+      border-color: rgba(251, 191, 36, 0.34);
+      color: #fef08a;
+    }
+
+    .row-action.ignore-action {
+      background: rgba(255, 107, 99, 0.12);
+      border-color: rgba(255, 107, 99, 0.32);
+      color: #ffd8d5;
+    }
+
+    .row-action.note-action {
+      background: rgba(148, 163, 184, 0.12);
+      border-color: rgba(148, 163, 184, 0.28);
+      color: #cbd5e1;
+    }
+
+    .row-action.note-action.has-note {
+      background: rgba(95, 167, 255, 0.12);
+      border-color: rgba(95, 167, 255, 0.36);
+      color: #b9dcff;
+    }
+
+    .cards-wrap {
+      display: none;
       gap: 12px;
+      flex-direction: column;
     }
 
-    .signal-info-box {
-      max-width: none;
-      width: min(96vw, 980px);
-      max-height: 92vh;
+    .alert-card {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(7, 16, 27, 0.86);
+      padding: 14px;
     }
 
-    .quality-score-line {
+    .card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .card-title {
+      font-weight: 850;
+      line-height: 1.35;
+      min-width: 0;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .card-metric {
+      border: 1px solid rgba(129, 162, 198, 0.12);
+      border-radius: 12px;
+      background: rgba(19, 34, 54, 0.72);
+      padding: 10px;
+    }
+
+    .card-metric span {
+      display: block;
+      color: var(--text-soft);
+      font-size: 10px;
+      font-weight: 900;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .card-metric strong { font-size: 16px; }
+
+    .card-actions {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .card-actions .row-action,
+    .card-actions .icon-btn {
+      width: 100%;
+      border-radius: 12px;
+    }
+
+    .empty-state {
+      display: none;
+      padding: 44px 16px;
+      color: var(--text-soft);
+      text-align: center;
+      border: 1px dashed var(--border-strong);
+      border-radius: 16px;
+      background: rgba(7, 16, 27, 0.62);
+    }
+
+    .banner {
+      display: none;
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin-bottom: 14px;
+      border: 1px solid rgba(52, 211, 153, 0.28);
+      background: rgba(52, 211, 153, 0.12);
+      color: #bdf7dd;
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .banner.error {
+      border-color: rgba(255, 107, 99, 0.35);
+      background: rgba(255, 107, 99, 0.13);
+      color: #ffd4d0;
+    }
+
+    .pagination {
+      justify-content: flex-end;
+      margin-top: 12px;
+    }
+
+    .page-btn,
+    .page-size {
+      padding: 9px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .page-info {
+      color: var(--text-soft);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(5, 10, 18, 0.72);
+      backdrop-filter: blur(8px);
+      align-items: center;
+      justify-content: center;
+      padding: 10px;
+    }
+
+    .modal-overlay.active { display: flex; }
+
+    .modal-box {
+      width: min(96vw, 760px);
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: rgba(10, 22, 36, 0.98);
+      box-shadow: var(--shadow);
+    }
+
+    .modal-box.wide { width: min(98vw, 1380px); }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(129, 162, 198, 0.12);
+      background: rgba(19, 34, 54, 0.92);
+    }
+
+    .modal-header h3 {
+      font-size: 15px;
+      line-height: 1.35;
+    }
+
+    .modal-close {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: rgba(24, 43, 67, 0.9);
+      color: var(--text-soft);
+      font-size: 20px;
+      cursor: pointer;
+    }
+
+    .modal-body {
+      padding: 14px;
+      overflow-y: auto;
+      line-height: 1.5;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .detail-box {
+      border: 1px solid rgba(129, 162, 198, 0.12);
+      border-radius: 12px;
+      background: rgba(7, 16, 27, 0.62);
+      padding: 10px 12px;
+    }
+
+    .detail-box span {
+      display: block;
+      color: var(--text-soft);
+      font-size: 11px;
+      font-weight: 900;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .detail-box strong,
+    .detail-box p {
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .note-area,
+    .bet-name-input,
+    .bet-count-select {
+      width: 100%;
+      border: 1px solid var(--border-strong);
+      background: rgba(7, 16, 27, 0.96);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 12px 14px;
+      font: inherit;
+      outline: none;
+    }
+
+    .note-view-text {
+      border: 1px solid rgba(129, 162, 198, 0.12);
+      border-radius: 14px;
+      background: rgba(7, 16, 27, 0.7);
+      padding: 14px;
+      color: var(--text);
+      white-space: pre-wrap;
+      line-height: 1.55;
+    }
+
+    .note-area {
+      min-height: 120px;
+      resize: vertical;
+    }
+
+    .modal-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    .bet-toolbar {
+      display: grid;
+      grid-template-columns: 130px minmax(180px, 1fr) auto auto;
+      gap: 10px;
+      margin-bottom: 12px;
+      align-items: stretch;
+    }
+
+    .bet-table {
+      min-width: 900px;
+    }
+
+    .saved-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .saved-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 10px;
-      padding: 9px 10px;
-      border-radius: 10px;
-      background: rgba(11, 24, 38, 0.76);
-      border: 1px solid rgba(110, 146, 187, 0.12);
-      font-size: 13px;
-    }
-
-    .quality-score-line strong { color: var(--text); }
-
-    .quality-section {
-      padding: 10px 12px;
+      border: 1px solid rgba(129, 162, 198, 0.12);
       border-radius: 12px;
+      background: rgba(7, 16, 27, 0.62);
+      padding: 10px 12px;
+    }
+
+    @media (max-width: 900px) {
+      .table-wrap { display: none; }
+      .cards-wrap { display: flex; }
+      .toolbar-side { justify-content: flex-start; }
+      .bet-toolbar { grid-template-columns: 1fr; }
+      .detail-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 720px) {
+      .actions,
+      .toolbar-main,
+      .toolbar-side,
+      .search-box,
+      .btn,
+      .nav-tab {
+        width: 100%;
+      }
+      .btn,
+      .nav-tab { text-align: center; justify-content: center; }
+      .card-grid { grid-template-columns: 1fr; }
+      .card-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .brand-title { white-space: normal; }
+    }
+
+    /* Signal modal — matches deleted_matches style */
+    .signal-info-box { width: min(98vw, 980px); }
+
+    .signal-info-headline {
+      display: grid;
+      gap: 5px;
+      margin-bottom: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(19, 34, 54, 0.92);
+      border: 1px solid rgba(110, 146, 187, 0.14);
+    }
+    .signal-info-match { font-size: 16px; font-weight: 900; color: var(--text); }
+    .signal-info-meta { color: var(--text-soft); font-size: 12px; line-height: 1.45; }
+
+    .signal-info-grid { display: grid; gap: 12px; }
+
+    .signal-info-section,
+    .team-context {
+      padding: 11px 12px;
+      border-radius: 14px;
       background: rgba(11, 24, 38, 0.76);
       border: 1px solid rgba(110, 146, 187, 0.12);
     }
 
-    .quality-section-title {
+    .signal-info-section-title,
+    .team-context-title {
       margin-bottom: 8px;
       color: var(--text-soft);
       font-size: 11px;
@@ -1003,70 +926,31 @@
       text-transform: uppercase;
     }
 
-    .quality-modal-headline {
+    .signal-metrics-list,
+    .signal-note-list {
       display: grid;
-      gap: 5px;
-      margin-bottom: 10px;
-      padding: 10px 12px;
-      border-radius: 12px;
-      background: rgba(19, 34, 54, 0.92);
-      border: 1px solid rgba(110, 146, 187, 0.14);
-    }
-
-    .quality-modal-match {
-      font-size: 15px;
-      font-weight: 900;
-      color: var(--text);
-    }
-
-    .quality-modal-meta {
-      color: var(--text-dim);
-      font-size: 12px;
-      line-height: 1.45;
-    }
-
-    .quality-summary-list,
-    .quality-note-list {
-      display: grid;
-      gap: 7px;
+      gap: 8px;
       padding: 0;
       margin: 0;
       list-style: none;
     }
+    .signal-metrics-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-    .quality-summary-list li {
+    .signal-metrics-list li {
       display: grid;
-      grid-template-columns: minmax(86px, 130px) 1fr;
+      grid-template-columns: minmax(92px, 120px) 1fr;
+      align-items: center;
+      min-width: 0;
       gap: 8px;
-      padding: 7px 9px;
-      border-radius: 9px;
+      padding: 8px 10px;
+      border-radius: 10px;
       background: rgba(7, 17, 29, 0.7);
       border: 1px solid rgba(110, 146, 187, 0.08);
       font-size: 12px;
       line-height: 1.45;
     }
-
-    .signal-metrics-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    .signal-metrics-grid li {
-      grid-template-columns: minmax(92px, 120px) 1fr;
-      align-items: center;
-      min-width: 0;
-    }
-
-    .quality-note-list li {
-      display: block;
-      padding: 8px 10px;
-      border-radius: 9px;
-      background: rgba(7, 17, 29, 0.7);
-      border: 1px solid rgba(110, 146, 187, 0.08);
-      font-size: 12px;
-      line-height: 1.55;
-      overflow-wrap: anywhere;
-    }
+    .signal-info-key { color: var(--text-soft); font-weight: 800; }
+    .signal-info-value { color: var(--text); overflow-wrap: anywhere; }
 
     .signal-weights-line {
       margin-top: 9px;
@@ -1078,55 +962,22 @@
       font-size: 12px;
       line-height: 1.45;
     }
+    .signal-weights-line strong { color: var(--text); margin-right: 6px; }
 
-    .signal-weights-line strong {
-      color: var(--text);
-      margin-right: 6px;
-    }
-
-    .quality-summary-key {
-      color: var(--text-soft);
-      font-weight: 800;
-    }
-
-    .quality-summary-value {
-      color: var(--text);
+    .signal-note-list li {
+      display: block;
+      padding: 8px 10px;
+      border-radius: 9px;
+      background: rgba(7, 17, 29, 0.7);
+      border: 1px solid rgba(110, 146, 187, 0.08);
+      font-size: 12px;
+      line-height: 1.55;
       overflow-wrap: anywhere;
     }
 
-    .opposing-warning {
-      margin-top: 0;
-      padding: 10px 12px;
-      border-radius: 12px;
-      background: rgba(255, 106, 99, 0.08);
-      border: 1px solid rgba(255, 106, 99, 0.14);
-      color: #ffb4b0;
-      line-height: 1.45;
-      font-size: 12px;
-    }
-
-    .opposing-warning strong { color: #ffd2cf; }
-
-    .team-context {
-      margin-top: 0;
-      padding: 10px 12px;
-      border-radius: 12px;
-      background: rgba(19, 34, 54, 0.92);
-      border: 1px solid rgba(110, 146, 187, 0.18);
-      line-height: 1.45;
-      font-size: 12px;
-    }
-    .team-context-title {
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: var(--text-soft);
-      margin-bottom: 8px;
-    }
     .team-context-align {
       display: inline-block;
-      font-weight: 700;
+      font-weight: 800;
       font-size: 12px;
       padding: 4px 10px;
       border-radius: 999px;
@@ -1137,6 +988,7 @@
     .team-context-align.against { background: rgba(255, 107, 99, 0.14); color: #ffc0bc; border-color: rgba(255, 107, 99, 0.32); }
     .team-context-align.mixed { background: rgba(251, 191, 36, 0.14); color: #fde68a; border-color: rgba(251, 191, 36, 0.32); }
     .team-context-align.neutral { background: rgba(95, 167, 255, 0.12); color: #b9dcff; border-color: rgba(95, 167, 255, 0.28); }
+
     .team-context-regression {
       padding: 8px 10px;
       margin-bottom: 8px;
@@ -1145,9 +997,11 @@
       border-left: 3px solid #fbbf24;
       font-size: 12px;
       color: var(--text);
+      line-height: 1.45;
     }
     .team-context-regression.alt { border-left-color: #ff6b63; }
     .team-context-regression.ust { border-left-color: #34d399; }
+
     .team-context-teams {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -1155,1274 +1009,190 @@
       margin-bottom: 8px;
     }
     .team-context-card {
-      background: rgba(11, 24, 38, 0.86);
+      background: rgba(7, 17, 29, 0.76);
       border: 1px solid rgba(110, 146, 187, 0.14);
       border-radius: 10px;
       padding: 9px 10px;
       font-size: 12px;
     }
-    .team-context-card-head {
-      font-weight: 800;
-      margin-bottom: 4px;
-      color: var(--text);
-    }
-    .team-context-card-total {
-      font-size: 18px;
-      font-weight: 900;
-      color: var(--accent-blue);
-    }
-    .team-context-card-breakdown {
-      color: var(--text-soft);
-      font-size: 11px;
-      margin-top: 2px;
-    }
-    .team-context-card-label {
-      font-size: 11px;
-      font-weight: 700;
-      color: #fde68a;
-      margin-top: 4px;
-    }
+    .team-context-card-head { font-weight: 800; margin-bottom: 4px; color: var(--text); }
+    .team-context-card-total { font-size: 18px; font-weight: 900; color: var(--accent-blue); }
+    .team-context-card-breakdown { color: var(--text-soft); font-size: 11px; margin-top: 2px; }
+    .team-context-card-label { font-size: 11px; font-weight: 700; color: #fde68a; margin-top: 4px; }
     .team-context-h2h {
       font-size: 12px;
-      color: var(--text-dim);
-      padding: 6px 10px;
+      color: var(--text-soft);
+      padding: 7px 10px;
       background: rgba(13, 26, 42, 0.6);
       border-radius: 8px;
-    }
-
-    .diff-val {
-      font-weight: 900;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .diff-positive { color: var(--accent-alt); }
-    .diff-negative { color: var(--accent-ust); }
-
-    .action-btn {
-      padding: 8px 10px;
-      border-radius: 12px;
-      font-size: 11px;
-      min-width: 0;
-      font-weight: 700;
-      color: var(--text-dim);
-    }
-
-    .action-btn:active { transform: scale(0.98); }
-
-    .action-btn:disabled {
-      opacity: 0.58;
-      cursor: wait;
-      transform: none;
-      box-shadow: none;
-    }
-
-    .action-btn.active-bet {
-      color: var(--text);
-      background: rgba(36, 74, 111, 0.98);
-      border-color: rgba(95, 167, 255, 0.26);
-    }
-
-    .action-btn.active-ignore {
-      color: var(--text);
-      background: rgba(88, 36, 48, 0.95);
-      border-color: rgba(255, 126, 126, 0.18);
-    }
-
-    .action-btn.active-follow {
-      color: var(--text);
-      background: rgba(52, 69, 39, 0.95);
-      border-color: rgba(251, 191, 36, 0.18);
-    }
-
-    .action-btn.delete-btn {
-      color: #ffb4b0;
-      border-color: rgba(255, 126, 126, 0.18);
-      background: rgba(88, 36, 48, 0.72);
-    }
-
-    .actions-wrap {
-      display: flex;
-      align-items: center;
-      justify-content: flex-start;
-      gap: 4px;
-      min-width: 0;
-      flex-wrap: nowrap;
-    }
-
-    .action-btn.follow-btn:not(.active-follow) {
-      background: rgba(19, 37, 58, 0.94);
-    }
-
-    .actions-wrap .action-btn {
-      flex: 0 0 auto;
-      text-align: center;
-      white-space: nowrap;
-      width: 34px;
-      height: 34px;
-      padding: 0;
-      font-size: 14px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .card-actions .action-btn {
-      width: 100%;
-      min-height: 38px;
-      padding: 0;
-      font-size: 15px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .match-link {
-      display: block;
-      color: var(--text);
-      text-decoration: none;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .match-link:hover { color: var(--accent-blue); }
-
-    .match-cell-wrap,
-    .card-match-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-width: 0;
-    }
-
-    .match-select-wrap {
-      width: 30px;
-      height: 30px;
-      flex: 0 0 30px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 10px;
-      background: rgba(12, 27, 43, 0.95);
-      border: 1px solid rgba(110, 146, 187, 0.2);
-    }
-
-    .match-select-box {
-      width: 16px;
-      height: 16px;
-      cursor: pointer;
-      accent-color: #ff9960;
-    }
-
-    .card-select-chip {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      height: 38px;
-      border-radius: 12px;
-      border: 1px solid rgba(255, 126, 126, 0.28);
-      background: rgba(88, 36, 48, 0.7);
-      color: #ffd8d6;
-      font-size: 12px;
-      font-weight: 700;
-      cursor: pointer;
-      touch-action: manipulation;
-      user-select: none;
-      padding: 0 10px;
-    }
-
-    .card-select-chip.is-selected {
-      background: rgba(255, 107, 99, 0.22);
-      border-color: rgba(255, 126, 126, 0.48);
-    }
-
-    .match-cell-wrap .match-link,
-    .card-match-row .match-link,
-    .card-match-row .card-match-link {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .match-focus-btn {
-      width: 34px;
-      height: 34px;
-      flex: 0 0 34px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 50%;
-      border: 1px solid rgba(110, 146, 187, 0.2);
-      background: rgba(12, 27, 43, 0.95);
-      color: var(--text-dim);
-      cursor: pointer;
-      font-size: 16px;
-      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-    }
-
-    .match-focus-btn:hover {
-      color: var(--text);
-      border-color: rgba(95, 167, 255, 0.45);
-      box-shadow: 0 10px 18px rgba(0, 0, 0, 0.16);
-      transform: translateY(-1px);
-    }
-
-    .match-focus-btn.active {
-      color: #1a1b22;
-      border-color: transparent;
-      background: linear-gradient(180deg, #ffb37c, #ff9960);
-      box-shadow: 0 12px 20px rgba(255, 158, 100, 0.2);
-    }
-
-    .match-note-btn {
-      width: 34px;
-      height: 34px;
-      flex: 0 0 34px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 50%;
-      border: 1px solid rgba(110, 146, 187, 0.2);
-      background: rgba(12, 27, 43, 0.95);
-      color: var(--text-dim);
-      cursor: pointer;
-      font-size: 15px;
-      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-    }
-
-    .match-note-btn:hover {
-      color: var(--text);
-      border-color: rgba(251, 191, 36, 0.46);
-      box-shadow: 0 10px 18px rgba(0, 0, 0, 0.16);
-      transform: translateY(-1px);
-    }
-
-    .match-note-btn.has-note {
-      color: #1a1b22;
-      border-color: transparent;
-      background: linear-gradient(180deg, #fde68a, #fbbf24);
-      box-shadow: 0 12px 20px rgba(251, 191, 36, 0.18);
-    }
-
-    .col-tournament {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      font-size: 12px;
-      color: var(--text-dim);
-    }
-
-    .signal-cell {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      min-height: 34px;
-    }
-
-    .time-col {
-      color: var(--text-dim);
-      font-size: 12px;
-    }
-
-    .signal-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(251, 191, 36, 0.16);
-      color: #f8d06f;
-      font-size: 10px;
-      font-weight: 800;
-      padding: 2px 6px;
-      border-radius: 999px;
-      margin-left: 4px;
-      vertical-align: middle;
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 60px 20px;
-      color: var(--text-dim);
-      font-size: 15px;
-    }
-
-    .pagination {
-      margin-top: 14px;
-      padding: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .page-btn {
-      padding: 10px 16px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .page-btn:disabled { opacity: 0.35; cursor: default; }
-
-    .page-info {
-      color: var(--text-dim);
-      font-size: 13px;
-      font-weight: 600;
-    }
-
-    .page-size-select,
-    .bet-builder-toolbar select,
-    .bet-builder-toolbar input {
-      padding: 8px 10px;
-      border-radius: 12px;
-      border: 1px solid var(--line);
-      background: rgba(11, 24, 38, 1);
-      color: var(--text);
-      font-size: 12px;
-    }
-
-    .page-size-select,
-    .bet-builder-toolbar select {
-      cursor: pointer;
-    }
-
-    .bet-builder-toolbar input {
-      min-width: 180px;
-      flex: 1;
-      outline: none;
-    }
-
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(5, 10, 18, 0.72);
-      backdrop-filter: blur(8px);
-      z-index: 100;
-      justify-content: center;
-      align-items: center;
-      padding: 10px;
-    }
-
-    .modal-overlay.active { display: flex; }
-
-    .modal-box {
-      background: rgba(10, 22, 36, 0.98);
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      max-width: 720px;
-      width: 100%;
-      max-height: 86vh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      box-shadow: var(--shadow);
-    }
-
-    .bet-builder-box {
-      max-width: none;
-      width: min(99vw, 1680px);
-      max-height: 95vh;
-    }
-
-    .modal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 13px 16px;
-      border-bottom: 1px solid rgba(110, 146, 187, 0.12);
-      background: rgba(11, 24, 38, 0.98);
-    }
-
-    .modal-header h3 {
-      font-size: 15px;
-      font-weight: 800;
-      line-height: 1.35;
-      padding-right: 8px;
-    }
-
-    .modal-close {
-      background: rgba(19, 37, 58, 0.96);
-      border: 1px solid var(--line);
-      color: var(--text-dim);
-      font-size: 18px;
-      width: 34px;
-      height: 34px;
-      border-radius: 50%;
-      cursor: pointer;
-      line-height: 1;
-    }
-
-    .modal-close:hover { color: var(--text); }
-
-    .modal-body {
-      padding: 12px;
-      overflow-y: auto;
-      font-size: 13px;
       line-height: 1.45;
-      color: var(--text);
-      white-space: normal;
-    }
-
-    .modal-body .loading {
-      text-align: center;
-      color: var(--text-dim);
-      padding: 30px;
-      border-radius: 16px;
-      background: rgba(11, 24, 38, 0.92);
-    }
-
-    .note-editor-box { max-width: 520px; }
-
-    .note-editor-meta {
-      margin-bottom: 10px;
-      color: var(--text-dim);
-      font-size: 12px;
-      font-weight: 700;
-      overflow-wrap: anywhere;
-    }
-
-    .note-editor-textarea {
-      width: 100%;
-      min-height: 118px;
-      resize: vertical;
-      border-radius: 14px;
-      border: 1px solid var(--line);
-      background: rgba(11, 24, 38, 1);
-      color: var(--text);
-      padding: 12px;
-      outline: none;
-      font: inherit;
-      line-height: 1.45;
-    }
-
-    .note-editor-textarea:focus {
-      border-color: rgba(251, 191, 36, 0.42);
-      box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.10);
-    }
-
-    .note-editor-footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    .note-char-count {
-      color: var(--text-dim);
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .note-editor-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .note-editor-actions .action-btn {
-      min-width: 82px;
-      padding: 9px 12px;
-      font-size: 12px;
-    }
-
-    .bet-builder-body {
-      padding: 14px;
-      font-size: 12px;
-      line-height: 1.4;
-      white-space: normal;
-    }
-
-    .bet-builder-body .loading {
-      padding: 16px;
-      border-radius: 12px;
-      font-size: 12px;
-    }
-
-    .bet-builder-toolbar {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-bottom: 10px;
-    }
-
-    .bet-builder-toolbar label {
-      color: var(--text-dim);
-      font-size: 11px;
-      font-weight: 700;
-    }
-
-    .bet-builder-toolbar .action-btn {
-      padding: 8px 12px;
-      border-radius: 10px;
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .builder-status {
-      padding: 8px 10px;
-      border-radius: 10px;
-      border: 1px solid transparent;
-      margin-bottom: 8px;
-      font-size: 12px;
-    }
-
-    .builder-status.info {
-      background: rgba(95, 167, 255, 0.10);
-      border-color: rgba(95, 167, 255, 0.24);
-      color: #d2e6ff;
-    }
-
-    .builder-status.success {
-      background: rgba(52, 211, 153, 0.12);
-      border-color: rgba(52, 211, 153, 0.24);
-      color: #9df0d2;
-    }
-
-    .builder-status.error {
-      background: rgba(248, 113, 113, 0.10);
-      border-color: rgba(248, 113, 113, 0.24);
-      color: #fecaca;
-    }
-
-    .builder-summary {
-      margin-bottom: 10px;
-      padding: 10px 12px;
-      border-radius: 12px;
-      border: 1px solid rgba(95, 167, 255, 0.14);
-      background: rgba(22, 49, 78, 0.68);
-      color: #cce0ff;
-      line-height: 1.45;
-      font-size: 12px;
-    }
-
-    .builder-summary strong {
-      display: block;
-      margin-bottom: 2px;
-      font-size: 12px;
-    }
-
-    .builder-empty {
-      padding: 12px;
-      border-radius: 12px;
-      border: 1px dashed var(--line);
-      color: var(--text-dim);
-      text-align: center;
-      background: rgba(11, 24, 38, 0.92);
-      font-size: 12px;
-    }
-
-    .bet-slip-table-wrap {
-      border: 1px solid rgba(110, 146, 187, 0.14);
-      border-radius: 12px;
-      overflow: auto;
-      background: rgba(14, 26, 42, 0.92);
-      max-height: min(58vh, 620px);
-    }
-
-    .bet-slip-table {
-      width: 100%;
-      min-width: 1360px;
-      border-collapse: collapse;
-      table-layout: fixed;
-    }
-
-    .bet-slip-table th {
-      text-align: left;
-      padding: 9px 10px;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0;
-      color: var(--text-dim);
-      border-bottom: 1px solid rgba(110, 146, 187, 0.16);
-      white-space: nowrap;
-      background: rgba(11, 24, 38, 0.98);
-      position: sticky;
-      top: 0;
-      z-index: 2;
-    }
-
-    .bet-slip-table td {
-      padding: 10px;
-      font-size: 12px;
-      line-height: 1.35;
-      border-bottom: 1px solid rgba(110, 146, 187, 0.1);
-      vertical-align: top;
-      white-space: normal;
-      overflow-wrap: anywhere;
-      text-align: left;
-    }
-
-    .bet-slip-table tr:last-child td {
-      border-bottom: none;
-    }
-
-    .bet-slip-table .match-col {
-      min-width: 0;
-      white-space: normal;
-      line-height: 1.35;
-      text-align: left;
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .bet-slip-tournament {
-      display: block;
-      margin-top: 4px;
-      font-size: 11px;
-      font-style: italic;
-      color: var(--text-dim);
-      white-space: normal;
-      overflow-wrap: anywhere;
-    }
-
-    .match-state-note {
-      display: inline-block;
-      margin-left: 6px;
-      font-size: 10px;
-      font-style: italic;
-      color: #f8d06f;
-      font-weight: 600;
-      white-space: nowrap;
-    }
-
-    .bet-slip-pick-col,
-    .bet-slip-fair-col,
-    .bet-slip-num-col,
-    .bet-slip-score-col,
-    .bet-slip-status-col,
-    .bet-slip-action-col {
-      text-align: center;
-      white-space: nowrap;
-    }
-
-    .bet-slip-rec-col {
-      color: #dbeafe;
-      font-weight: 700;
-      white-space: normal;
-      overflow-wrap: anywhere;
-    }
-
-    .bet-slip-fair-col strong,
-    .bet-slip-num-col strong {
-      display: block;
-      font-size: 13px;
-      color: var(--text);
-    }
-
-    .bet-slip-signal {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-weight: 700;
-    }
-
-    .bet-slip-code {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 5px 8px;
-      border-radius: 8px;
-      background: rgba(52, 211, 153, 0.12);
-      border: 1px solid rgba(52, 211, 153, 0.18);
-      color: #9df0d2;
-      font-size: 11px;
-      font-weight: 700;
-      white-space: normal;
-      overflow-wrap: anywhere;
-    }
-
-    .bet-slip-table th:nth-child(1),
-    .bet-slip-table td:nth-child(1) { width: 29%; }
-
-    .bet-slip-table th:nth-child(2),
-    .bet-slip-table td:nth-child(2) { width: 150px; }
-
-    .bet-slip-table th:nth-child(3),
-    .bet-slip-table td:nth-child(3) { width: 95px; }
-
-    .bet-slip-table th:nth-child(4),
-    .bet-slip-table td:nth-child(4) { width: 32%; }
-
-    .bet-slip-table th:nth-child(5),
-    .bet-slip-table td:nth-child(5) { width: 90px; }
-
-    .bet-slip-table th:nth-child(6),
-    .bet-slip-table td:nth-child(6) { width: 90px; }
-
-    .bet-slip-table th:nth-child(7),
-    .bet-slip-table td:nth-child(7) { width: 110px; }
-
-    .bet-slip-table th:nth-child(8),
-    .bet-slip-table td:nth-child(8) { width: 120px; }
-
-    .bet-slip-table th:nth-child(9),
-    .bet-slip-table td:nth-child(9) { width: 52px; }
-
-    .slip-remove-btn {
-      width: 24px;
-      height: 24px;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 126, 126, 0.26);
-      background: rgba(239, 68, 68, 0.10);
-      color: #fecaca;
-      font-size: 12px;
-      line-height: 1;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-    }
-
-    .slip-remove-btn:hover {
-      background: rgba(239, 68, 68, 0.18);
-      border-color: rgba(255, 126, 126, 0.4);
-    }
-
-    .saved-bets-panel {
-      margin-top: 10px;
-      border: 1px solid rgba(110, 146, 187, 0.14);
-      border-radius: 12px;
-      padding: 8px;
-      background: rgba(14, 26, 42, 0.8);
-    }
-
-    .saved-bets-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin-bottom: 8px;
-    }
-
-    .saved-bets-head strong {
-      font-size: 12px;
-      font-weight: 800;
-    }
-
-    .saved-bets-head .action-btn {
-      padding: 6px 10px;
-      border-radius: 10px;
-      font-size: 11px;
-      font-weight: 700;
-    }
-
-    .saved-bet-list {
-      display: grid;
-      gap: 6px;
-    }
-
-    .saved-bet-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 7px 8px;
-      border-radius: 10px;
-      background: rgba(11, 24, 38, 0.92);
-      border: 1px solid rgba(110, 146, 187, 0.12);
-    }
-
-    .saved-bet-main {
-      min-width: 0;
-    }
-
-    .saved-bet-name {
-      font-size: 12px;
-      font-weight: 700;
-      line-height: 1.2;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .saved-bet-name-wrap {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      min-width: 0;
-    }
-
-    .saved-bet-meta {
-      font-size: 10px;
-      color: var(--text-dim);
-      margin-top: 2px;
-      white-space: nowrap;
-    }
-
-    .saved-bet-actions {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-shrink: 0;
-    }
-
-    .saved-inline-btn {
-      border: 1px solid var(--line-strong);
-      background: rgba(19, 37, 58, 0.94);
-      color: var(--text);
-      border-radius: 8px;
-      padding: 4px 8px;
-      font-size: 10px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-
-    .saved-inline-btn:hover {
-      border-color: rgba(95, 167, 255, 0.45);
-    }
-
-    .saved-inline-btn.danger {
-      border-color: rgba(255, 126, 126, 0.24);
-      color: #fecaca;
-    }
-
-    .saved-bet-detail {
-      margin-top: 6px;
-      border-radius: 10px;
-      border: 1px solid rgba(110, 146, 187, 0.14);
-      background: rgba(10, 20, 32, 0.92);
-      overflow: hidden;
-    }
-
-    .saved-detail-summary {
-      padding: 7px 8px;
-      border-bottom: 1px solid rgba(110, 146, 187, 0.12);
-      font-size: 11px;
-      color: var(--text-dim);
-      line-height: 1.3;
-    }
-
-    .saved-detail-summary strong {
-      color: var(--text);
-      font-weight: 800;
-      margin-right: 8px;
-    }
-
-    .saved-detail-table-wrap {
-      overflow: auto;
-    }
-
-    .saved-detail-table {
-      width: 100%;
-      min-width: 1120px;
-      border-collapse: collapse;
-      table-layout: fixed;
-    }
-
-    .saved-detail-table th {
-      text-align: left;
-      padding: 8px 9px;
-      font-size: 10px;
-      color: var(--text-dim);
-      border-bottom: 1px solid rgba(110, 146, 187, 0.14);
-      white-space: nowrap;
-      text-transform: uppercase;
-      letter-spacing: 0;
-      background: rgba(11, 24, 38, 0.96);
-    }
-
-    .saved-detail-table td {
-      padding: 8px 9px;
-      font-size: 11px;
-      border-bottom: 1px solid rgba(110, 146, 187, 0.09);
-      white-space: normal;
-      overflow-wrap: anywhere;
-      vertical-align: top;
-      text-align: left;
-    }
-
-    .saved-detail-table tr:last-child td {
-      border-bottom: none;
-    }
-
-    .saved-result-pill {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 2px 7px;
-      border-radius: 999px;
-      font-size: 10px;
-      font-weight: 800;
-      border: 1px solid transparent;
-      line-height: 1.3;
-    }
-
-    .saved-result-pill.success {
-      color: #a7f3d0;
-      border-color: rgba(16, 185, 129, 0.35);
-      background: rgba(16, 185, 129, 0.16);
-    }
-
-    .saved-result-pill.fail {
-      color: #fecaca;
-      border-color: rgba(239, 68, 68, 0.35);
-      background: rgba(239, 68, 68, 0.14);
-    }
-
-    .saved-result-pill.push {
-      color: #fde68a;
-      border-color: rgba(245, 158, 11, 0.35);
-      background: rgba(245, 158, 11, 0.14);
-    }
-
-    .saved-result-pill.pending,
-    .saved-result-pill.unknown {
-      color: #cbd5e1;
-      border-color: rgba(148, 163, 184, 0.35);
-      background: rgba(148, 163, 184, 0.12);
-    }
-
-    .saved-result-actions {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-    }
-
-    .saved-result-btn {
-      width: 28px;
-      height: 28px;
-      border-radius: 8px;
-      border: 1px solid rgba(110, 146, 187, 0.22);
-      background: rgba(19, 37, 58, 0.94);
-      color: var(--text-dim);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      font-size: 14px;
-      line-height: 1;
-      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
-    }
-
-    .saved-result-btn:hover {
-      transform: translateY(-1px);
-      color: var(--text);
-      border-color: rgba(95, 167, 255, 0.45);
-    }
-
-    .saved-result-btn.is-active.success {
-      color: #a7f3d0;
-      border-color: rgba(16, 185, 129, 0.35);
-      background: rgba(16, 185, 129, 0.16);
-    }
-
-    .saved-result-btn.is-active.fail {
-      color: #fecaca;
-      border-color: rgba(239, 68, 68, 0.35);
-      background: rgba(239, 68, 68, 0.14);
-    }
-
-    .saved-result-btn:disabled {
-      opacity: 0.55;
-      cursor: wait;
-      transform: none;
-    }
-
-    .saved-match-subtitle {
-      display: block;
-      margin-top: 2px;
-      font-size: 10px;
-      font-style: italic;
-      color: var(--text-dim);
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .saved-detail-table th:nth-child(2),
-    .saved-detail-table td:nth-child(2) {
-      width: 34%;
-      white-space: normal;
-      line-height: 1.35;
-      text-align: left;
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .saved-detail-table th:nth-child(1),
-    .saved-detail-table td:nth-child(1) {
-      width: 44px;
-      text-align: center;
-      white-space: nowrap;
-    }
-
-    .saved-detail-table th:nth-child(3),
-    .saved-detail-table td:nth-child(3) { width: 190px; }
-
-    .saved-detail-table td:nth-child(3) {
-      font-size: 11px;
-      letter-spacing: 0;
-    }
-
-    .saved-detail-table th:nth-child(4),
-    .saved-detail-table td:nth-child(4) { width: 100px; text-align: center; white-space: nowrap; }
-
-    .saved-detail-table th:nth-child(5),
-    .saved-detail-table td:nth-child(5) { width: 110px; text-align: center; white-space: nowrap; }
-
-    .saved-detail-table th:nth-child(6),
-    .saved-detail-table td:nth-child(6) { width: 120px; text-align: center; white-space: nowrap; }
-
-    @media (max-width: 1100px) {
-      .stats {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-      }
-
-      .refresh-info {
-        margin-left: 0;
-      }
-
-      .bet-slip-table {
-        min-width: 960px;
-      }
-    }
-
-    @media (max-width: 768px) {
-      .app-shell {
-        width: calc(100% - 4px);
-        margin: 2px auto 12px;
-      }
-
-      .topbar,
-      .section-shell,
-      .filters,
-      .toolbar,
-      .pagination {
-        border-radius: 20px;
-      }
-
-      .topbar {
-        flex-direction: column;
-        align-items: stretch;
-      }
-
-      .topbar-left,
-      .topbar-right {
-        justify-content: space-between;
-      }
-
-      .stats {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .toolbar {
-        flex-direction: column;
-        align-items: stretch;
-      }
-
-      .search-wrap {
-        min-width: 0;
-      }
-
-      .refresh-info {
-        margin-left: 0;
-      }
-
-      .table-wrap { display: none; }
-      .cards-wrap { display: flex; }
-
-      .card-actions {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .card-actions .action-btn,
-      .card-select-chip {
-        min-height: 46px;
-      }
-
-      .card-odds {
-        flex-wrap: wrap;
-      }
-
-      .reliability-panel {
-        grid-template-columns: 1fr;
-      }
-
-      .bet-builder-box {
-        max-width: 100%;
-      }
-
-      .bet-builder-toolbar label {
-        width: 100%;
-      }
-
-      .bet-builder-toolbar input,
-      .bet-builder-toolbar select,
-      .bet-builder-toolbar .action-btn {
-        width: 100%;
-      }
-
-      .saved-bet-row {
-        flex-wrap: wrap;
-      }
-
-      .saved-bet-actions {
-        width: 100%;
-        justify-content: flex-end;
-      }
-    }
-
-    @media (min-width: 769px) {
-      .cards-wrap { display: none !important; }
-      .table-wrap { display: block !important; }
     }
   </style>
 </head>
 <body>
   <div class="app-shell">
-    <div class="topbar">
-      <div class="topbar-left">
+    <header class="topbar">
+      <div class="brand">
         <div class="status-pill"></div>
-        <span style="font-size:20px;font-weight:900;letter-spacing:-0.03em;">🏀 Basket Sinyal</span>
+        <div class="brand-title">🏀 Basket Sinyal</div>
       </div>
-      <div class="topbar-right">
-        <a href="/" class="top-action active">Canlı</a>
-        <a href="/live-matches" class="top-action">Canlı Maçlar</a>
-        <a href="/deleted-matches" class="top-action">Silinen</a>
-        <a href="/bankroll" class="top-action">Bankroll</a>
-        <button class="top-action primary" onclick="manualRefresh()">Tümünü Yenile</button>
-        <button class="top-action danger" onclick="clearDatabase()">Tümünü Sil</button>
+      <div class="actions">
+        <span class="btn primary">Canlı</span>
+        <a href="/deleted-matches" class="btn">Silinen</a>
+        <a href="/bankroll" class="btn">Bankroll</a>
+        <button class="btn primary" onclick="manualRefresh()">Yenile</button>
+        <button class="btn danger" onclick="clearDatabase()">Tümünü Sil</button>
       </div>
-    </div>
+    </header>
 
-    <div class="section-shell">
-    <div class="nav-tabs">
-      <span class="nav-tab active">Anomaliler</span>
-    </div>
+    <main class="section-shell">
+      <div class="nav-tabs">
+        <span class="nav-tab active">Anomaliler</span>
+      </div>
 
-    <div class="header">
-      <div class="header-top">
-      <div class="stats">
-        <div class="stat-chip">
-          <span class="stat-label"><span class="stat-dot" style="background:var(--accent-alt)"></span>ALT</span>
-          <strong class="stat-value" id="stat-alt">0</strong>
+      <section class="panel stats">
+        <div class="stat-chip alt"><span>ALT</span><strong id="statAlt">0</strong></div>
+        <div class="stat-chip ust"><span>ÜST</span><strong id="statUst">0</strong></div>
+        <div class="stat-chip bet"><span>Bahislenen</span><strong id="statBet">0</strong></div>
+        <div class="stat-chip follow"><span>Takipte</span><strong id="statFollow">0</strong></div>
+        <div class="stat-chip"><span>Toplam Sinyal</span><strong id="statTotal">0</strong></div>
+      </section>
+
+      <section class="panel">
+        <div class="period-row" style="margin-bottom:10px;">
+          <span class="period-label alt">ALT</span>
+          <button class="period-btn alt" data-dir="ALT" data-period="1">P1</button>
+          <button class="period-btn alt" data-dir="ALT" data-period="2">P2</button>
+          <button class="period-btn alt" data-dir="ALT" data-period="3">P3</button>
+          <button class="period-btn alt" data-dir="ALT" data-period="4">P4</button>
         </div>
-        <div class="stat-chip">
-          <span class="stat-label"><span class="stat-dot" style="background:var(--accent-ust)"></span>ÜST</span>
-          <strong class="stat-value" id="stat-ust">0</strong>
+        <div class="period-row">
+          <span class="period-label ust">ÜST</span>
+          <button class="period-btn ust" data-dir="ÜST" data-period="1">P1</button>
+          <button class="period-btn ust" data-dir="ÜST" data-period="2">P2</button>
+          <button class="period-btn ust" data-dir="ÜST" data-period="3">P3</button>
+          <button class="period-btn ust" data-dir="ÜST" data-period="4">P4</button>
+          <button class="btn" style="padding:8px 12px;font-size:12px;" onclick="clearPeriodFilters()">Temizle</button>
         </div>
-        <div class="stat-chip">
-          <span class="stat-label"><span class="stat-dot" style="background:var(--accent-blue)"></span>Bahislenen</span>
-          <strong class="stat-value" id="stat-bet">0</strong>
+      </section>
+
+      <section class="panel">
+        <div class="filter-row">
+          <button class="btn primary" data-filter="all">Tümü</button>
+          <button class="btn" data-filter="pending">Bekleyen</button>
+          <button class="btn" data-filter="bet">Bahis</button>
+          <button class="btn" data-filter="follow">Takip</button>
+          <button class="btn" data-filter="ignored">Gözardı</button>
+          <button class="btn" data-filter="alt">ALT</button>
+          <button class="btn" data-filter="ust">ÜST</button>
         </div>
-        <div class="stat-chip">
-          <span class="stat-label"><span class="stat-dot" style="background:var(--accent-follow)"></span>Takipte</span>
-          <strong class="stat-value" id="stat-follow">0</strong>
+      </section>
+
+      <section class="panel toolbar">
+        <div class="toolbar-main">
+          <input id="searchInput" class="search-box" type="search" placeholder="Takım, lig, maç veya not ara">
+          <button class="btn warning" onclick="openBetBuilder()">Bahis Oluşturucu</button>
+          <button class="btn" onclick="manualRefresh()">Listeyi Yenile</button>
+          <button class="btn" id="checkFinishedBtn" onclick="checkFinishedMatches(this)">Bitenleri Kontrol Et</button>
+          <button class="btn danger" id="bulkDeleteBtn" onclick="deleteSelectedMatches()" style="display:none;">Seçilenleri Sil</button>
+          <button class="btn focus-pill" id="focusPill" onclick="clearMatchFocus()"></button>
         </div>
-        <div class="stat-chip">
-          <span class="stat-label"><span class="stat-dot" style="background:#6f5f52"></span>Toplam Alarm</span>
-          <strong class="stat-value" id="stat-total">0</strong>
+        <div class="toolbar-side">
+          <span class="refresh-info"><span id="countdown">15</span>s | <span id="lastUpdate">-</span></span>
         </div>
-      </div>
-      </div>
-    </div>
+      </section>
 
-    <div class="period-filter-box" id="periodFilterBox">
-      <div class="period-filter-row">
-        <span class="period-filter-label lbl-alt">ALT</span>
-        <button class="period-btn" data-dir="ALT" data-period="1">P1</button>
-        <button class="period-btn" data-dir="ALT" data-period="2">P2</button>
-        <button class="period-btn" data-dir="ALT" data-period="3">P3</button>
-        <button class="period-btn" data-dir="ALT" data-period="4">P4</button>
+      <div id="banner" class="banner"></div>
+
+      <section class="panel">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="select-cell"><input class="match-select" id="selectAll" type="checkbox" onchange="selectPage(this.checked)" aria-label="Sayfadaki maçları seç"></th>
+                <th data-sort="alerted_at">Zaman</th>
+                <th data-sort="direction">Sinyal</th>
+                <th data-sort="fair_line">Adil</th>
+                <th data-sort="projected">Proj.</th>
+                <th data-sort="match_name">Maç</th>
+                <th data-sort="tournament">Turnuva</th>
+                <th data-sort="status">Durum</th>
+                <th data-sort="score">Skor</th>
+                <th data-sort="opening">Açılış</th>
+                <th data-sort="live">Canlı</th>
+                <th data-sort="diff">Fark</th>
+                <th>Aksiyon</th>
+              </tr>
+            </thead>
+            <tbody id="alertsBody"></tbody>
+          </table>
+        </div>
+        <div class="cards-wrap" id="cardsWrap"></div>
+        <div class="empty-state" id="emptyState">Henüz anomali tespiti yok.</div>
+        <div class="pagination">
+          <button class="page-btn" id="prevPage" onclick="changePage(-1)">Önceki</button>
+          <span class="page-info" id="pageInfo">1 / 1</span>
+          <button class="page-btn" id="nextPage" onclick="changePage(1)">Sonraki</button>
+          <select class="page-size" id="pageSize" onchange="changePageSize(this.value)">
+            <option value="15">15</option>
+            <option value="25" selected>25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-overlay" id="signalModal" onclick="if(event.target===this)closeSignalModal()">
+    <div class="modal-box signal-info-box">
+      <div class="modal-header">
+        <h2 id="signalModalTitle" style="font-size:19px;font-weight:800;">Sinyal Bilgileri</h2>
+        <button class="modal-close" onclick="closeSignalModal()" style="background:none;border-radius:10px;padding:7px 14px;font-size:13px;font-weight:700;width:auto;height:auto;">Kapat</button>
       </div>
-      <div class="period-filter-row">
-        <span class="period-filter-label lbl-ust">ÜST</span>
-        <button class="period-btn" data-dir="ÜST" data-period="1">P1</button>
-        <button class="period-btn" data-dir="ÜST" data-period="2">P2</button>
-        <button class="period-btn" data-dir="ÜST" data-period="3">P3</button>
-        <button class="period-btn" data-dir="ÜST" data-period="4">P4</button>
-        <button class="period-filter-clear" id="periodFilterClear">✕ Temizle</button>
-      </div>
-    </div>
-
-    <div class="filters">
-      <button class="filter-btn active" data-filter="all">Tümü</button>
-      <button class="filter-btn" data-filter="pending">Bekleyen</button>
-      <button class="filter-btn" data-filter="bet">Bahis</button>
-      <button class="filter-btn" data-filter="follow">Takip</button>
-      <button class="filter-btn" data-filter="ignored">Gözardı</button>
-      <button class="filter-btn" data-filter="alt">ALT</button>
-      <button class="filter-btn" data-filter="ust">ÜST</button>
-    </div>
-
-    <div class="toolbar">
-      <div class="search-wrap">
-        <input class="search-box" type="text" placeholder="Takım, lig veya maç ara" id="searchInput">
-        <button class="search-clear-btn" id="clearSearchBtn" type="button" aria-label="Aramayi temizle" title="Temizle">&times;</button>
-      </div>
-      <button class="filter-btn" onclick="openBetBuilder()">Bahis Oluşturucu</button>
-      <button class="filter-btn" onclick="manualRefresh()">Listeyi Yenile</button>
-      <button class="filter-btn" id="checkFinishedBtn" onclick="checkFinishedMatches(this)">Bitenleri Kontrol Et</button>
-      <button class="filter-btn bulk-delete-btn" id="bulkDeleteBtn" onclick="deleteSelectedMatches()">İşaretli Olanları Sil</button>
-      <button class="cancel-select-btn" id="cancelSelectBtn" onclick="cancelAllSelections()">✕ Seçimi İptal Et</button>
-      <button class="match-focus-status" id="matchFocusStatus" onclick="clearMatchFocus()" style="display:none;"></button>
-      <span class="refresh-info"><span id="countdown">15</span>s | <span id="lastUpdate">-</span></span>
-    </div>
-
-    <!-- Desktop: Table -->
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="col-select-header">
-              <label class="match-select-wrap" title="Sayfadaki tümünü seç/kaldır">
-                <input class="match-select-box" type="checkbox" id="selectAllCheckbox" onchange="selectAllOnPage(this.checked)" aria-label="Tümünü seç">
-              </label>
-            </th>
-            <th data-sort="alerted_at">Zaman ▼</th>
-            <th data-sort="direction">Sinyal</th>
-            <th data-sort="fair_line">Adil Barem</th>
-            <th data-sort="projected">Projeksiyon</th>
-            <th data-sort="match_name">Maç</th>
-            <th data-sort="tournament">Turnuva</th>
-            <th data-sort="status">Durum</th>
-            <th data-sort="score">Skor</th>
-            <th data-sort="opening">Açılış</th>
-            <th data-sort="live">Canlı</th>
-            <th data-sort="diff">Fark</th>
-            <th>Aksiyon</th>
-          </tr>
-        </thead>
-        <tbody id="alertsBody"></tbody>
-      </table>
-      <div class="empty-state" id="emptyState" style="display:none;">
-        Henüz anomali tespiti yok. Bot çalışırken otomatik olarak güncellenecek.
-      </div>
-    </div>
-
-    <!-- Mobile: Cards -->
-    <div class="cards-wrap" id="cardsWrap"></div>
-    <div class="empty-state" id="emptyStateMobile" style="display:none;">
-      Henüz anomali tespiti yok. Bot çalışırken otomatik güncellenecek.
-    </div>
-
-    <div class="pagination" id="paginationBar">
-      <button class="page-btn" id="prevPage" onclick="changePage(-1)">← Önceki</button>
-      <span class="page-info" id="pageInfo">1 / 1</span>
-      <button class="page-btn" id="nextPage" onclick="changePage(1)">Sonraki →</button>
-      <select class="page-size-select" id="pageSizeSelect" onchange="changePageSize(this.value)">
-        <option value="15">15</option>
-        <option value="25" selected>25</option>
-        <option value="50">50</option>
-        <option value="100">100</option>
-      </select>
-    </div>
+      <div id="signalModalBody" style="overflow-y:auto;max-height:calc(90vh - 80px);"></div>
     </div>
   </div>
 
-  <div class="modal-overlay" id="betBuilderModal" onclick="if(event.target===this)closeBetBuilder()">
-    <div class="modal-box bet-builder-box">
+  <div class="modal-overlay" id="noteModal" onclick="if(event.target===this)closeNoteModal()">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Maç Notu</h3>
+        <button class="modal-close" onclick="closeNoteModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="subline" id="noteMatchName" style="max-width:none;margin-bottom:10px;"></div>
+        <textarea class="note-area" id="noteText" maxlength="240" placeholder="Kısa not yaz..."></textarea>
+        <div class="modal-actions">
+          <span class="refresh-info" id="noteCount">0/240</span>
+          <button class="btn" onclick="clearNote()">Temizle</button>
+          <button class="btn primary" id="noteSaveBtn" onclick="saveNote()">Kaydet</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="noteInfoModal" onclick="if(event.target===this)closeNoteInfo()">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="noteInfoTitle">Maç Notu</h3>
+        <button class="modal-close" onclick="closeNoteInfo()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="note-view-text" id="noteInfoText"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="betModal" onclick="if(event.target===this)closeBetBuilder()">
+    <div class="modal-box wide">
       <div class="modal-header">
         <h3>Bahis Oluşturucu</h3>
         <button class="modal-close" onclick="closeBetBuilder()">&times;</button>
       </div>
-      <div class="modal-body bet-builder-body">
-        <div class="bet-builder-toolbar">
-          <label for="betBuilderCount">Maksimum maç</label>
-          <select id="betBuilderCount">
+      <div class="modal-body">
+        <div class="bet-toolbar">
+          <select class="bet-count-select" id="betCount">
             <option value="1">1 maç</option>
             <option value="2">2 maç</option>
             <option value="3">3 maç</option>
@@ -2430,52 +1200,13 @@
             <option value="5">5 maç</option>
             <option value="6">6 maç</option>
           </select>
-          <label for="betBuilderName">Kupon adı</label>
-          <input id="betBuilderName" type="text" placeholder="Örn: Gece Kuponu">
-          <button class="action-btn active-bet" onclick="generateBetSlip()">Kupon Oluştur</button>
-          <button class="action-btn active-follow" id="saveBetSlipBtn" onclick="saveBetSlip()">Kaydet</button>
+          <input class="bet-name-input" id="betName" type="text" placeholder="Kupon adı">
+          <button class="btn primary" onclick="generateBetSlip()">Kupon Oluştur</button>
+          <button class="btn warning" id="saveSlipBtn" onclick="saveBetSlip()">Kaydet</button>
         </div>
-        <div id="betBuilderSaveStatus" class="builder-status info" style="display:none;"></div>
-        <div id="betBuilderResult" class="loading">Kupon oluşturmak için butona bas.</div>
-        <div class="saved-bets-panel">
-          <div class="saved-bets-head">
-            <strong>Kayıtlı Kuponlar</strong>
-            <button class="action-btn" type="button" onclick="loadSavedBetSlips()">Yenile</button>
-          </div>
-          <div id="savedBetSlipsList" class="builder-empty">Henüz kayıtlı kupon yok.</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="signalInfoModal" onclick="if(event.target===this)closeSignalInfoModal()">
-    <div class="modal-box signal-info-box">
-      <div class="modal-header">
-        <h3>Sinyal Bilgileri</h3>
-        <button class="modal-close" onclick="closeSignalInfoModal()">&times;</button>
-      </div>
-      <div class="modal-body" id="signalInfoContent">
-        <div class="loading">Sinyal bilgileri yükleniyor...</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="noteEditorModal" onclick="if(event.target===this)closeNoteEditor()">
-    <div class="modal-box note-editor-box">
-      <div class="modal-header">
-        <h3>Maç Notu</h3>
-        <button class="modal-close" onclick="closeNoteEditor()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="note-editor-meta" id="noteEditorMatch">-</div>
-        <textarea class="note-editor-textarea" id="noteEditorText" maxlength="240" placeholder="Kısa not yaz..."></textarea>
-        <div class="note-editor-footer">
-          <span class="note-char-count" id="noteCharCount">0/240</span>
-          <div class="note-editor-actions">
-            <button class="action-btn" type="button" onclick="clearNoteEditor()">Temizle</button>
-            <button class="action-btn active-follow" id="noteSaveBtn" type="button" onclick="saveNoteEditor()">Kaydet</button>
-          </div>
-        </div>
+        <div id="betStatus" class="banner"></div>
+        <div id="betResult" class="empty-state" style="display:block;">Kupon oluşturmak için butona bas.</div>
+        <div class="saved-list" id="savedList"></div>
       </div>
     </div>
   </div>
@@ -2483,206 +1214,513 @@
   <script>
     let allAlerts = [];
     let currentFilter = 'all';
-    let activePeriodFilters = new Set(); // "ALT-1", "ÜST-2" vb.
+    let activePeriods = new Set();
     let searchQuery = '';
     let sortField = 'alerted_at';
     let sortAsc = false;
-    let countdownVal = 15;
     let currentPage = 1;
     let pageSize = 25;
-    let latestBetBuilderPayload = null;
-    let savedBetSlips = [];
-    let expandedSavedBetSlipId = null;
-    let focusedMatchId = null;
+    let countdown = 15;
+    let focusedMatchId = '';
     let focusedMatchName = '';
     let selectedMatchIds = new Set();
-    let bulkDeleteInProgress = false;
-    let noteEditorAlertId = null;
+    let noteAlertId = null;
+    let latestSlip = null;
+
+    const $ = id => document.getElementById(id);
+
+    function escapeHtml(value) {
+      const div = document.createElement('div');
+      div.textContent = value ?? '';
+      return div.innerHTML;
+    }
+
+    function jsString(value) {
+      return JSON.stringify(String(value ?? ''));
+    }
 
     function cleanMatchName(name) {
-      return (name || '')
+      return String(name || '')
         .replace(/\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}\s*/g, '')
         .replace(/\s*betting odds\s*/gi, '')
         .replace(/\s+vs\.?\s+/gi, ' - ')
-        .trim() || name;
+        .trim() || String(name || '-');
     }
 
-    function escapeHtml(text) {
-      const d = document.createElement('div');
-      d.textContent = text;
-      return d.innerHTML;
+    function num(value) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : null;
     }
 
-    function analysisForAlert(alert) {
-      if (alert?.analysis && typeof alert.analysis === 'object') return alert.analysis;
-      if (!alert?.ai_analysis) return {};
+    function fmt(value, digits = 1) {
+      const n = num(value);
+      return n === null ? '-' : n.toFixed(digits);
+    }
+
+    function signed(value) {
+      const n = num(value) || 0;
+      return `${n >= 0 ? '+' : ''}${n.toFixed(1)}`;
+    }
+
+    function normalizeId(value) {
+      return String(value || '').trim();
+    }
+
+    function parseAnalysis(alert) {
+      if (alert && alert.analysis && typeof alert.analysis === 'object') return alert.analysis;
+      if (!alert || !alert.ai_analysis) return {};
       try {
         const parsed = JSON.parse(alert.ai_analysis);
         return parsed && typeof parsed === 'object' ? parsed : {};
-      } catch (err) {
+      } catch {
         return {};
       }
     }
 
-    function numericOrNull(value) {
-      const num = Number(value);
-      return Number.isFinite(num) ? num : null;
+    function showBanner(message, type = 'success') {
+      const banner = $('banner');
+      banner.textContent = message || '';
+      banner.className = type === 'error' ? 'banner error' : 'banner';
+      banner.style.display = message ? 'block' : 'none';
+      if (message) setTimeout(() => { banner.style.display = 'none'; }, 4000);
     }
 
-    function formatModalNumber(value) {
-      const num = numericOrNull(value);
-      return num === null ? '-' : num.toFixed(1);
+    function setBetStatus(message, type = 'success') {
+      const target = $('betStatus');
+      target.textContent = message || '';
+      target.className = type === 'error' ? 'banner error' : 'banner';
+      target.style.display = message ? 'block' : 'none';
     }
 
-    function formatFairLine(value) {
-      const num = numericOrNull(value);
-      return num === null ? 'Hesaplanamıyor' : num.toFixed(1);
+    function timeText(value) {
+      if (!value) return '-';
+      const date = new Date(`${String(value).replace(' ', 'T')}Z`);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return date.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     }
 
-    function fairWarningClass(alert) {
-      const edge = Math.abs(Number(alert?.fair_edge));
-      return Number.isFinite(edge) && edge > 10 ? 'red' : 'yellow';
+    function directionBadge(alert) {
+      const dir = String(alert.direction || '-');
+      const cls = dir === 'ALT' ? 'badge-alt' : 'badge-ust';
+      const icon = dir === 'ALT' ? '▼' : '▲';
+      return `<button class="badge ${cls}" onclick="openSignalModal(${Number(alert.id || 0)})">${icon} ${escapeHtml(dir)}</button>`;
     }
 
-    function fairWarningTitle(alert) {
-      const edge = numericOrNull(alert?.fair_edge);
-      const recommendation = alert?.recommendation || analysisForAlert(alert).recommendation || 'Sinyal bilgilerini aç';
-      return `Adil barem farkı ${edge === null ? '-' : formatSignedNumber(edge)}. ${recommendation}`;
+    function trustBadge(alert) {
+      const rel = alert.reliability && typeof alert.reliability === 'object' ? alert.reliability : {};
+      const cls = rel.class_name || 'watch';
+      const score = Number.isFinite(Number(rel.score)) ? Math.round(Number(rel.score)) : '-';
+      return `<button class="badge trust ${escapeHtml(cls)}" onclick="openSignalModal(${Number(alert.id || 0)})">${escapeHtml(score)}</button>`;
     }
 
-    function fairWarningButtonHtml(alert) {
-      return `<button class="fair-warning-btn ${fairWarningClass(alert)}" type="button" title="${escapeHtml(fairWarningTitle(alert))}" aria-label="Sinyal uyarılarını aç" onclick="openSignalInfoModal(${Number(alert.id || 0)})">?</button>`;
+    function fairHtml(alert) {
+      const fair = fmt(alert.fair_line);
+      const edge = Math.abs(Number(alert.fair_edge));
+      const marker = Number.isFinite(edge) && edge >= 5 && edge <= 20 ? '<span class="fair-alert">!</span>' : '';
+      return `<span class="fair-cell"><span class="badge small-badge">${fair}</span>${marker}</span>`;
     }
 
-    function reliabilityForAlert(alert) {
-      return (alert?.reliability && typeof alert.reliability === 'object') ? alert.reliability : {};
+    function projectedHtml(alert) {
+      return `<span class="badge small-badge">${fmt(alert.projected)}</span>`;
     }
 
-    function reliabilityBadgeHtml(alert) {
-      const reliability = reliabilityForAlert(alert);
-      const score = Number(reliability.score);
-      const label = reliability.label || 'Veri yok';
-      const className = reliability.class_name || 'watch';
-      const scoreText = Number.isFinite(score) ? String(Math.round(score)) : '-';
-      const title = reliability.verdict || 'Sinyal güven analizini aç';
-      return `<button class="signal-trust signal-trust-${escapeHtml(className)}" type="button" title="${escapeHtml(title)}" aria-label="${escapeHtml(label)}" onclick="openSignalInfoModal(${Number(alert.id || 0)})">${escapeHtml(scoreText)}</button>`;
+    function matchLink(alert) {
+      const name = cleanMatchName(alert.match_name);
+      const content = escapeHtml(name);
+      return alert.url
+        ? `<a class="match-link" href="${escapeHtml(alert.url)}" target="_blank" rel="noopener">${content}</a>`
+        : `<span class="match-link">${content}</span>`;
     }
 
-    function signalBadgeHtml(alert, icon = '') {
-      const dirClass = alert.direction === 'ALT' ? 'badge-alt' : 'badge-ust';
-      const label = `${icon ? `${icon} ` : ''}${alert.direction || '-'}`;
-      return `<button class="badge ${dirClass} signal-open-btn" type="button" title="Sinyal bilgilerini aç" onclick="openSignalInfoModal(${Number(alert.id || 0)})">${escapeHtml(label)}</button>`;
+    function noteInfoButton(alert) {
+      return String(alert.note || '').trim()
+        ? `<button class="note-info-btn" type="button" onclick="openNoteInfo(${Number(alert.id || 0)})" aria-label="Maç notunu göster" title="Not var">i</button>`
+        : '';
     }
 
-    function fairEdgeAlertHtml(a) {
-      const edge = Number(a.fair_edge);
-      if (!Number.isFinite(edge)) return '';
-      const abs = Math.abs(edge);
-      if (abs < 5 || abs > 20) return '';
-      return `<span class="fair-edge-alert" title="Canlı ile Adil barem arasında ${abs.toFixed(1)} puan fark var">!</span>`;
+    function focusButton(alert) {
+      const id = Number(alert.id || 0);
+      const focusActive = normalizeId(alert.match_id) === focusedMatchId;
+      return `<button class="focus-inline-btn ${focusActive ? 'active' : ''}" onclick="toggleFocus(${id})" aria-label="Maç filtresi" title="Maça göre filtrele">${focusActive ? '◉' : '◎'}</button>`;
     }
 
-    function fairLineHtml(a) {
-      const fair = Number(a.fair_line);
-      const fairText = Number.isFinite(fair) ? fair.toFixed(1) : 'Hesaplanamıyor';
+    function actionButtons(alert) {
+      const id = Number(alert.id || 0);
+      const hasNote = String(alert.note || '').trim();
       return `
-        <div class="quality-cell">
-          <div class="quality-row">
-            <span class="badge badge-quality-c quality-badge" title="Adil barem">${fairText}</span>${fairEdgeAlertHtml(a)}
-          </div>
+        <div class="row-actions">
+          <button class="row-action bet-action ${alert.bet_placed ? 'active-bet' : ''}" onclick="runAction('bet', ${id}, this)" aria-label="Bahis">₺</button>
+          <button class="row-action follow-action ${alert.followed ? 'active-follow' : ''}" onclick="runAction('follow', ${id}, this)" aria-label="Takip">👁</button>
+          <button class="row-action ignore-action ${alert.ignored ? 'active-ignore' : ''}" onclick="runAction('ignore', ${id}, this)" aria-label="Gözardı">⊘</button>
+          <button class="row-action note-action ${hasNote ? 'has-note' : ''}" onclick="openNoteModal(${id})" aria-label="Not" title="${hasNote ? 'Notu düzenle' : 'Not ekle'}">✏</button>
+          <button class="row-action danger" onclick="runAction('delete', ${id}, this)" aria-label="Sil" title="Sil">🗑</button>
         </div>
       `;
     }
 
-    function projectedHtml(a) {
-      const projected = Number(a.projected);
-      const live = Number(a.live);
-      if (!Number.isFinite(projected)) {
-        return `
-          <div class="quality-cell">
-            <div class="quality-row">
-              <span class="badge badge-quality-c quality-badge" title="Mevcut tempoya göre final projeksiyonu">-</span>
-            </div>
-          </div>
-        `;
+    function sortValue(alert, field) {
+      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count'].includes(field)) {
+        return num(alert[field]) ?? Number.NEGATIVE_INFINITY;
       }
-      const diff = Number.isFinite(live) ? projected - live : null;
-      const title = diff !== null
-        ? `Mevcut tempoya göre final projeksiyonu (canlı bareme göre ${diff >= 0 ? '+' : ''}${diff.toFixed(1)})`
-        : 'Mevcut tempoya göre final projeksiyonu';
-      return `
-        <div class="quality-cell">
-          <div class="quality-row">
-            <span class="badge badge-quality-c quality-badge" title="${title}">${projected.toFixed(1)}</span>
-          </div>
-        </div>
-      `;
+      if (field === 'alerted_at') return alert.alerted_at ? new Date(`${String(alert.alerted_at).replace(' ', 'T')}Z`).getTime() : 0;
+      return String(alert[field] || '').toLocaleLowerCase('tr-TR');
     }
 
-    function cardFairLineHtml(a) {
-      const fair = Number(a.fair_line);
-      const fairText = Number.isFinite(fair) ? fair.toFixed(1) : 'Hesaplanamıyor';
-      return `<span class="card-fair-inline"><span>${fairText}</span>${fairEdgeAlertHtml(a)}</span>`;
+    function filteredAlerts() {
+      let list = [...allAlerts];
+      if (focusedMatchId) list = list.filter(a => normalizeId(a.match_id) === focusedMatchId);
+      if (currentFilter === 'pending') list = list.filter(a => !a.bet_placed && !a.ignored && !a.followed);
+      if (currentFilter === 'bet') list = list.filter(a => a.bet_placed);
+      if (currentFilter === 'follow') list = list.filter(a => a.followed);
+      if (currentFilter === 'ignored') list = list.filter(a => a.ignored);
+      if (currentFilter === 'alt') list = list.filter(a => a.direction === 'ALT');
+      if (currentFilter === 'ust') list = list.filter(a => a.direction === 'ÜST');
+      if (activePeriods.size) {
+        list = list.filter(a => activePeriods.has(`${a.direction}-${a.alert_period}`));
+      }
+      if (searchQuery) {
+        const q = searchQuery.toLocaleLowerCase('tr-TR');
+        list = list.filter(a => [
+          a.match_name, a.tournament, a.status, a.score, a.note, a.recommendation
+        ].some(v => String(v || '').toLocaleLowerCase('tr-TR').includes(q)));
+      }
+      list.sort((a, b) => {
+        const av = sortValue(a, sortField);
+        const bv = sortValue(b, sortField);
+        if (av < bv) return sortAsc ? -1 : 1;
+        if (av > bv) return sortAsc ? 1 : -1;
+        return 0;
+      });
+      return list;
     }
 
-    function modalListItem(key, value) {
-      return `<li><span class="quality-summary-key">${escapeHtml(key)}</span><span class="quality-summary-value">${escapeHtml(value ?? '-')}</span></li>`;
+    function pagedAlerts() {
+      const list = filteredAlerts();
+      const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+      if (currentPage > totalPages) currentPage = totalPages;
+      const start = (currentPage - 1) * pageSize;
+      return { list, totalPages, rows: list.slice(start, start + pageSize) };
     }
 
-    function modalNoteList(items) {
+    function renderStats() {
+      $('statAlt').textContent = allAlerts.filter(a => a.direction === 'ALT').length;
+      $('statUst').textContent = allAlerts.filter(a => a.direction === 'ÜST').length;
+      $('statBet').textContent = allAlerts.filter(a => a.bet_placed).length;
+      $('statFollow').textContent = allAlerts.filter(a => a.followed).length;
+      $('statTotal').textContent = allAlerts.length;
+    }
+
+    function renderFocus() {
+      const pill = $('focusPill');
+      if (!focusedMatchId) {
+        pill.classList.remove('visible');
+        pill.textContent = '';
+        return;
+      }
+      pill.classList.add('visible');
+      pill.textContent = `Yalnızca: ${focusedMatchName || 'Seçili maç'} ×`;
+    }
+
+    function renderTable() {
+      const { list, totalPages, rows } = pagedAlerts();
+      $('pageInfo').textContent = `${currentPage} / ${totalPages} (${list.length})`;
+      $('prevPage').disabled = currentPage <= 1;
+      $('nextPage').disabled = currentPage >= totalPages;
+      $('emptyState').style.display = list.length ? 'none' : 'block';
+
+      $('alertsBody').innerHTML = rows.map(a => {
+        const matchId = normalizeId(a.match_id);
+        const matchIdArg = jsString(matchId);
+        const classes = [
+          a.bet_placed ? 'bet-placed' : '',
+          a.followed ? 'is-followed' : '',
+          a.ignored ? 'is-ignored' : '',
+          selectedMatchIds.has(matchId) ? 'is-selected' : '',
+        ].filter(Boolean).join(' ');
+        const diffCls = Number(a.diff) >= 0 ? 'diff-pos' : 'diff-neg';
+        const tournament = escapeHtml(a.tournament || '-');
+        return `
+          <tr class="${classes}">
+            <td class="select-cell"><input class="match-select" type="checkbox" ${selectedMatchIds.has(matchId) ? 'checked' : ''} onchange='toggleSelected(${matchIdArg}, this.checked)' aria-label="Maç seç"></td>
+            <td class="mono">${timeText(a.alerted_at)}</td>
+            <td>${directionBadge(a)} ${trustBadge(a)} ${Number(a.signal_count || 1) > 1 ? `<span class="badge small-badge">${Number(a.signal_count)}. sinyal</span>` : ''}</td>
+            <td>${fairHtml(a)}</td>
+            <td>${projectedHtml(a)}</td>
+            <td><div class="match-cell-wrap">${focusButton(a)}${matchLink(a)}${noteInfoButton(a)}</div></td>
+            <td><span class="subline" style="max-width:210px;margin:0;">${tournament}</span></td>
+            <td>${escapeHtml(a.status || '-')}</td>
+            <td><strong>${escapeHtml(a.score || '-')}</strong></td>
+            <td class="mono">${fmt(a.opening)}</td>
+            <td class="mono">${fmt(a.live)}</td>
+            <td class="mono ${diffCls}">${signed(a.diff)}</td>
+            <td>${actionButtons(a)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      renderCards(rows);
+      syncSelectAll(rows);
+      renderBulkButton();
+      document.querySelectorAll('th[data-sort]').forEach(th => {
+        th.classList.toggle('sorted', th.dataset.sort === sortField);
+      });
+    }
+
+    function renderCards(rows) {
+      $('cardsWrap').innerHTML = rows.map(a => {
+        const matchId = normalizeId(a.match_id);
+        const matchIdArg = jsString(matchId);
+        const diffCls = Number(a.diff) >= 0 ? 'diff-pos' : 'diff-neg';
+        return `
+          <article class="alert-card ${selectedMatchIds.has(matchId) ? 'is-selected' : ''}">
+            <div class="card-head">
+              <div class="card-title"><span class="match-cell-wrap">${focusButton(a)}${matchLink(a)}${noteInfoButton(a)}</span><div class="subline" style="max-width:none;">${escapeHtml(a.tournament || '-')}</div></div>
+              <div>${directionBadge(a)} ${trustBadge(a)}</div>
+            </div>
+            <div class="card-grid">
+              <div class="card-metric"><span>Zaman</span><strong>${timeText(a.alerted_at)}</strong></div>
+              <div class="card-metric"><span>Durum</span><strong>${escapeHtml(a.status || '-')}</strong></div>
+              <div class="card-metric"><span>Skor</span><strong>${escapeHtml(a.score || '-')}</strong></div>
+              <div class="card-metric"><span>Açılış / Canlı</span><strong>${fmt(a.opening)} → ${fmt(a.live)}</strong></div>
+              <div class="card-metric"><span>Adil / Proj.</span><strong>${fmt(a.fair_line)} / ${fmt(a.projected)}</strong></div>
+              <div class="card-metric"><span>Fark</span><strong class="${diffCls}">${signed(a.diff)}</strong></div>
+            </div>
+            <div class="card-actions">
+              <button class="icon-btn ${selectedMatchIds.has(matchId) ? 'active' : ''}" onclick='toggleSelected(${matchIdArg}, !selectedMatchIds.has(${matchIdArg})); render()'>Seç</button>
+              ${actionButtons(a)}
+            </div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    function render() {
+      renderFocus();
+      renderStats();
+      renderTable();
+    }
+
+    async function fetchAlerts() {
+      try {
+        const res = await fetch('/api/alerts', { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Sinyaller alınamadı.');
+        allAlerts = Array.isArray(data) ? data : [];
+        const activeIds = new Set(allAlerts.map(a => normalizeId(a.match_id)).filter(Boolean));
+        selectedMatchIds.forEach(id => { if (!activeIds.has(id)) selectedMatchIds.delete(id); });
+        if (focusedMatchId && !activeIds.has(focusedMatchId)) clearMatchFocus(false);
+        render();
+        $('lastUpdate').textContent = new Date().toLocaleTimeString('tr-TR');
+      } catch (error) {
+        console.error(error);
+        showBanner(error.message || 'Sinyaller alınamadı.', 'error');
+      }
+    }
+
+    function manualRefresh() {
+      countdown = 15;
+      $('countdown').textContent = countdown;
+      fetchAlerts();
+    }
+
+    function changePage(delta) {
+      currentPage += delta;
+      render();
+    }
+
+    function changePageSize(value) {
+      pageSize = Number(value) || 25;
+      currentPage = 1;
+      render();
+    }
+
+    function toggleSelected(matchId, checked) {
+      const id = normalizeId(matchId);
+      if (!id) return;
+      if (checked) selectedMatchIds.add(id);
+      else selectedMatchIds.delete(id);
+      renderBulkButton();
+    }
+
+    function selectPage(checked) {
+      pagedAlerts().rows.forEach(a => {
+        const id = normalizeId(a.match_id);
+        if (!id) return;
+        if (checked) selectedMatchIds.add(id);
+        else selectedMatchIds.delete(id);
+      });
+      render();
+    }
+
+    function syncSelectAll(rows) {
+      const cb = $('selectAll');
+      if (!cb) return;
+      if (!rows.length) {
+        cb.checked = false;
+        cb.indeterminate = false;
+        return;
+      }
+      const selected = rows.filter(a => selectedMatchIds.has(normalizeId(a.match_id))).length;
+      cb.checked = selected === rows.length;
+      cb.indeterminate = selected > 0 && selected < rows.length;
+    }
+
+    function renderBulkButton() {
+      const btn = $('bulkDeleteBtn');
+      const count = selectedMatchIds.size;
+      btn.style.display = count ? 'inline-flex' : 'none';
+      btn.textContent = `Seçilenleri Sil (${count})`;
+    }
+
+    function toggleFocus(alertId) {
+      const alert = allAlerts.find(a => Number(a.id) === Number(alertId));
+      if (!alert) return;
+      const id = normalizeId(alert.match_id);
+      if (focusedMatchId === id) return clearMatchFocus();
+      focusedMatchId = id;
+      focusedMatchName = cleanMatchName(alert.match_name);
+      currentPage = 1;
+      render();
+    }
+
+    function clearMatchFocus(shouldRender = true) {
+      focusedMatchId = '';
+      focusedMatchName = '';
+      if (shouldRender) render();
+    }
+
+    function applyStatusUpdate(payload) {
+      if (!payload || !payload.match_id) return;
+      allAlerts = allAlerts.map(a => {
+        if (normalizeId(a.match_id) !== normalizeId(payload.match_id)) return a;
+        return {
+          ...a,
+          bet_placed: payload.bet_placed ?? a.bet_placed,
+          ignored: payload.ignored ?? a.ignored,
+          followed: payload.followed ?? a.followed,
+        };
+      });
+    }
+
+    async function runAction(action, id, button) {
+      const handlers = {
+        bet: `/api/alerts/${id}/bet`,
+        follow: `/api/alerts/${id}/follow`,
+        ignore: `/api/alerts/${id}/ignore`,
+      };
+      if (action === 'delete') return deleteMatch(id, button);
+      const url = handlers[action];
+      if (!url) return;
+      if (button) button.disabled = true;
+      try {
+        const res = await fetch(url, { method: 'POST' });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.error || 'İşlem tamamlanamadı.');
+        applyStatusUpdate(payload);
+        render();
+      } catch (error) {
+        showBanner(error.message || 'İşlem tamamlanamadı.', 'error');
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+
+    async function deleteMatch(id, button) {
+      const alert = allAlerts.find(a => Number(a.id) === Number(id));
+      if (!alert) return;
+      if (!confirm(`"${cleanMatchName(alert.match_name)}" maçına ait uyarılar Silinen Maçlar'a aktarılsın mı?`)) return;
+      if (button) button.disabled = true;
+      try {
+        const res = await fetch(`/api/alerts/${id}`, { method: 'DELETE' });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.error || 'Maç silinemedi.');
+        const deletedId = normalizeId(payload.match_id || alert.match_id);
+        allAlerts = allAlerts.filter(a => normalizeId(a.match_id) !== deletedId);
+        selectedMatchIds.delete(deletedId);
+        if (focusedMatchId === deletedId) clearMatchFocus(false);
+        render();
+        showBanner('Maç Silinen Maçlar alanına aktarıldı.');
+      } catch (error) {
+        showBanner(error.message || 'Maç silinemedi.', 'error');
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+
+    async function deleteSelectedMatches() {
+      const ids = Array.from(selectedMatchIds);
+      if (!ids.length) return;
+      if (!confirm(`${ids.length} maç Silinen Maçlar'a aktarılsın mı?`)) return;
+      let success = 0;
+      for (const matchId of ids) {
+        const alert = allAlerts.find(a => normalizeId(a.match_id) === matchId);
+        if (!alert) continue;
+        try {
+          const res = await fetch(`/api/alerts/${alert.id}`, { method: 'DELETE' });
+          if (res.ok) success += 1;
+        } catch {}
+      }
+      await fetchAlerts();
+      selectedMatchIds.clear();
+      showBanner(`${success} maç aktarıldı.`);
+    }
+
+    async function checkFinishedMatches(button) {
+      if (button) button.disabled = true;
+      try {
+        const res = await fetch('/api/alerts/check-finished', { method: 'POST' });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.error || 'Biten maçlar kontrol edilemedi.');
+        await fetchAlerts();
+        showBanner(payload.message || `${payload.moved_count || 0} maç taşındı.`);
+      } catch (error) {
+        showBanner(error.message || 'Biten maçlar kontrol edilemedi.', 'error');
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+
+    async function clearDatabase() {
+      if (!confirm('Dashboard listesindeki tüm maçlar Silinen Maçlar alanına aktarılsın mı?')) return;
+      try {
+        const res = await fetch('/api/clear', { method: 'POST' });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.error || 'Liste temizlenemedi.');
+        allAlerts = [];
+        selectedMatchIds.clear();
+        clearMatchFocus(false);
+        render();
+        showBanner(`${payload.moved_count || 0} maç aktarıldı.`);
+      } catch (error) {
+        showBanner(error.message || 'Liste temizlenemedi.', 'error');
+      }
+    }
+
+    function signalModalListItem(key, value) {
+      return `<li><span class="signal-info-key">${escapeHtml(key)}</span><span class="signal-info-value">${escapeHtml(value ?? '-')}</span></li>`;
+    }
+
+    function signalWeightsText(weights) {
+      const labels = { projection: 'Projeksiyon', market: 'Piyasa', team_recent: 'Son maç', h2h: 'H2H' };
+      const parts = Object.entries(weights || {})
+        .filter(([k, v]) => labels[k] && Number(v) > 0)
+        .map(([k, v]) => `${labels[k]} %${Number(v).toFixed(0)}`);
+      return parts.length ? parts.join(' / ') : '-';
+    }
+
+    function signalNoteList(items) {
       const seen = new Set();
-      const cleanItems = (items || []).filter(Boolean).filter(item => {
+      const clean = (items || []).filter(Boolean).filter(item => {
         const key = String(item).replace(/\s+/g, ' ').trim().toLowerCase();
         if (!key || seen.has(key)) return false;
         seen.add(key);
         return true;
       });
-      if (!cleanItems.length) return '<div class="builder-empty">Bu sinyal için ek uyarı yok.</div>';
-      return `<ul class="quality-note-list">${cleanItems.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+      if (!clean.length) return '<div class="empty-state" style="display:block;padding:16px">Bu sinyal için ek uyarı yok.</div>';
+      return `<ul class="signal-note-list">${clean.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
     }
 
-    function reliabilityPanelHtml(alert) {
-      const reliability = reliabilityForAlert(alert);
-      const score = Number(reliability.score);
-      const scoreText = Number.isFinite(score) ? Math.round(score) : '-';
-      const label = reliability.label || 'Veri yok';
-      const className = reliability.class_name || 'watch';
-      const verdict = reliability.verdict || 'Bu sinyal için yeterli güven verisi yok.';
-      const reasons = Array.isArray(reliability.reasons) ? reliability.reasons.slice(0, 6) : [];
-      const suggested = reliability.suggested_side
-        ? `<li>Karar tarafı: ${escapeHtml(reliability.suggested_side)}</li>`
-        : '<li>Karar tarafı: pas / izle</li>';
-      return `
-        <div class="reliability-panel">
-          <div class="reliability-score ${escapeHtml(className)}">
-            <strong>${escapeHtml(scoreText)}</strong>
-            <span>${escapeHtml(label)}</span>
-          </div>
-          <div class="reliability-copy">
-            <div class="reliability-verdict">${escapeHtml(verdict)}</div>
-            <ul class="reliability-reasons">
-              ${suggested}
-              ${reasons.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
-            </ul>
-          </div>
-        </div>
-      `;
-    }
-
-    function weightsText(weights) {
-      const labels = {
-        projection: 'Projeksiyon',
-        market: 'Piyasa',
-        team_recent: 'Son maç',
-        h2h: 'H2H',
-      };
-      const parts = Object.entries(weights || {})
-        .filter(([key, value]) => labels[key] && Number(value) > 0)
-        .map(([key, value]) => `${labels[key]} %${Number(value).toFixed(0)}`);
-      return parts.length ? parts.join(' / ') : '-';
-    }
-
-    function teamContextHtml(context) {
+    function signalTeamContextHtml(context) {
       if (!context || typeof context !== 'object') return '';
       const home = context.home_profile || {};
       const away = context.away_profile || {};
@@ -2692,11 +1730,10 @@
         return `
           <div class="team-context-card">
             <div class="team-context-card-head">${escapeHtml(profile.team || '-')}</div>
-            <div class="team-context-card-total">${formatModalNumber(profile.avg_total)}</div>
-            <div class="team-context-card-breakdown">PPG ${formatModalNumber(profile.ppg)} / Rakip ${formatModalNumber(profile.oppg)}</div>
+            <div class="team-context-card-total">${fmt(profile.avg_total)}</div>
+            <div class="team-context-card-breakdown">PPG ${fmt(profile.ppg)} / Rakip ${fmt(profile.oppg)}</div>
             <div class="team-context-card-label">${escapeHtml(profile.label || '-')}</div>
-          </div>
-        `;
+          </div>`;
       };
       const teams = [teamCard(home), teamCard(away)].filter(Boolean).join('');
       return `
@@ -2706,1381 +1743,294 @@
           ${context.regression_note ? `<div class="team-context-regression ${(context.regression_direction || '').toLowerCase().replace('ü', 'u')}">${escapeHtml(context.regression_note)}</div>` : ''}
           ${teams ? `<div class="team-context-teams">${teams}</div>` : ''}
           ${context.h2h_note ? `<div class="team-context-h2h">${escapeHtml(context.h2h_note)}</div>` : ''}
-        </div>
-      `;
+        </div>`;
     }
 
-    function openSignalInfoModal(alertId) {
-      const alert = allAlerts.find(item => Number(item.id || 0) === Number(alertId || 0));
-      const modal = document.getElementById('signalInfoModal');
-      const content = document.getElementById('signalInfoContent');
-      if (!modal || !content || !alert) return;
-
-      const analysis = analysisForAlert(alert);
-      const warnings = Array.isArray(alert.warnings) && alert.warnings.length
-        ? alert.warnings
-        : (Array.isArray(analysis.warnings) ? analysis.warnings : []);
+    function openSignalModal(id) {
+      const alert = allAlerts.find(a => Number(a.id) === Number(id));
+      if (!alert) return;
+      const analysis = parseAnalysis(alert);
+      const rel = alert.reliability && typeof alert.reliability === 'object' ? alert.reliability : {};
+      const warnings = Array.isArray(alert.warnings) ? alert.warnings : (Array.isArray(analysis.warnings) ? analysis.warnings : []);
       const notes = [
-        analysis.recommendation || alert.recommendation,
+        alert.recommendation || analysis.recommendation,
         analysis.pace_note,
         analysis.script_note,
         analysis.h2h_note,
         analysis.history_note,
         ...warnings,
       ].filter(Boolean);
-      const matchName = cleanMatchName(alert.match_name || '-');
+      const matchName = cleanMatchName(alert.match_name);
+      const fairNum = num(alert.fair_line ?? analysis.fair_line);
+      const fairLabel = fairNum !== null ? fairNum.toFixed(1) : 'Hesaplanamıyor';
 
-      content.innerHTML = `
-        <div class="quality-modal-headline">
-          <div class="quality-modal-match">${escapeHtml(matchName)}</div>
-          <div class="quality-modal-meta">${escapeHtml(alert.tournament || '-')} | ${escapeHtml(alert.status || '-')} | Skor: ${escapeHtml(alert.score || '-')}</div>
+      $('signalModalTitle').textContent = matchName;
+      $('signalModalBody').innerHTML = `
+        <div class="signal-info-headline">
+          <div class="signal-info-match">${escapeHtml(matchName)}</div>
+          <div class="signal-info-meta">${escapeHtml(alert.tournament || '-')} | ${escapeHtml(alert.status || '-')} | Skor: ${escapeHtml(alert.score || '-')} | Güven: ${escapeHtml(rel.label || '-')} (${escapeHtml(String(rel.score ?? '-'))})</div>
         </div>
-        <div class="quality-modal-grid">
-          ${reliabilityPanelHtml(alert)}
-          ${teamContextHtml(analysis.team_context || alert.team_context)}
-          <div class="quality-section">
-            <div class="quality-section-title">Adil Barem / Sinyal</div>
-            <ul class="quality-summary-list signal-metrics-grid">
-              ${modalListItem('Açılış', formatModalNumber(alert.opening))}
-              ${modalListItem('Canlı', formatModalNumber(alert.live))}
-              ${modalListItem('Projeksiyon', formatModalNumber(alert.projected ?? analysis.projected_total))}
-              ${modalListItem('H2H Ort.', formatModalNumber(alert.h2h_total ?? analysis.h2h_total))}
-              ${modalListItem('Adil Barem', formatFairLine(alert.fair_line ?? analysis.fair_line))}
+        <div class="signal-info-grid">
+          ${signalTeamContextHtml(analysis.team_context || alert.team_context)}
+          <div class="signal-info-section">
+            <div class="signal-info-section-title">Adil Barem / Sinyal</div>
+            <ul class="signal-metrics-list">
+              ${signalModalListItem('Açılış', fmt(alert.opening))}
+              ${signalModalListItem('Canlı', fmt(alert.live))}
+              ${signalModalListItem('Projeksiyon', fmt(alert.projected ?? analysis.projected_total))}
+              ${signalModalListItem('H2H Ort.', fmt(alert.h2h_total ?? analysis.h2h_total))}
+              ${signalModalListItem('H2H Kalite', analysis.h2h_quality_score != null ? `${analysis.h2h_quality_score}/100` : '-')}
+              ${signalModalListItem('Adil Barem', fairLabel)}
             </ul>
-            <div class="signal-weights-line"><strong>Ağırlık</strong>${escapeHtml(weightsText(analysis.weights))}</div>
+            <div class="signal-weights-line"><strong>Ağırlık</strong>${escapeHtml(signalWeightsText(analysis.weights))}</div>
           </div>
-          <div class="quality-section">
-            <div class="quality-section-title">Uyarılar / Beklenti</div>
-            ${modalNoteList(notes)}
+          <div class="signal-info-section">
+            <div class="signal-info-section-title">Uyarılar / Beklenti</div>
+            ${signalNoteList(notes)}
           </div>
         </div>
       `;
-      modal.classList.add('active');
+      $('signalModal').classList.add('active');
     }
 
-    function closeSignalInfoModal() {
-      const modal = document.getElementById('signalInfoModal');
-      if (modal) modal.classList.remove('active');
+    function closeSignalModal() {
+      $('signalModal').classList.remove('active');
     }
 
-    function isFocusedMatch(matchId) {
-      return focusedMatchId !== null && String(matchId || '') === focusedMatchId;
-    }
-
-    function normalizeMatchId(matchId) {
-      return String(matchId || '').trim();
-    }
-
-    function isMatchSelected(matchId) {
-      const key = normalizeMatchId(matchId);
-      return key ? selectedMatchIds.has(key) : false;
-    }
-
-    function updateMatchFocusStatus() {
-      const el = document.getElementById('matchFocusStatus');
-      if (!el) return;
-      if (!focusedMatchId) {
-        el.style.display = 'none';
-        el.textContent = '';
-        return;
-      }
-      el.style.display = 'inline-flex';
-      el.textContent = `Yalnızca: ${focusedMatchName || 'Seçili maç'} ×`;
-      el.title = 'Maç filtresini kaldır';
-    }
-
-    function clearMatchFocus() {
-      focusedMatchId = null;
-      focusedMatchName = '';
-      currentPage = 1;
-      render();
-    }
-
-    function updateBulkDeleteButton() {
-      const button = document.getElementById('bulkDeleteBtn');
-      const cancelBtn = document.getElementById('cancelSelectBtn');
-      if (!button) return;
-
-      const count = selectedMatchIds.size;
-      if (count <= 0 && !bulkDeleteInProgress) {
-        button.style.display = 'none';
-        button.disabled = false;
-        button.textContent = 'İşaretli Olanları Sil';
-        if (cancelBtn) cancelBtn.classList.remove('is-visible');
-        return;
-      }
-
-      button.style.display = 'inline-flex';
-      if (cancelBtn) cancelBtn.classList.add('is-visible');
-
-      if (bulkDeleteInProgress) {
-        button.textContent = 'Aktarılıyor...';
-        button.disabled = true;
-        return;
-      }
-
-      button.textContent = `İşaretli Olanları Sil (${count})`;
-      button.disabled = false;
-    }
-
-    function cancelAllSelections() {
-      selectedMatchIds.clear();
-      render();
-    }
-
-    function syncSelectedMatchesWithAlerts() {
-      if (selectedMatchIds.size === 0) {
-        updateBulkDeleteButton();
-        return;
-      }
-      const activeMatchIds = new Set(
-        allAlerts
-          .map(item => normalizeMatchId(item.match_id))
-          .filter(Boolean)
-      );
-      Array.from(selectedMatchIds).forEach(matchId => {
-        if (!activeMatchIds.has(matchId)) selectedMatchIds.delete(matchId);
-      });
-      updateBulkDeleteButton();
-    }
-
-    function toggleMatchSelectionByAlert(alertId, checked) {
-      const alert = allAlerts.find(item => Number(item.id) === Number(alertId));
+    function openNoteModal(id) {
+      const alert = allAlerts.find(a => Number(a.id) === Number(id));
       if (!alert) return;
-      const matchId = normalizeMatchId(alert.match_id);
-      if (!matchId) return;
-
-      if (checked) selectedMatchIds.add(matchId);
-      else selectedMatchIds.delete(matchId);
-      render();
+      noteAlertId = Number(alert.id);
+      $('noteMatchName').textContent = cleanMatchName(alert.match_name);
+      $('noteText').value = String(alert.note || '');
+      updateNoteCount();
+      $('noteModal').classList.add('active');
+      setTimeout(() => $('noteText').focus(), 0);
     }
 
-    function toggleMatchFocusByAlert(alertId) {
-      const alert = allAlerts.find(item => Number(item.id) === Number(alertId));
-      if (!alert || !alert.match_id) return;
-      const matchId = String(alert.match_id);
-      if (focusedMatchId === matchId) {
-        clearMatchFocus();
-        return;
-      }
-      focusedMatchId = matchId;
-      focusedMatchName = cleanMatchName(alert.match_name || '');
-      currentPage = 1;
-      render();
+    function closeNoteModal() {
+      $('noteModal').classList.remove('active');
+      noteAlertId = null;
     }
 
-    function matchFocusButtonHtml(alert) {
-      const active = isFocusedMatch(alert.match_id);
-      const title = active ? 'Maç filtresini kaldır' : 'Sadece bu maçın sinyallerini göster';
-      return `<button class="match-focus-btn ${active ? 'active' : ''}" type="button" data-alert-action="focus" data-alert-id="${Number(alert.id || 0)}" title="${title}" aria-label="${title}">${active ? '◉' : '◎'}</button>`;
+    function openNoteInfo(id) {
+      const alert = allAlerts.find(a => Number(a.id) === Number(id));
+      if (!alert) return;
+      $('noteInfoTitle').textContent = cleanMatchName(alert.match_name);
+      $('noteInfoText').textContent = String(alert.note || '').trim() || 'Not yok.';
+      $('noteInfoModal').classList.add('active');
     }
 
-    function noteText(alert) {
-      return String(alert?.note || '').trim();
+    function closeNoteInfo() {
+      $('noteInfoModal').classList.remove('active');
     }
 
-    function matchNoteButtonHtml(alert) {
-      const note = noteText(alert);
-      const hasNote = note.length > 0;
-      const title = hasNote ? `Notu düzenle: ${note}` : 'Maça not ekle';
-      return `<button class="match-note-btn ${hasNote ? 'has-note' : ''}" type="button" data-alert-action="note" data-alert-id="${Number(alert.id || 0)}" title="${escapeHtml(title)}" aria-label="${hasNote ? 'Maç notunu düzenle' : 'Maça not ekle'}">${hasNote ? '📝' : '✎'}</button>`;
+    function clearNote() {
+      $('noteText').value = '';
+      updateNoteCount();
     }
 
-    function updateNoteCharCount() {
-      const textarea = document.getElementById('noteEditorText');
-      const counter = document.getElementById('noteCharCount');
-      if (!textarea || !counter) return;
-      counter.textContent = `${textarea.value.length}/240`;
+    function updateNoteCount() {
+      $('noteCount').textContent = `${$('noteText').value.length}/240`;
     }
 
-    function openNoteEditor(alertId) {
-      const alert = allAlerts.find(item => Number(item.id || 0) === Number(alertId || 0));
-      const modal = document.getElementById('noteEditorModal');
-      const textarea = document.getElementById('noteEditorText');
-      const matchEl = document.getElementById('noteEditorMatch');
-      if (!alert || !modal || !textarea || !matchEl) return;
-
-      noteEditorAlertId = Number(alert.id || 0);
-      matchEl.textContent = cleanMatchName(alert.match_name || '-');
-      textarea.value = noteText(alert);
-      updateNoteCharCount();
-      modal.classList.add('active');
-      setTimeout(() => textarea.focus(), 0);
-    }
-
-    function closeNoteEditor() {
-      const modal = document.getElementById('noteEditorModal');
-      if (modal) modal.classList.remove('active');
-      noteEditorAlertId = null;
-    }
-
-    function clearNoteEditor() {
-      const textarea = document.getElementById('noteEditorText');
-      if (!textarea) return;
-      textarea.value = '';
-      updateNoteCharCount();
-      textarea.focus();
-    }
-
-    function applyMatchNoteUpdate(payload) {
-      if (!payload || !payload.match_id) return;
-      allAlerts = allAlerts.map(a => {
-        if (a.match_id !== payload.match_id) return a;
-        return { ...a, note: payload.note || '' };
-      });
-    }
-
-    async function saveNoteEditor() {
-      const alertId = Number(noteEditorAlertId || 0);
-      const textarea = document.getElementById('noteEditorText');
-      const button = document.getElementById('noteSaveBtn');
-      if (!alertId || !textarea) return;
-
-      const note = textarea.value.trim().slice(0, 240);
-      const originalText = button ? button.textContent : '';
-      if (button) {
-        button.disabled = true;
-        button.textContent = 'Kaydediliyor...';
-      }
-
+    async function saveNote() {
+      if (!noteAlertId) return;
+      const note = $('noteText').value.trim().slice(0, 240);
+      $('noteSaveBtn').disabled = true;
       try {
-        const resp = await fetch(`/api/alerts/${alertId}/note`, {
+        const res = await fetch(`/api/alerts/${noteAlertId}/note`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ note }),
         });
-        const payload = await resp.json().catch(() => ({}));
-        if (!resp.ok) throw new Error(payload?.error || 'Not kaydedilemedi.');
-        applyMatchNoteUpdate(payload);
-        closeNoteEditor();
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.error || 'Not kaydedilemedi.');
+        allAlerts = allAlerts.map(a => normalizeId(a.match_id) === normalizeId(payload.match_id) ? { ...a, note } : a);
+        closeNoteModal();
         render();
       } catch (error) {
-        console.error(error);
-        alert(error?.message || 'Not kaydedilemedi.');
+        showBanner(error.message || 'Not kaydedilemedi.', 'error');
       } finally {
-        if (button) {
-          button.disabled = false;
-          button.textContent = originalText || 'Kaydet';
-        }
+        $('noteSaveBtn').disabled = false;
       }
-    }
-
-    function sortValue(alert, field) {
-      const numericFields = new Set(['opening', 'live', 'diff', 'projected', 'fair_line', 'fair_edge', 'signal_count']);
-      const value = alert[field];
-
-      if (numericFields.has(field)) {
-        if (value === null || value === undefined || value === '') return Number.NEGATIVE_INFINITY;
-        return Number(value);
-      }
-
-      if (field === 'alerted_at') {
-        return value ? new Date(value + 'Z').getTime() : 0;
-      }
-
-      return String(value || '').toLowerCase();
     }
 
     function openBetBuilder() {
-      document.getElementById('betBuilderModal').classList.add('active');
-      loadSavedBetSlips();
+      $('betModal').classList.add('active');
+      loadSavedSlips();
       generateBetSlip();
     }
 
     function closeBetBuilder() {
-      document.getElementById('betBuilderModal').classList.remove('active');
+      $('betModal').classList.remove('active');
     }
 
-    function betDirectionMeta(direction) {
-      return direction === 'ALT'
-        ? { icon: '🔻', className: 'badge badge-alt' }
-        : { icon: '🔺', className: 'badge badge-ust' };
-    }
-
-    function formatSignedNumber(value) {
-      const num = Number(value || 0);
-      return `${num >= 0 ? '+' : ''}${num.toFixed(1)}`;
-    }
-
-    function formatLineForPick(value) {
-      const num = Number(value);
-      if (!Number.isFinite(num)) return '-';
-      return Number.isInteger(num) ? String(num) : num.toFixed(1);
-    }
-
-    function buildBetRecommendation(liveLine, direction, tier) {
-      const line = formatLineForPick(liveLine);
-      const dir = String(direction || '-').trim() || '-';
-      const t = String(tier || '-').trim() || '-';
-      return `${line}-${dir} (${t})`;
-    }
-
-    function buildMatchStateNote(item) {
-      const notes = [];
-      if (Number(item?.bet_placed || 0) > 0) notes.push('Bahis Oynandı');
-      if (Number(item?.followed || 0) > 0) notes.push('Takip Ediliyor');
-      if (notes.length === 0) return '';
-      return `<span class="match-state-note">(${escapeHtml(notes.join(', '))})</span>`;
-    }
-
-    function formatBetBuilderDate(value) {
-      if (!value) return '-';
-      const source = String(value);
-      const normalized = source.includes('T') ? source : `${source.replace(' ', 'T')}Z`;
-      const date = new Date(normalized);
-      if (Number.isNaN(date.getTime())) return source;
-      return date.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    }
-
-    function showBetBuilderStatus(message, type = 'info') {
-      const target = document.getElementById('betBuilderSaveStatus');
-      if (!target) return;
-      target.textContent = message || '';
-      target.className = `builder-status ${type}`;
-      target.style.display = message ? 'block' : 'none';
-    }
-
-    function savedResultMeta(value) {
-      const normalized = String(value || '').trim().toLowerCase();
-      if (normalized === 'başarılı' || normalized === 'basarili' || normalized === 'success') {
-        return { key: 'success', className: 'saved-result-pill success', label: 'Başarılı' };
-      }
-      if (normalized === 'başarısız' || normalized === 'basarisiz' || normalized === 'fail' || normalized === 'failed') {
-        return { key: 'fail', className: 'saved-result-pill fail', label: 'Başarısız' };
-      }
-      return { key: 'pending', className: 'saved-result-pill pending', label: 'Bekliyor' };
-    }
-
-    function summarizeSavedBetSlip(payload) {
-      const slip = Array.isArray(payload?.slip) ? payload.slip : [];
-      let successCount = 0;
-      let failCount = 0;
-      let pendingCount = 0;
-
-      slip.forEach(leg => {
-        const meta = savedResultMeta(leg?.result);
-        if (meta.key === 'success') successCount += 1;
-        else if (meta.key === 'fail') failCount += 1;
-        else pendingCount += 1;
-      });
-
-      let overall = 'Bekliyor';
-      if (slip.length === 0) overall = 'Kupon boş';
-      else if (failCount > 0) overall = 'Başarısız';
-      else if (successCount === slip.length) overall = 'Başarılı';
-      else if (successCount > 0) overall = 'Kısmi';
-
-      return {
-        total: slip.length,
-        successCount,
-        failCount,
-        pendingCount,
-        overall,
-      };
-    }
-
-    function savedResultActionsHtml(slipId, leg) {
-      const meta = savedResultMeta(leg?.result);
-      const matchId = JSON.stringify(String(leg?.match_id || ''));
-      return `
-        <div class="saved-result-actions">
-          <button
-            class="saved-result-btn success ${meta.key === 'success' ? 'is-active' : ''}"
-            type="button"
-            title="Başarılı"
-            aria-label="Başarılı"
-            onclick='updateSavedBetSlipResult(${Number(slipId)}, ${matchId}, "Başarılı", this)'
-          >✓</button>
-          <button
-            class="saved-result-btn fail ${meta.key === 'fail' ? 'is-active' : ''}"
-            type="button"
-            title="Başarısız"
-            aria-label="Başarısız"
-            onclick='updateSavedBetSlipResult(${Number(slipId)}, ${matchId}, "Başarısız", this)'
-          >✕</button>
-        </div>
-      `;
-    }
-
-    function renderSavedBetSlipDetail(item, itemId) {
-      const payload = (item && item.payload && typeof item.payload === 'object') ? item.payload : {};
-      const slip = Array.isArray(payload.slip) ? payload.slip : [];
-
-      if (!slip.length) {
-        return `<div class="saved-bet-detail"><div class="builder-empty">Bu kayıtta kupon içeriği bulunamadı.</div></div>`;
-      }
-
-      const summaryData = summarizeSavedBetSlip(payload);
-      const summary = `
-        <div class="saved-detail-summary">
-          <strong>${escapeHtml(summaryData.overall)}</strong>
-          Başarılı: ${summaryData.successCount} |
-          Başarısız: ${summaryData.failCount} |
-          Bekleyen: ${summaryData.pendingCount}
-        </div>
-      `;
-
-      const rows = slip.map((leg, idx) => {
-        const itemLeg = leg && typeof leg === 'object' ? leg : {};
-        const resultMeta = savedResultMeta(itemLeg.result);
-        const matchName = cleanMatchName(itemLeg.match_name || '-');
-        const matchLink = itemLeg.url
-          ? `<a class="match-link" href="${escapeHtml(itemLeg.url)}" target="_blank">${escapeHtml(matchName)}</a>`
-          : escapeHtml(matchName);
-        const matchStateNote = buildMatchStateNote({
-          bet_placed: Number(itemLeg.bet_placed ?? 0),
-          followed: Number(itemLeg.followed ?? 0),
-        });
-        const recommendation = buildBetRecommendation(
-          itemLeg.live,
-          itemLeg.direction,
-          itemLeg.signal_tier
-        );
-        return `
-          <tr>
-            <td>${idx + 1}</td>
-            <td>${matchLink}${matchStateNote}<span class="saved-match-subtitle">(${escapeHtml(itemLeg.tournament || '-')})</span></td>
-            <td>${escapeHtml(recommendation)}</td>
-            <td><span class="${resultMeta.className}">${escapeHtml(resultMeta.label)}</span></td>
-            <td>${savedResultActionsHtml(itemId, itemLeg)}</td>
-          </tr>
-        `;
-      }).join('');
-
-      return `
-        <div class="saved-bet-detail">
-          ${summary}
-          <div class="saved-detail-table-wrap">
-            <table class="saved-detail-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Maç</th>
-                  <th>Oynanacak</th>
-                  <th>Sonuç</th>
-                  <th>İşaretle</th>
-                </tr>
-              </thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </div>
-        </div>
-      `;
-    }
-
-    function toggleSavedBetSlipDetail(id) {
-      const targetId = Number(id || 0);
-      expandedSavedBetSlipId = expandedSavedBetSlipId === targetId ? null : targetId;
-      renderSavedBetSlipList();
-    }
-
-    function renderSavedBetSlipList() {
-      const target = document.getElementById('savedBetSlipsList');
-      if (!target) return;
-
-      if (!Array.isArray(savedBetSlips) || savedBetSlips.length === 0) {
-        target.className = 'builder-empty';
-        target.innerHTML = 'Henüz kayıtlı kupon yok.';
+    function renderSlip(payload) {
+      latestSlip = payload && Array.isArray(payload.slip) && payload.slip.length ? payload : null;
+      const summary = `<div class="detail-box" style="margin-bottom:10px;"><strong>${escapeHtml(payload?.message || '')}</strong><div class="subline" style="max-width:none;">Uygun: ${Number(payload?.eligible_count || 0)} | Seçilen: ${Number(payload?.selected_count || 0)}</div></div>`;
+      if (!latestSlip) {
+        $('betResult').style.display = 'block';
+        $('betResult').innerHTML = `${summary}<div>Kupona uygun maç yok.</div>`;
         return;
       }
-
-      target.className = 'saved-bet-list';
-      target.innerHTML = savedBetSlips.map(item => {
-        const itemId = Number(item.id || 0);
-        const selected = Number(item.selected_count || item?.payload?.selected_count || 0);
-        const eligible = Number(item.eligible_count || item?.payload?.eligible_count || 0);
-        const createdAt = formatBetBuilderDate(item.created_at);
-        const isExpanded = expandedSavedBetSlipId === itemId;
-        const summary = summarizeSavedBetSlip(item?.payload || {});
-        const overallMeta = savedResultMeta(summary.overall);
-        return `
-          <div>
-            <div class="saved-bet-row">
-              <div class="saved-bet-main">
-                <div class="saved-bet-name-wrap">
-                  <div class="saved-bet-name">${escapeHtml(item.name || '-')}</div>
-                  <span class="${overallMeta.className}">${escapeHtml(overallMeta.label)}</span>
-                </div>
-                <div class="saved-bet-meta">${createdAt} | ${selected}/${eligible} secim</div>
-              </div>
-              <div class="saved-bet-actions">
-                <button class="saved-inline-btn" type="button" onclick="toggleSavedBetSlipDetail(${itemId})">${isExpanded ? 'Gizle' : 'İçeriği Gör'}</button>
-                <button class="saved-inline-btn danger" type="button" onclick="deleteSavedBetSlip(${itemId})">Sil</button>
-              </div>
-            </div>
-            ${isExpanded ? renderSavedBetSlipDetail(item, itemId) : ''}
-          </div>
-        `;
-      }).join('');
-    }
-
-    async function loadSavedBetSlips() {
-      const target = document.getElementById('savedBetSlipsList');
-      if (!target) return;
-      target.className = 'builder-empty';
-      target.innerHTML = 'Kayıtlı kuponlar yükleniyor...';
-
-      try {
-        const response = await fetch('/api/bet-builder/saved?limit=50');
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload?.error || 'Kayıtlı kuponlar alınamadı.');
-        savedBetSlips = Array.isArray(payload) ? payload : [];
-        if (expandedSavedBetSlipId && !savedBetSlips.some(item => Number(item.id || 0) === expandedSavedBetSlipId)) {
-          expandedSavedBetSlipId = null;
-        }
-        renderSavedBetSlipList();
-      } catch (error) {
-        console.error(error);
-        savedBetSlips = [];
-        expandedSavedBetSlipId = null;
-        target.className = 'builder-empty';
-        target.innerHTML = escapeHtml(error?.message || 'Kayıtlı kuponlar yüklenirken hata oluştu.');
-      }
-    }
-
-    async function updateSavedBetSlipResult(id, matchId, result, button) {
-      const targetId = Number(id || 0);
-      const found = savedBetSlips.find(item => Number(item.id || 0) === targetId);
-      if (!found) return;
-
-      const actionWrap = button?.closest('.saved-result-actions');
-      const buttons = actionWrap ? Array.from(actionWrap.querySelectorAll('button')) : [];
-      buttons.forEach(item => { item.disabled = true; });
-
-      try {
-        const response = await fetch(`/api/bet-builder/saved/${targetId}/result`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ match_id: matchId, result }),
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload?.error || 'Kupon sonucu kaydedilemedi.');
-
-        savedBetSlips = savedBetSlips.map(item =>
-          Number(item.id || 0) === targetId
-            ? { ...item, payload: payload?.payload || item.payload }
-            : item
-        );
-        expandedSavedBetSlipId = targetId;
-        renderSavedBetSlipList();
-        showBetBuilderStatus(
-          `"${found.name || 'Kupon'}" icin sonuc ${result.toLowerCase()} olarak kaydedildi.`,
-          'success'
-        );
-      } catch (error) {
-        console.error(error);
-        showBetBuilderStatus(error?.message || 'Kupon sonucu kaydedilemedi.', 'error');
-      } finally {
-        buttons.forEach(item => { item.disabled = false; });
-      }
-    }
-
-    async function deleteSavedBetSlip(id) {
-      const targetId = Number(id || 0);
-      const found = savedBetSlips.find(item => Number(item.id || 0) === targetId);
-      if (!found) return;
-      if (!confirm(`"${found.name || 'Kupon'}" kaydı silinsin mi?`)) return;
-
-      try {
-        const response = await fetch(`/api/bet-builder/saved/${targetId}`, { method: 'DELETE' });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload?.error || 'Kayıt silinemedi.');
-        if (expandedSavedBetSlipId === targetId) expandedSavedBetSlipId = null;
-        showBetBuilderStatus('Kayıt silindi.', 'success');
-        await loadSavedBetSlips();
-      } catch (error) {
-        console.error(error);
-        showBetBuilderStatus(error?.message || 'Kayıt silinemedi.', 'error');
-      }
-    }
-
-    async function removeSlipMatch(matchId) {
-      const targetMatchId = String(matchId || '').trim();
-      if (!targetMatchId) return;
-
-      try {
-        const response = await fetch(`/api/matches/${encodeURIComponent(targetMatchId)}/ignore`, { method: 'POST' });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload?.error || 'Maç gözardı edilemedi.');
-
-        allAlerts = allAlerts.map(a => {
-          if (a.match_id !== targetMatchId) return a;
-          return {
-            ...a,
-            ignored: 1,
-            bet_placed: 0,
-            followed: 0,
-          };
-        });
-        render();
-        updateStats();
-
-        if (latestBetBuilderPayload && Array.isArray(latestBetBuilderPayload.slip)) {
-          latestBetBuilderPayload.slip = latestBetBuilderPayload.slip.filter(
-            item => String(item?.match_id || '').trim() !== targetMatchId
-          );
-          latestBetBuilderPayload.selected_count = latestBetBuilderPayload.slip.length;
-          latestBetBuilderPayload.created = latestBetBuilderPayload.slip.length > 0;
-        }
-
-        renderBetSlip(latestBetBuilderPayload);
-        showBetBuilderStatus('Maç kupondan çıkarıldı ve gözardı edildi.', 'success');
-      } catch (error) {
-        console.error(error);
-        showBetBuilderStatus(error?.message || 'Maç kupondan çıkarılamadı.', 'error');
-      }
-    }
-
-    function renderBetSlip(payload) {
-      const target = document.getElementById('betBuilderResult');
-      if (!payload || typeof payload !== 'object') {
-        latestBetBuilderPayload = null;
-        target.innerHTML = '<div class="builder-empty">Bahis oluşturucu verisi alınamadı.</div>';
-        return;
-      }
-
-      const hasSlip = Array.isArray(payload.slip) && payload.slip.length > 0;
-      latestBetBuilderPayload = hasSlip ? payload : null;
-
-      const summary = `
-        <div class="builder-summary">
-          <strong>${escapeHtml(payload.message || '')}</strong><br>
-          Uygun sinyal: ${Number(payload.eligible_count || 0)} | Seçilen: ${Number(payload.selected_count || 0)} | İstenen üst sınır: ${Number(payload.requested_max_count || 0)}
-        </div>
-      `;
-
-      if (!hasSlip) {
-        target.innerHTML = `${summary}<div class="builder-empty">Şu an canlı dashboard sinyalleri içinde kupona uygun maç yok.</div>`;
-        return;
-      }
-
-      const rows = payload.slip.map(item => {
-        const matchText = cleanMatchName(item.match_name || '-');
-        const recommendation = buildBetRecommendation(item.live, item.direction, item.signal_tier);
-        const matchStateNote = buildMatchStateNote(item);
-        const matchIdArg = JSON.stringify(String(item.match_id || ''));
-        const matchBlock = item.url
-          ? `<a class="match-link" href="${escapeHtml(item.url)}" target="_blank">${escapeHtml(matchText)}</a>`
-          : `${escapeHtml(matchText)}`;
-        return `
-          <tr>
-            <td class="match-col">${matchBlock}${matchStateNote}<span class="bet-slip-tournament">(${escapeHtml(item.tournament || '-')})</span></td>
-            <td class="bet-slip-pick-col"><span class="bet-slip-code">${escapeHtml(recommendation)}</span></td>
-            <td class="bet-slip-num-col"><strong>${Number(item.opening || 0).toFixed(1)}</strong></td>
-            <td class="bet-slip-num-col"><strong>${formatSignedNumber(item.diff || item.opening_gap || 0)}</strong></td>
-            <td class="bet-slip-score-col">${escapeHtml(item.score || '-')}</td>
-            <td class="bet-slip-status-col">${escapeHtml(item.status || '-')}</td>
-            <td class="bet-slip-action-col"><button class="slip-remove-btn" type="button" title="Kupondan çıkar ve gözardı et" onclick='removeSlipMatch(${matchIdArg})'>🗑</button></td>
-          </tr>
-        `;
-      }).join('');
-
-      target.innerHTML = `
-        ${summary}
-        <div class="bet-slip-table-wrap">
-          <table class="bet-slip-table">
-            <thead>
-              <tr>
-                <th>Maç</th>
-                <th>Oynanacak</th>
-                <th>Açılış</th>
-                <th>Fark</th>
-                <th>Skor</th>
-                <th>Durum</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>
-      `;
+      const rows = latestSlip.slip.map(item => `
+        <tr>
+          <td>${escapeHtml(cleanMatchName(item.match_name))}<div class="subline">${escapeHtml(item.tournament || '-')}</div></td>
+          <td>${escapeHtml(`${fmt(item.live)}-${item.direction || '-'}`)}</td>
+          <td>${fmt(item.opening)}</td>
+          <td class="mono">${signed(item.diff || item.opening_gap || 0)}</td>
+          <td>${escapeHtml(item.score || '-')}</td>
+          <td>${escapeHtml(item.status || '-')}</td>
+          <td><button class="row-action danger" onclick='removeSlipMatch(${jsString(normalizeId(item.match_id))})'>⌫</button></td>
+        </tr>
+      `).join('');
+      $('betResult').style.display = 'block';
+      $('betResult').innerHTML = `${summary}<div class="table-wrap"><table class="bet-table"><thead><tr><th>Maç</th><th>Oynanacak</th><th>Açılış</th><th>Fark</th><th>Skor</th><th>Durum</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
     }
 
     async function generateBetSlip() {
-      const target = document.getElementById('betBuilderResult');
-      const maxCount = Number(document.getElementById('betBuilderCount').value || 4);
-      latestBetBuilderPayload = null;
-      showBetBuilderStatus('', 'info');
-      target.innerHTML = '<div class="loading">Dashboard sinyallerine göre kupon hazırlanıyor...</div>';
-
+      setBetStatus('');
+      $('betResult').style.display = 'block';
+      $('betResult').textContent = 'Kupon hazırlanıyor...';
       try {
-        const response = await fetch(`/api/bet-builder?max_count=${maxCount}`);
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload?.error || 'Bahis oluşturucu şu an kullanılamıyor.');
-        renderBetSlip(payload);
+        const count = Number($('betCount').value || 4);
+        const res = await fetch(`/api/bet-builder?max_count=${count}`);
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.error || 'Kupon oluşturulamadı.');
+        renderSlip(payload);
       } catch (error) {
-        console.error(error);
-        latestBetBuilderPayload = null;
-        target.innerHTML = `<div class="builder-empty">${escapeHtml(error?.message || 'Bahis oluşturulurken hata oluştu.')}</div>`;
+        latestSlip = null;
+        $('betResult').textContent = error.message || 'Kupon oluşturulamadı.';
       }
     }
 
     async function saveBetSlip() {
-      const nameInput = document.getElementById('betBuilderName');
-      const saveBtn = document.getElementById('saveBetSlipBtn');
-      const name = (nameInput.value || '').trim();
-
-      if (!name) {
-        showBetBuilderStatus('Kaydetmeden önce kupona bir isim ver.', 'error');
-        nameInput.focus();
-        return;
-      }
-
-      if (!latestBetBuilderPayload || !Array.isArray(latestBetBuilderPayload.slip) || latestBetBuilderPayload.slip.length === 0) {
-        showBetBuilderStatus('Kaydedilecek bir kupon yok. Önce kupon oluştur.', 'error');
-        return;
-      }
-
-      const originalText = saveBtn.textContent;
-      saveBtn.disabled = true;
-      saveBtn.textContent = 'Kaydediliyor...';
-
+      const name = $('betName').value.trim();
+      if (!name) return setBetStatus('Kupon adı gir.', 'error');
+      if (!latestSlip) return setBetStatus('Kaydedilecek kupon yok.', 'error');
+      $('saveSlipBtn').disabled = true;
       try {
-        const response = await fetch('/api/bet-builder/save', {
+        const res = await fetch('/api/bet-builder/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, payload: latestBetBuilderPayload }),
+          body: JSON.stringify({ name, payload: latestSlip }),
         });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload?.error || 'Kupon kaydedilemedi.');
-        showBetBuilderStatus(`"${name}" kaydedildi.`, 'success');
-        await loadSavedBetSlips();
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.error || 'Kupon kaydedilemedi.');
+        setBetStatus('Kupon kaydedildi.');
+        loadSavedSlips();
       } catch (error) {
-        console.error(error);
-        showBetBuilderStatus(error?.message || 'Kupon kaydedilemedi.', 'error');
+        setBetStatus(error.message || 'Kupon kaydedilemedi.', 'error');
       } finally {
-        saveBtn.disabled = false;
-        saveBtn.textContent = originalText;
+        $('saveSlipBtn').disabled = false;
       }
     }
 
-    async function fetchAlerts() {
+    async function loadSavedSlips() {
       try {
-        const res = await fetch('/api/alerts');
-        allAlerts = await res.json();
-        if (focusedMatchId && !allAlerts.some(a => String(a.match_id || '') === focusedMatchId)) {
-          focusedMatchId = null;
-          focusedMatchName = '';
-        }
-        syncSelectedMatchesWithAlerts();
+        const res = await fetch('/api/bet-builder/saved?limit=20');
+        const payload = await res.json();
+        const items = Array.isArray(payload) ? payload : [];
+        $('savedList').innerHTML = items.map(item => `
+          <div class="saved-row">
+            <div><strong>${escapeHtml(item.name || '-')}</strong><div class="subline">${escapeHtml(item.created_at || '')} | ${Number(item.selected_count || 0)} maç</div></div>
+            <button class="row-action danger" onclick="deleteSavedSlip(${Number(item.id || 0)})">⌫</button>
+          </div>
+        `).join('');
+      } catch {
+        $('savedList').innerHTML = '';
+      }
+    }
+
+    async function deleteSavedSlip(id) {
+      if (!confirm('Kupon kaydı silinsin mi?')) return;
+      await fetch(`/api/bet-builder/saved/${id}`, { method: 'DELETE' });
+      loadSavedSlips();
+    }
+
+    async function removeSlipMatch(matchId) {
+      if (!matchId) return;
+      try {
+        const res = await fetch(`/api/matches/${encodeURIComponent(matchId)}/ignore`, { method: 'POST' });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.error || 'Maç çıkarılamadı.');
+        latestSlip.slip = latestSlip.slip.filter(item => normalizeId(item.match_id) !== matchId);
+        latestSlip.selected_count = latestSlip.slip.length;
+        allAlerts = allAlerts.map(a => normalizeId(a.match_id) === matchId ? { ...a, ignored: 1, bet_placed: 0, followed: 0 } : a);
+        renderSlip(latestSlip);
         render();
-        updateStats();
-        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('tr-TR');
-      } catch (e) {
-        console.error('Fetch error:', e);
-      }
-    }
-
-    function updateStats() {
-      const alt = allAlerts.filter(a => a.direction === 'ALT').length;
-      const ust = allAlerts.filter(a => a.direction === 'ÜST').length;
-      const bet = allAlerts.filter(a => a.bet_placed).length;
-      const follow = allAlerts.filter(a => a.followed).length;
-      document.getElementById('stat-alt').textContent = alt;
-      document.getElementById('stat-ust').textContent = ust;
-      document.getElementById('stat-bet').textContent = bet;
-      document.getElementById('stat-follow').textContent = follow;
-      document.getElementById('stat-total').textContent = allAlerts.length;
-    }
-
-    function filterAlerts() {
-      let filtered = [...allAlerts];
-      if (focusedMatchId !== null) filtered = filtered.filter(a => String(a.match_id || '') === focusedMatchId);
-      if (currentFilter === 'pending') filtered = filtered.filter(a => !a.bet_placed && !a.ignored && !a.followed);
-      else if (currentFilter === 'bet') filtered = filtered.filter(a => a.bet_placed);
-      else if (currentFilter === 'follow') filtered = filtered.filter(a => a.followed);
-      else if (currentFilter === 'ignored') filtered = filtered.filter(a => a.ignored);
-      else if (currentFilter === 'alt') filtered = filtered.filter(a => a.direction === 'ALT');
-      else if (currentFilter === 'ust') filtered = filtered.filter(a => a.direction === 'ÜST');
-      if (activePeriodFilters.size > 0) {
-        filtered = filtered.filter(a => {
-          const key = `${a.direction}-${a.alert_period}`;
-          return activePeriodFilters.has(key);
-        });
-      }
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        filtered = filtered.filter(a =>
-          (a.match_name || '').toLowerCase().includes(q) ||
-          (a.tournament || '').toLowerCase().includes(q) ||
-          (a.note || '').toLowerCase().includes(q) ||
-          (a.recommendation || '').toLowerCase().includes(q)
-        );
-      }
-      filtered.sort((a, b) => {
-        const va = sortValue(a, sortField);
-        const vb = sortValue(b, sortField);
-        if (va < vb) return sortAsc ? -1 : 1;
-        if (va > vb) return sortAsc ? 1 : -1;
-        return 0;
-      });
-      return filtered;
-    }
-
-    function render() {
-      updateMatchFocusStatus();
-      renderTable();
-      renderCards();
-      updateBulkDeleteButton();
-      updateSelectAllCheckbox();
-    }
-
-    function selectAllOnPage(checked) {
-      const filtered = filterAlerts();
-      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-      if (currentPage > totalPages) currentPage = totalPages;
-      const start = (currentPage - 1) * pageSize;
-      const paged = filtered.slice(start, start + pageSize);
-
-      paged.forEach(a => {
-        const key = normalizeMatchId(a.match_id);
-        if (!key) return;
-        if (checked) selectedMatchIds.add(key);
-        else selectedMatchIds.delete(key);
-      });
-      render();
-    }
-
-    function updateSelectAllCheckbox() {
-      const cb = document.getElementById('selectAllCheckbox');
-      if (!cb) return;
-      const filtered = filterAlerts();
-      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-      const start = (currentPage - 1) * pageSize;
-      const paged = filtered.slice(start, start + pageSize);
-      if (paged.length === 0) {
-        cb.checked = false;
-        cb.indeterminate = false;
-        return;
-      }
-      const selectedCount = paged.filter(a => isMatchSelected(a.match_id)).length;
-      cb.checked = selectedCount === paged.length;
-      cb.indeterminate = selectedCount > 0 && selectedCount < paged.length;
-    }
-
-    function renderTable() {
-      const tbody = document.getElementById('alertsBody');
-      const empty = document.getElementById('emptyState');
-      const filtered = filterAlerts();
-
-      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-      if (currentPage > totalPages) currentPage = totalPages;
-      const start = (currentPage - 1) * pageSize;
-      const paged = filtered.slice(start, start + pageSize);
-
-      document.getElementById('pageInfo').textContent = `${currentPage} / ${totalPages} (${filtered.length})`;
-      document.getElementById('prevPage').disabled = currentPage <= 1;
-      document.getElementById('nextPage').disabled = currentPage >= totalPages;
-
-      if (filtered.length === 0) {
-        tbody.innerHTML = '';
-        empty.style.display = 'block';
-        return;
-      }
-      empty.style.display = 'none';
-
-      tbody.innerHTML = paged.map(a => {
-        const classes = [];
-        if (isMatchSelected(a.match_id)) classes.push('is-selected');
-        if (a.bet_placed) classes.push('bet-placed');
-        if (a.followed) classes.push('is-followed');
-        if (a.ignored) classes.push('is-ignored');
-        const dirClass = a.direction === 'ALT' ? 'badge-alt' : 'badge-ust';
-        const dirIcon = a.direction === 'ALT' ? '🔻' : '🔺';
-        const diffClass = a.diff >= 0 ? 'diff-positive' : 'diff-negative';
-        const diffSign = a.direction === 'ALT' ? '+' : '-';
-        const prematchInline = a.prematch != null && Number(a.prematch) !== Number(a.opening)
-          ? ` <span style="color:#8ea2ba;font-size:11px;">(${Number(a.prematch).toFixed(1)})</span>`
-          : '';
-        const diffSource = a.prematch != null ? 'Maç Öncesi' : 'Açılış';
-        const time = a.alerted_at ? new Date(a.alerted_at + 'Z').toLocaleString('tr-TR', {
-          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-        }) : '-';
-        const cleanName = cleanMatchName(a.match_name);
-        const matchFocusButton = matchFocusButtonHtml(a);
-        const matchNoteButton = matchNoteButtonHtml(a);
-        const matchSelected = isMatchSelected(a.match_id);
-        const checkedAttr = matchSelected ? 'checked' : '';
-        const matchDisplay = a.url
-          ? `<a class="match-link" href="${escapeHtml(a.url)}" target="_blank" title="${escapeHtml(cleanName)}">${escapeHtml(cleanName)}</a>`
-          : `<span class="match-link" title="${escapeHtml(cleanName)}">${escapeHtml(cleanName)}</span>`;
-        const betBtnClass = a.bet_placed ? 'active-bet' : '';
-        const ignoreBtnClass = a.ignored ? 'active-ignore' : '';
-        const followBtnClass = a.followed ? 'active-follow' : '';
-        const betBtnTitle = a.bet_placed ? 'Bahis işaretini kaldır' : 'Bahis olarak işaretle';
-        const followBtnTitle = a.followed ? 'Takibi kaldır' : 'Takibe al';
-        const ignoreBtnTitle = a.ignored ? 'Gözardı işaretini kaldır' : 'Gözardı et';
-
-        return `<tr class="${classes.join(' ')}">
-          <td class="col-select">
-            <label class="match-select-wrap" title="Toplu silme için maçı seç">
-              <input class="match-select-box" type="checkbox" ${checkedAttr} onchange="toggleMatchSelectionByAlert(${a.id}, this.checked)" aria-label="Maçı seç">
-            </label>
-          </td>
-          <td class="time-col">${time}</td>
-          <td class="col-direction signal-cell">
-            ${signalBadgeHtml(a, dirIcon)}
-            ${reliabilityBadgeHtml(a)}
-            ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
-          </td>
-          <td>${fairLineHtml(a)}</td>
-          <td>${projectedHtml(a)}</td>
-          <td class="col-match">
-            <div class="match-cell-wrap">
-              ${matchFocusButton}
-              ${matchDisplay}
-              ${matchNoteButton}
-            </div>
-          </td>
-          <td class="col-tournament" title="${escapeHtml(a.tournament || '-')}">${escapeHtml(a.tournament || '-')}</td>
-          <td>${escapeHtml(a.status || '-')}</td>
-          <td><b>${escapeHtml(a.score || '-')}</b></td>
-          <td title="Fark kaynağı: ${escapeHtml(diffSource)}">${a.opening.toFixed(1)}${prematchInline}</td>
-          <td>${a.live.toFixed(1)}</td>
-          <td class="diff-val ${diffClass}">${diffSign}${a.diff.toFixed(1)}</td>
-          <td>
-            <div class="actions-wrap">
-              <button class="action-btn ${betBtnClass}" type="button" data-alert-action="bet" data-alert-id="${Number(a.id || 0)}" title="${betBtnTitle}" aria-label="${betBtnTitle}">💰</button>
-              <button class="action-btn follow-btn ${followBtnClass}" type="button" data-alert-action="follow" data-alert-id="${Number(a.id || 0)}" title="${followBtnTitle}" aria-label="${followBtnTitle}">👁</button>
-              <button class="action-btn ${ignoreBtnClass}" type="button" data-alert-action="ignore" data-alert-id="${Number(a.id || 0)}" title="${ignoreBtnTitle}" aria-label="${ignoreBtnTitle}">🚫</button>
-              <button class="action-btn delete-btn" type="button" data-alert-action="delete" data-alert-id="${Number(a.id || 0)}" title="Maçı sil" aria-label="Maçı sil">🗑</button>
-            </div>
-          </td>
-        </tr>`;
-      }).join('');
-    }
-
-    function renderCards() {
-      const wrap = document.getElementById('cardsWrap');
-      const emptyM = document.getElementById('emptyStateMobile');
-      const filtered = filterAlerts();
-
-      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-      if (currentPage > totalPages) currentPage = totalPages;
-      const start = (currentPage - 1) * pageSize;
-      const paged = filtered.slice(start, start + pageSize);
-
-      if (filtered.length === 0) {
-        wrap.innerHTML = '';
-        emptyM.style.display = 'block';
-        return;
-      }
-      emptyM.style.display = 'none';
-
-      wrap.innerHTML = paged.map(a => {
-        const classes = ['alert-card'];
-        if (isMatchSelected(a.match_id)) classes.push('is-selected');
-        if (a.bet_placed) classes.push('bet-placed');
-        if (a.followed) classes.push('is-followed');
-        if (a.ignored) classes.push('is-ignored');
-        const dirClass = a.direction === 'ALT' ? 'badge-alt' : 'badge-ust';
-        const dirIcon = a.direction === 'ALT' ? '🔻' : '🔺';
-        const diffClass = a.diff >= 0 ? 'diff-positive' : 'diff-negative';
-        const diffSign = a.direction === 'ALT' ? '+' : '-';
-        const diffSource = a.prematch != null ? 'Maç Öncesi' : 'Açılış';
-        const time = a.alerted_at ? new Date(a.alerted_at + 'Z').toLocaleString('tr-TR', {
-          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-        }) : '-';
-        const matchName = cleanMatchName(a.match_name);
-        const matchFocusButton = matchFocusButtonHtml(a);
-        const matchNoteButton = matchNoteButtonHtml(a);
-        const matchSelected = isMatchSelected(a.match_id);
-        const checkedAttr = matchSelected ? 'checked' : '';
-        const matchDisplay = a.url
-          ? `<a class="card-match-link" href="${escapeHtml(a.url)}" target="_blank">${escapeHtml(matchName)}</a>`
-          : `<span class="card-match-link">${escapeHtml(matchName)}</span>`;
-        const betBtnClass = a.bet_placed ? 'active-bet' : '';
-        const ignoreBtnClass = a.ignored ? 'active-ignore' : '';
-        const followBtnClass = a.followed ? 'active-follow' : '';
-        const betBtnTitle = a.bet_placed ? 'Bahis işaretini kaldır' : 'Bahis olarak işaretle';
-        const followBtnTitle = a.followed ? 'Takibi kaldır' : 'Takibe al';
-        const ignoreBtnTitle = a.ignored ? 'Gözardı işaretini kaldır' : 'Gözardı et';
-
-        return `<div class="${classes.join(' ')}">
-          <div class="card-top">
-            <div class="card-match">
-              <div class="card-match-row">
-                ${matchFocusButton}
-                ${matchDisplay}
-                ${matchNoteButton}
-              </div>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
-              ${signalBadgeHtml(a, dirIcon)}
-              ${reliabilityBadgeHtml(a)}
-              ${a.signal_count > 1 ? `<span class="signal-badge">${a.signal_count}. sinyal</span>` : ''}
-            </div>
-          </div>
-          <div class="card-meta">
-            <span class="card-meta-item">🕐 ${time}</span>
-            <span class="card-meta-item card-tournament">🏆 ${escapeHtml(a.tournament || '-')}</span>
-            <span class="card-meta-item">📡 ${escapeHtml(a.status || '-')}</span>
-            <span class="card-meta-item">🏀 ${escapeHtml(a.score || '-')}</span>
-          </div>
-          <div class="card-odds">
-            <div class="card-odds-value">
-              <div class="card-odds-label">Açılış</div>
-              <div class="card-odds-num">${a.opening.toFixed(1)}${a.prematch != null && Number(a.prematch) !== Number(a.opening) ? ` <span style="color:#8ea2ba;font-size:12px;">(${Number(a.prematch).toFixed(1)})</span>` : ''}</div>
-            </div>
-            <div class="card-odds-arrow">→</div>
-            <div class="card-odds-value">
-              <div class="card-odds-label">Canlı</div>
-              <div class="card-odds-num">${a.live.toFixed(1)}</div>
-            </div>
-            <div class="card-odds-arrow">→</div>
-            <div class="card-odds-value">
-              <div class="card-odds-label">Adil</div>
-              <div class="card-odds-num">${cardFairLineHtml(a)}</div>
-            </div>
-            <div class="card-odds-arrow">→</div>
-            <div class="card-odds-value">
-              <div class="card-odds-label">Proj.</div>
-              <div class="card-odds-num">${Number.isFinite(Number(a.projected)) ? Number(a.projected).toFixed(1) : '-'}</div>
-            </div>
-            <div class="card-odds-arrow">＝</div>
-            <div class="card-diff">
-              <div class="card-diff-label">Fark (${escapeHtml(diffSource)})</div>
-              <div class="card-diff-value ${diffClass}">${diffSign}${a.diff.toFixed(1)}</div>
-            </div>
-          </div>
-          <div class="card-actions">
-            <label class="card-select-chip ${matchSelected ? 'is-selected' : ''}" title="Toplu silme için maçı seç">
-              <input class="match-select-box" type="checkbox" ${checkedAttr} onchange="toggleMatchSelectionByAlert(${a.id}, this.checked)" aria-label="Maçı seç">
-              Seç
-            </label>
-            <button class="action-btn ${betBtnClass}" type="button" data-alert-action="bet" data-alert-id="${Number(a.id || 0)}" title="${betBtnTitle}" aria-label="${betBtnTitle}">💰</button>
-            <button class="action-btn follow-btn ${followBtnClass}" type="button" data-alert-action="follow" data-alert-id="${Number(a.id || 0)}" title="${followBtnTitle}" aria-label="${followBtnTitle}">👁</button>
-            <button class="action-btn ${ignoreBtnClass}" type="button" data-alert-action="ignore" data-alert-id="${Number(a.id || 0)}" title="${ignoreBtnTitle}" aria-label="${ignoreBtnTitle}">🚫</button>
-            <button class="action-btn delete-btn" type="button" data-alert-action="delete" data-alert-id="${Number(a.id || 0)}" title="Maçı sil" aria-label="Maçı sil">🗑</button>
-          </div>
-        </div>`;
-      }).join('');
-    }
-
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        closeSignalInfoModal();
-        closeBetBuilder();
-        closeNoteEditor();
-      }
-    });
-
-    function applyMatchStatusUpdate(payload) {
-      if (!payload || !payload.match_id) return;
-      allAlerts = allAlerts.map(a => {
-        if (a.match_id !== payload.match_id) return a;
-        const next = { ...a };
-        if (payload.bet_placed !== null && payload.bet_placed !== undefined) next.bet_placed = payload.bet_placed;
-        if (payload.ignored !== null && payload.ignored !== undefined) next.ignored = payload.ignored;
-        if (payload.followed !== null && payload.followed !== undefined) next.followed = payload.followed;
-        return next;
-      });
-    }
-
-    async function toggleBet(id) {
-      const resp = await fetch(`/api/alerts/${id}/bet`, { method: 'POST' });
-      const payload = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(payload?.error || 'Bahis durumu güncellenemedi.');
-      applyMatchStatusUpdate(payload);
-      render();
-      updateStats();
-    }
-
-    async function toggleIgnore(id) {
-      const resp = await fetch(`/api/alerts/${id}/ignore`, { method: 'POST' });
-      const payload = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(payload?.error || 'Gözardı durumu güncellenemedi.');
-      applyMatchStatusUpdate(payload);
-      render();
-      updateStats();
-    }
-
-    async function toggleFollow(id) {
-      const resp = await fetch(`/api/alerts/${id}/follow`, { method: 'POST' });
-      const payload = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(payload?.error || 'Takip durumu güncellenemedi.');
-      applyMatchStatusUpdate(payload);
-      render();
-      updateStats();
-    }
-
-    async function runAlertAction(action, id, button) {
-      if (!id) return;
-      if (action === 'focus') {
-        toggleMatchFocusByAlert(id);
-        return;
-      }
-      if (action === 'note') {
-        openNoteEditor(id);
-        return;
-      }
-
-      const actions = {
-        bet: toggleBet,
-        ignore: toggleIgnore,
-        follow: toggleFollow,
-        delete: deleteMatch,
-      };
-      const handler = actions[action];
-      if (!handler) return;
-
-      if (button) button.disabled = true;
-      try {
-        await handler(id);
+        setBetStatus('Maç kupondan çıkarıldı ve gözardı edildi.');
       } catch (error) {
-        console.error(error);
-        alert(error?.message || 'İşlem tamamlanamadı.');
-      } finally {
-        if (button && document.body.contains(button)) button.disabled = false;
+        setBetStatus(error.message || 'Maç çıkarılamadı.', 'error');
       }
     }
 
-    async function deleteSelectedMatches() {
-      if (bulkDeleteInProgress) return;
-      const selectedIds = Array.from(selectedMatchIds);
-      if (selectedIds.length === 0) return;
-
-      if (!confirm(`İşaretlediğin ${selectedIds.length} maç Silinen Maçlar'a aktarılsın mı?`)) return;
-
-      const targets = selectedIds
-        .map(matchId => {
-          const alert = allAlerts.find(item => normalizeMatchId(item.match_id) === matchId);
-          return alert ? { matchId, alertId: alert.id } : null;
-        })
-        .filter(Boolean);
-
-      if (targets.length === 0) {
-        selectedMatchIds.clear();
-        render();
-        return;
-      }
-
-      bulkDeleteInProgress = true;
-      updateBulkDeleteButton();
-
-      let successCount = 0;
-      let failedCount = 0;
-
-      try {
-        for (const target of targets) {
-          try {
-            const response = await fetch(`/api/alerts/${target.alertId}`, { method: 'DELETE' });
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok) {
-              failedCount += 1;
-              continue;
-            }
-            const deletedMatchId = normalizeMatchId(payload.match_id) || target.matchId;
-            if (isFocusedMatch(deletedMatchId)) {
-              focusedMatchId = null;
-              focusedMatchName = '';
-            }
-            allAlerts = allAlerts.filter(item => normalizeMatchId(item.match_id) !== deletedMatchId);
-            selectedMatchIds.delete(deletedMatchId);
-            successCount += 1;
-          } catch (error) {
-            console.error(error);
-            failedCount += 1;
-          }
-        }
-      } finally {
-        bulkDeleteInProgress = false;
-        syncSelectedMatchesWithAlerts();
-        render();
-        updateStats();
-      }
-
-      if (failedCount > 0) {
-        alert(`${successCount} maç aktarıldı, ${failedCount} maç için işlem tamamlanamadı.`);
-      }
-    }
-
-    async function deleteMatch(id) {
-      const alertItem = allAlerts.find(a => a.id === id);
-      if (!alertItem) return;
-      const matchName = cleanMatchName(alertItem.match_name);
-      if (!confirm(`"${matchName}" maçına ait tüm uyarılar Silinen Maçlar'a aktarılsın mı?`)) return;
-      const resp = await fetch(`/api/alerts/${id}`, { method: 'DELETE' });
-      const payload = await resp.json().catch(() => ({}));
-      if (!resp.ok) {
-        throw new Error(payload?.error || 'Maç Silinen Maçlar alanına aktarılırken hata oluştu.');
-      }
-      if (isFocusedMatch(payload.match_id)) {
-        focusedMatchId = null;
-        focusedMatchName = '';
-      }
-      const deletedMatchId = normalizeMatchId(payload.match_id) || normalizeMatchId(alertItem.match_id);
-      allAlerts = allAlerts.filter(a => normalizeMatchId(a.match_id) !== deletedMatchId);
-      selectedMatchIds.delete(deletedMatchId);
-      render();
-      updateStats();
-    }
-
-    async function checkFinishedMatches(button) {
-      if (button?.disabled) return;
-      const originalText = button ? button.textContent : '';
-      if (button) {
-        button.disabled = true;
-        button.textContent = 'Kontrol ediliyor...';
-      }
-      try {
-        const response = await fetch('/api/alerts/check-finished', { method: 'POST' });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          alert(payload?.error || 'Biten maçlar kontrol edilirken hata oluştu.');
-          return;
-        }
-        const movedIds = new Set((payload.details || []).map(d => normalizeMatchId(d.match_id)));
-        if (movedIds.size > 0) {
-          allAlerts = allAlerts.filter(a => !movedIds.has(normalizeMatchId(a.match_id)));
-          movedIds.forEach(mid => selectedMatchIds.delete(mid));
-          if (focusedMatchId && movedIds.has(normalizeMatchId(focusedMatchId))) {
-            focusedMatchId = null;
-            focusedMatchName = '';
-          }
-          render();
-          updateStats();
-        }
-        alert(payload.message || `${payload.moved_count || 0} maç taşındı.`);
-      } catch (error) {
-        console.error(error);
-        alert('Biten maçlar kontrol edilirken hata oluştu.');
-      } finally {
-        if (button) {
-          button.disabled = false;
-          button.textContent = originalText || 'Bitenleri Kontrol Et';
-        }
-      }
-    }
-
-    async function clearDatabase() {
-      if (!confirm('Dashboard listesindeki tüm maçlar Silinen Maçlar alanına aktarılsın mı?')) return;
-      const response = await fetch('/api/clear', { method: 'POST' });
-      if (!response.ok) {
-        alert('Maçlar Silinen Maçlar alanına aktarılırken hata oluştu.');
-        return;
-      }
-      allAlerts = [];
-      focusedMatchId = null;
-      focusedMatchName = '';
-      selectedMatchIds.clear();
-      render();
-      updateStats();
-    }
-
-    document.addEventListener('click', event => {
-      const button = event.target.closest('[data-alert-action]');
-      if (!button) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (button.disabled) return;
-      runAlertAction(
-        button.dataset.alertAction,
-        Number(button.dataset.alertId || 0),
-        button
-      );
-    });
-
-    // Filter buttons
-    document.querySelectorAll('.filter-btn[data-filter]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn[data-filter]').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentFilter = btn.dataset.filter;
+    document.querySelectorAll('[data-filter]').forEach(button => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('primary'));
+        button.classList.add('primary');
+        currentFilter = button.dataset.filter;
         currentPage = 1;
         render();
       });
     });
 
-    // Period filter buttons
-    function updatePeriodFilterClear() {
-      const clearBtn = document.getElementById('periodFilterClear');
-      if (clearBtn) clearBtn.classList.toggle('visible', activePeriodFilters.size > 0);
-    }
-
-    document.querySelectorAll('.period-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const dir = btn.dataset.dir;
-        const period = btn.dataset.period;
-        const key = `${dir}-${period}`;
-        const activeClass = dir === 'ALT' ? 'active-alt' : 'active-ust';
-        if (activePeriodFilters.has(key)) {
-          activePeriodFilters.delete(key);
-          btn.classList.remove(activeClass);
-        } else {
-          activePeriodFilters.add(key);
-          btn.classList.add(activeClass);
-        }
-        updatePeriodFilterClear();
+    document.querySelectorAll('.period-btn').forEach(button => {
+      button.addEventListener('click', () => {
+        const key = `${button.dataset.dir}-${button.dataset.period}`;
+        if (activePeriods.has(key)) activePeriods.delete(key);
+        else activePeriods.add(key);
+        button.classList.toggle('active', activePeriods.has(key));
         currentPage = 1;
         render();
       });
     });
 
-    const periodFilterClear = document.getElementById('periodFilterClear');
-    if (periodFilterClear) {
-      periodFilterClear.addEventListener('click', () => {
-        activePeriodFilters.clear();
-        document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active-alt', 'active-ust'));
-        updatePeriodFilterClear();
-        currentPage = 1;
-        render();
-      });
-    }
-
-    const searchInput = document.getElementById('searchInput');
-    const clearSearchBtn = document.getElementById('clearSearchBtn');
-    const noteEditorText = document.getElementById('noteEditorText');
-    if (noteEditorText) noteEditorText.addEventListener('input', updateNoteCharCount);
-
-    function updateSearchClearButton() {
-      clearSearchBtn.classList.toggle('is-visible', searchInput.value.length > 0);
-    }
-
-    // Search
-    searchInput.addEventListener('input', e => {
-      searchQuery = e.target.value;
+    function clearPeriodFilters() {
+      activePeriods.clear();
+      document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
       currentPage = 1;
       render();
-      updateSearchClearButton();
-    });
+    }
 
-    clearSearchBtn.addEventListener('click', () => {
-      if (!searchInput.value) return;
-      searchInput.value = '';
-      searchQuery = '';
+    $('searchInput').addEventListener('input', event => {
+      searchQuery = event.target.value.trim();
       currentPage = 1;
       render();
-      updateSearchClearButton();
-      searchInput.focus();
     });
-    updateSearchClearButton();
 
-    // Sort headers
-    document.querySelectorAll('thead th[data-sort]').forEach(th => {
+    $('noteText').addEventListener('input', updateNoteCount);
+
+    document.querySelectorAll('th[data-sort]').forEach(th => {
       th.addEventListener('click', () => {
         const field = th.dataset.sort;
         if (sortField === field) sortAsc = !sortAsc;
-        else { sortField = field; sortAsc = true; }
+        else {
+          sortField = field;
+          sortAsc = true;
+        }
         render();
       });
     });
 
-    function changePage(delta) { currentPage += delta; render(); }
-    function changePageSize(val) { pageSize = parseInt(val); currentPage = 1; render(); }
-
-    // Auto refresh
-    function manualRefresh() {
-      countdownVal = 15;
-      document.getElementById('countdown').textContent = countdownVal;
-      fetchAlerts();
-    }
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        closeSignalModal();
+        closeNoteModal();
+        closeNoteInfo();
+        closeBetBuilder();
+      }
+    });
 
     fetchAlerts();
     setInterval(() => {
-      countdownVal--;
-      if (countdownVal <= 0) { countdownVal = 15; fetchAlerts(); }
-      document.getElementById('countdown').textContent = countdownVal;
+      countdown -= 1;
+      if (countdown <= 0) {
+        countdown = 15;
+        fetchAlerts();
+      }
+      $('countdown').textContent = countdown;
     }, 1000);
   </script>
 </body>

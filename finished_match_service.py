@@ -6,6 +6,7 @@ Used by both the background worker and manual UI-triggered checks.
 import asyncio
 import logging
 import re
+import time
 
 try:
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -16,6 +17,15 @@ except ModuleNotFoundError:
 
 
 logger = logging.getLogger("finished_match_service")
+
+
+def is_final_status(status: str) -> bool:
+    """Only explicit final labels are allowed to settle a match."""
+    return bool(re.match(r"^\s*(Full Time|FT|Finished|Ended|Final)\s*$", status or "", re.IGNORECASE))
+
+
+def final_status_label(status: str) -> str:
+    return "Full Time" if is_final_status(status) else ""
 
 
 def parse_score_total(score: str) -> float | None:
@@ -111,14 +121,33 @@ class AiscoreFinishedMatchChecker:
         page.set_default_timeout(self.page_timeout_ms)
 
         try:
-            await page.goto(match["url"], wait_until="domcontentloaded")
+            await page.set_extra_http_headers({
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
+            })
+            target_url = str(match["url"])
+            sep = "&" if "?" in target_url else "?"
+            await page.goto(f"{target_url}{sep}_fresh_check={int(time.time() * 1000)}", wait_until="domcontentloaded")
             await page.wait_for_timeout(2500)
             parsed = await page.evaluate(
                 r"""
                 () => {
                   const text = s => (s || '').replace(/\s+/g, ' ').trim();
                   const leaf = el => el.children.length === 0;
-                  const allLeafs = Array.from(document.querySelectorAll('span, div, strong, b')).filter(leaf);
+                  const allLeafs = Array.from(document.querySelectorAll('span, div, strong, b'))
+                    .filter(leaf)
+                    .map(el => {
+                      const rect = el.getBoundingClientRect();
+                      return {
+                        el,
+                        txt: text(el.innerText),
+                        rect,
+                        size: parseFloat(window.getComputedStyle(el).fontSize) || 0,
+                        cls: (el.className || '').toString(),
+                      };
+                    })
+                    .filter(o => o.txt && o.rect.width > 0 && o.rect.height > 0);
+                  const mainLeafs = allLeafs.filter(o => o.rect.top >= 0 && o.rect.top < 460);
 
                   const finishedRe = /^(Full Time|FT|Finished|Ended|Final)$/i;
                   const liveRe     = /^(Q[1-4]|[1-4]Q|OT|HT|1st|2nd|3rd|4th|BT)(\s*[-\s]?\s*\d{1,2}:\d{2})?$/i;
@@ -128,34 +157,14 @@ class AiscoreFinishedMatchChecker:
                   let status = '';
                   let isFinished = false;
 
-                  for (const el of allLeafs) {
-                    const t = text(el.innerText);
-                    if (finishedRe.test(t)) { statusEl = el; status = t; isFinished = true; break; }
-                  }
-                  if (!statusEl) {
-                    for (const el of allLeafs) {
-                      const t = text(el.innerText);
-                      if (liveRe.test(t) || clockRe.test(t)) { statusEl = el; status = t; break; }
-                    }
-                  }
-                  // Only a narrow final-score class hook; [class*="score"] alone is too broad
-                  // (the live-score container also has that substring and triggered false positives).
-                  if (!isFinished) {
-                    const badge = document.querySelector('[class*="final-score"], [class*="finalScore"]');
-                    if (badge) isFinished = true;
-                  }
+                  // Do not infer "finished" from score-looking elements or CSS classes.
+                  // Some live AiScore pages expose final-score-ish containers before the
+                  // match ends; only an explicit Full Time/FT label may settle results.
 
-                  const nums = allLeafs
-                    .map(el => ({
-                      el,
-                      txt: text(el.innerText),
-                      rect: el.getBoundingClientRect(),
-                      size: parseFloat(window.getComputedStyle(el).fontSize) || 0,
-                      cls: (el.className || '').toString(),
-                    }))
-                    .filter(o => /^\d{1,3}$/.test(o.txt));
+                  const nums = mainLeafs.filter(o => /^\d{1,3}$/.test(o.txt));
 
                   let score = '';
+                  let scorePair = null;
 
                   // Strategy A: AiScore renders scores in <div class="score ...">.
                   // class~="score" is an exact token match (unlike [class*="score"] substring).
@@ -176,61 +185,82 @@ class AiscoreFinishedMatchChecker:
                     const leftEl  = home.rect.left <= away.rect.left ? home : away;
                     const rightEl = home.rect.left <= away.rect.left ? away : home;
                     score = `${leftEl.txt} - ${rightEl.txt}`;
+                    scorePair = [leftEl, rightEl];
                   }
 
-                  // Strategy B: anchor on the status label and pick one big number each side.
-                  if (!score && statusEl) {
-                    const sr = statusEl.getBoundingClientRect();
-                    const sCenterX = (sr.left + sr.right) / 2;
-                    const sCenterY = (sr.top + sr.bottom) / 2;
-                    const aligned = nums.filter(n => {
-                      const cy = (n.rect.top + n.rect.bottom) / 2;
-                      return Math.abs(cy - sCenterY) < 60 && n.size >= 18;
-                    }).sort((a, b) => b.size - a.size);
-
-                    const lefts  = aligned.filter(n => n.rect.right <= sCenterX);
-                    const rights = aligned.filter(n => n.rect.left  >= sCenterX);
-                    if (lefts.length && rights.length) {
-                      let pair = null;
-                      for (const l of lefts) {
-                        for (const r of rights) {
-                          if (Math.abs(l.size - r.size) < 1) { pair = [l, r]; break; }
-                        }
-                        if (pair) break;
-                      }
-                      if (!pair) pair = [lefts[0], rights[0]];
-                      score = `${pair[0].txt} - ${pair[1].txt}`;
+                  // Strategy B: directly combined "93-62" pattern near the main scoreboard.
+                  if (!score) {
+                    const combined = mainLeafs
+                      .find(o => /^\d{1,3}\s*[-–]\s*\d{1,3}$/.test(o.txt) && o.size >= 16);
+                    if (combined) {
+                      score = combined.txt;
+                      scorePair = [combined, combined];
                     }
                   }
 
-                  // Strategy C: directly combined "93-62" pattern (rare AiScore variants).
-                  if (!score) {
-                    const combined = Array.from(document.querySelectorAll('span, div, strong, b'))
-                      .map(el => text(el.innerText))
-                      .find(t => /^\d{1,3}\s*[-–]\s*\d{1,3}$/.test(t));
-                    if (combined) score = combined;
-                  }
-
-                  // Strategy D (last resort): the old top-of-page biggest-two heuristic,
+                  // Strategy C (last resort): top-of-page biggest-two heuristic,
                   // but require both numbers to share font size and be clearly large.
                   if (!score) {
-                    const top = nums.filter(n => n.rect.top < 220)
+                    const top = nums.filter(n => n.rect.top < 300)
                       .sort((a, b) => b.size - a.size);
                     if (top.length >= 2 && top[0].size >= 20 && Math.abs(top[0].size - top[1].size) < 2) {
                       const a = top[0], b = top[1];
                       const leftEl  = a.rect.left <= b.rect.left ? a : b;
                       const rightEl = a.rect.left <= b.rect.left ? b : a;
                       score = `${leftEl.txt} - ${rightEl.txt}`;
+                      scorePair = [leftEl, rightEl];
                     }
                   }
 
-                  // Basketball sanity guard: reject absurd totals before writing anywhere.
-                  const m = score.match(/^\s*(\d{1,3})\s*[-–]\s*(\d{1,3})\s*$/);
-                  if (m) {
-                    const total = parseInt(m[1]) + parseInt(m[2]);
-                    if (total < 60 || total > 400) score = '';
-                  } else {
+                  if (scorePair) {
+                    const left = scorePair[0], right = scorePair[1];
+                    const scoreCenterY = (
+                      (left.rect.top + left.rect.bottom) / 2 +
+                      (right.rect.top + right.rect.bottom) / 2
+                    ) / 2;
+                    const minX = Math.min(left.rect.left, right.rect.left) - 220;
+                    const maxX = Math.max(left.rect.right, right.rect.right) + 220;
+                    const nearScoreStatus = mainLeafs.filter(o => {
+                      const cx = (o.rect.left + o.rect.right) / 2;
+                      const cy = (o.rect.top + o.rect.bottom) / 2;
+                      return cy >= scoreCenterY - 95
+                        && cy <= scoreCenterY + 95
+                        && cx >= minX
+                        && cx <= maxX
+                        && (finishedRe.test(o.txt) || liveRe.test(o.txt) || clockRe.test(o.txt));
+                    });
+                    const live = nearScoreStatus.find(o => liveRe.test(o.txt) || clockRe.test(o.txt));
+                    const final = nearScoreStatus.find(o => finishedRe.test(o.txt));
+                    if (live) {
+                      statusEl = live.el;
+                      status = live.txt;
+                      isFinished = false;
+                    } else if (final) {
+                      statusEl = final.el;
+                      status = 'Full Time';
+                      isFinished = true;
+                    }
+                  }
+
+                  if (!status) {
+                    const live = mainLeafs.find(o => liveRe.test(o.txt) || clockRe.test(o.txt));
+                    if (live) {
+                      statusEl = live.el;
+                      status = live.txt;
+                    }
+                  }
+
+                  // Basketball sanity guard: reject live/non-final and absurd totals before writing anywhere.
+                  if (!isFinished) {
                     score = '';
+                  } else {
+                    const m = score.match(/^\s*(\d{1,3})\s*[-–]\s*(\d{1,3})\s*$/);
+                    if (m) {
+                      const total = parseInt(m[1]) + parseInt(m[2]);
+                      if (total < 60 || total > 400) score = '';
+                    } else {
+                      score = '';
+                    }
                   }
 
                   const title = text(document.title || '')
@@ -246,13 +276,18 @@ class AiscoreFinishedMatchChecker:
             )
             if not parsed:
                 return None
+            parsed_title = parsed.get("title") or ""
+            if re.search(r"just a moment|access denied|verify you are human", parsed_title, re.IGNORECASE):
+                return None
+            if not (parsed.get("status") or parsed.get("score")):
+                return None
 
             return {
                 "match_id": match["match_id"],
-                "match_name": parsed.get("title") or match.get("match_name", ""),
+                "match_name": parsed_title or match.get("match_name", ""),
                 "status": parsed.get("status") or "",
                 "score": parsed.get("score") or "",
-                "is_finished": bool(parsed.get("isFinished")),
+                "is_finished": bool(parsed.get("isFinished")) and is_final_status(parsed.get("status") or ""),
             }
         except PlaywrightTimeoutError:
             logger.debug("Finished match check timeout: %s", match.get("url"))
@@ -277,6 +312,7 @@ async def run_finished_match_cycle(db, config) -> dict:
             "successful_count": 0,
             "failed_count": 0,
             "push_count": 0,
+            "in_progress_count": 0,
             "details": [],
         }
 
@@ -322,7 +358,7 @@ async def run_finished_match_cycle(db, config) -> dict:
             )
             inserted_id = db.archive_finished_alert(
                 alert,
-                final_status=result.get("status", ""),
+                final_status=final_status_label(result.get("status", "")),
                 final_score=final_score,
                 final_total=final_total,
                 result=signal_result,
@@ -418,6 +454,7 @@ async def run_deleted_match_result_cycle(db, config) -> dict:
             "successful_count": 0,
             "failed_count": 0,
             "push_count": 0,
+            "in_progress_count": 0,
             "details": [],
         }
 
@@ -436,6 +473,7 @@ async def run_single_deleted_match_result_check(db, config, alert_id: int) -> di
         "successful_count": 0,
         "failed_count": 0,
         "push_count": 0,
+        "in_progress_count": 0,
         "details": [],
     }
 
@@ -443,6 +481,9 @@ async def run_single_deleted_match_result_check(db, config, alert_id: int) -> di
     tracked_match = db.get_deleted_match_for_result_check_by_alert_id(alert_id)
     if not alert or not tracked_match:
         return {**empty_summary, "message": "Kontrol edilecek maç bulunamadı."}
+    match_alerts = db.get_deleted_alerts_for_match(alert["match_id"])
+    if not match_alerts:
+        match_alerts = [alert]
 
     checker = AiscoreFinishedMatchChecker(
         page_timeout_ms=config.PAGE_TIMEOUT_MS,
@@ -461,7 +502,11 @@ async def run_single_deleted_match_result_check(db, config, alert_id: int) -> di
 
     result = results[0]
     if not result.get("is_finished"):
-        summary["message"] = "Maç henüz bitmemiş veya final skoru alınamadı."
+        summary["in_progress_count"] = db.mark_deleted_match_in_progress(alert["match_id"])
+        summary["message"] = (
+            "Maç sayfası yeniden kontrol edildi; Full Time görülmedi. "
+            f"{summary['in_progress_count']} sinyal Devam Ediyor olarak güncellendi."
+        )
         return summary
 
     final_score = result.get("score", "")
@@ -474,43 +519,45 @@ async def run_single_deleted_match_result_check(db, config, alert_id: int) -> di
         return summary
 
     summary["finished_match_count"] = 1
-    signal_result = evaluate_signal_result(
-        alert.get("direction", ""),
-        float(alert.get("live") or 0),
-        final_total,
-    )
-    if not signal_result:
-        summary["message"] = "Sinyal yönü tanınmadı."
-        return summary
+    for item in match_alerts:
+        signal_result = evaluate_signal_result(
+            item.get("direction", ""),
+            float(item.get("live") or 0),
+            final_total,
+        )
+        if not signal_result:
+            continue
 
-    updated = db.update_deleted_alert_final_result(
-        alert_id,
-        result=signal_result,
-        final_score=final_score,
-        final_status=result.get("status", "") or "Full Time",
-    )
-    if not updated:
-        summary["message"] = "Güncelleme yapılamadı."
-        return summary
+        updated = db.update_deleted_alert_final_result(
+            item["id"],
+            result=signal_result,
+            final_score=final_score,
+            final_status=final_status_label(result.get("status", "")),
+        )
+        if not updated:
+            continue
 
-    summary["updated_count"] = 1
-    if signal_result == "Başarılı":
-        summary["successful_count"] = 1
-    elif signal_result == "Başarısız":
-        summary["failed_count"] = 1
-    elif signal_result == "İade":
-        summary["push_count"] = 1
-    summary["details"].append({
-        "id": alert_id,
-        "match_id": alert["match_id"],
-        "match_name": alert["match_name"],
-        "direction": alert["direction"],
-        "live_line": float(alert["live"]),
-        "final_score": final_score,
-        "final_total": final_total,
-        "result": signal_result,
-    })
-    summary["message"] = f"Sinyal güncellendi: {signal_result} ({final_score})"
+        summary["updated_count"] += 1
+        if signal_result == "Başarılı":
+            summary["successful_count"] += 1
+        elif signal_result == "Başarısız":
+            summary["failed_count"] += 1
+        elif signal_result == "İade":
+            summary["push_count"] += 1
+        summary["details"].append({
+            "id": item["id"],
+            "match_id": item["match_id"],
+            "match_name": item["match_name"],
+            "direction": item["direction"],
+            "live_line": float(item["live"]),
+            "final_score": final_score,
+            "final_total": final_total,
+            "result": signal_result,
+        })
+    summary["message"] = (
+        f"Maç sayfası yeniden kontrol edildi: {summary['updated_count']} sinyal güncellendi "
+        f"({final_score})."
+    )
     return summary
 
 
@@ -528,11 +575,15 @@ async def _run_deleted_match_result_check_for_matches(db, config, tracked_matche
         "successful_count": 0,
         "failed_count": 0,
         "push_count": 0,
+        "in_progress_count": 0,
         "details": [],
     }
 
     for result in results:
         if not result.get("is_finished"):
+            affected = db.mark_deleted_match_in_progress(result.get("match_id", ""))
+            if affected:
+                summary["in_progress_count"] += affected
             continue
 
         final_score = result.get("score", "")
@@ -556,7 +607,7 @@ async def _run_deleted_match_result_check_for_matches(db, config, tracked_matche
                 alert["id"],
                 result=signal_result,
                 final_score=final_score,
-                final_status=result.get("status", "") or "Full Time",
+                final_status=final_status_label(result.get("status", "")),
             )
             if not updated:
                 continue

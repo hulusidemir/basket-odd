@@ -10,10 +10,8 @@ import asyncio
 import csv
 import io
 import json
-import logging
 import os
 import re
-import threading
 from datetime import datetime, timedelta
 from flask import Flask, Response, jsonify, render_template, request
 from db import Database
@@ -31,16 +29,7 @@ db.init()
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
-LIVE_MATCHES_SNAPSHOT_PATH = os.getenv(
-    "LIVE_MATCHES_SNAPSHOT_PATH",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "live_matches_snapshot.json"),
-)
-
 BET_BUILDER_ALERT_WINDOW_MINUTES = 240
-
-_refresh_lock = threading.Lock()
-_refresh_running = threading.Event()
-_refresh_last_error: str = ""
 
 
 def _parse_analysis(raw) -> dict:
@@ -227,6 +216,21 @@ def build_signal_reliability(alert: dict, model: dict) -> dict:
     if direction == "ALT" and direction_stats.get("resolved", 0) >= 10 and direction_stats.get("rate", 50) >= 56:
         score += 4
 
+    h2h_quality = analysis.get("h2h_quality_score")
+    try:
+        h2h_quality_value = float(h2h_quality)
+    except (TypeError, ValueError):
+        h2h_quality_value = None
+    if h2h_quality_value is not None:
+        if h2h_quality_value < 45:
+            score -= 12
+        elif h2h_quality_value < 70:
+            score -= 6
+    if analysis.get("history_total") is None:
+        score -= 8
+    elif analysis.get("team_recent_total") is None:
+        score -= 3
+
     score = max(0, min(100, round(score)))
     if score >= 68:
         label, class_name = "Güçlü", "reliable"
@@ -261,6 +265,10 @@ def build_signal_reliability(alert: dict, model: dict) -> dict:
         reasons.append(fair_note)
     if fair_side_stats.get("resolved"):
         reasons.append(f"Adil barem tarafı {fair_side}: {_rate_text(fair_side_stats)}.")
+    if h2h_quality_value is not None and h2h_quality_value < 70:
+        reasons.append(f"H2H veri kalitesi düşük: {h2h_quality_value:.0f}/100.")
+    if analysis.get("team_recent_total") is None:
+        reasons.append("Takım son-form bileşeni eksik; adil barem daha temkinli okunmalı.")
 
     return {
         "score": score,
@@ -308,6 +316,20 @@ def enrich_alerts_with_analysis(alerts: list[dict]) -> list[dict]:
             missing_note = "Adil barem hesaplanamadı: maç süresi/projeksiyon güvenilir okunamadı."
             if missing_note not in warnings:
                 analysis["warnings"] = [*warnings, missing_note]
+        if analysis.get("h2h_quality_score") is None:
+            inferred_quality = 35 if analysis.get("h2h_total") is None else 80
+            inferred_notes = list(analysis.get("h2h_quality_notes") or [])
+            if analysis.get("h2h_total") is None:
+                inferred_notes.append("Eski analiz kaydı: H2H ortalaması yok.")
+            elif analysis.get("team_recent_total") is None:
+                inferred_notes.append("Eski analiz kaydı: H2H var, takım son-form bileşeni yok.")
+            analysis = {
+                **analysis,
+                "h2h_quality_score": inferred_quality,
+                "h2h_quality_notes": inferred_notes,
+            }
+            warnings = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
+            analysis["warnings"] = [*warnings, *[note for note in inferred_notes if note not in warnings]]
         alert["analysis"] = analysis
         alert["fair_line"] = analysis.get("fair_line")
         alert["fair_edge"] = analysis.get("fair_edge")
@@ -577,67 +599,6 @@ def index():
 @app.route("/deleted-matches")
 def deleted_matches():
     return render_template("deleted_matches.html")
-
-
-@app.route("/live-matches")
-def live_matches():
-    return render_template("live_matches.html")
-
-
-@app.route("/api/live-matches")
-def api_live_matches():
-    try:
-        with open(LIVE_MATCHES_SNAPSHOT_PATH, "r", encoding="utf-8") as fh:
-            payload = json.load(fh)
-    except FileNotFoundError:
-        payload = {
-            "generated_at": None,
-            "status": "pending",
-            "error": "Henüz veri yok. Manuel Çek butonuna tıklayın.",
-            "count": 0,
-            "matches": [],
-        }
-    except Exception as exc:
-        payload = {
-            "generated_at": None,
-            "status": "error",
-            "error": f"Snapshot okunamadı: {exc}",
-            "count": 0,
-            "matches": [],
-        }
-    return jsonify(payload)
-
-
-@app.route("/api/live-matches/refresh", methods=["POST"])
-def api_live_matches_refresh():
-    global _refresh_last_error
-    from live_matches_worker import run_manual_cycle
-
-    if _refresh_running.is_set():
-        return jsonify({"status": "refreshing", "message": "Çekim zaten devam ediyor…"}), 202
-
-    def _bg():
-        global _refresh_last_error
-        _refresh_running.set()
-        _refresh_last_error = ""
-        try:
-            asyncio.run(run_manual_cycle(LIVE_MATCHES_SNAPSHOT_PATH))
-        except Exception as exc:
-            _refresh_last_error = str(exc)
-            logging.getLogger("dashboard").error("Manual refresh error: %s", exc, exc_info=True)
-        finally:
-            _refresh_running.clear()
-
-    threading.Thread(target=_bg, daemon=True).start()
-    return jsonify({"status": "refreshing", "message": "Veri çekme başlatıldı…"}), 202
-
-
-@app.route("/api/live-matches/refresh-status")
-def api_live_matches_refresh_status():
-    return jsonify({
-        "running": _refresh_running.is_set(),
-        "last_error": _refresh_last_error,
-    })
 
 
 @app.route("/api/alerts")

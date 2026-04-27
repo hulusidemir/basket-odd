@@ -44,17 +44,22 @@
       margin: 2px auto 12px;
     }
 
+    .topbar,
+    .section-shell {
+      background: rgba(14, 26, 42, 0.96);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+
     .topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      gap: 14px;
       padding: 16px;
-      border-radius: var(--radius-xl);
-      background: rgba(10, 22, 36, 0.94);
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow);
+      border-radius: 22px;
       margin-bottom: 14px;
+      flex-wrap: wrap;
     }
 
     .topbar-left,
@@ -66,23 +71,22 @@
     }
 
     .status-pill {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 44px;
-      height: 44px;
+      width: 42px;
+      height: 42px;
       border-radius: 50%;
-      background: rgba(17, 31, 48, 0.95);
+      background: rgba(24, 43, 67, 0.95);
       border: 1px solid var(--border);
+      position: relative;
+      flex: 0 0 auto;
     }
 
     .status-pill::before {
       content: "";
-      width: 10px;
-      height: 10px;
+      position: absolute;
+      inset: 15px;
       border-radius: 50%;
-      background: #4ade80;
-      box-shadow: 0 0 0 6px rgba(74, 222, 128, 0.12);
+      background: var(--accent-orange);
+      box-shadow: 0 0 0 6px rgba(255, 158, 100, 0.14);
     }
 
     .top-action,
@@ -100,8 +104,8 @@
 
     .top-action,
     .nav-link {
-      padding: 12px 18px;
-      border-radius: 16px;
+      padding: 11px 15px;
+      border-radius: 14px;
       font-size: 13px;
       font-weight: 700;
       text-decoration: none;
@@ -114,15 +118,13 @@
     .preset-btn:hover,
     .proj-btn:hover,
     .step-btn:hover {
-      transform: translateY(-1px);
       border-color: rgba(95, 167, 255, 0.45);
-      box-shadow: 0 14px 24px rgba(0, 0, 0, 0.18);
     }
 
     .top-action.active {
-      background: rgba(95, 167, 255, 0.15);
-      border-color: rgba(95, 167, 255, 0.38);
-      color: #a8d4ff;
+      background: linear-gradient(180deg, #6bb2ff, #5a9cea);
+      border-color: transparent;
+      color: #07111d;
     }
 
     .top-action.primary {
@@ -135,10 +137,8 @@
     }
 
     .section-shell {
-      background: rgba(10, 22, 36, 0.96);
-      border: 1px solid var(--border);
-      border-radius: 30px;
-      box-shadow: var(--shadow);
+      background: rgba(9, 19, 32, 0.88);
+      border-radius: 22px;
       padding: 18px;
     }
 
@@ -539,7 +539,6 @@
       </div>
       <div class="topbar-right">
         <a href="/" class="top-action">Canlı</a>
-        <a href="/live-matches" class="top-action">Canlı Maçlar</a>
         <a href="/deleted-matches" class="top-action">Silinen</a>
         <a href="/bankroll" class="top-action active">Bankroll</a>
       </div>

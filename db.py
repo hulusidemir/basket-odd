@@ -538,6 +538,48 @@ class Database:
             )
         return cursor.rowcount > 0
 
+    def mark_deleted_alert_in_progress(self, alert_id: int) -> bool:
+        with self._conn() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE alerts
+                SET result = '',
+                    status = 'Devam Ediyor',
+                    score = CASE
+                        WHEN TRIM(COALESCE(result, '')) != ''
+                             OR UPPER(TRIM(COALESCE(status, ''))) IN ('FT', 'FULL TIME', 'FINISHED', 'ENDED', 'FINAL')
+                        THEN ''
+                        ELSE score
+                    END
+                WHERE id = ?
+                  AND deleted_at IS NOT NULL
+                  AND deleted_at != ''
+                """,
+                (alert_id,),
+            )
+        return cursor.rowcount > 0
+
+    def mark_deleted_match_in_progress(self, match_id: str) -> int:
+        with self._conn() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE alerts
+                SET result = '',
+                    status = 'Devam Ediyor',
+                    score = CASE
+                        WHEN TRIM(COALESCE(result, '')) != ''
+                             OR UPPER(TRIM(COALESCE(status, ''))) IN ('FT', 'FULL TIME', 'FINISHED', 'ENDED', 'FINAL')
+                        THEN ''
+                        ELSE score
+                    END
+                WHERE match_id = ?
+                  AND deleted_at IS NOT NULL
+                  AND deleted_at != ''
+                """,
+                (match_id,),
+            )
+        return cursor.rowcount
+
     # ---------- saved bet slips ----------
 
     def save_bet_slip(self, name: str, payload: dict) -> int:
@@ -832,7 +874,6 @@ class Database:
                     WHERE pending.match_id = a.match_id
                       AND pending.deleted_at IS NOT NULL
                       AND pending.deleted_at != ''
-                      AND TRIM(COALESCE(pending.result, '')) = ''
                 )
                 ORDER BY a.deleted_at DESC, a.alerted_at DESC, a.id DESC
                 """
@@ -882,6 +923,21 @@ class Database:
                   AND deleted_at IS NOT NULL
                   AND deleted_at != ''
                   AND TRIM(COALESCE(result, '')) = ''
+                ORDER BY alerted_at ASC, id ASC
+                """,
+                (match_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_deleted_alerts_for_match(self, match_id: str) -> list:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM alerts
+                WHERE match_id = ?
+                  AND deleted_at IS NOT NULL
+                  AND deleted_at != ''
                 ORDER BY alerted_at ASC, id ASC
                 """,
                 (match_id,),
