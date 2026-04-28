@@ -16,7 +16,6 @@ from datetime import datetime, timedelta
 from flask import Flask, Response, jsonify, render_template, request
 from db import Database
 from config import Config
-from ai_scoring import calculate_ai_score, calculate_bet_recommendation
 from finished_match_service import (
     run_active_match_finished_scan,
     run_deleted_match_result_cycle,
@@ -49,6 +48,7 @@ def _parse_analysis(raw) -> dict:
 def enrich_alerts_with_analysis(alerts: list[dict]) -> list[dict]:
     for alert in alerts:
         analysis = _parse_analysis(alert.get("ai_analysis"))
+        alert.pop("ai_analysis", None)
         if not analysis:
             analysis = build_signal_analysis(
                 {
@@ -93,20 +93,6 @@ def enrich_alerts_with_analysis(alerts: list[dict]) -> list[dict]:
         alert["history_total"] = analysis.get("history_total")
         alert["recommendation"] = analysis.get("recommendation") or ""
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
-        ai_review = calculate_ai_score(alert, analysis, raw_score=analysis.get("raw_score"))
-        bet_review = calculate_bet_recommendation(alert, analysis)
-        analysis = {**analysis, **ai_review, **bet_review}
-        alert["analysis"] = analysis
-        alert["raw_score"] = ai_review.get("raw_score")
-        alert["ai_score"] = ai_review.get("ai_score")
-        alert["ai_label"] = ai_review.get("ai_label")
-        alert["ai_reason"] = ai_review.get("ai_reason")
-        alert["final_score"] = ai_review.get("final_score")
-        alert["bet_dir"] = bet_review.get("bet_dir")
-        alert["bet_label"] = bet_review.get("bet_label")
-        alert["bet_confidence"] = bet_review.get("bet_confidence")
-        alert["bet_rule"] = bet_review.get("bet_rule")
-        alert["bet_reason"] = bet_review.get("bet_reason")
     return alerts
 
 
@@ -218,9 +204,6 @@ def build_bet_builder(max_count: int) -> dict:
             "fair_edge": round(fair_edge, 1) if fair_edge is not None else None,
             "history_total": round(float(history_total), 1) if history_total is not None else None,
             "recommendation": alert.get("recommendation", ""),
-            "ai_score": alert.get("ai_score"),
-            "ai_label": alert.get("ai_label"),
-            "final_score": alert.get("final_score"),
             "status": alert.get("status", ""),
             "score": alert.get("score", ""),
             "opening_gap": opening_gap,
@@ -373,6 +356,7 @@ def api_alerts():
 def _lightweight_enrich_deleted_alerts(alerts: list[dict]) -> list[dict]:
     for alert in alerts:
         analysis = _parse_analysis(alert.get("ai_analysis"))
+        alert.pop("ai_analysis", None)
         if not analysis:
             analysis = {}
         alert["analysis"] = analysis
@@ -385,20 +369,6 @@ def _lightweight_enrich_deleted_alerts(alerts: list[dict]) -> list[dict]:
         alert["history_total"] = analysis.get("history_total")
         alert["recommendation"] = analysis.get("recommendation") or ""
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
-        ai_review = calculate_ai_score(alert, analysis, raw_score=analysis.get("raw_score"))
-        bet_review = calculate_bet_recommendation(alert, analysis)
-        analysis = {**analysis, **ai_review, **bet_review}
-        alert["analysis"] = analysis
-        alert["raw_score"] = ai_review.get("raw_score")
-        alert["ai_score"] = ai_review.get("ai_score")
-        alert["ai_label"] = ai_review.get("ai_label")
-        alert["ai_reason"] = ai_review.get("ai_reason")
-        alert["final_score"] = ai_review.get("final_score")
-        alert["bet_dir"] = bet_review.get("bet_dir")
-        alert["bet_label"] = bet_review.get("bet_label")
-        alert["bet_confidence"] = bet_review.get("bet_confidence")
-        alert["bet_rule"] = bet_review.get("bet_rule")
-        alert["bet_reason"] = bet_review.get("bet_reason")
     return alerts
 
 
@@ -421,7 +391,7 @@ def api_export_finished_deleted_matches_csv():
     writer = csv.writer(output)
     writer.writerow([
         "Maç", "Sinyal Anı", "Sinyal Türü", "Skor",
-        "Açılış", "Canlı", "Adil Barem", "AI Etiket", "AI Puan", "AI Neden", "Sonuç", "Not",
+        "Açılış", "Canlı", "Adil Barem", "Sonuç", "Not",
     ])
 
     for row in rows:
@@ -430,7 +400,6 @@ def api_export_finished_deleted_matches_csv():
         match_name = re.sub(r"\s*betting odds\s*", "", match_name, flags=re.IGNORECASE).strip()
         fair_line = row.get("fair_line")
         fair_line_cell = f"{float(fair_line):.1f}" if fair_line is not None else "Hesaplanamıyor"
-        ai_score = row.get("ai_score")
         writer.writerow([
             match_name,
             row.get("alert_moment") or "",
@@ -439,9 +408,6 @@ def api_export_finished_deleted_matches_csv():
             row.get("opening") if row.get("opening") is not None else "",
             row.get("live") if row.get("live") is not None else "",
             fair_line_cell,
-            row.get("ai_label") or "",
-            f"{float(ai_score):.1f}" if ai_score is not None else "",
-            row.get("ai_reason") or "",
             row.get("result") or "",
             row.get("note") or "",
         ])

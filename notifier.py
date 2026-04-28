@@ -3,7 +3,6 @@ notifier.py — Sends betting alerts via Telegram.
 """
 
 import logging
-from html import escape
 
 from telegram import Bot
 from telegram.constants import ParseMode
@@ -70,10 +69,6 @@ class TelegramNotifier:
         warnings = analysis.get("warnings") or []
         pace_anomaly_note = analysis.get("pace_anomaly_note") or ""
         quarter_paces = analysis.get("quarter_paces") or {}
-        ai_label = analysis.get("ai_label") or ""
-        ai_score = analysis.get("ai_score")
-        final_score = analysis.get("final_score")
-        ai_reason = analysis.get("ai_reason") or ""
 
         projected_line = f"Projeksiyon: <b>{float(projected):.1f}</b>\n" if projected is not None else ""
         market_line = f"Piyasa Bazı: <b>{float(market_total):.1f}</b>\n" if market_total is not None else ""
@@ -119,77 +114,75 @@ class TelegramNotifier:
         warning_line = "\n".join(f"❔ {item}" for item in warnings[:6])
         if warning_line:
             warning_line += "\n"
-        ai_analysis_line = ""
-        if ai_label or ai_reason:
-            score_parts = []
-            if ai_score is not None:
-                score_parts.append(f"AI {int(float(ai_score))}")
-            if final_score is not None:
-                score_parts.append(f"Nihai {int(float(final_score))}")
-            score_text = f" ({' / '.join(score_parts)})" if score_parts else ""
-            ai_analysis_line = (
-                f"\n<b>AI ANALİZ:</b> {escape(str(ai_label))}{escape(score_text)}"
-                f"\n{escape(str(ai_reason))}\n"
-            )
 
-        # ---- Bet öneri bloğu (mesajın EN ÜSTÜ) -----------------------------
-        bet_label = str(analysis.get("bet_label") or "").strip()
-        bet_dir = str(analysis.get("bet_dir") or "").strip()
-        bet_conf = analysis.get("bet_confidence")
-        bet_rule = str(analysis.get("bet_rule") or "").strip()
-        bet_reason = str(analysis.get("bet_reason") or "").strip()
-        bet_block = ""
-        if bet_label:
-            label_emoji = {
-                "KONTRA ALT": "🔵 ⇩",
-                "GÜÇLÜ ALT":  "🟢 ▼",
-                "ORTA ALT":   "🟢 ▽",
-                "PAS":        "⚪ –",
-            }.get(bet_label, "•")
-            conf_text = f" · %{int(bet_conf)} güven" if bet_conf else ""
-            rule_text = f" [{bet_rule}]" if bet_rule else ""
-            headline = (
-                f"════════════════\n"
-                f"🎯 <b>ÖNERİ: {label_emoji} {escape(bet_label)}</b>{escape(conf_text)}{escape(rule_text)}\n"
-            )
-            if bet_dir == "PAS":
-                action = "❗ <b>Bu sinyale girme — pas geç.</b>\n"
-            elif bet_label == "KONTRA ALT":
-                action = "👉 <b>Sistem ÜST dedi ama veriler ALT'ı destekliyor → ALT oyna.</b>\n"
-            elif bet_dir == "ALT":
-                action = "👉 <b>ALT yönünde oyna.</b>\n"
-            else:
-                action = ""
-            reason_block = f"<i>{escape(bet_reason)}</i>\n" if bet_reason else ""
-            bet_block = f"{headline}{action}{reason_block}════════════════\n\n"
-
-        text = (
-            f"{bet_block}"
+        # ---- Bölümler ----------------------------------------------------------
+        header = (
             f"{emoji} <b>Sinyal: {direction}</b>\n"
             f"{signal_line}"
-            f"{period_line}\n"
             f"🏀 <b>{match_name}</b>\n"
             f"🏆 {tournament} | {status}\n"
-            f"{score_line}\n"
-            f"Açılış Baremi: <b>{opening:.1f}</b>\n"
-            f"{prematch_line}"
-            f"Güncel Barem:  <b>{live:.1f}</b>\n"
-            f"{projected_line}"
-            f"{market_line}"
-            f"{team_line}"
-            f"{h2h_line}"
-            f"Adil Barem: <b>{fair_line_text}</b>\n"
-            f"{fair_edge_line}"
-            f"{weights_line}"
-            f"Fark: <b>{diff:+.1f}</b> puan\n\n"
-            f"{pace_anomaly_line}"
-            f"{quarter_pace_line}"
-            f"{recommendation_line}"
-            f"{fair_warning_line}"
-            f"{fair_alert_line}"
-            f"{warning_line}"
-            f"💡 <i>{tip}</i>\n"
-            f"{ai_analysis_line}"
+            f"{period_line}"
+            f"{score_line}"
+        )
+
+        prematch_inline = f"• Maç Öncesi: <b>{prematch:.1f}</b>\n" if prematch is not None else ""
+        odds_section = (
+            f"\n<b>📐 Barem</b>\n"
+            f"• Açılış: <b>{opening:.1f}</b>\n"
+            f"{prematch_inline}"
+            f"• Canlı: <b>{live:.1f}</b>\n"
+            f"• Fark: <b>{diff:+.1f}</b> puan\n"
+        )
+
+        projection_lines = "".join([
+            f"• Projeksiyon: <b>{float(projected):.1f}</b>\n" if projected is not None else "",
+            f"• Piyasa: <b>{float(market_total):.1f}</b>\n" if market_total is not None else "",
+            f"• Son Maç: <b>{float(team_recent_total):.1f}</b>\n" if team_recent_total is not None else "",
+            f"• H2H: <b>{float(h2h_total):.1f}</b>\n" if h2h_total is not None else "",
+        ])
+        weight_inline = f"  <i>({' / '.join(weight_parts)})</i>\n" if weight_parts else ""
+        fair_edge_inline = f" (Canlıya göre <b>{float(fair_edge):+.1f}</b>)" if fair_edge is not None else ""
+        fair_block = f"• Adil Barem: <b>{fair_line_text}</b>{fair_edge_inline}\n"
+        projection_section = ""
+        if projection_lines or fair_line is not None:
+            projection_section = (
+                f"\n<b>🧮 Analiz</b>\n"
+                f"{projection_lines}"
+                f"{weight_inline}"
+                f"{fair_block}"
+            )
+
+        pace_section = ""
+        if pace_anomaly_line or quarter_pace_line:
+            pace_section = (
+                f"\n<b>⚡ Tempo</b>\n"
+                f"{quarter_pace_line}"
+                f"{pace_anomaly_line}"
+            )
+
+        warnings_block = ""
+        if fair_warning_line or fair_alert_line or warning_line:
+            warnings_block = (
+                f"\n<b>⚠️ Uyarılar</b>\n"
+                f"{fair_warning_line}"
+                f"{fair_alert_line}"
+                f"{warning_line}"
+            )
+
+        footer = ""
+        if recommendation_line or tip:
+            footer = (
+                f"\n{recommendation_line}"
+                f"💡 <i>{tip}</i>\n"
+            )
+
+        text = (
+            f"{header}"
+            f"{odds_section}"
+            f"{projection_section}"
+            f"{pace_section}"
+            f"{warnings_block}"
+            f"{footer}"
         )
 
         try:

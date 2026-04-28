@@ -603,81 +603,6 @@
       text-shadow: 0 0 6px rgba(239, 68, 68, 0.55);
     }
 
-    .ai-cell {
-      display: inline-flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 4px;
-      min-width: 130px;
-      border: 0;
-      background: transparent;
-      color: inherit;
-      padding: 0;
-      font: inherit;
-      cursor: pointer;
-    }
-
-    .ai-badge {
-      min-width: 0;
-      max-width: 170px;
-      padding: 5px 8px;
-      font-size: 11px;
-      white-space: normal;
-      text-align: left;
-      justify-content: flex-start;
-      border-color: rgba(124, 92, 246, 0.28);
-      color: #b9dcff;
-      background: rgba(30, 28, 48, 0.9);
-    }
-
-    .ai-badge.ai-100 {
-      color: #fff;
-      background: linear-gradient(180deg, #fef08a, #fbbf24);
-      border-color: transparent;
-    }
-
-    .ai-badge.pass {
-      color: #ffb2b2;
-      border-color: rgba(239, 68, 68, 0.32);
-      background: rgba(239, 68, 68, 0.13);
-    }
-
-    .bet-cell {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 34px; height: 34px; border: 0; background: transparent;
-      color: inherit; padding: 0; font: inherit; cursor: pointer; position: relative;
-    }
-    .bet-badge {
-      width: 28px; height: 28px; min-width: 28px; padding: 0;
-      font-size: 13px; font-weight: 900; line-height: 1;
-      display: inline-flex; align-items: center; justify-content: center;
-      border-radius: 8px; border: 1px solid transparent;
-    }
-    .bet-badge.kontra-alt { color: #052e2b; background: linear-gradient(135deg,#22d3ee,#0891b2); }
-    .bet-badge.guclu-alt  { color: #052e1c; background: linear-gradient(135deg,#34d399,#047857); }
-    .bet-badge.orta-alt   { color: #052e1c; background: linear-gradient(135deg,#86efac,#22c55e); }
-    .bet-badge.pas        { color: #cbd5e1; background: rgba(100,116,139,0.18); border-color: rgba(148,163,184,0.32); }
-    .bet-badge.empty      { color: #64748b; background: rgba(100,116,139,0.10); border-color: rgba(100,116,139,0.22); }
-    .bet-conf-pill {
-      position: absolute; bottom: -2px; right: -4px;
-      font-size: 9px; font-weight: 800; padding: 1px 4px; border-radius: 6px;
-      background: rgba(15,23,42,0.94); color: #e2e8f0; border: 1px solid rgba(148,163,184,0.35);
-      line-height: 1; pointer-events: none;
-    }
-    .bet-result-tag {
-      position: absolute; top: -4px; right: -4px;
-      font-size: 9px; font-weight: 800; padding: 1px 4px; border-radius: 6px;
-      line-height: 1; pointer-events: none; color: #fff;
-    }
-    .bet-result-tag.win  { background: #10b981; }
-    .bet-result-tag.lose { background: #ef4444; }
-
-    .ai-score-line {
-      color: var(--text-soft);
-      font-size: 11px;
-      white-space: nowrap;
-    }
-
     .badge {
       display: inline-flex;
       align-items: center;
@@ -863,110 +788,6 @@
       font-size: 12px;
       line-height: 1.45;
     }
-
-    .deleted-signal-decision {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      gap: 13px;
-      align-items: center;
-      margin-bottom: 12px;
-      padding: 14px;
-      border-radius: 14px;
-      background: linear-gradient(135deg, rgba(34, 211, 238, 0.10), rgba(124, 92, 246, 0.09));
-      border: 1px solid rgba(124, 92, 246, 0.22);
-    }
-
-    .deleted-signal-decision .decision-icon {
-      width: 54px;
-      height: 54px;
-      min-width: 54px;
-      border-radius: 14px;
-      font-size: 24px;
-    }
-
-    .decision-title-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-      min-width: 0;
-    }
-
-    .decision-title {
-      font-size: 20px;
-      font-weight: 900;
-      line-height: 1.1;
-      color: var(--text);
-    }
-
-    .decision-pill {
-      display: inline-flex;
-      align-items: center;
-      min-height: 22px;
-      padding: 3px 8px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 900;
-      color: #cbd5e1;
-      background: rgba(12, 10, 22, 0.72);
-      border: 1px solid rgba(148, 163, 184, 0.18);
-    }
-
-    .decision-pill.good {
-      color: #9df0bd;
-      background: rgba(16, 185, 129, 0.12);
-      border-color: rgba(16, 185, 129, 0.28);
-    }
-
-    .decision-pill.bad {
-      color: #ffb2b2;
-      background: rgba(239, 68, 68, 0.12);
-      border-color: rgba(239, 68, 68, 0.28);
-    }
-
-    .decision-meta {
-      margin-top: 5px;
-      color: var(--text-soft);
-      font-size: 12px;
-      line-height: 1.45;
-    }
-
-    .decision-reason {
-      margin-top: 7px;
-      color: #dbeafe;
-      font-size: 12px;
-      line-height: 1.5;
-    }
-
-    .decision-result {
-      justify-self: end;
-      min-width: 108px;
-      padding: 9px 11px;
-      border-radius: 12px;
-      text-align: center;
-      background: rgba(8, 8, 16, 0.68);
-      border: 1px solid rgba(110, 146, 187, 0.12);
-    }
-
-    .decision-result .label {
-      display: block;
-      color: var(--text-soft);
-      font-size: 10px;
-      font-weight: 900;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin-bottom: 3px;
-    }
-
-    .decision-result .value {
-      display: block;
-      font-size: 13px;
-      font-weight: 900;
-    }
-
-    .decision-result.win .value { color: #9df0bd; }
-    .decision-result.lose .value { color: #ffb2b2; }
-    .decision-result.push .value { color: #fef08a; }
 
     .signal-edge-note {
       display: flex;
@@ -1464,8 +1285,6 @@
       .signal-breakdown { grid-template-columns: 1fr; }
       .direction-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .signal-metrics-list { grid-template-columns: 1fr; }
-      .deleted-signal-decision { grid-template-columns: auto minmax(0, 1fr); }
-      .decision-result { grid-column: 1 / -1; justify-self: stretch; }
     }
   </style>
 </head>
@@ -1525,16 +1344,6 @@
         </div>
       </section>
 
-      <section class="panel">
-        <div class="actions">
-          <button class="btn primary" data-ai-filter="">AI Tümü</button>
-          <button class="btn" data-ai-filter="GÜÇLÜ ALT">Güçlü ALT</button>
-          <button class="btn" data-ai-filter="ORTA ALT">Orta ALT</button>
-          <button class="btn" data-ai-filter="GÜÇLÜ ÜST">Güçlü ÜST</button>
-          <button class="btn" data-ai-filter="ÇELİŞKİLİ / PAS">Çelişkili / Pas</button>
-        </div>
-      </section>
-
       <section class="panel toolbar">
         <input class="search-box" id="searchInput" type="text" placeholder="Maç, turnuva veya skor ara">
         <div class="actions">
@@ -1552,7 +1361,6 @@
               <th data-sort="match_name">Maç</th>
               <th data-sort="alert_moment">Sinyal Anı</th>
               <th data-sort="direction">Sinyal</th>
-              <th data-sort="final_score">AI Analiz</th>
               <th data-sort="status">Durum</th>
               <th data-sort="score">Skor</th>
               <th data-sort="opening">Açılış</th>
@@ -1624,7 +1432,6 @@
     let sortField = 'deleted_at';
     let sortAsc = false;
     let activeFilter = null;
-    let activeAiFilter = '';
     let currentPage = 1;
     let pageSize = 100;
 
@@ -1678,13 +1485,7 @@
 
     function alertAnalysis(alert) {
       if (alert?.analysis && typeof alert.analysis === 'object') return alert.analysis;
-      if (!alert?.ai_analysis) return {};
-      try {
-        const parsed = JSON.parse(alert.ai_analysis);
-        return parsed && typeof parsed === 'object' ? parsed : {};
-      } catch (err) {
-        return {};
-      }
+      return {};
     }
 
     function fairLineValue(alert) {
@@ -1726,93 +1527,6 @@
       return `<button class="badge ${cls} signal-open-btn" type="button" title="Sinyal bilgilerini aç" onclick="openSignalInfo(${Number(alert.id || 0)})">${escapeHtml(direction)}</button>`;
     }
 
-    function betBadgeMeta(alert) {
-      const analysis = alertAnalysis(alert);
-      const label = String(alert.bet_label || analysis.bet_label || '').trim();
-      const dir = String(alert.bet_dir || analysis.bet_dir || '').trim();
-      const conf = Number(alert.bet_confidence ?? analysis.bet_confidence ?? 0);
-      const rule = String(alert.bet_rule || analysis.bet_rule || '');
-      const reason = String(alert.bet_reason || analysis.bet_reason || '');
-      let cls = 'empty', icon = '·';
-      if (label === 'KONTRA ALT')      { cls = 'kontra-alt'; icon = '⇩'; }
-      else if (label === 'GÜÇLÜ ALT')  { cls = 'guclu-alt';  icon = '▼'; }
-      else if (label === 'ORTA ALT')   { cls = 'orta-alt';   icon = '▽'; }
-      else if (label === 'PAS')        { cls = 'pas';        icon = '–'; }
-      return { label, dir, conf, rule, reason, cls, icon };
-    }
-
-    function betResultEvaluation(alert, meta) {
-      // result==='Başarılı' veya 'Başarısız' var. Sinyal yönü ile karşılaştırarak gerçek kazananı bul,
-      // bizim bet_dir bunu tutturmuş mu kontrol et.
-      const result = String(alert.result || '').trim();
-      if (!result || meta.dir === 'PAS' || !meta.dir) return null;
-      if (result !== 'Başarılı' && result !== 'Başarısız') return null;
-      const sigDir = String(alert.direction || '').replace('UST','ÜST');
-      const actual = result === 'Başarılı' ? sigDir : (sigDir === 'ALT' ? 'ÜST' : 'ALT');
-      return meta.dir === actual ? 'win' : 'lose';
-    }
-
-    function deletedBetDecisionHtml(alert, analysis) {
-      const meta = betBadgeMeta(alert);
-      const tag = betResultEvaluation(alert, meta);
-      const result = String(alert.result || '').trim();
-      const label = meta.label || 'Bahis önerisi yok';
-      const icon = meta.icon || '·';
-      const cls = meta.cls || 'empty';
-      const conf = Number(meta.conf || 0);
-      const dir = meta.dir || '-';
-      const rule = meta.rule || '-';
-      let decisionLine = 'Bu sinyal için kural bazlı bahis kararı üretilmemiş.';
-      if (meta.dir === 'PAS') {
-        decisionLine = 'Sistem bu sinyali bahis açısından pas geçmişti.';
-      } else if (meta.label === 'KONTRA ALT') {
-        decisionLine = 'Sinyal yönüne karşı ALT tarafında değer görülmüş.';
-      } else if (meta.dir) {
-        decisionLine = `${meta.dir} yönünde değer görülmüş.`;
-      }
-
-      let resultClass = 'push';
-      let resultText = result || '-';
-      if (tag === 'win') {
-        resultClass = 'win';
-        resultText = 'Öneri tuttu';
-      } else if (tag === 'lose') {
-        resultClass = 'lose';
-        resultText = 'Öneri kaçtı';
-      } else if (result === 'İade') {
-        resultText = 'İade';
-      } else if (meta.dir === 'PAS') {
-        resultText = 'Pas';
-      }
-
-      const confPill = conf > 0 ? `<span class="decision-pill good">%${conf} güven</span>` : '';
-      const rulePill = meta.rule ? `<span class="decision-pill">${escapeHtml(rule)}</span>` : '';
-      const dirPill = meta.dir ? `<span class="decision-pill">${escapeHtml(dir)}</span>` : '';
-      const reason = meta.reason || analysis.bet_reason || '';
-
-      return `
-        <div class="deleted-signal-decision">
-          <span class="bet-badge ${cls} decision-icon">${escapeHtml(icon)}</span>
-          <div>
-            <div class="decision-title-row">
-              <span class="decision-title">${escapeHtml(label)}</span>
-              ${confPill}${rulePill}${dirPill}
-            </div>
-            <div class="decision-meta">
-              Sinyal: <strong>${escapeHtml(alert.direction || '-')}</strong>
-              · Skor: <strong>${escapeHtml(alert.score || '-')}</strong>
-              · An: <strong>${escapeHtml(alert.alert_moment || alert.status || '-')}</strong>
-            </div>
-            <div class="decision-reason">${escapeHtml(reason || decisionLine)}</div>
-          </div>
-          <div class="decision-result ${resultClass}">
-            <span class="label">Kapanış</span>
-            <span class="value">${escapeHtml(resultText)}</span>
-          </div>
-        </div>
-      `;
-    }
-
     function signalEdgeNoteHtml(edge) {
       const value = Number(edge);
       if (!Number.isFinite(value)) return '';
@@ -1826,53 +1540,6 @@
         text = `Adil barem canlıdan ${value.toFixed(1)} puan yukarıda. ÜST tarafı değerli görünüyordu.`;
       }
       return `<div class="signal-edge-note ${cls}"><strong>Değer farkı</strong><span>${escapeHtml(text)}</span></div>`;
-    }
-
-    function betBadgeHtml(alert) {
-      const meta = betBadgeMeta(alert);
-      const tag = betResultEvaluation(alert, meta);
-      const tagPill = tag ? `<span class="bet-result-tag ${tag}">${tag === 'win' ? '✓' : '✗'}</span>` : '';
-      if (!meta.label) {
-        return `
-          <button class="bet-cell" type="button" onclick="openSignalInfo(${Number(alert.id || 0)})" title="Bahis önerisi yok">
-            <span class="bet-badge empty">·</span>
-          </button>`;
-      }
-      const titleText = `${meta.label}${meta.conf ? ' %' + meta.conf : ''}: ${meta.reason}`;
-      const confPill = meta.conf > 0 ? `<span class="bet-conf-pill">%${meta.conf}</span>` : '';
-      return `
-        <button class="bet-cell" type="button" onclick="openSignalInfo(${Number(alert.id || 0)})" title="${escapeHtml(titleText)}">
-          <span class="bet-badge ${meta.cls}" aria-label="${escapeHtml(meta.label)}">${meta.icon}</span>
-          ${confPill}${tagPill}
-        </button>
-      `;
-    }
-
-    function aiAnalysisHtml(alert) {
-      const analysis = alertAnalysis(alert);
-      const label = String(alert.ai_label || analysis.ai_label || '-');
-      const reason = String(alert.ai_reason || analysis.ai_reason || '');
-      const raw = Number(alert.raw_score ?? analysis.raw_score);
-      const ai = Number(alert.ai_score ?? analysis.ai_score);
-      const finalScore = Number(alert.final_score ?? analysis.final_score);
-      const cls = label.startsWith('GÜÇLÜ') ? 'ai-100' : (label.includes('ÇELİŞKİLİ') ? 'pass' : '');
-      const scoreText = `Eski ${Number.isFinite(raw) ? Math.round(raw) : '-'} | AI ${Number.isFinite(ai) ? Math.round(ai) : '-'} | Nihai ${Number.isFinite(finalScore) ? Math.round(finalScore) : '-'}`;
-      return `
-        <button class="ai-cell" type="button" onclick="openSignalInfo(${Number(alert.id || 0)})" title="${escapeHtml(reason)}">
-          <span class="badge ai-badge ${cls}">${escapeHtml(label)}</span>
-          <span class="ai-score-line">${escapeHtml(scoreText)}</span>
-        </button>
-      `;
-    }
-
-    function aiLabelText(alert) {
-      const analysis = alertAnalysis(alert);
-      return String(alert.ai_label || analysis.ai_label || '').trim();
-    }
-
-    function aiFilterMatches(alert) {
-      if (!activeAiFilter) return true;
-      return aiLabelText(alert) === activeAiFilter;
     }
 
     function fairEdgeAlertHtml(alert) {
@@ -1961,7 +1628,6 @@
         ? alert.warnings
         : (Array.isArray(analysis.warnings) ? analysis.warnings : []);
       const notes = [
-        analysis.recommendation || alert.recommendation,
         analysis.pace_anomaly_note,
         analysis.pace_note,
         analysis.script_note,
@@ -1970,11 +1636,7 @@
         ...warnings,
       ].filter(Boolean);
       const matchName = cleanMatchName(alert.match_name || '-');
-      const aiLabel = alert.ai_label || analysis.ai_label || '-';
-      const aiReason = alert.ai_reason || analysis.ai_reason || '-';
-
       content.innerHTML = `
-        ${deletedBetDecisionHtml(alert, analysis)}
         <div class="signal-info-headline">
           <div class="signal-info-match">${escapeHtml(matchName)}</div>
           <div class="signal-info-meta">${escapeHtml(alert.tournament || '-')} | ${escapeHtml(alert.status || '-')} | Skor: ${escapeHtml(alert.score || '-')} | Sonuç: ${escapeHtml(alert.result || '-')}</div>
@@ -1991,20 +1653,9 @@
               ${modalListItem('H2H Kalite', analysis.h2h_quality_score != null ? `${analysis.h2h_quality_score}/100` : '-')}
               ${modalListItem('Adil Barem', formatFairLine(alert.fair_line ?? analysis.fair_line))}
               ${modalListItem('Barem Hareketi', lineMove === null ? '-' : formatSignedNumber(lineMove))}
-              ${modalListItem('Bahis Yönü', betBadgeMeta(alert).dir || '-')}
             </ul>
             ${signalEdgeNoteHtml(fairEdge)}
             <div class="signal-weights-line"><strong>Ağırlık</strong>${escapeHtml(weightsText(analysis.weights))}</div>
-          </div>
-          <div class="signal-info-section">
-            <div class="signal-info-section-title">AI Analiz</div>
-            <ul class="signal-metrics-list">
-              ${modalListItem('Eski Puan', alert.raw_score ?? analysis.raw_score ?? '-')}
-              ${modalListItem('AI Puanı', alert.ai_score ?? analysis.ai_score ?? '-')}
-              ${modalListItem('Nihai Puan', alert.final_score ?? analysis.final_score ?? '-')}
-              ${modalListItem('Etiket', aiLabel)}
-            </ul>
-            <div class="signal-weights-line"><strong>Neden</strong>${escapeHtml(aiReason)}</div>
           </div>
           <div class="signal-info-section">
             <div class="signal-info-section-title">Uyarılar / Beklenti</div>
@@ -2086,7 +1737,6 @@
           return true;
         });
       }
-      rows = rows.filter(aiFilterMatches);
       if (!searchQuery) return sortedAlerts(rows);
       const q = searchQuery.toLowerCase();
       rows = rows.filter(alert => [
@@ -2096,8 +1746,6 @@
         alert.score,
         alert.result,
         alert.note,
-        alert.ai_label,
-        alert.ai_reason,
         recommendationText(alert),
         fairLineValue(alert),
       ].some(value => String(value || '').toLowerCase().includes(q)));
@@ -2112,7 +1760,7 @@
 
     function sortValue(alert, field) {
       if (field === 'deleted_at' || field === 'alerted_at') return parseDateValue(alert[field]);
-      if (['opening', 'live', 'diff', 'signal_count', 'fair_line', 'fair_edge', 'raw_score', 'ai_score', 'final_score'].includes(field)) {
+      if (['opening', 'live', 'diff', 'signal_count', 'fair_line', 'fair_edge'].includes(field)) {
         const num = Number(alert[field]);
         return Number.isFinite(num) ? num : -Infinity;
       }
@@ -2243,12 +1891,6 @@
       if (chipFail) chipFail.classList.toggle('active', isRes && activeFilter.result === 'Başarısız');
     }
 
-    function updateAiFilterButtons() {
-      document.querySelectorAll('[data-ai-filter]').forEach(button => {
-        button.classList.toggle('primary', button.dataset.aiFilter === activeAiFilter);
-      });
-    }
-
     function setSummaryFilter(filter) {
       activeFilter = filter && Object.keys(filter).length ? filter : null;
       currentPage = 1;
@@ -2271,8 +1913,6 @@
       updateStats();
       updateSortHeaders();
       updateStatChips();
-      updateAiFilterButtons();
-
       if (rows.length === 0) {
         body.innerHTML = '';
         tableWrap.style.display = 'none';
@@ -2316,7 +1956,6 @@
               ${signalBadge(alert)}
               ${Number(alert.signal_count || 0) > 1 ? `<div class="subline">${Number(alert.signal_count)}. sinyal</div>` : ''}
             </td>
-            <td>${aiAnalysisHtml(alert)} ${betBadgeHtml(alert)}</td>
             <td>${escapeHtml(alert.status || '-')}</td>
             <td class="mono">${escapeHtml(alert.score || '-')}${(() => { const total = calculateScoreTotal(alert.score); return total !== null ? ` <span style="font-style: normal; font-size: 0.85em; color: var(--text-dim);">(${total})</span>` : ''; })()}</td>
             <td class="mono">${formatNumber(alert.opening)}</td>
@@ -2340,14 +1979,6 @@
       currentPage = 1;
       render();
     }
-
-    document.querySelectorAll('[data-ai-filter]').forEach(button => {
-      button.addEventListener('click', () => {
-        activeAiFilter = button.dataset.aiFilter || '';
-        currentPage = 1;
-        render();
-      });
-    });
 
     function showBanner(message, type = 'success') {
       const banner = document.getElementById('statusBanner');
