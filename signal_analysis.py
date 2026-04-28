@@ -1,3 +1,4 @@
+import json
 import re
 from statistics import mean
 
@@ -21,6 +22,28 @@ def _safe_round(value, digits: int = 1):
         return round(float(value), digits)
     except (TypeError, ValueError):
         return None
+
+
+def _fold(value) -> str:
+    return (
+        str(value or "").strip().lower()
+        .replace("ı", "i").replace("ş", "s")
+        .replace("ğ", "g").replace("ü", "u")
+        .replace("ö", "o").replace("ç", "c")
+    )
+
+
+def _normalize_direction(value) -> str:
+    text = str(value or "").strip().upper().replace("UST", "ÜST")
+    return "ÜST" if text == "ÜST" else "ALT"
+
+
+def _opposite_direction(direction: str) -> str:
+    return "ALT" if _normalize_direction(direction) == "ÜST" else "ÜST"
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
 
 
 def _split_match_name(match_name: str) -> tuple[str, str]:
@@ -499,11 +522,521 @@ def _script_warning(score: str, status: str, match_name: str, tournament: str) -
     return "Maç scriptinde belirgin ekstra risk yok."
 
 
+def _script_signal(
+    score: str,
+    status: str,
+    match_name: str,
+    tournament: str,
+    projected_gap: float | None = None,
+) -> dict | None:
+    clock = game_clock(status, match_name, tournament)
+    period = clock["period"]
+    remaining_min = clock["remaining_min"]
+    home_score, away_score = parse_score(score)
+    if home_score is None or away_score is None or period is None:
+        return None
+
+    gap = abs(home_score - away_score)
+    if period >= 4 and remaining_min is not None and remaining_min <= 5 and gap >= 16:
+        return {
+            "direction": "ALT",
+            "strength": 16,
+            "confidence": 82,
+            "reason": f"Q4 son bölüm blowout: fark {gap}; rotasyon ve hücum kalitesi düşebilir.",
+            "pace_state": "tempo_drop",
+        }
+    if period >= 4 and remaining_min is not None and remaining_min <= 6 and gap <= 7:
+        return {
+            "direction": "ÜST",
+            "strength": 14,
+            "confidence": 76,
+            "reason": f"Q4 yakın maç: fark {gap}; faul oyunu/erken hücumlar toplamı yukarı iter.",
+            "pace_state": "tempo_rise",
+        }
+    if period >= 3 and gap >= 16:
+        if projected_gap is not None and projected_gap >= 6 and not (period >= 4 and remaining_min is not None and remaining_min <= 6):
+            return {
+                "direction": "ÜST",
+                "strength": 15,
+                "confidence": 74,
+                "reason": f"Maç kopuyor ama tempo yukarıda: fark {gap}, projeksiyon canlıdan {projected_gap:.1f} yüksek.",
+                "pace_state": "runaway_rise",
+            }
+        return {
+            "direction": "ALT",
+            "strength": 11,
+            "confidence": 68,
+            "reason": f"Kopma riski: fark {gap}; öndeki takım set hücumuna ve süre eritmeye dönebilir.",
+            "pace_state": "blowout_risk",
+        }
+    return None
+
+
+def _period_key(status: str, alert_moment: str = "") -> str:
+    source = alert_moment or status or ""
+    s = _fold(source)
+    if not s:
+        return "period:unknown"
+    if "devre arasi" in s or re.search(r"\bht\b", s):
+        return "period:q2_ht"
+    if "q1" in s or re.search(r"(^|\D)1(?:q|\.|c|st|\s*-)", s):
+        return "period:q1"
+    if "q2" in s or re.search(r"(^|\D)2(?:q|\.|c|nd|\s*-)", s):
+        return "period:q2_ht"
+    if "q3" in s or re.search(r"(^|\D)3(?:q|\.|c|rd|\s*-)", s):
+        return "period:q3"
+    if "q4" in s or re.search(r"(^|\D)4(?:q|\.|c|th|\s*-)", s):
+        return "period:q4"
+    return "period:unknown"
+
+
+def _diff_key(diff) -> str:
+    value = abs(_safe_float(diff) or 0)
+    if value < 12:
+        return "diff:10_12"
+    if value < 16:
+        return "diff:12_16"
+    if value < 20:
+        return "diff:16_20"
+    return "diff:20_plus"
+
+
+def _edge_key(fair_edge) -> str:
+    edge = _safe_float(fair_edge)
+    if edge is None:
+        return "fair:none"
+    if edge <= -6:
+        return "fair:alt_strong"
+    if edge < -2:
+        return "fair:alt_mild"
+    if edge < 2:
+        return "fair:neutral"
+    if edge < 6:
+        return "fair:ust_mild"
+    return "fair:ust_strong"
+
+
+def _projected_gap_key(projected_total, live) -> str:
+    projected = _safe_float(projected_total)
+    live_total = _safe_float(live)
+    if projected is None or live_total is None:
+        return "projection:none"
+    gap = projected - live_total
+    if gap <= -8:
+        return "projection:alt_strong"
+    if gap < -3:
+        return "projection:alt_mild"
+    if gap < 3:
+        return "projection:neutral"
+    if gap < 8:
+        return "projection:ust_mild"
+    return "projection:ust_strong"
+
+
+def _signal_count_key(value) -> str:
+    try:
+        count = int(value or 1)
+    except (TypeError, ValueError):
+        count = 1
+    return "signal:first" if count <= 1 else "signal:repeat"
+
+
+def _tournament_key(value) -> str | None:
+    cleaned = re.sub(r"\s+", " ", str(value or "").strip().lower())
+    if not cleaned:
+        return None
+    return f"tournament:{cleaned[:80]}"
+
+
+def _backtest_keys_from_values(
+    *,
+    legacy_direction: str,
+    diff,
+    status: str = "",
+    alert_moment: str = "",
+    fair_edge=None,
+    projected_total=None,
+    live=None,
+    signal_count=1,
+    tournament: str = "",
+) -> list[str]:
+    keys = [
+        "all",
+        f"legacy:{_normalize_direction(legacy_direction)}",
+        _period_key(status, alert_moment),
+        _diff_key(diff),
+        _edge_key(fair_edge),
+        _projected_gap_key(projected_total, live),
+        _signal_count_key(signal_count),
+    ]
+    t_key = _tournament_key(tournament)
+    if t_key:
+        keys.append(t_key)
+    return keys
+
+
+def build_backtest_profile(rows: list[dict] | None) -> dict:
+    """
+    Silinen ve sonucu belli sinyallerden fade edilebilir bir profil çıkarır.
+    Her bucket için iki aday yön de skorlanır: aynı yöndeki başarılar + ters yöndeki
+    başarısızlıklar, aday yönün kazanımı sayılır.
+    """
+    buckets: dict[str, dict[str, dict[str, int]]] = {}
+    resolved = 0
+
+    def add_bucket(key: str, row_direction: str, success: bool) -> None:
+        bucket = buckets.setdefault(
+            key,
+            {
+                "ALT": {"wins": 0, "total": 0},
+                "ÜST": {"wins": 0, "total": 0},
+            },
+        )
+        for candidate in ("ALT", "ÜST"):
+            bucket[candidate]["total"] += 1
+            candidate_won = (
+                (row_direction == candidate and success)
+                or (row_direction != candidate and not success)
+            )
+            if candidate_won:
+                bucket[candidate]["wins"] += 1
+
+    for row in rows or []:
+        result = _fold(row.get("result"))
+        if result not in {"basarili", "basarisiz"}:
+            continue
+        resolved += 1
+        direction = _normalize_direction(row.get("direction"))
+        success = result == "basarili"
+        analysis = row.get("analysis")
+        if not isinstance(analysis, dict):
+            try:
+                analysis = json.loads(row.get("ai_analysis") or "{}")
+            except Exception:
+                analysis = {}
+        fair_edge = analysis.get("fair_edge", row.get("fair_edge"))
+        projected = analysis.get("projected_total", row.get("projected"))
+        keys = _backtest_keys_from_values(
+            legacy_direction=analysis.get("legacy_direction") or direction,
+            diff=row.get("diff"),
+            status=row.get("status") or "",
+            alert_moment=row.get("alert_moment") or "",
+            fair_edge=fair_edge,
+            projected_total=projected,
+            live=row.get("live"),
+            signal_count=row.get("signal_count") or 1,
+            tournament=row.get("tournament") or "",
+        )
+        for key in keys:
+            add_bucket(key, direction, success)
+
+    return {"sample_size": resolved, "buckets": buckets}
+
+
+def _bucket_rate(profile: dict | None, key: str, direction: str) -> dict | None:
+    if not profile:
+        return None
+    bucket = (profile.get("buckets") or {}).get(key) or {}
+    stats = bucket.get(_normalize_direction(direction))
+    if not stats or int(stats.get("total") or 0) <= 0:
+        return None
+    total = int(stats.get("total") or 0)
+    wins = int(stats.get("wins") or 0)
+    return {"key": key, "wins": wins, "total": total, "rate": round((wins / total) * 100, 1)}
+
+
+def _backtest_direction_scores(profile: dict | None, keys: list[str]) -> dict:
+    weights = {
+        "all": 0.8,
+        "legacy": 1.1,
+        "period": 0.9,
+        "diff": 1.1,
+        "fair": 1.35,
+        "projection": 1.35,
+        "signal": 0.75,
+        "tournament": 0.85,
+    }
+    result = {}
+    for direction in ("ALT", "ÜST"):
+        weighted_sum = 0.0
+        weight_sum = 0.0
+        samples = 0
+        used = []
+        for key in keys:
+            stats = _bucket_rate(profile, key, direction)
+            if not stats:
+                continue
+            total = stats["total"]
+            if total < 8 and not key.startswith("all"):
+                continue
+            prefix = key.split(":", 1)[0]
+            weight = weights.get(prefix, 0.7) * _clamp(total / 60, 0.35, 1.4)
+            weighted_sum += stats["rate"] * weight
+            weight_sum += weight
+            samples += total
+            used.append(stats)
+        rate = round(weighted_sum / weight_sum, 1) if weight_sum > 0 else None
+        result[direction] = {"rate": rate, "samples": samples, "buckets": used[:7]}
+    return result
+
+
+def _vote(name: str, direction: str, strength: float, confidence: float, reason: str) -> dict:
+    direction = _normalize_direction(direction)
+    strength = round(_clamp(float(strength), 0, 30), 1)
+    confidence = round(_clamp(float(confidence), 0, 100), 1)
+    return {
+        "name": name,
+        "direction": direction,
+        "strength": strength,
+        "confidence": confidence,
+        "score": round(strength * (confidence / 100), 1),
+        "reason": reason,
+    }
+
+
+def _decision_from_components(
+    *,
+    legacy_direction: str,
+    live: float,
+    opening: float,
+    diff: float,
+    threshold: float,
+    status: str,
+    alert_moment: str = "",
+    score: str = "",
+    match_name: str = "",
+    tournament: str = "",
+    projected_total: float | None = None,
+    fair_edge: float | None = None,
+    history_total: float | None = None,
+    h2h_over_pct: float | None = None,
+    h2h_quality_score: float | None = None,
+    pace_anomaly_direction: str | None = None,
+    pace_anomaly_pct: float | None = None,
+    signal_count: int = 1,
+    backtest_profile: dict | None = None,
+) -> dict:
+    legacy_direction = _normalize_direction(legacy_direction)
+    votes: list[dict] = []
+
+    abs_diff = abs(float(diff or 0))
+    legacy_strength = _clamp(8 + (abs_diff - float(threshold or 0)) * 0.7, 8, 18)
+    votes.append(_vote(
+        "Eski barem sinyali",
+        legacy_direction,
+        legacy_strength,
+        66,
+        f"Eski mantık korundu: canlı-açılış farkı {diff:+.1f}, eşik {float(threshold or 0):.1f}.",
+    ))
+
+    if fair_edge is not None:
+        edge = float(fair_edge)
+        if edge >= 3:
+            votes.append(_vote(
+                "Adil barem değeri",
+                "ÜST",
+                _clamp(8 + abs(edge) * 0.9, 8, 24),
+                78 if abs(edge) >= 6 else 64,
+                f"Adil barem canlıdan {edge:.1f} yüksek; piyasa aşağıda kalmış.",
+            ))
+        elif edge <= -3:
+            votes.append(_vote(
+                "Adil barem değeri",
+                "ALT",
+                _clamp(8 + abs(edge) * 0.9, 8, 24),
+                78 if abs(edge) >= 6 else 64,
+                f"Adil barem canlıdan {abs(edge):.1f} düşük; piyasa fazla şişmiş.",
+            ))
+
+    projected_gap = None
+    if projected_total is not None:
+        projected_gap = round(float(projected_total) - float(live), 1)
+        if projected_gap >= 4:
+            votes.append(_vote(
+                "Canlı tempo/projeksiyon",
+                "ÜST",
+                _clamp(7 + projected_gap * 0.75, 7, 22),
+                74 if projected_gap >= 8 else 62,
+                f"Regresyonlu projeksiyon canlı baremin {projected_gap:.1f} üstünde.",
+            ))
+        elif projected_gap <= -4:
+            votes.append(_vote(
+                "Canlı tempo/projeksiyon",
+                "ALT",
+                _clamp(7 + abs(projected_gap) * 0.75, 7, 22),
+                74 if projected_gap <= -8 else 62,
+                f"Regresyonlu projeksiyon canlı baremin {abs(projected_gap):.1f} altında.",
+            ))
+
+    if history_total is not None:
+        history_gap = round(float(history_total) - float(live), 1)
+        quality = _clamp((float(h2h_quality_score or 65) + 35) / 100, 0.45, 1.0)
+        if history_gap >= 4:
+            votes.append(_vote(
+                "Takım/H2H regresyonu",
+                "ÜST",
+                _clamp((6 + history_gap * 0.55) * quality, 4, 16),
+                58 + quality * 20,
+                f"Tarihsel/son form toplamı canlıdan {history_gap:.1f} yüksek.",
+            ))
+        elif history_gap <= -4:
+            votes.append(_vote(
+                "Takım/H2H regresyonu",
+                "ALT",
+                _clamp((6 + abs(history_gap) * 0.55) * quality, 4, 16),
+                58 + quality * 20,
+                f"Tarihsel/son form toplamı canlıdan {abs(history_gap):.1f} düşük.",
+            ))
+
+    if h2h_over_pct is not None:
+        over = float(h2h_over_pct)
+        if over >= 62:
+            votes.append(_vote("H2H over eğilimi", "ÜST", _clamp((over - 50) * 0.55, 5, 12), 58, f"H2H over oranı %{over:.0f}."))
+        elif over <= 38:
+            votes.append(_vote("H2H under eğilimi", "ALT", _clamp((50 - over) * 0.55, 5, 12), 58, f"H2H under tarafı güçlü; over oranı %{over:.0f}."))
+
+    if pace_anomaly_direction:
+        pct = abs(float(pace_anomaly_pct or 0))
+        votes.append(_vote(
+            "Çeyrek hız anomalisi",
+            pace_anomaly_direction,
+            _clamp(7 + pct * 0.15, 7, 15),
+            64,
+            f"Çeyrek hızı ortalamadan %{pct:.0f} saptı; regresyon {_normalize_direction(pace_anomaly_direction)} tarafında.",
+        ))
+
+    script_vote = _script_signal(score, status, match_name, tournament, projected_gap)
+    if script_vote:
+        votes.append(_vote(
+            "Maç scripti",
+            script_vote["direction"],
+            script_vote["strength"],
+            script_vote["confidence"],
+            script_vote["reason"],
+        ))
+
+    backtest_keys = _backtest_keys_from_values(
+        legacy_direction=legacy_direction,
+        diff=diff,
+        status=status,
+        alert_moment=alert_moment,
+        fair_edge=fair_edge,
+        projected_total=projected_total,
+        live=live,
+        signal_count=signal_count,
+        tournament=tournament,
+    )
+    backtest_scores = _backtest_direction_scores(backtest_profile, backtest_keys)
+    alt_rate = backtest_scores.get("ALT", {}).get("rate")
+    ust_rate = backtest_scores.get("ÜST", {}).get("rate")
+    if alt_rate is not None and ust_rate is not None:
+        delta = round(abs(alt_rate - ust_rate), 1)
+        better = "ALT" if alt_rate > ust_rate else "ÜST"
+        better_samples = backtest_scores[better]["samples"]
+        if delta >= 3 and better_samples >= 25:
+            votes.append(_vote(
+                "Backtest uyumu",
+                better,
+                _clamp(5 + delta * 0.55, 5, 15),
+                _clamp(56 + delta + min(better_samples, 250) / 12, 56, 82),
+                f"Benzer geçmiş bucket'larda {better} %{max(alt_rate, ust_rate):.1f}, diğer taraf %{min(alt_rate, ust_rate):.1f}.",
+            ))
+
+    totals = {"ALT": 0.0, "ÜST": 0.0}
+    for item in votes:
+        totals[item["direction"]] += float(item["score"])
+
+    final_direction = "ALT" if totals["ALT"] > totals["ÜST"] else "ÜST"
+    if abs(totals["ALT"] - totals["ÜST"]) < 2.5:
+        final_direction = legacy_direction
+
+    final_score_raw = totals[final_direction]
+    opposite_score = totals[_opposite_direction(final_direction)]
+    consensus = final_score_raw / max(final_score_raw + opposite_score, 1)
+    best_rate = backtest_scores.get(final_direction, {}).get("rate")
+    backtest_component = best_rate if best_rate is not None else 50
+    ai_score = round(_clamp((consensus * 62) + ((backtest_component - 35) * 0.75), 0, 100), 1)
+
+    if ai_score >= 72:
+        tier = "A"
+    elif ai_score >= 62:
+        tier = "B"
+    elif ai_score >= 52:
+        tier = "C"
+    else:
+        tier = "D"
+
+    flip_reason = ""
+    if final_direction != legacy_direction:
+        flip_reason = (
+            f"Eski sinyal {legacy_direction}, AI karar {final_direction}: "
+            f"tempo/adil barem/script/backtest toplamı yönü çevirdi."
+        )
+
+    return {
+        "direction": final_direction,
+        "legacy_direction": legacy_direction,
+        "signal_scores": {key: round(value, 1) for key, value in totals.items()},
+        "signal_votes": sorted(votes, key=lambda item: item["score"], reverse=True),
+        "ai_score": ai_score,
+        "ai_tier": tier,
+        "ai_confidence": round(consensus * 100, 1),
+        "backtest": {
+            "sample_size": (backtest_profile or {}).get("sample_size", 0),
+            "keys": backtest_keys,
+            "scores": backtest_scores,
+            "chosen_rate": best_rate,
+            "chosen_samples": backtest_scores.get(final_direction, {}).get("samples", 0),
+        },
+        "flip_reason": flip_reason,
+    }
+
+
+def enrich_analysis_with_backtest(
+    alert: dict,
+    analysis: dict | None,
+    backtest_profile: dict | None = None,
+    threshold: float = 0,
+) -> dict:
+    analysis = dict(analysis or {})
+    opening = _safe_float(alert.get("opening_total", alert.get("opening")))
+    live = _safe_float(alert.get("inplay_total", alert.get("live")))
+    if opening is None or live is None:
+        return analysis
+    legacy_direction = analysis.get("legacy_direction") or alert.get("direction") or ("ALT" if live - opening > 0 else "ÜST")
+    diff = _safe_float(alert.get("diff"))
+    if diff is None:
+        diff = abs(live - opening)
+    decision = _decision_from_components(
+        legacy_direction=legacy_direction,
+        live=live,
+        opening=opening,
+        diff=diff,
+        threshold=threshold,
+        status=alert.get("status") or "",
+        alert_moment=alert.get("alert_moment") or "",
+        score=alert.get("score") or "",
+        match_name=alert.get("match_name") or "",
+        tournament=alert.get("tournament") or "",
+        projected_total=analysis.get("projected_total"),
+        fair_edge=analysis.get("fair_edge"),
+        history_total=analysis.get("history_total"),
+        h2h_over_pct=(analysis.get("team_context") or {}).get("h2h_over_pct") if isinstance(analysis.get("team_context"), dict) else None,
+        h2h_quality_score=analysis.get("h2h_quality_score"),
+        pace_anomaly_direction=analysis.get("pace_anomaly_direction"),
+        pace_anomaly_pct=analysis.get("pace_anomaly_pct"),
+        signal_count=alert.get("signal_count") or 1,
+        backtest_profile=backtest_profile,
+    )
+    return {**analysis, **decision}
+
+
 def build_signal_analysis(
     match: dict,
     context: dict | None = None,
     threshold: float = 0,
     pace_data: dict | None = None,
+    backtest_profile: dict | None = None,
 ) -> dict:
     context = context or {}
     opening = float(match.get("opening_total", match.get("opening")))
@@ -513,7 +1046,8 @@ def build_signal_analysis(
     status = match.get("status", "")
     score = match.get("score", "")
 
-    direction = str(match.get("direction") or ("ALT" if live - opening > 0 else "ÜST")).replace("UST", "ÜST")
+    legacy_direction = _normalize_direction(match.get("direction") or ("ALT" if live - opening > 0 else "ÜST"))
+    direction = legacy_direction
     line_delta_open = round(live - opening, 1)
     h2h_body = (context.get("h2h") or {}).get("body_text", "") if isinstance(context, dict) else ""
     h2h_metrics = _extract_h2h_metrics(h2h_body, match_name)
@@ -584,6 +1118,31 @@ def build_signal_analysis(
     if fair_edge is not None and abs(fair_edge) <= 3:
         warnings.append("Adil barem canlıya çok yakın; net değer alanı zayıf.")
 
+    decision = _decision_from_components(
+        legacy_direction=legacy_direction,
+        live=live,
+        opening=opening,
+        diff=line_delta_open,
+        threshold=threshold,
+        status=status,
+        alert_moment=match.get("alert_moment") or "",
+        score=score,
+        match_name=match_name,
+        tournament=tournament,
+        projected_total=projected_total,
+        fair_edge=fair_edge,
+        history_total=history_total,
+        h2h_over_pct=h2h_metrics.get("h2h_over_pct"),
+        h2h_quality_score=h2h_quality_score,
+        pace_anomaly_direction=pace_anomaly_direction,
+        pace_anomaly_pct=pace_anomaly_pct,
+        signal_count=match.get("signal_count") or 1,
+        backtest_profile=backtest_profile,
+    )
+    direction = decision["direction"]
+    if decision.get("flip_reason"):
+        warnings.insert(0, decision["flip_reason"])
+
     if fair_line is None:
         if projected_total is None:
             recommendation = "Adil barem hesaplanamadı: maç süresi/projeksiyon güvenilir okunamadı."
@@ -606,6 +1165,8 @@ def build_signal_analysis(
 
     result = {
         "direction": direction,
+        "legacy_direction": legacy_direction,
+        "final_direction": direction,
         "fair_line": fair_line,
         "fair_edge": fair_edge,
         "projected_total": _safe_round(projected_total),
@@ -635,5 +1196,12 @@ def build_signal_analysis(
         "pace_anomaly_pct": pace_anomaly_pct,
         "quarter_paces": quarter_paces,
         "pace_anomaly_note": pace_anomaly_note,
+        "signal_scores": decision.get("signal_scores"),
+        "signal_votes": decision.get("signal_votes"),
+        "ai_score": decision.get("ai_score"),
+        "ai_tier": decision.get("ai_tier"),
+        "ai_confidence": decision.get("ai_confidence"),
+        "backtest": decision.get("backtest"),
+        "flip_reason": decision.get("flip_reason"),
     }
     return result

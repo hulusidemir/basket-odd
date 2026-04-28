@@ -21,7 +21,7 @@ from finished_match_service import (
     run_deleted_match_result_cycle,
     run_single_deleted_match_result_check,
 )
-from signal_analysis import build_signal_analysis
+from signal_analysis import build_backtest_profile, build_signal_analysis, enrich_analysis_with_backtest
 
 config = Config()
 db = Database(config.DB_PATH)
@@ -45,7 +45,26 @@ def _parse_analysis(raw) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def enrich_alerts_with_analysis(alerts: list[dict]) -> list[dict]:
+def _trim_backtest_payload(backtest: dict | None) -> dict:
+    if not isinstance(backtest, dict):
+        return {}
+    scores = {}
+    for direction, item in (backtest.get("scores") or {}).items():
+        if not isinstance(item, dict):
+            continue
+        scores[direction] = {
+            "rate": item.get("rate"),
+            "samples": item.get("samples"),
+        }
+    return {
+        "sample_size": backtest.get("sample_size", 0),
+        "chosen_rate": backtest.get("chosen_rate"),
+        "chosen_samples": backtest.get("chosen_samples", 0),
+        "scores": scores,
+    }
+
+
+def enrich_alerts_with_analysis(alerts: list[dict], backtest_profile: dict | None = None) -> list[dict]:
     for alert in alerts:
         analysis = _parse_analysis(alert.get("ai_analysis"))
         alert.pop("ai_analysis", None)
@@ -59,7 +78,10 @@ def enrich_alerts_with_analysis(alerts: list[dict]) -> list[dict]:
                 },
                 {},
                 config.THRESHOLD,
+                backtest_profile=backtest_profile,
             )
+        elif backtest_profile is not None:
+            analysis = enrich_analysis_with_backtest(alert, analysis, backtest_profile, config.THRESHOLD)
         if analysis.get("projected_total") is None:
             analysis = {**analysis}
             analysis["fair_line"] = None
@@ -83,6 +105,8 @@ def enrich_alerts_with_analysis(alerts: list[dict]) -> list[dict]:
             }
             warnings = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
             analysis["warnings"] = [*warnings, *[note for note in inferred_notes if note not in warnings]]
+        if isinstance(analysis.get("backtest"), dict):
+            analysis = {**analysis, "backtest": _trim_backtest_payload(analysis.get("backtest"))}
         alert["analysis"] = analysis
         alert["fair_line"] = analysis.get("fair_line")
         alert["fair_edge"] = analysis.get("fair_edge")
@@ -92,6 +116,14 @@ def enrich_alerts_with_analysis(alerts: list[dict]) -> list[dict]:
         alert["h2h_total"] = analysis.get("h2h_total")
         alert["history_total"] = analysis.get("history_total")
         alert["recommendation"] = analysis.get("recommendation") or ""
+        alert["legacy_direction"] = analysis.get("legacy_direction") or alert.get("direction")
+        alert["final_direction"] = analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
+        alert["ai_score"] = analysis.get("ai_score")
+        alert["ai_tier"] = analysis.get("ai_tier")
+        alert["ai_confidence"] = analysis.get("ai_confidence")
+        alert["signal_scores"] = analysis.get("signal_scores") or {}
+        alert["signal_votes"] = analysis.get("signal_votes") if isinstance(analysis.get("signal_votes"), list) else []
+        alert["backtest"] = _trim_backtest_payload(analysis.get("backtest"))
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
     return alerts
 
@@ -134,9 +166,10 @@ def _safe_float(value, default: float = 0.0) -> float:
 
 
 def build_bet_builder(max_count: int) -> dict:
+    backtest_profile = build_backtest_profile(db.recent_deleted_alerts(limit=None))
     alerts = [
         alert
-        for alert in enrich_alerts_with_analysis(db.recent_alerts(limit=500))
+        for alert in enrich_alerts_with_analysis(db.recent_alerts(limit=500), backtest_profile)
         if _is_live_basketball_status(alert.get("status", ""))
         and _is_recent_alert(alert.get("alerted_at", ""))
     ]
@@ -189,6 +222,9 @@ def build_bet_builder(max_count: int) -> dict:
         history_total = alert.get("history_total")
         opening_gap = round(live - opening, 1)
         signal_priority = abs(diff)
+        ai_score = _safe_float(alert.get("ai_score"))
+        if ai_score > 0:
+            signal_priority += ai_score / 10
         candidates.append({
             "match_id": alert.get("match_id"),
             "match_name": alert.get("match_name", ""),
@@ -209,6 +245,8 @@ def build_bet_builder(max_count: int) -> dict:
             "opening_gap": opening_gap,
             "diff": round(diff, 1),
             "signal_priority": signal_priority,
+            "ai_score": round(ai_score, 1) if ai_score > 0 else None,
+            "ai_tier": alert.get("ai_tier"),
             "bet_placed": int(alert.get("bet_placed") or 0),
             "followed": int(alert.get("followed") or 0),
             "ignored": int(alert.get("ignored") or 0),
@@ -282,7 +320,7 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
 
     numeric_float_fields = {
         "opening", "live", "projected", "fair_line", "fair_edge",
-        "history_total", "opening_gap", "diff", "signal_priority",
+        "history_total", "opening_gap", "diff", "signal_priority", "ai_score",
     }
     numeric_int_fields = set()
     keep_fields = {
@@ -296,6 +334,7 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
         "status",
         "score",
         "recommendation",
+        "ai_tier",
     }
     bool_fields = {"bet_placed", "followed", "ignored"}
 
@@ -350,15 +389,20 @@ def deleted_matches():
 
 @app.route("/api/alerts")
 def api_alerts():
-    return jsonify(enrich_alerts_with_analysis(db.recent_alerts(limit=500)))
+    backtest_profile = build_backtest_profile(db.recent_deleted_alerts(limit=None))
+    return jsonify(enrich_alerts_with_analysis(db.recent_alerts(limit=500), backtest_profile))
 
 
-def _lightweight_enrich_deleted_alerts(alerts: list[dict]) -> list[dict]:
+def _lightweight_enrich_deleted_alerts(alerts: list[dict], backtest_profile: dict | None = None) -> list[dict]:
     for alert in alerts:
         analysis = _parse_analysis(alert.get("ai_analysis"))
         alert.pop("ai_analysis", None)
         if not analysis:
             analysis = {}
+        elif backtest_profile is not None:
+            analysis = enrich_analysis_with_backtest(alert, analysis, backtest_profile, config.THRESHOLD)
+        if isinstance(analysis.get("backtest"), dict):
+            analysis = {**analysis, "backtest": _trim_backtest_payload(analysis.get("backtest"))}
         alert["analysis"] = analysis
         alert["fair_line"] = analysis.get("fair_line")
         alert["fair_edge"] = analysis.get("fair_edge")
@@ -368,6 +412,14 @@ def _lightweight_enrich_deleted_alerts(alerts: list[dict]) -> list[dict]:
         alert["h2h_total"] = analysis.get("h2h_total")
         alert["history_total"] = analysis.get("history_total")
         alert["recommendation"] = analysis.get("recommendation") or ""
+        alert["legacy_direction"] = analysis.get("legacy_direction") or alert.get("direction")
+        alert["final_direction"] = analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
+        alert["ai_score"] = analysis.get("ai_score")
+        alert["ai_tier"] = analysis.get("ai_tier")
+        alert["ai_confidence"] = analysis.get("ai_confidence")
+        alert["signal_scores"] = analysis.get("signal_scores") or {}
+        alert["signal_votes"] = analysis.get("signal_votes") if isinstance(analysis.get("signal_votes"), list) else []
+        alert["backtest"] = _trim_backtest_payload(analysis.get("backtest"))
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
     return alerts
 
@@ -376,13 +428,16 @@ def _lightweight_enrich_deleted_alerts(alerts: list[dict]) -> list[dict]:
 def api_deleted_matches():
     limit = request.args.get("limit", default=1000, type=int) or 1000
     limit = max(1, min(limit, 5000))
-    return jsonify(_lightweight_enrich_deleted_alerts(db.recent_deleted_alerts(limit=limit)))
+    backtest_profile = build_backtest_profile(db.recent_deleted_alerts(limit=None))
+    return jsonify(_lightweight_enrich_deleted_alerts(db.recent_deleted_alerts(limit=limit), backtest_profile))
 
 
 @app.route("/api/deleted-matches/export.csv")
 def api_export_finished_deleted_matches_csv():
+    deleted_rows = db.recent_deleted_alerts(limit=None)
+    backtest_profile = build_backtest_profile(deleted_rows)
     rows = [
-        row for row in _lightweight_enrich_deleted_alerts(db.recent_deleted_alerts(limit=None))
+        row for row in _lightweight_enrich_deleted_alerts(deleted_rows, backtest_profile)
         if str(row.get("result") or "").strip()
     ]
 
@@ -391,13 +446,15 @@ def api_export_finished_deleted_matches_csv():
     writer = csv.writer(output)
     writer.writerow([
         "Maç", "Sinyal Anı", "Sinyal Türü", "Skor",
-        "Açılış", "Canlı", "Adil Barem", "Sonuç", "Not",
+        "Açılış", "Canlı", "Proj.", "Adil Barem", "AI Skor", "Sonuç", "Not",
     ])
 
     for row in rows:
         direction = str(row.get("direction") or "").strip()
         match_name = re.sub(r"\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}\s*", "", str(row.get("match_name") or ""))
         match_name = re.sub(r"\s*betting odds\s*", "", match_name, flags=re.IGNORECASE).strip()
+        projected = row.get("projected")
+        projected_cell = f"{float(projected):.1f}" if projected is not None else ""
         fair_line = row.get("fair_line")
         fair_line_cell = f"{float(fair_line):.1f}" if fair_line is not None else "Hesaplanamıyor"
         writer.writerow([
@@ -407,7 +464,9 @@ def api_export_finished_deleted_matches_csv():
             row.get("score") or "",
             row.get("opening") if row.get("opening") is not None else "",
             row.get("live") if row.get("live") is not None else "",
+            projected_cell,
             fair_line_cell,
+            row.get("ai_score") if row.get("ai_score") is not None else "",
             row.get("result") or "",
             row.get("note") or "",
         ])
@@ -652,7 +711,7 @@ def build_deleted_matches_report(signals: list) -> dict:
 
     period_groups: dict[str, list] = {label: [] for label in _PERIOD_BUCKET_ORDER}
     for s in signals:
-        period_groups[_period_bucket(s.get("status"))].append(s)
+        period_groups[_period_bucket(s.get("alert_moment") or s.get("status"))].append(s)
     period_buckets = []
     for label in _PERIOD_BUCKET_ORDER:
         rows = period_groups.get(label) or []

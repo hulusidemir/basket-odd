@@ -1361,10 +1361,12 @@
               <th data-sort="match_name">Maç</th>
               <th data-sort="alert_moment">Sinyal Anı</th>
               <th data-sort="direction">Sinyal</th>
+              <th data-sort="ai_score">AI</th>
               <th data-sort="status">Durum</th>
               <th data-sort="score">Skor</th>
               <th data-sort="opening">Açılış</th>
               <th data-sort="live">Canlı</th>
+              <th data-sort="projected">Proj.</th>
               <th data-sort="diff">Fark</th>
               <th data-sort="fair_line">Adil Barem</th>
               <th data-sort="result">Sonuç</th>
@@ -1516,6 +1518,18 @@
       return Number.isFinite(num) ? formatNumber(num) : 'Hesaplanamıyor';
     }
 
+    function aiScoreValue(alert) {
+      const analysis = alertAnalysis(alert);
+      const num = Number(alert.ai_score ?? analysis.ai_score);
+      return Number.isFinite(num) ? num : null;
+    }
+
+    function aiScoreCell(alert) {
+      const value = aiScoreValue(alert);
+      const tier = alert.ai_tier || alertAnalysis(alert).ai_tier || '';
+      return `<span class="badge small-badge" title="AI Skor">${value === null ? '-' : `${value.toFixed(0)}${tier ? ' ' + escapeHtml(tier) : ''}`}</span>`;
+    }
+
     function fairInfoClass(alert) {
       const edge = Math.abs(Number(fairEdgeValue(alert)));
       return Number.isFinite(edge) && edge > 10 ? 'red' : 'yellow';
@@ -1624,6 +1638,13 @@
       const live = Number(alert.live);
       const lineMove = Number.isFinite(opening) && Number.isFinite(live) ? live - opening : null;
       const fairEdge = Number(analysis.fair_edge ?? alert.fair_edge);
+      const aiScore = aiScoreValue(alert);
+      const aiTier = alert.ai_tier || analysis.ai_tier || '-';
+      const legacyDir = analysis.legacy_direction || alert.legacy_direction || alert.direction || '-';
+      const finalDir = analysis.final_direction || alert.final_direction || analysis.direction || alert.direction || '-';
+      const signalScores = analysis.signal_scores || alert.signal_scores || {};
+      const voteRows = Array.isArray(analysis.signal_votes || alert.signal_votes) ? (analysis.signal_votes || alert.signal_votes).slice(0, 6) : [];
+      const voteNotes = voteRows.map(v => `${v.name || '-'} · ${v.direction || '-'} · ${formatNumber(v.score)}`);
       const warnings = Array.isArray(alert.warnings) && alert.warnings.length
         ? alert.warnings
         : (Array.isArray(analysis.warnings) ? analysis.warnings : []);
@@ -1633,6 +1654,7 @@
         analysis.script_note,
         analysis.h2h_note,
         analysis.history_note,
+        ...voteNotes,
         ...warnings,
       ].filter(Boolean);
       const matchName = cleanMatchName(alert.match_name || '-');
@@ -1648,6 +1670,9 @@
             <ul class="signal-metrics-list">
               ${modalListItem('Açılış', formatNumber(alert.opening))}
               ${modalListItem('Canlı', formatNumber(alert.live))}
+              ${modalListItem('AI Skor', aiScore === null ? '-' : `${aiScore.toFixed(0)}/100 ${aiTier}`)}
+              ${modalListItem('Eski / AI Yön', `${legacyDir} → ${finalDir}`)}
+              ${modalListItem('ALT / ÜST Puan', `${formatNumber(signalScores.ALT)} / ${formatNumber(signalScores['ÜST'])}`)}
               ${modalListItem('Projeksiyon', formatNumber(alert.projected ?? analysis.projected_total))}
               ${modalListItem('H2H Ort.', formatNumber(alert.h2h_total ?? analysis.h2h_total))}
               ${modalListItem('H2H Kalite', analysis.h2h_quality_score != null ? `${analysis.h2h_quality_score}/100` : '-')}
@@ -1748,6 +1773,9 @@
         alert.note,
         recommendationText(alert),
         fairLineValue(alert),
+        alert.projected,
+        alert.ai_score,
+        alert.ai_tier,
       ].some(value => String(value || '').toLowerCase().includes(q)));
       return sortedAlerts(rows);
     }
@@ -1760,7 +1788,7 @@
 
     function sortValue(alert, field) {
       if (field === 'deleted_at' || field === 'alerted_at') return parseDateValue(alert[field]);
-      if (['opening', 'live', 'diff', 'signal_count', 'fair_line', 'fair_edge'].includes(field)) {
+      if (['opening', 'live', 'projected', 'diff', 'signal_count', 'fair_line', 'fair_edge', 'ai_score'].includes(field)) {
         const num = Number(alert[field]);
         return Number.isFinite(num) ? num : -Infinity;
       }
@@ -1956,10 +1984,12 @@
               ${signalBadge(alert)}
               ${Number(alert.signal_count || 0) > 1 ? `<div class="subline">${Number(alert.signal_count)}. sinyal</div>` : ''}
             </td>
+            <td>${aiScoreCell(alert)}</td>
             <td>${escapeHtml(alert.status || '-')}</td>
             <td class="mono">${escapeHtml(alert.score || '-')}${(() => { const total = calculateScoreTotal(alert.score); return total !== null ? ` <span style="font-style: normal; font-size: 0.85em; color: var(--text-dim);">(${total})</span>` : ''; })()}</td>
             <td class="mono">${formatNumber(alert.opening)}</td>
             <td class="mono">${formatNumber(alert.live)}</td>
+            <td class="mono">${formatNumber(alert.projected)}</td>
             <td class="mono">${formatNumber(alert.diff)}</td>
             <td>${fairLineCell(alert)}</td>
             <td>${resultCell(alert)}</td>

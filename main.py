@@ -18,7 +18,7 @@ from db import Database
 from notifier import TelegramNotifier
 from pace_tracker import PaceTracker
 from projection import game_clock, parse_score
-from signal_analysis import build_signal_analysis
+from signal_analysis import build_backtest_profile, build_signal_analysis
 
 
 def setup_logging(level: str):
@@ -35,6 +35,7 @@ async def process_match(
     notifier: TelegramNotifier,
     config: Config,
     pace_tracker: PaceTracker | None = None,
+    backtest_profile: dict | None = None,
 ) -> None:
     match_id = match["match_id"]
     match_name = match["match_name"]
@@ -103,7 +104,7 @@ async def process_match(
     if abs_diff < config.THRESHOLD:
         return
 
-    direction = "ALT" if diff > 0 else "ÜST"
+    legacy_direction = "ALT" if diff > 0 else "ÜST"
 
     total_alerts = db.count_match_alerts(match_id)
     if total_alerts >= config.MAX_SIGNALS_PER_MATCH:
@@ -119,15 +120,18 @@ async def process_match(
     analysis = build_signal_analysis(
         {
             **match,
-            "direction": direction,
+            "direction": legacy_direction,
             "opening_total": opening_total,
             "inplay_total": inplay_total,
             "prematch_total": prematch_total,
+            "signal_count": signal_count,
         },
         context,
         config.THRESHOLD,
         pace_data=pace_data,
+        backtest_profile=backtest_profile,
     )
+    direction = analysis.get("direction") or legacy_direction
 
     await notifier.send_alert(
         match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
@@ -185,9 +189,10 @@ async def run():
         try:
             matches = await scraper.get_live_basketball_totals()
             log.info("Captured opening/in-play totals for %s matches.", len(matches))
+            backtest_profile = build_backtest_profile(db.recent_deleted_alerts(limit=None))
 
             for match in matches:
-                await process_match(match, db, notifier, config, pace_tracker)
+                await process_match(match, db, notifier, config, pace_tracker, backtest_profile)
 
             consecutive_errors = 0
 

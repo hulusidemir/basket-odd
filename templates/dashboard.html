@@ -899,6 +899,7 @@
                 <th class="select-cell"><input class="match-select" id="selectAll" type="checkbox" onchange="selectPage(this.checked)" aria-label="Sayfadaki maçları seç"></th>
                 <th data-sort="alerted_at">Zaman</th>
                 <th data-sort="direction">Sinyal</th>
+                <th data-sort="ai_score">AI</th>
                 <th data-sort="fair_line">Adil</th>
                 <th data-sort="projected">Proj.</th>
                 <th data-sort="match_name">Maç</th>
@@ -1098,6 +1099,13 @@
       return `<span class="badge small-badge">${fmt(alert.projected)}</span>`;
     }
 
+    function aiScoreHtml(alert) {
+      const score = num(alert.ai_score);
+      if (score === null) return '<span class="badge small-badge">-</span>';
+      const tier = alert.ai_tier ? ` ${escapeHtml(alert.ai_tier)}` : '';
+      return `<span class="badge small-badge" title="AI Skor">${score.toFixed(0)}${tier}</span>`;
+    }
+
     function matchLink(alert) {
       const name = cleanMatchName(alert.match_name);
       const content = escapeHtml(name);
@@ -1133,7 +1141,7 @@
     }
 
     function sortValue(alert, field) {
-      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count'].includes(field)) {
+      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count', 'ai_score'].includes(field)) {
         return num(alert[field]) ?? Number.NEGATIVE_INFINITY;
       }
       if (field === 'alerted_at') return alert.alerted_at ? new Date(`${String(alert.alerted_at).replace(' ', 'T')}Z`).getTime() : 0;
@@ -1155,7 +1163,7 @@
       if (searchQuery) {
         const q = searchQuery.toLocaleLowerCase('tr-TR');
         list = list.filter(a => [
-          a.match_name, a.tournament, a.status, a.score, a.note, a.recommendation,
+          a.match_name, a.tournament, a.status, a.score, a.note, a.recommendation, a.ai_score, a.ai_tier,
         ].some(v => String(v || '').toLocaleLowerCase('tr-TR').includes(q)));
       }
       list.sort((a, b) => {
@@ -1218,6 +1226,7 @@
             <td class="select-cell"><input class="match-select" type="checkbox" ${selectedMatchIds.has(matchId) ? 'checked' : ''} onchange='toggleSelected(${matchIdArg}, this.checked)' aria-label="Maç seç"></td>
             <td class="mono">${timeText(a.alerted_at)}</td>
             <td>${directionBadge(a)} ${Number(a.signal_count || 1) > 1 ? `<span class="badge small-badge">${Number(a.signal_count)}. sinyal</span>` : ''}</td>
+            <td>${aiScoreHtml(a)}</td>
             <td>${fairHtml(a)}</td>
             <td>${projectedHtml(a)}</td>
             <td><div class="match-cell-wrap">${focusButton(a)}${matchLink(a)}${noteInfoButton(a)}</div></td>
@@ -1255,6 +1264,7 @@
               <div class="card-metric"><span>Zaman</span><strong>${timeText(a.alerted_at)}</strong></div>
               <div class="card-metric"><span>Durum</span><strong>${escapeHtml(a.status || '-')}</strong></div>
               <div class="card-metric"><span>Skor</span><strong>${escapeHtml(a.score || '-')}</strong></div>
+              <div class="card-metric"><span>AI Skor</span><strong>${fmt(a.ai_score, 0)}${a.ai_tier ? ' ' + escapeHtml(a.ai_tier) : ''}</strong></div>
               <div class="card-metric"><span>Açılış / Canlı</span><strong>${fmt(a.opening)} → ${fmt(a.live)}</strong></div>
               <div class="card-metric"><span>Adil / Proj.</span><strong>${fmt(a.fair_line)} / ${fmt(a.projected)}</strong></div>
               <div class="card-metric"><span>Fark</span><strong class="${diffCls}">${signed(a.diff)}</strong></div>
@@ -1538,6 +1548,14 @@
       const projected = num(alert.projected ?? analysis.projected_total);
       const h2h = num(alert.h2h_total ?? analysis.h2h_total);
       const teamRecent = num(alert.team_recent_total ?? analysis.team_recent_total);
+      const aiScore = num(alert.ai_score ?? analysis.ai_score);
+      const aiTier = alert.ai_tier || analysis.ai_tier || '-';
+      const legacyDir = analysis.legacy_direction || alert.legacy_direction || sigDir;
+      const signalScores = analysis.signal_scores || alert.signal_scores || {};
+      const voteRows = Array.isArray(analysis.signal_votes || alert.signal_votes) ? (analysis.signal_votes || alert.signal_votes).slice(0, 5) : [];
+      const voteHtml = voteRows.length
+        ? `<div class="sig-card" style="margin-bottom:12px;"><h4>AI Skor Sinyalleri</h4>${voteRows.map(v => `<div class="row"><span>${escapeHtml(v.name || '-')} · ${escapeHtml(v.direction || '-')}</span><strong>${fmt(v.score, 1)}</strong></div>`).join('')}</div>`
+        : '';
 
       let edgeBox = '';
       if (fairEdge !== null) {
@@ -1635,6 +1653,9 @@
           </div>
           <div class="sig-card">
             <h4>📊 Adil Ölçüler</h4>
+            <div class="row"><span>AI skor</span><strong>${aiScore !== null ? aiScore.toFixed(0) + '/100 ' + escapeHtml(aiTier) : '-'}</strong></div>
+            <div class="row"><span>Eski / AI yön</span><strong>${escapeHtml(legacyDir)} → ${escapeHtml(sigDir)}</strong></div>
+            <div class="row"><span>ALT / ÜST puan</span><strong>${fmt(signalScores.ALT, 1)} / ${fmt(signalScores['ÜST'], 1)}</strong></div>
             <div class="row"><span>Adil barem</span><strong>${fairNum !== null ? fairNum.toFixed(1) : '-'}</strong></div>
             <div class="row"><span>Projeksiyon</span><strong>${projected !== null ? projected.toFixed(1) : '-'}</strong></div>
             <div class="row"><span>H2H ort.</span><strong>${h2h !== null ? h2h.toFixed(1) : '-'}</strong></div>
@@ -1643,6 +1664,7 @@
         </div>
 
         ${edgeBox ? `<div style="margin-bottom:12px;">${edgeBox}</div>` : ''}
+        ${voteHtml}
 
         ${teamCard ? `<div style="margin-bottom:12px;">${teamCard}</div>` : ''}
 

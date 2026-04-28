@@ -47,9 +47,9 @@ class TelegramNotifier:
     ) -> dict:
         emoji = "🔻" if direction == "ALT" else "🔺"
         tip = (
-            "Canlı barem açılışa göre yükseldi"
-            if direction == "ALT"
-            else "Canlı barem açılışa göre düştü"
+            "Canlı barem açılışa göre yükseldi; eski tetik ALT tarafıydı."
+            if live >= opening
+            else "Canlı barem açılışa göre düştü; eski tetik ÜST tarafıydı."
         )
 
         _period_names = {1: "1. Çeyrek (Q1)", 2: "2. Çeyrek (Q2)", 3: "3. Çeyrek (Q3)", 4: "4. Çeyrek (Q4)"}
@@ -58,6 +58,12 @@ class TelegramNotifier:
         signal_line = f"🔁 <b>{signal_count}. sinyal</b>\n" if signal_count > 1 else ""
         prematch_line = f"Maç Öncesi: <b>{prematch:.1f}</b>\n" if prematch is not None else ""
         analysis = analysis or {}
+        legacy_direction = analysis.get("legacy_direction") or direction
+        ai_score = analysis.get("ai_score")
+        ai_tier = analysis.get("ai_tier")
+        ai_confidence = analysis.get("ai_confidence")
+        signal_scores = analysis.get("signal_scores") or {}
+        flip_reason = analysis.get("flip_reason") or ""
         fair_line = analysis.get("fair_line")
         fair_edge = analysis.get("fair_edge")
         projected = analysis.get("projected_total")
@@ -101,6 +107,21 @@ class TelegramNotifier:
                     f"<b>{fair_edge_abs:.1f}</b> puan fark var.\n"
                 )
         recommendation_line = f"💡 <b>Tavsiye:</b> {recommendation}\n" if recommendation else ""
+        ai_line = ""
+        if ai_score is not None:
+            side_scores = ""
+            if signal_scores:
+                side_scores = (
+                    f" (ALT {float(signal_scores.get('ALT', 0)):.1f} / "
+                    f"ÜST {float(signal_scores.get('ÜST', 0)):.1f})"
+                )
+            ai_line = (
+                f"• AI Skor: <b>{float(ai_score):.1f}/100</b>"
+                f"{f' ({ai_tier})' if ai_tier else ''}"
+                f"{f' · güven %{float(ai_confidence):.0f}' if ai_confidence is not None else ''}"
+                f"{side_scores}\n"
+            )
+        flip_line = f"• Eski sinyal: <b>{legacy_direction}</b> → AI karar: <b>{direction}</b>\n" if legacy_direction != direction else ""
 
         # Çeyrek hız anomali bloğu
         pace_anomaly_line = ""
@@ -147,9 +168,17 @@ class TelegramNotifier:
         if projection_lines or fair_line is not None:
             projection_section = (
                 f"\n<b>🧮 Analiz</b>\n"
+                f"{ai_line}"
+                f"{flip_line}"
                 f"{projection_lines}"
                 f"{weight_inline}"
                 f"{fair_block}"
+            )
+        elif ai_line:
+            projection_section = (
+                f"\n<b>🧮 Analiz</b>\n"
+                f"{ai_line}"
+                f"{flip_line}"
             )
 
         pace_section = ""
@@ -161,11 +190,13 @@ class TelegramNotifier:
             )
 
         warnings_block = ""
-        if fair_warning_line or fair_alert_line or warning_line:
+        flip_warning_line = f"❔ {flip_reason}\n" if flip_reason else ""
+        if fair_warning_line or fair_alert_line or warning_line or flip_warning_line:
             warnings_block = (
                 f"\n<b>⚠️ Uyarılar</b>\n"
                 f"{fair_warning_line}"
                 f"{fair_alert_line}"
+                f"{flip_warning_line}"
                 f"{warning_line}"
             )
 
@@ -173,7 +204,7 @@ class TelegramNotifier:
         if recommendation_line or tip:
             footer = (
                 f"\n{recommendation_line}"
-                f"💡 <i>{tip}</i>\n"
+                f"💡 <i>{tip} Nihai AI yön: {direction}.</i>\n"
             )
 
         text = (
