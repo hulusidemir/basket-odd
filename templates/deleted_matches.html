@@ -426,7 +426,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 1230px;
+      min-width: 1360px;
     }
 
     th,
@@ -626,6 +626,20 @@
       border: 1px solid rgba(34, 197, 94, 0.28);
     }
 
+    .sf-badge {
+      min-width: 48px;
+      border: 1px solid rgba(96, 165, 250, 0.42);
+      background: rgba(96, 165, 250, 0.14);
+      color: #93c5fd;
+      cursor: pointer;
+    }
+
+    .sf-badge:hover {
+      border-color: rgba(96, 165, 250, 0.72);
+      background: rgba(96, 165, 250, 0.22);
+      color: #bfdbfe;
+    }
+
     .mono {
       font-family: "SFMono-Regular", Consolas, monospace;
       font-variant-numeric: tabular-nums;
@@ -810,7 +824,8 @@
 
     .signal-info-grid {
       display: grid;
-      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
     }
 
     .signal-info-section,
@@ -824,11 +839,16 @@
     .signal-info-section-title,
     .team-context-title {
       margin-bottom: 8px;
-      color: var(--text-soft);
+      color: #bfdbfe;
       font-size: 11px;
       font-weight: 900;
       letter-spacing: 0.04em;
       text-transform: uppercase;
+    }
+
+    .signal-info-section.wide,
+    .team-context {
+      grid-column: 1 / -1;
     }
 
     .signal-metrics-list,
@@ -893,6 +913,13 @@
       font-size: 12px;
       line-height: 1.55;
       overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 760px) {
+      .signal-info-grid,
+      .signal-metrics-list {
+        grid-template-columns: 1fr;
+      }
     }
 
     .team-context-align {
@@ -1361,7 +1388,7 @@
               <th data-sort="match_name">Maç</th>
               <th data-sort="alert_moment">Sinyal Anı</th>
               <th data-sort="direction">Sinyal</th>
-              <th data-sort="ai_score">AI</th>
+              <th>SF</th>
               <th data-sort="status">Durum</th>
               <th data-sort="score">Skor</th>
               <th data-sort="opening">Açılış</th>
@@ -1518,16 +1545,34 @@
       return Number.isFinite(num) ? formatNumber(num) : 'Hesaplanamıyor';
     }
 
-    function aiScoreValue(alert) {
+    function last6Profiles(alert) {
       const analysis = alertAnalysis(alert);
-      const num = Number(alert.ai_score ?? analysis.ai_score);
-      return Number.isFinite(num) ? num : null;
+      const ctx = analysis.team_context || alert.team_context || {};
+      const home = analysis.home_last6 || alert.home_last6 || ctx.home_last6_profile || {};
+      const away = analysis.away_last6 || alert.away_last6 || ctx.away_last6_profile || {};
+      return { home, away };
     }
 
-    function aiScoreCell(alert) {
-      const value = aiScoreValue(alert);
-      const tier = alert.ai_tier || alertAnalysis(alert).ai_tier || '';
-      return `<span class="badge small-badge" title="AI Skor">${value === null ? '-' : `${value.toFixed(0)}${tier ? ' ' + escapeHtml(tier) : ''}`}</span>`;
+    function last6Label(profile) {
+      if (!profile || typeof profile !== 'object') return 'Son 3-4-5 alınamıyor';
+      if (profile.label) return String(profile.label);
+      const ppg = Number(profile.ppg);
+      const oppg = Number(profile.oppg);
+      const total = Number(profile.avg_total);
+      if (!Number.isFinite(ppg) || !Number.isFinite(oppg)) return 'Son 3-4-5 alınamıyor';
+      return `${Math.round(ppg)}+${Math.round(oppg)} = ${Math.round(Number.isFinite(total) ? total : ppg + oppg)}`;
+    }
+
+    function last6Title(profile) {
+      const games = Number(profile?.games);
+      return Number.isFinite(games) && games >= 3 ? `Son ${Math.round(games)}` : 'Son form';
+    }
+
+    function last6Cell(alert) {
+      const analysis = alertAnalysis(alert);
+      const total = Number(alert.team_recent_total ?? analysis.team_recent_total);
+      const label = Number.isFinite(total) ? total.toFixed(1) : '-';
+      return `<button class="badge sf-badge" type="button" title="Son form detayını aç" onclick="openSignalInfo(${Number(alert.id || 0)})">${escapeHtml(label)}</button>`;
     }
 
     function fairInfoClass(alert) {
@@ -1578,7 +1623,7 @@
       const labels = {
         projection: 'Projeksiyon',
         market: 'Piyasa',
-        team_recent: 'Son maç',
+        team_recent: 'Son form',
         h2h: 'H2H',
       };
       const parts = Object.entries(weights || {})
@@ -1601,27 +1646,12 @@
 
     function teamContextHtml(context) {
       if (!context || typeof context !== 'object') return '';
-      const home = context.home_profile || {};
-      const away = context.away_profile || {};
       const alignCode = context.alignment_code || 'neutral';
-      const teamCard = profile => {
-        if (!profile || !profile.team) return '';
-        return `
-          <div class="team-context-card">
-            <div class="team-context-card-head">${escapeHtml(profile.team || '-')}</div>
-            <div class="team-context-card-total">${formatNumber(profile.avg_total)}</div>
-            <div class="team-context-card-breakdown">PPG ${formatNumber(profile.ppg)} / Rakip ${formatNumber(profile.oppg)}</div>
-            <div class="team-context-card-label">${escapeHtml(profile.label || '-')}</div>
-          </div>
-        `;
-      };
-      const teams = [teamCard(home), teamCard(away)].filter(Boolean).join('');
       return `
         <div class="team-context">
-          <div class="team-context-title">Takım / H2H Profili</div>
+          <div class="team-context-title">Profil Yorumu</div>
           <span class="team-context-align ${escapeHtml(alignCode)}">${escapeHtml(context.alignment || 'Nötr')}</span>
           ${context.regression_note ? `<div class="team-context-regression ${(context.regression_direction || '').toLowerCase().replace('ü', 'u')}">${escapeHtml(context.regression_note)}</div>` : ''}
-          ${teams ? `<div class="team-context-teams">${teams}</div>` : ''}
           ${context.h2h_note ? `<div class="team-context-h2h">${escapeHtml(context.h2h_note)}</div>` : ''}
         </div>
       `;
@@ -1638,13 +1668,13 @@
       const live = Number(alert.live);
       const lineMove = Number.isFinite(opening) && Number.isFinite(live) ? live - opening : null;
       const fairEdge = Number(analysis.fair_edge ?? alert.fair_edge);
-      const aiScore = aiScoreValue(alert);
-      const aiTier = alert.ai_tier || analysis.ai_tier || '-';
+      const selectionReason = alert.selection_reason || analysis.selection_reason || '';
+      const projectionQuality = Number(alert.projection_quality ?? analysis.projection_quality);
       const legacyDir = analysis.legacy_direction || alert.legacy_direction || alert.direction || '-';
       const finalDir = analysis.final_direction || alert.final_direction || analysis.direction || alert.direction || '-';
       const signalScores = analysis.signal_scores || alert.signal_scores || {};
       const voteRows = Array.isArray(analysis.signal_votes || alert.signal_votes) ? (analysis.signal_votes || alert.signal_votes).slice(0, 6) : [];
-      const voteNotes = voteRows.map(v => `${v.name || '-'} · ${v.direction || '-'} · ${formatNumber(v.score)}`);
+      const last6 = last6Profiles(alert);
       const warnings = Array.isArray(alert.warnings) && alert.warnings.length
         ? alert.warnings
         : (Array.isArray(analysis.warnings) ? analysis.warnings : []);
@@ -1654,10 +1684,17 @@
         analysis.script_note,
         analysis.h2h_note,
         analysis.history_note,
-        ...voteNotes,
         ...warnings,
       ].filter(Boolean);
       const matchName = cleanMatchName(alert.match_name || '-');
+      const voteSection = voteRows.length
+        ? `<div class="signal-info-section wide">
+            <div class="signal-info-section-title">Sinyal Oyları</div>
+            <ul class="signal-metrics-list">
+              ${voteRows.map(v => modalListItem(`${v.name || '-'} → ${v.direction || '-'}`, `${formatNumber(v.score)} puan`)).join('')}
+            </ul>
+          </div>`
+        : '';
       content.innerHTML = `
         <div class="signal-info-headline">
           <div class="signal-info-match">${escapeHtml(matchName)}</div>
@@ -1666,24 +1703,44 @@
         <div class="signal-info-grid">
           ${teamContextHtml(analysis.team_context || alert.team_context)}
           <div class="signal-info-section">
-            <div class="signal-info-section-title">Adil Barem / Sinyal</div>
+            <div class="signal-info-section-title">Özet</div>
+            <ul class="signal-metrics-list">
+              ${modalListItem('Canlı veri', Number.isFinite(projectionQuality) ? `${projectionQuality.toFixed(0)}/100` : '-')}
+              ${modalListItem('Eski / Yeni Yön', `${legacyDir} → ${finalDir}`)}
+              ${modalListItem('ALT / ÜST Puan', `${formatNumber(signalScores.ALT)} / ${formatNumber(signalScores['ÜST'])}`)}
+              ${modalListItem('Karar', selectionReason || '-')}
+            </ul>
+          </div>
+          <div class="signal-info-section">
+            <div class="signal-info-section-title">Hat ve Değer</div>
             <ul class="signal-metrics-list">
               ${modalListItem('Açılış', formatNumber(alert.opening))}
               ${modalListItem('Canlı', formatNumber(alert.live))}
-              ${modalListItem('AI Skor', aiScore === null ? '-' : `${aiScore.toFixed(0)}/100 ${aiTier}`)}
-              ${modalListItem('Eski / AI Yön', `${legacyDir} → ${finalDir}`)}
-              ${modalListItem('ALT / ÜST Puan', `${formatNumber(signalScores.ALT)} / ${formatNumber(signalScores['ÜST'])}`)}
               ${modalListItem('Projeksiyon', formatNumber(alert.projected ?? analysis.projected_total))}
-              ${modalListItem('H2H Ort.', formatNumber(alert.h2h_total ?? analysis.h2h_total))}
-              ${modalListItem('H2H Kalite', analysis.h2h_quality_score != null ? `${analysis.h2h_quality_score}/100` : '-')}
-              ${modalListItem('Adil Barem', formatFairLine(alert.fair_line ?? analysis.fair_line))}
-              ${modalListItem('Barem Hareketi', lineMove === null ? '-' : formatSignedNumber(lineMove))}
+              ${modalListItem('Adil hat', formatFairLine(alert.fair_line ?? analysis.fair_line))}
+              ${modalListItem('Hat hareketi', lineMove === null ? '-' : formatSignedNumber(lineMove))}
             </ul>
             ${signalEdgeNoteHtml(fairEdge)}
             <div class="signal-weights-line"><strong>Ağırlık</strong>${escapeHtml(weightsText(analysis.weights))}</div>
           </div>
           <div class="signal-info-section">
-            <div class="signal-info-section-title">Uyarılar / Beklenti</div>
+            <div class="signal-info-section-title">Son Form (SF)</div>
+            <ul class="signal-metrics-list">
+              ${modalListItem(`${last6Title(last6.home)} Ev`, last6Label(last6.home))}
+              ${modalListItem(`${last6Title(last6.away)} Dep.`, last6Label(last6.away))}
+              ${modalListItem('SF beklenti', formatNumber(alert.team_recent_total ?? analysis.team_recent_total))}
+            </ul>
+          </div>
+          <div class="signal-info-section">
+            <div class="signal-info-section-title">H2H</div>
+            <ul class="signal-metrics-list">
+              ${modalListItem('H2H ort.', formatNumber(alert.h2h_total ?? analysis.h2h_total))}
+              ${modalListItem('H2H kalite', analysis.h2h_quality_score != null ? `${analysis.h2h_quality_score}/100` : '-')}
+            </ul>
+          </div>
+          ${voteSection}
+          <div class="signal-info-section wide">
+            <div class="signal-info-section-title">Riskler ve Notlar</div>
             ${modalNoteList(notes)}
           </div>
         </div>
@@ -1774,8 +1831,6 @@
         recommendationText(alert),
         fairLineValue(alert),
         alert.projected,
-        alert.ai_score,
-        alert.ai_tier,
       ].some(value => String(value || '').toLowerCase().includes(q)));
       return sortedAlerts(rows);
     }
@@ -1788,7 +1843,7 @@
 
     function sortValue(alert, field) {
       if (field === 'deleted_at' || field === 'alerted_at') return parseDateValue(alert[field]);
-      if (['opening', 'live', 'projected', 'diff', 'signal_count', 'fair_line', 'fair_edge', 'ai_score'].includes(field)) {
+      if (['opening', 'live', 'projected', 'diff', 'signal_count', 'fair_line', 'fair_edge'].includes(field)) {
         const num = Number(alert[field]);
         return Number.isFinite(num) ? num : -Infinity;
       }
@@ -1984,7 +2039,7 @@
               ${signalBadge(alert)}
               ${Number(alert.signal_count || 0) > 1 ? `<div class="subline">${Number(alert.signal_count)}. sinyal</div>` : ''}
             </td>
-            <td>${aiScoreCell(alert)}</td>
+            <td>${last6Cell(alert)}</td>
             <td>${escapeHtml(alert.status || '-')}</td>
             <td class="mono">${escapeHtml(alert.score || '-')}${(() => { const total = calculateScoreTotal(alert.score); return total !== null ? ` <span style="font-style: normal; font-size: 0.85em; color: var(--text-dim);">(${total})</span>` : ''; })()}</td>
             <td class="mono">${formatNumber(alert.opening)}</td>

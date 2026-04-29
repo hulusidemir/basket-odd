@@ -1,8 +1,8 @@
 import json
 import re
-from statistics import mean
+from statistics import mean, median
 
-from projection import calculate_projected_total, game_clock, parse_score
+from projection import calculate_live_projection, game_clock, parse_score
 
 
 def _safe_float(value) -> float | None:
@@ -166,24 +166,248 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
                 "over_pct": over_pct,
             }
         return {}
+
+    # Multiple date formats AiScore renders depending on locale / page section.
+    _MONTH_LONG = (
+        r"January|February|March|April|May|June|"
+        r"July|August|September|October|November|December"
+    )
+    _MONTH_SHORT = r"Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec"
+    _DOW = r"Mon|Tue|Wed|Thu|Fri|Sat|Sun"
+    date_patterns = [
+        # "Monday, January 14, 2025"
+        rf"(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+"
+        rf"(?:{_MONTH_LONG})\s+\d{{1,2}},\s+\d{{4}}",
+        # "January 14, 2025" (no weekday)
+        rf"(?:{_MONTH_LONG})\s+\d{{1,2}},\s+\d{{4}}",
+        # "Mon, Jan 14, 2025" / "Mon Jan 14 2025" / "Jan 14, 2025"
+        rf"(?:(?:{_DOW})[,.]?\s+)?(?:{_MONTH_SHORT})\.?\s+\d{{1,2}}(?:,)?\s+\d{{4}}",
+        # "14 January 2025" / "14 Jan 2025"
+        rf"\d{{1,2}}\s+(?:{_MONTH_LONG}|{_MONTH_SHORT})\.?\s+\d{{4}}",
+        # ISO "2025-01-14" or "2025/01/14"
+        r"\d{4}[-/]\d{1,2}[-/]\d{1,2}",
+        # "14/01/2025" or "14.01.2025"
+        r"\d{1,2}[./]\d{1,2}[./]\d{2,4}",
+    ]
+    date_re = "(?:" + "|".join(date_patterns) + ")"
+
+    def _team_in_chunk(chunk: str, team_name: str) -> bool:
+        """Loose containment: case-insensitive + partial-on-spaces match."""
+        if not chunk or not team_name:
+            return False
+        if team_name in chunk:
+            return True
+        low_chunk = chunk.lower()
+        low_team = team_name.lower()
+        if low_team in low_chunk:
+            return True
+        # Loose: every space-token in the team name appears in chunk
+        tokens = [t for t in re.split(r"\s+", low_team) if len(t) >= 3]
+        if tokens and all(t in low_chunk for t in tokens):
+            return True
+        return False
+
+    def _team_pos(haystack: str, team_name: str) -> int:
+        low_haystack = (haystack or "").lower()
+        low_team = (team_name or "").lower()
+        if not low_haystack or not low_team:
+            return -1
+        pos = low_haystack.find(low_team)
+        if pos >= 0:
+            return pos
+        tokens = [t for t in re.split(r"\s+", low_team) if len(t) >= 3]
+        positions = [low_haystack.find(t) for t in tokens]
+        positions = [p for p in positions if p >= 0]
+        return min(positions) if positions else -1
+
+    def _score_row_for_team(chunk: str, team_name: str, opponent_name: str | None = None) -> dict | None:
+        if not _team_in_chunk(chunk, team_name):
+            return None
+        score_matches = list(re.finditer(r"\b(\d{2,3})\b", chunk))
+        score_nums = [m for m in score_matches if 40 <= int(m.group(1)) <= 180]
+        if len(score_nums) < 2:
+            return None
+        # Prefer the first basketball-score pair after the date. Using the last
+        # pair leaks the next row in AiScore's compact, single-line text.
+        first, second = score_nums[0], score_nums[1]
+        score_a, score_b = int(first.group(1)), int(second.group(1))
+        before_scores = chunk[:first.start()]
+        after_scores = chunk[second.end():]
+        team_left = _team_pos(before_scores, team_name)
+        team_right = _team_pos(after_scores, team_name)
+        opp_left = _team_pos(before_scores, opponent_name or "")
+        opp_right = _team_pos(after_scores, opponent_name or "")
+
+        if team_left >= 0 and opp_left >= 0:
+            is_first_team = team_left < opp_left
+        elif team_right >= 0 and opp_right >= 0:
+            # Less common layout: "80 76 Team A Team B".
+            is_first_team = team_right < opp_right
+        elif team_left >= 0 and team_right < 0:
+            is_first_team = True
+        elif team_right >= 0 and team_left < 0:
+            is_first_team = False
+        else:
+            return None
+
+        team_score = score_a if is_first_team else score_b
+        opp_score = score_b if is_first_team else score_a
+        if not (40 <= team_score <= 180 and 40 <= opp_score <= 180):
+            return None
+        return {"for": team_score, "against": opp_score, "total": team_score + opp_score}
+
+    def _is_mutual_score_chunk(chunk: str, left_team: str, right_team: str) -> bool:
+        score_matches = list(re.finditer(r"\b(\d{2,3})\b", chunk))
+        score_nums = [m for m in score_matches if 40 <= int(m.group(1)) <= 180]
+        if len(score_nums) < 2:
+            return False
+        first, second = score_nums[0], score_nums[1]
+        before_scores = chunk[:first.start()]
+        after_scores = chunk[second.end():]
+        both_before = _team_pos(before_scores, left_team) >= 0 and _team_pos(before_scores, right_team) >= 0
+        both_after = _team_pos(after_scores, left_team) >= 0 and _team_pos(after_scores, right_team) >= 0
+        return both_before or both_after
+
+    def _rows_from_date_range(range_text: str, team_name: str, opponent_name: str | None = None,
+                              allow_mutual_rows: bool = True) -> list[dict]:
+        rows: list[dict] = []
+        seen_keys: set[tuple] = set()
+        date_matches = list(re.finditer(date_re, range_text, re.IGNORECASE))
+        for idx, match in enumerate(date_matches):
+            start = match.end()
+            end = date_matches[idx + 1].start() if idx + 1 < len(date_matches) else min(len(range_text), start + 320)
+            chunk = range_text[start:end]
+            if not allow_mutual_rows and opponent_name and _team_in_chunk(chunk, opponent_name):
+                continue
+            parsed = _score_row_for_team(chunk, team_name, opponent_name)
+            if not parsed:
+                continue
+            key = (match.group(0), parsed["for"], parsed["against"])
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            rows.append({
+                "date": match.group(0),
+                **parsed,
+            })
+            if len(rows) >= 6:
+                break
+        return rows
+
+    def _team_recent_sections(team_name: str) -> list[str]:
+        if not text or not team_name:
+            return []
+        escaped = re.escape(team_name)
+        section_start_patterns = [
+            rf"(?:Last|Latest|Recent)\s+(?:\d+\s+)?(?:Matches|Games|Form).{{0,140}}?{escaped}",
+            rf"{escaped}.{{0,40}}(?:Last|Latest|Recent)\s+(?:\d+\s+)?(?:Matches|Games|Form)",
+            rf"{escaped}\s+\d{{1,2}}\s+(?:All|Home|Away|This\s+league)",
+        ]
+        boundary_patterns = [
+            r"\bH2H\b",
+            rf"{re.escape(home_team)}\s+\d{{1,2}}\s+(?:All|Home|Away|This\s+league)",
+            rf"{re.escape(away_team)}\s+\d{{1,2}}\s+(?:All|Home|Away|This\s+league)",
+            rf"(?:Last|Latest|Recent)\s+(?:\d+\s+)?(?:Matches|Games|Form).{{0,140}}?(?:{re.escape(home_team)}|{re.escape(away_team)})",
+        ]
+        sections: list[str] = []
+        for pattern in section_start_patterns:
+            for start_match in re.finditer(pattern, text, re.IGNORECASE):
+                start = start_match.start()
+                end = min(len(text), start + 2600)
+                for boundary_pattern in boundary_patterns:
+                    for boundary in re.finditer(boundary_pattern, text[start_match.end():end], re.IGNORECASE):
+                        candidate_end = start_match.end() + boundary.start()
+                        if candidate_end > start + 80:
+                            end = min(end, candidate_end)
+                            break
+                section = text[start:end]
+                if re.search(date_re, section, re.IGNORECASE):
+                    sections.append(section)
+        return sections
+
+    def team_recent_form_from_match_rows(team_name: str, opponent_name: str | None = None) -> dict:
+        """Takımın oynadığı son maçları çek (rakip kim olursa olsun).
+        H2H bölümündeki karşılıklı maçları SF diye kullanma; önce takımın
+        kendi son maç bölümünü, yoksa karşılıklı olmayan genel satırları dene."""
+        if not text or not team_name:
+            return {}
+        section_rows: list[dict] = []
+        for section in _team_recent_sections(team_name):
+            rows = _rows_from_date_range(section, team_name, opponent_name, allow_mutual_rows=True)
+            if len(rows) > len(section_rows):
+                section_rows = rows
+
+        rows = section_rows
+        if len(rows) < 3:
+            # Last-resort global scan, but do not let H2H rows masquerade as SF.
+            rows = _rows_from_date_range(text, team_name, opponent_name, allow_mutual_rows=False)
+
+        if len(rows) < 3:
+            return {}
+        rows = rows[:6]
+
+        ppg = round(mean(g["for"] for g in rows), 1)
+        oppg = round(mean(g["against"] for g in rows), 1)
+        avg_total = round(ppg + oppg, 1)
+        label = f"{round(ppg)}+{round(oppg)} = {round(avg_total)}"
+        return {
+            "team": team_name,
+            "games": len(rows),
+            "source_label": f"Son {len(rows)} maç",
+            "ppg": ppg,
+            "oppg": oppg,
+            "avg_total": avg_total,
+            "label": label,
+            "scores": rows,
+            "source": "match_rows",
+        }
+
+    def team_recent_form_with_fallbacks(team_name: str, opponent_name: str | None = None) -> dict:
+        """Match-rows first; if we can't extract enough rows, fall back to
+        the AiScore 'Last 5' stats line. H2H aggregate rows are not SF."""
+        primary = team_recent_form_from_match_rows(team_name, opponent_name)
+        if primary:
+            return primary
+        # Fallback 1: "Last 5 ... 90.5 points per match, 88.2 opponent points"
+        recent = recent_team_metrics(team_name)
+        if recent and recent.get("ppg") and recent.get("oppg"):
+            ppg = round(float(recent["ppg"]), 1)
+            oppg = round(float(recent["oppg"]), 1)
+            avg_total = round(ppg + oppg, 1)
+            return {
+                "team": team_name,
+                "games": 5,
+                "source_label": "Son 5 maç",
+                "ppg": ppg,
+                "oppg": oppg,
+                "avg_total": avg_total,
+                "over_pct": recent.get("over_pct"),
+                "label": f"{round(ppg)}+{round(oppg)} = {round(avg_total)}",
+                "scores": [],
+                "source": "last5_stats",
+            }
+        return {}
+
     def h2h_totals_from_match_rows() -> list[int]:
         if not text:
             return []
-        date_re = (
-            r"(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+"
-            r"(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+"
-            r"\d{1,2},\s+\d{4}"
-        )
         totals: list[int] = []
-        for match in re.finditer(date_re, text, re.IGNORECASE):
-            chunk = text[match.end():match.end() + 220]
-            if home_team and away_team and (home_team not in chunk or away_team not in chunk):
+        date_matches = list(re.finditer(date_re, text, re.IGNORECASE))
+        seen: set[tuple] = set()
+        for idx, match in enumerate(date_matches):
+            start = match.end()
+            end = date_matches[idx + 1].start() if idx + 1 < len(date_matches) else min(len(text), start + 320)
+            chunk = text[start:end]
+            if home_team and away_team and (not _team_in_chunk(chunk, home_team) or not _team_in_chunk(chunk, away_team)):
                 continue
-            nums = [int(n) for n in re.findall(r"\b\d{2,3}\b", chunk)]
-            score_nums = [n for n in nums if 40 <= n <= 180]
-            if len(score_nums) >= 2:
-                total = score_nums[0] + score_nums[1]
-                if 100 <= total <= 320:
+            if not _is_mutual_score_chunk(chunk, home_team, away_team):
+                continue
+            parsed = _score_row_for_team(chunk, home_team, away_team)
+            if parsed:
+                total = parsed["total"]
+                key = (match.group(0), total)
+                if 100 <= total <= 320 and key not in seen:
+                    seen.add(key)
                     totals.append(total)
         return totals[:12]
 
@@ -245,8 +469,19 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
     if h2h_games is None and h2h_row_totals:
         h2h_games = len(h2h_row_totals)
 
-    home = recent_team_metrics(home_team)
-    away = recent_team_metrics(away_team)
+    home_last6 = team_recent_form_with_fallbacks(home_team, away_team)
+    away_last6 = team_recent_form_with_fallbacks(away_team, home_team)
+    if (
+        home_last6 and away_last6
+        and home_last6.get("source") == "match_rows"
+        and away_last6.get("source") == "match_rows"
+        and home_last6.get("scores") == away_last6.get("scores")
+    ):
+        h2h_quality_notes.append("SF satırları iki takım için aynı okundu; H2H/SF karışmasını önlemek için son form kullanılmadı.")
+        home_last6 = {}
+        away_last6 = {}
+    home = home_last6
+    away = away_last6
     expected_total = None
     if home and away:
         # Cross-pair: home'un attığı + away'in yediği ≈ home skoru beklentisi (ve tersi).
@@ -254,9 +489,28 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         home_expected = (home["ppg"] + away["oppg"]) / 2
         away_expected = (away["ppg"] + home["oppg"]) / 2
         expected_total = round(home_expected + away_expected, 1)
+    elif home and home.get("avg_total") is not None:
+        expected_total = round(float(home["avg_total"]), 1)
+    elif away and away.get("avg_total") is not None:
+        expected_total = round(float(away["avg_total"]), 1)
 
-    if not home or not away:
-        h2h_quality_notes.append("Takım son-form verisi eksik; team_recent bileşeni kullanılmadı.")
+    def _games_count(profile: dict) -> int | None:
+        games = profile.get("games") if profile else None
+        try:
+            return int(games) if games is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    home_games = _games_count(home_last6)
+    away_games = _games_count(away_last6)
+    if not home_last6:
+        h2h_quality_notes.append(f"{home_team} için son 3-4-5 maç verisi alınamıyor; takım form ortalaması kullanılmadı.")
+    elif home_games is not None and home_games < 6:
+        h2h_quality_notes.append(f"{home_team} için son 6 yerine son {home_games} maç ortalaması kullanıldı.")
+    if not away_last6:
+        h2h_quality_notes.append(f"{away_team} için son 3-4-5 maç verisi alınamıyor; takım form ortalaması kullanılmadı.")
+    elif away_games is not None and away_games < 6:
+        h2h_quality_notes.append(f"{away_team} için son 6 yerine son {away_games} maç ortalaması kullanıldı.")
     if h2h_avg_total is None:
         h2h_quality_notes.append("H2H ortalama toplam çıkarılamadı.")
 
@@ -276,6 +530,8 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
     return {
         "home_last5": home,
         "away_last5": away,
+        "home_last6": home_last6,
+        "away_last6": away_last6,
         "expected_total": expected_total,
         "h2h_avg_total": h2h_avg_total,
         "h2h_over_pct": h2h_over_pct,
@@ -288,10 +544,11 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
     }
 
 
-def _team_profile_label(avg_total: float | None, over_pct: float | None) -> str:
+def _team_profile_label(avg_total: float | None, over_pct: float | None, games: int | None = None) -> str:
     if avg_total is None:
         return "veri yok"
-    label = f"son 5 toplam ort {avg_total:.1f}"
+    game_label = f"son {games} maç" if games else "son maçlar"
+    label = f"{game_label} toplam ort {avg_total:.1f}"
     if over_pct is None:
         return label
     if over_pct >= 60:
@@ -302,12 +559,21 @@ def _team_profile_label(avg_total: float | None, over_pct: float | None) -> str:
 
 
 def build_team_context(h2h_metrics: dict, live: float, direction: str) -> dict | None:
-    home = h2h_metrics.get("home_last5") or {}
-    away = h2h_metrics.get("away_last5") or {}
+    home = h2h_metrics.get("home_last6") or h2h_metrics.get("home_last5") or {}
+    away = h2h_metrics.get("away_last6") or h2h_metrics.get("away_last5") or {}
     if not home and not away and h2h_metrics.get("h2h_avg_total") is None and h2h_metrics.get("h2h_over_pct") is None:
         return None
 
     expected = h2h_metrics.get("expected_total")
+    game_counts = sorted({
+        int(games)
+        for games in (home.get("games"), away.get("games"))
+        if games is not None and int(games) >= 3
+    }, reverse=True)
+    form_label = (
+        f"Son {'/'.join(str(g) for g in game_counts)} maç ortalaması"
+        if game_counts else "Son form ortalaması"
+    )
     regression_direction = None
     regression_note = None
     regression_delta = None
@@ -315,23 +581,26 @@ def build_team_context(h2h_metrics: dict, live: float, direction: str) -> dict |
         regression_delta = round(live - expected, 1)
         if regression_delta >= 4:
             regression_direction = "ALT"
-            regression_note = f"Son 5 maç ortalaması {expected:.1f}, canlı barem {live:.1f} (+{regression_delta:.1f}). Ortalamaya dönüş ALT tarafını destekler."
+            regression_note = f"{form_label} {expected:.1f}, canlı barem {live:.1f} (+{regression_delta:.1f}). Ortalamaya dönüş ALT tarafını destekler."
         elif regression_delta <= -4:
             regression_direction = "ÜST"
-            regression_note = f"Son 5 maç ortalaması {expected:.1f}, canlı barem {live:.1f} ({regression_delta:.1f}). Ortalamaya dönüş ÜST tarafını destekler."
+            regression_note = f"{form_label} {expected:.1f}, canlı barem {live:.1f} ({regression_delta:.1f}). Ortalamaya dönüş ÜST tarafını destekler."
         else:
-            regression_note = f"Son 5 maç ortalaması {expected:.1f}, canlı barem {live:.1f} ({regression_delta:+.1f}). Barem tarihsel profile yakın."
+            regression_note = f"{form_label} {expected:.1f}, canlı barem {live:.1f} ({regression_delta:+.1f}). Barem tarihsel profile yakın."
 
     def profile(raw: dict) -> dict | None:
         if not raw:
             return None
         return {
             "team": raw.get("team", "-"),
+            "games": raw.get("games"),
+            "source_label": raw.get("source_label"),
             "avg_total": raw.get("avg_total"),
             "ppg": raw.get("ppg"),
             "oppg": raw.get("oppg"),
             "over_pct": raw.get("over_pct"),
-            "label": _team_profile_label(raw.get("avg_total"), raw.get("over_pct")),
+            "label": raw.get("label") or _team_profile_label(raw.get("avg_total"), raw.get("over_pct"), raw.get("games")),
+            "scores": raw.get("scores") or [],
         }
 
     h2h_note = None
@@ -384,6 +653,8 @@ def build_team_context(h2h_metrics: dict, live: float, direction: str) -> dict |
         "regression_note": regression_note,
         "home_profile": profile(home),
         "away_profile": profile(away),
+        "home_last6_profile": profile(h2h_metrics.get("home_last6") or {}),
+        "away_last6_profile": profile(h2h_metrics.get("away_last6") or {}),
         "h2h_games": h2h_games,
         "h2h_over_pct": h2h_over,
         "h2h_avg_total": h2h_avg,
@@ -395,6 +666,14 @@ def build_team_context(h2h_metrics: dict, live: float, direction: str) -> dict |
 
 
 def _market_total(match: dict, opening: float) -> float | None:
+    odds = match.get("odds_snapshot") if isinstance(match.get("odds_snapshot"), dict) else {}
+    for value in (
+        odds.get("prematch_median"),
+        odds.get("opening_median"),
+    ):
+        parsed = _safe_float(value)
+        if parsed is not None:
+            return round(parsed, 1)
     for key in ("prematch_total", "prematch", "baseline", "opening_total", "opening"):
         value = match.get(key)
         parsed = _safe_float(value)
@@ -448,13 +727,31 @@ def _weighted_fair_line(components: dict, base_weights: dict) -> tuple[float | N
     }
     if not usable:
         return None, {key: 0 for key in base_weights}
+
+    # Robust guard: tek bir bileşen (özellikle erken maç projeksiyonu veya zayıf H2H)
+    # diğer tüm okumalardan koparsa adil baremi saçma yere sürüklemesin.
+    # Tamamen atmak yerine medyana doğru yumuşatıyoruz; çünkü uç değer bazen
+    # gerçek tempo kırılmasını da gösterebilir.
+    if len(usable) >= 3:
+        center = median(usable.values())
+        for key, value in list(usable.items()):
+            gap = value - center
+            if abs(gap) > 28:
+                usable[key] = center + (28 if gap > 0 else -28) + (gap - (28 if gap > 0 else -28)) * 0.35
+
     active_weights = {key: base_weights[key] for key in usable}
     weight_sum = sum(active_weights.values())
     fair_line = sum(usable[key] * active_weights[key] for key in usable) / weight_sum
     return round(fair_line, 1), _normalize_weights(active_weights)
 
 
-def _pace_note(projected_total: float | None, live: float, pace_data: dict | None = None) -> str:
+def _pace_note(
+    projected_total: float | None,
+    live: float,
+    pace_data: dict | None = None,
+    projection_components: dict | None = None,
+    h2h_metrics: dict | None = None,
+) -> str:
     """
     Maç hızını yorumlar. Regresyon uygulanmış projeksiyon kullanır:
     Q1/Q2'deki yüksek tempo doğrusal değil, ortalamaya dönüş varsayımıyla hesaplanır.
@@ -462,25 +759,56 @@ def _pace_note(projected_total: float | None, live: float, pace_data: dict | Non
     """
     anomaly_note = (pace_data or {}).get("pace_note", "")
 
+    projection_components = projection_components or {}
+    h2h_metrics = h2h_metrics or {}
+
     if projected_total is None:
-        base = "Maç içi projeksiyon hesaplanamadı (çeyrek bilgisi yok); pace yorumu sınırlı."
+        base = "Maç içi projeksiyon hesaplanamadı; tempo yorumu için veri yetersiz."
         return f"{base} {anomaly_note}".strip() if anomaly_note else base
 
     gap = round(projected_total - live, 1)
+    current_pace = projection_components.get("current_pace_per_min")
+    sustainable_pace = projection_components.get("sustainable_pace_per_min")
+    stats_adj = projection_components.get("stats_adjustment")
+    script_adj = projection_components.get("script_adjustment")
+    history_total = h2h_metrics.get("expected_total") or h2h_metrics.get("h2h_avg_total")
+    history_gap = round(float(history_total) - live, 1) if history_total is not None else None
+
+    sustainability = ""
+    if current_pace is not None and sustainable_pace is not None:
+        pace_gap = float(current_pace) - float(sustainable_pace)
+        if pace_gap >= 0.35:
+            sustainability = " Mevcut tempo tamamlanan çeyrek ortalamasının üstünde; sürdürülebilirlik için regresyon kontrolü gerekir."
+        elif pace_gap <= -0.35:
+            sustainability = " Mevcut tempo tamamlanan çeyrek ortalamasının altında; normalleşme/hızlanma ihtimali var."
+        else:
+            sustainability = " Mevcut tempo çeyrek ortalamasıyla uyumlu; ani regresyon sinyali zayıf."
+
+    context_bits = []
+    if stats_adj is not None and abs(float(stats_adj)) >= 2:
+        context_bits.append(f"istatistik düzeltmesi {float(stats_adj):+.1f}")
+    if script_adj is not None and abs(float(script_adj)) >= 2:
+        context_bits.append(f"maç scripti {float(script_adj):+.1f}")
+    if history_gap is not None and abs(history_gap) >= 6:
+        side = "daha yüksek toplam profili" if history_gap > 0 else "daha düşük toplam profili"
+        context_bits.append(f"takım/H2H {side} ({history_gap:+.1f})")
+    context = f" Destekleyen/dengeleyen unsur: {', '.join(context_bits)}." if context_bits else ""
+
     if gap >= 6:
         base = (
-            f"Maç hızlı gidiyor: regresyonlu tempo {projected_total:.1f} final gösteriyor, "
-            f"canlı baremin {gap:.1f} üstü → ALT baskısı."
+            f"Canlı projeksiyon {projected_total:.1f}; baremin {gap:.1f} üstünde. "
+            f"Bu otomatik ÜST demek değil; tempo sürdürülebilirliği, şut/faul trafiği ve takım profiliyle doğrulanmalı."
         )
     elif gap <= -6:
         base = (
-            f"Maç yavaş gidiyor: regresyonlu tempo {projected_total:.1f} final gösteriyor, "
-            f"canlı baremin {abs(gap):.1f} altı → ÜST baskısı."
+            f"Canlı projeksiyon {projected_total:.1f}; baremin {abs(gap):.1f} altında. "
+            f"Bu otomatik ALT demek değil; düşük tempo normalleşebilir veya maç scripti hızlanma yaratabilir."
         )
     else:
-        base = f"Pace nötr: regresyonlu tempo {projected_total:.1f}, canlı bareme yakın."
+        base = f"Canlı projeksiyon {projected_total:.1f}; bareme yakın. Net tempo avantajı yok."
 
-    return f"{base} {anomaly_note}".strip() if anomaly_note else base
+    note = f"{base}{sustainability}{context}"
+    return f"{note} {anomaly_note}".strip() if anomaly_note else note
 
 
 def _script_pace_adjustment(score: str, status: str, match_name: str, tournament: str) -> float:
@@ -780,6 +1108,131 @@ def _backtest_direction_scores(profile: dict | None, keys: list[str]) -> dict:
     return result
 
 
+def _classify_signal(decision: dict) -> dict:
+    """
+    Basketbol mantığı: piyasa büyük hareket ettiğinde (>22 puan) genelde haklıdır;
+    fade etmek tehlikelidir. Karar yön çevirdiğinde (flip) kazanma oranı yüksektir.
+    Sweet spot diff 11-16 arasıdır. Q3 sinyalleri tarihsel olarak en zayıf bölgedir.
+    Skor veya sınıf etiketi üretmez; sadece gönderim uygunluğu ve gerekçe döndürür.
+    """
+    scores = decision.get("signal_scores") or {}
+    margin = abs(float(scores.get("ALT", 0) or 0) - float(scores.get("ÜST", 0) or 0))
+    final_direction = _normalize_direction(decision.get("direction"))
+    legacy_direction = _normalize_direction(decision.get("legacy_direction") or final_direction)
+    flipped = final_direction != legacy_direction
+    fair_edge = _safe_float(decision.get("fair_edge"))
+    projected_gap = _safe_float(decision.get("projected_gap"))
+    projection_quality = float(decision.get("projection_quality") or 0)
+    live_edge_score = float(decision.get("live_edge_score") or 0)
+    abs_diff = float(decision.get("abs_diff") or 0)
+    signal_count = int(decision.get("signal_count") or 1)
+    alert_period = decision.get("alert_period")
+
+    fair_direction = None
+    projection_direction = None
+    if fair_edge is not None and abs(fair_edge) >= 3:
+        fair_direction = "ÜST" if fair_edge > 0 else "ALT"
+    if projected_gap is not None and abs(projected_gap) >= 4:
+        projection_direction = "ÜST" if projected_gap > 0 else "ALT"
+    live_agreement = (
+        fair_direction == final_direction
+        and projection_direction == final_direction
+    )
+
+    # Tehlike bölgeleri.
+    danger_block = ""
+    if abs_diff >= 22:
+        danger_block = (
+            f"Piyasa hareketi çok büyük ({abs_diff:.0f} puan): fade riskli, "
+            "tarihsel kazanç oranı düşük."
+        )
+    elif signal_count >= 4:
+        danger_block = (
+            f"Sinyal sayısı yüksek (#{signal_count}): çizgi tekrar tekrar kaydı, "
+            "piyasa direnci güçlü."
+        )
+    elif alert_period == 3 and abs_diff >= 14:
+        danger_block = (
+            "Q3 sinyali ve fark >=14: bu bölge tarihsel olarak en zayıf, "
+            "skor çoktan oluşmuş."
+        )
+
+    elite_model = (
+        not danger_block
+        and (
+            (flipped and signal_count <= 2 and 9 <= abs_diff <= 18 and margin >= 3)
+            or (
+                live_agreement
+                and 11 <= abs_diff <= 16
+                and signal_count == 1
+                and alert_period in (1, 2, 4)
+                and projection_quality >= 65
+                and margin >= 5
+            )
+        )
+    )
+    strong_model = (
+        not danger_block
+        and (
+            (flipped and signal_count <= 2 and margin >= 2.5)
+            or (
+                signal_count <= 2
+                and 11 <= abs_diff <= 18
+                and alert_period != 3
+                and live_agreement
+                and margin >= 4
+            )
+        )
+    )
+    watch_model = margin >= 5 and signal_count <= 3
+
+    if elite_model:
+        reason_core = (
+            f"Karar yön çevirdi ({legacy_direction}→{final_direction}); "
+            "tarihsel olarak en yüksek başarı kategorisi."
+            if flipped
+            else (
+                f"Sweet spot fark {abs_diff:.1f}, ilk sinyal, üç model aynı yöne; "
+                "bahse uygun kombinasyon."
+            )
+        )
+        return {
+            "telegram_eligible": True,
+            "selection_reason": (
+                f"Kalite {projection_quality:.0f}/100, fark {abs_diff:.1f}, "
+                f"sinyal #{signal_count}. {reason_core}"
+            ),
+        }
+    if strong_model:
+        return {
+            "telegram_eligible": False,
+            "selection_reason": (
+                f"Fark {abs_diff:.1f}, sinyal #{signal_count}; "
+                "gönderim eşiği tutmadı."
+            ),
+        }
+    if danger_block:
+        return {
+            "telegram_eligible": False,
+            "selection_reason": danger_block,
+        }
+    if watch_model:
+        return {
+            "telegram_eligible": False,
+            "selection_reason": (
+                f"Taraf ayrışması {margin:.1f}; "
+                "bahis için yeterli ayrışma yok."
+            ),
+        }
+    return {
+        "telegram_eligible": False,
+        "selection_reason": (
+            f"Canlı edge {live_edge_score:.1f}; "
+            "güven filtresinden geçmedi."
+        ),
+    }
+
+
 def _vote(name: str, direction: str, strength: float, confidence: float, reason: str) -> dict:
     direction = _normalize_direction(direction)
     strength = round(_clamp(float(strength), 0, 30), 1)
@@ -813,6 +1266,7 @@ def _decision_from_components(
     h2h_quality_score: float | None = None,
     pace_anomaly_direction: str | None = None,
     pace_anomaly_pct: float | None = None,
+    projection_quality: float | None = None,
     signal_count: int = 1,
     backtest_profile: dict | None = None,
 ) -> dict:
@@ -820,51 +1274,89 @@ def _decision_from_components(
     votes: list[dict] = []
 
     abs_diff = abs(float(diff or 0))
-    legacy_strength = _clamp(8 + (abs_diff - float(threshold or 0)) * 0.7, 8, 18)
+    # Piyasa-zekası ayarı: küçük-orta hareket fade edilebilir (sweet spot 11-16),
+    # ama büyük hareket (>=22) genelde gerçek bilgi taşır — fade etmek tehlikeli.
+    # Backtest verisi: diff 12-15 → %67 başarı; diff 25+ → %27 başarı.
+    if abs_diff <= 16:
+        legacy_strength = _clamp(8 + (abs_diff - float(threshold or 0)) * 0.6, 7, 13)
+        legacy_confidence = 66
+    elif abs_diff <= 20:
+        legacy_strength = 6
+        legacy_confidence = 50
+    else:
+        legacy_strength = 4
+        legacy_confidence = 35
     votes.append(_vote(
         "Eski barem sinyali",
         legacy_direction,
         legacy_strength,
-        66,
-        f"Eski mantık korundu: canlı-açılış farkı {diff:+.1f}, eşik {float(threshold or 0):.1f}.",
+        legacy_confidence,
+        f"Eski mantık: canlı-açılış farkı {diff:+.1f}, eşik {float(threshold or 0):.1f}."
+        + (" Büyük hareket — güven düşük tutuldu." if abs_diff > 20 else ""),
     ))
 
+    # Çok büyük hareketlerde (>=22) sadece "uyarı oyu" olarak çelişki ekle.
+    # Bu oy yön kararını belirsizleştirip flip kararını gerçek
+    # ayrışma varsa verir.
+    if abs_diff >= 25:
+        market_direction = _opposite_direction(legacy_direction)
+        votes.append(_vote(
+            "Piyasa direnci uyarısı",
+            market_direction,
+            _clamp(5 + (abs_diff - 25) * 0.3, 5, 10),
+            45,
+            f"Çizgi {abs_diff:.0f} puan kaydı; piyasa bu kadar net hareket ettiğinde "
+            f"genelde haklı — fade güveni düşük tutuldu.",
+        ))
+
+    # Adil barem oyu — çok büyük edge'leri sınırla (genelde H2H/team_recent
+    # parazitinden geliyor, gerçek değer değil).
     if fair_edge is not None:
         edge = float(fair_edge)
+        edge_capped = _clamp(abs(edge), 0, 10)  # >10 üzerinde ek katkı yok
         if edge >= 3:
+            confidence = 70 if abs(edge) >= 6 else 60
+            if abs(edge) > 12:
+                confidence -= 12  # aşırı edge şüpheli
             votes.append(_vote(
                 "Adil barem değeri",
                 "ÜST",
-                _clamp(8 + abs(edge) * 0.9, 8, 24),
-                78 if abs(edge) >= 6 else 64,
-                f"Adil barem canlıdan {edge:.1f} yüksek; piyasa aşağıda kalmış.",
+                _clamp(7 + edge_capped * 0.7, 7, 16),
+                confidence,
+                f"Adil barem canlıdan {edge:.1f} yüksek; piyasa aşağıda kalmış."
+                + (" Edge çok büyük, ihtiyatla değerlendir." if abs(edge) > 12 else ""),
             ))
         elif edge <= -3:
+            confidence = 70 if abs(edge) >= 6 else 60
+            if abs(edge) > 12:
+                confidence -= 12
             votes.append(_vote(
                 "Adil barem değeri",
                 "ALT",
-                _clamp(8 + abs(edge) * 0.9, 8, 24),
-                78 if abs(edge) >= 6 else 64,
-                f"Adil barem canlıdan {abs(edge):.1f} düşük; piyasa fazla şişmiş.",
+                _clamp(7 + edge_capped * 0.7, 7, 16),
+                confidence,
+                f"Adil barem canlıdan {abs(edge):.1f} düşük; piyasa fazla şişmiş."
+                + (" Edge çok büyük, ihtiyatla değerlendir." if abs(edge) > 12 else ""),
             ))
 
     projected_gap = None
     if projected_total is not None:
         projected_gap = round(float(projected_total) - float(live), 1)
+        gap_capped = _clamp(abs(projected_gap), 0, 12)
         if projected_gap >= 4:
             votes.append(_vote(
                 "Canlı tempo/projeksiyon",
                 "ÜST",
-                _clamp(7 + projected_gap * 0.75, 7, 22),
-                74 if projected_gap >= 8 else 62,
+                _clamp(6 + gap_capped * 0.6, 6, 16),
+                70 if projected_gap >= 8 else 60,
                 f"Regresyonlu projeksiyon canlı baremin {projected_gap:.1f} üstünde.",
             ))
         elif projected_gap <= -4:
             votes.append(_vote(
                 "Canlı tempo/projeksiyon",
                 "ALT",
-                _clamp(7 + abs(projected_gap) * 0.75, 7, 22),
-                74 if projected_gap <= -8 else 62,
+                _clamp(6 + gap_capped * 0.6, 6, 16),
+                70 if projected_gap <= -8 else 60,
                 f"Regresyonlu projeksiyon canlı baremin {abs(projected_gap):.1f} altında.",
             ))
 
@@ -927,50 +1419,70 @@ def _decision_from_components(
         tournament=tournament,
     )
     backtest_scores = _backtest_direction_scores(backtest_profile, backtest_keys)
-    alt_rate = backtest_scores.get("ALT", {}).get("rate")
-    ust_rate = backtest_scores.get("ÜST", {}).get("rate")
-    if alt_rate is not None and ust_rate is not None:
-        delta = round(abs(alt_rate - ust_rate), 1)
-        better = "ALT" if alt_rate > ust_rate else "ÜST"
-        better_samples = backtest_scores[better]["samples"]
-        if delta >= 3 and better_samples >= 25:
-            votes.append(_vote(
-                "Backtest uyumu",
-                better,
-                _clamp(5 + delta * 0.55, 5, 15),
-                _clamp(56 + delta + min(better_samples, 250) / 12, 56, 82),
-                f"Benzer geçmiş bucket'larda {better} %{max(alt_rate, ust_rate):.1f}, diğer taraf %{min(alt_rate, ust_rate):.1f}.",
-            ))
 
     totals = {"ALT": 0.0, "ÜST": 0.0}
     for item in votes:
         totals[item["direction"]] += float(item["score"])
 
     final_direction = "ALT" if totals["ALT"] > totals["ÜST"] else "ÜST"
-    if abs(totals["ALT"] - totals["ÜST"]) < 2.5:
+    # Yön değişimleri tarihsel olarak güçlü; ama yönsüz/sıkı durumda
+    # legacy'yi koru. Flip için net üstünlük gerekir.
+    raw_margin = abs(totals["ALT"] - totals["ÜST"])
+    if raw_margin < 2.5:
         final_direction = legacy_direction
 
-    final_score_raw = totals[final_direction]
-    opposite_score = totals[_opposite_direction(final_direction)]
-    consensus = final_score_raw / max(final_score_raw + opposite_score, 1)
     best_rate = backtest_scores.get(final_direction, {}).get("rate")
-    backtest_component = best_rate if best_rate is not None else 50
-    ai_score = round(_clamp((consensus * 62) + ((backtest_component - 35) * 0.75), 0, 100), 1)
+    fair_abs = abs(float(fair_edge)) if fair_edge is not None else 0.0
+    projected_abs = abs(float(projected_gap)) if projected_gap is not None else 0.0
+    # Edge skorunu sınırla: >10 fair_abs zaten parazit sinyali
+    live_edge_score = _clamp(
+        (_clamp(fair_abs, 0, 10) * 4.5) + (_clamp(projected_abs, 0, 12) * 3.5),
+        0,
+        100,
+    )
+    flipped = final_direction != legacy_direction
 
-    if ai_score >= 72:
-        tier = "A"
-    elif ai_score >= 62:
-        tier = "B"
-    elif ai_score >= 52:
-        tier = "C"
+    # Periyot bilgisi: alert_moment veya status'tan periyot çıkar
+    period_key = _period_key(status, alert_moment)
+    if period_key == "period:q1":
+        alert_period = 1
+    elif period_key == "period:q2_ht":
+        alert_period = 2
+    elif period_key == "period:q3":
+        alert_period = 3
+    elif period_key == "period:q4":
+        alert_period = 4
     else:
-        tier = "D"
+        alert_period = None
+
+    # Basketbol gerçeği: tehlike bölgeleri (backtest doğrulu)
+    danger_penalty = 0.0
+    if abs_diff > 18:
+        danger_penalty += min(18.0, (abs_diff - 18) * 1.4)
+    if alert_period == 3:
+        danger_penalty += 8.0
+    if signal_count >= 3:
+        danger_penalty += min(15.0, (signal_count - 2) * 5.0)
+    if not flipped and abs_diff >= 16:
+        # Karar yön değiştirmediği halde çizgi büyük kaymışsa riskli.
+        danger_penalty += 4.0
+
+    # Sweet spot bonusu: ilk sinyal + 11-16 fark + flip
+    sweet_bonus = 0.0
+    if 11 <= abs_diff <= 16:
+        sweet_bonus += 6.0
+    if signal_count == 1:
+        sweet_bonus += 4.0
+    if flipped:
+        sweet_bonus += 10.0  # FLIP backtest'te %75 kazanıyor, en güçlü sinyal
+    if alert_period in (1, 2):
+        sweet_bonus += 2.0
 
     flip_reason = ""
-    if final_direction != legacy_direction:
+    if flipped:
         flip_reason = (
-            f"Eski sinyal {legacy_direction}, AI karar {final_direction}: "
-            f"tempo/adil barem/script/backtest toplamı yönü çevirdi."
+            f"Eski sinyal {legacy_direction}, yeni karar {final_direction}: "
+            f"tempo/adil barem/piyasa toplamı yönü çevirdi (tarihsel olarak en başarılı tip)."
         )
 
     return {
@@ -978,9 +1490,17 @@ def _decision_from_components(
         "legacy_direction": legacy_direction,
         "signal_scores": {key: round(value, 1) for key, value in totals.items()},
         "signal_votes": sorted(votes, key=lambda item: item["score"], reverse=True),
-        "ai_score": ai_score,
-        "ai_tier": tier,
-        "ai_confidence": round(consensus * 100, 1),
+        "projection_quality": projection_quality,
+        "live_edge_score": round(live_edge_score, 1),
+        "fair_edge": fair_edge,
+        "fair_edge_abs": round(fair_abs, 1),
+        "projected_gap": projected_gap,
+        "projected_gap_abs": round(projected_abs, 1),
+        "abs_diff": round(abs_diff, 1),
+        "signal_count": signal_count,
+        "alert_period": alert_period,
+        "danger_penalty": round(danger_penalty, 1),
+        "sweet_bonus": round(sweet_bonus, 1),
         "backtest": {
             "sample_size": (backtest_profile or {}).get("sample_size", 0),
             "keys": backtest_keys,
@@ -1025,10 +1545,16 @@ def enrich_analysis_with_backtest(
         h2h_quality_score=analysis.get("h2h_quality_score"),
         pace_anomaly_direction=analysis.get("pace_anomaly_direction"),
         pace_anomaly_pct=analysis.get("pace_anomaly_pct"),
+        projection_quality=analysis.get("projection_quality"),
         signal_count=alert.get("signal_count") or 1,
         backtest_profile=backtest_profile,
     )
-    return {**analysis, **decision}
+    selection = _classify_signal(decision)
+    warnings = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
+    selection_reason = selection.get("selection_reason")
+    if selection_reason and selection_reason not in warnings:
+        warnings = [selection_reason, *warnings]
+    return {**analysis, **decision, **selection, "warnings": warnings}
 
 
 def build_signal_analysis(
@@ -1045,6 +1571,9 @@ def build_signal_analysis(
     tournament = match.get("tournament", "")
     status = match.get("status", "")
     score = match.get("score", "")
+    quarter_scores = match.get("quarter_scores") if isinstance(match.get("quarter_scores"), dict) else {}
+    live_stats = match.get("live_stats") if isinstance(match.get("live_stats"), dict) else {}
+    odds_snapshot = match.get("odds_snapshot") if isinstance(match.get("odds_snapshot"), dict) else {}
 
     legacy_direction = _normalize_direction(match.get("direction") or ("ALT" if live - opening > 0 else "ÜST"))
     direction = legacy_direction
@@ -1052,15 +1581,21 @@ def build_signal_analysis(
     h2h_body = (context.get("h2h") or {}).get("body_text", "") if isinstance(context, dict) else ""
     h2h_metrics = _extract_h2h_metrics(h2h_body, match_name)
     clock = game_clock(status, match_name, tournament)
-    has_reliable_clock = clock.get("period") is not None and clock.get("remaining_min") is not None
-    raw_projected = (
-        calculate_projected_total(score, status, match_name, tournament)
-        if has_reliable_clock
-        else None
+    market_total = _market_total(match, opening)
+    live_projection = calculate_live_projection(
+        score,
+        status,
+        match_name,
+        tournament,
+        quarter_scores=quarter_scores,
+        live_stats=live_stats.get("totals") if isinstance(live_stats, dict) else None,
+        market_total=market_total,
+        opening_total=opening,
     )
+    raw_projected = live_projection.get("projected_total")
     pace_adj = _script_pace_adjustment(score, status, match_name, tournament)
     projected_total = round(raw_projected * pace_adj, 1) if raw_projected is not None else None
-    market_total = _market_total(match, opening)
+    projection_quality = live_projection.get("data_quality")
     team_recent_total = h2h_metrics.get("expected_total")
     h2h_total = h2h_metrics.get("h2h_avg_total")
     h2h_games = h2h_metrics.get("h2h_games")
@@ -1076,6 +1611,18 @@ def build_signal_analysis(
         "h2h": h2h_total,
     }
     base_weights = _fair_weight_profile(status, match_name, tournament)
+    if projection_quality is not None and projection_quality >= 80:
+        base_weights = {
+            **base_weights,
+            "projection": base_weights.get("projection", 0) + 10,
+            "market": max(10, base_weights.get("market", 0) - 8),
+        }
+    elif projection_quality is not None and projection_quality < 55:
+        base_weights = {
+            **base_weights,
+            "projection": max(0, base_weights.get("projection", 0) - 15),
+            "market": base_weights.get("market", 0) + 10,
+        }
     # H2H numunesi 3'ten az ise güvenilmez — ağırlığını sıfırla.
     if h2h_games is not None and h2h_games < 3:
         base_weights = {**base_weights, "h2h": 0}
@@ -1088,12 +1635,29 @@ def build_signal_analysis(
     h2h_note = (team_context or {}).get("h2h_note") or "H2H verisi yok veya okunamadı."
     if h2h_quality_score is not None and h2h_quality_score < 70:
         h2h_note = f"{h2h_note} Veri kalitesi düşük ({h2h_quality_score}/100)."
+    form_games = sorted({
+        int(profile.get("games"))
+        for profile in (h2h_metrics.get("home_last6") or {}, h2h_metrics.get("away_last6") or {})
+        if profile.get("games") is not None and int(profile.get("games")) >= 3
+    }, reverse=True)
+    if form_games:
+        form_history_label = f"Son {'/'.join(str(g) for g in form_games)} maç"
+    elif h2h_total is not None:
+        form_history_label = "H2H"
+    else:
+        form_history_label = "Son form"
     history_note = (
-        f"H2H/son maç adil toplamı {history_total:.1f}."
+        f"{form_history_label}/H2H adil toplamı {history_total:.1f}."
         if history_total is not None
-        else "H2H ve son maçlardan adil toplam çıkarılamadı."
+        else "Son 3-4-5 maç ve H2H verilerinden adil toplam çıkarılamadı."
     )
-    pace = _pace_note(projected_total, live, pace_data)
+    pace = _pace_note(
+        projected_total,
+        live,
+        pace_data,
+        projection_components=live_projection.get("components") or {},
+        h2h_metrics=h2h_metrics,
+    )
     script = _script_warning(score, status, match_name, tournament)
 
     # Çeyrek hız anomalisi uyarısı
@@ -1107,8 +1671,14 @@ def build_signal_analysis(
             f"ortalamaya dönüş {pace_anomaly_direction} tarafını destekler."
         )
 
-    warnings = [h2h_note, history_note, pace, script]
-    warnings.extend(h2h_quality_notes[:3])
+    form_quality_notes = [
+        note for note in h2h_quality_notes
+        if "son 3-4-5 maç" in note.lower() or "son 6 yerine" in note.lower()
+    ]
+    other_h2h_quality_notes = [note for note in h2h_quality_notes if note not in form_quality_notes]
+    warnings = [h2h_note, history_note, *form_quality_notes, pace, script]
+    warnings.extend(live_projection.get("notes") or [])
+    warnings.extend(other_h2h_quality_notes[:3])
     if pace_anomaly_note:
         warnings.insert(0, pace_anomaly_note)
     if abs(line_delta_open) >= 20:
@@ -1136,12 +1706,15 @@ def build_signal_analysis(
         h2h_quality_score=h2h_quality_score,
         pace_anomaly_direction=pace_anomaly_direction,
         pace_anomaly_pct=pace_anomaly_pct,
+        projection_quality=projection_quality,
         signal_count=match.get("signal_count") or 1,
         backtest_profile=backtest_profile,
     )
     direction = decision["direction"]
     if decision.get("flip_reason"):
         warnings.insert(0, decision["flip_reason"])
+    selection = _classify_signal(decision)
+    warnings.insert(0, selection["selection_reason"])
 
     if fair_line is None:
         if projected_total is None:
@@ -1172,6 +1745,8 @@ def build_signal_analysis(
         "projected_total": _safe_round(projected_total),
         "market_total": _safe_round(market_total),
         "team_recent_total": _safe_round(team_recent_total),
+        "home_last6": h2h_metrics.get("home_last6") or {},
+        "away_last6": h2h_metrics.get("away_last6") or {},
         "h2h_total": _safe_round(h2h_total),
         "history_total": _safe_round(history_total),
         "h2h_games": h2h_games,
@@ -1182,6 +1757,13 @@ def build_signal_analysis(
         "weights": weights,
         "base_weights": base_weights,
         "fair_components": {key: _safe_round(value) for key, value in components.items()},
+        "projection_quality": projection_quality,
+        "projection_components": live_projection.get("components") or {},
+        "projection_notes": live_projection.get("notes") or [],
+        "raw_projected_total": live_projection.get("raw_projected_total"),
+        "quarter_scores": quarter_scores,
+        "live_stats": live_stats,
+        "odds_snapshot": odds_snapshot,
         "opening_delta": line_delta_open,
         "recommendation": recommendation,
         "pace_note": pace,
@@ -1198,10 +1780,9 @@ def build_signal_analysis(
         "pace_anomaly_note": pace_anomaly_note,
         "signal_scores": decision.get("signal_scores"),
         "signal_votes": decision.get("signal_votes"),
-        "ai_score": decision.get("ai_score"),
-        "ai_tier": decision.get("ai_tier"),
-        "ai_confidence": decision.get("ai_confidence"),
         "backtest": decision.get("backtest"),
         "flip_reason": decision.get("flip_reason"),
+        "telegram_eligible": selection.get("telegram_eligible"),
+        "selection_reason": selection.get("selection_reason"),
     }
     return result

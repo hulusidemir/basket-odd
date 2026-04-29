@@ -198,6 +198,37 @@ class Database:
             ).fetchone()
         return row is not None
 
+    def was_telegram_alerted_in_period(self, match_id: str, period: int) -> bool:
+        if period is None:
+            return False
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT 1 FROM alerts
+                WHERE match_id = ?
+                  AND alert_period = ?
+                  AND ai_analysis LIKE '%"telegram_eligible": true%'
+                  AND (deleted_at IS NULL OR deleted_at = '')
+                LIMIT 1
+                """,
+                (match_id, int(period)),
+            ).fetchone()
+        return row is not None
+
+    def count_match_telegram_alerts(self, match_id: str) -> int:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) as cnt
+                FROM alerts
+                WHERE match_id = ?
+                  AND ai_analysis LIKE '%"telegram_eligible": true%'
+                  AND (deleted_at IS NULL OR deleted_at = '')
+                """,
+                (match_id,),
+            ).fetchone()
+        return row["cnt"] if row else 0
+
     def is_match_deleted(self, match_id: str) -> bool:
         with self._conn() as conn:
             row = conn.execute(

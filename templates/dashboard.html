@@ -153,13 +153,26 @@
       color: #fde68a;
     }
 
+    .help-btn {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border-radius: 50%;
+      font-size: 17px;
+      font-weight: 900;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
     button:disabled { opacity: 0.45; cursor: wait; }
 
     .section-shell {
       background: rgba(11,11,17,0.95);
       border: 1px solid var(--border);
       border-radius: 18px;
-      padding: 14px;
+      padding: 10px 4px 12px;
     }
 
     .nav-tabs {
@@ -174,6 +187,11 @@
       border-radius: 14px;
       padding: 12px 14px;
       margin-bottom: 10px;
+    }
+
+    .table-panel {
+      padding: 0;
+      overflow: hidden;
     }
 
     .stats { align-items: stretch; }
@@ -284,7 +302,20 @@
       background: rgba(8,8,14,0.95);
     }
 
-    table { width: 100%; border-collapse: collapse; min-width: 1360px; }
+    .table-panel .table-wrap {
+      border: 0;
+      border-radius: 14px 14px 0 0;
+    }
+
+    .table-panel .pagination {
+      margin: 10px 12px 12px;
+    }
+
+    .table-panel .empty-state {
+      margin: 12px;
+    }
+
+    table { width: 100%; border-collapse: collapse; min-width: 1420px; }
 
     th, td {
       padding: 11px 13px;
@@ -351,6 +382,13 @@
       white-space: nowrap;
     }
 
+    .tournament-cell {
+      display: block;
+      width: 112px;
+      max-width: 112px;
+      margin: 0;
+    }
+
     .focus-inline-btn {
       width: 20px; height: 20px; flex: 0 0 20px;
       display: inline-flex; align-items: center; justify-content: center;
@@ -390,6 +428,14 @@
     .badge-alt { background: rgba(239,68,68,0.13); color: #fca5a5; border-color: rgba(239,68,68,0.28); }
     .badge-ust { background: rgba(52,211,153,0.13); color: #6ee7b7; border-color: rgba(52,211,153,0.28); }
     .small-badge { min-width: 0; padding: 4px 7px; font-size: 11px; color: var(--text-soft); }
+    .sf-badge {
+      min-width: 48px;
+      border-color: rgba(96,165,250,0.42);
+      background: rgba(96,165,250,0.14);
+      color: #93c5fd;
+      cursor: pointer;
+    }
+    .sf-badge:hover { border-color: rgba(96,165,250,0.72); background: rgba(96,165,250,0.22); color: #bfdbfe; }
 
     .trust { min-width: 30px; cursor: pointer; }
     .trust.reliable { color: #6ee7b7; border-color: rgba(52,211,153,0.28); }
@@ -413,34 +459,107 @@
     .ai-badge.mid { color: #1a1000; background: linear-gradient(135deg,#fde68a,#f59e0b); border-color: transparent; }
     .ai-badge.bad { color: #fca5a5; border-color: rgba(239,68,68,0.32); background: rgba(239,68,68,0.12); }
 
+    /* === Sinyal etiket çipleri (tablo + filtre) === */
+    .ai-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px; border-radius: 999px;
+      font-size: 11px; font-weight: 800; letter-spacing: 0.02em;
+      border: 1px solid transparent; line-height: 1.2; white-space: nowrap;
+    }
+    .ai-chip + .ai-chip { margin-left: 4px; }
+    .ai-chip-score {
+      padding: 3px 9px; border-radius: 999px; font-weight: 900;
+      background: rgba(148,163,184,0.10); border: 1px solid rgba(148,163,184,0.22);
+      color: var(--text); font-size: 11.5px;
+    }
+
+    .ai-score-stack {
+      display: inline-flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 4px;
+      min-width: max-content;
+      white-space: nowrap;
+    }
+
+    .ai-score-tags {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      white-space: nowrap;
+    }
+
+    .ai-score-tags .ai-chip {
+      margin-left: 0;
+    }
+
+    /* Eski tier stilleri kaldırıldı; sınıf renkleri korunuyor. */
+    .ai-tier-a { background: rgba(52,211,153,0.12); border-color: rgba(52,211,153,0.28); color: #6ee7b7; }
+    .ai-tier-b { background: rgba(34,211,238,0.10); border-color: rgba(34,211,238,0.26); color: #7dd3fc; }
+    .ai-tier-c { background: rgba(251,191,36,0.10); border-color: rgba(251,191,36,0.26); color: #fde68a; }
+    .ai-tier-d { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.24); color: #fca5a5; }
+
+    /* Signal grade — anlamlı, ölçülü tonlar */
+    .ai-grade-elite { background: rgba(167,139,250,0.16); border-color: rgba(167,139,250,0.36); color: #c4b5fd; }
+    .ai-grade-strong { background: rgba(52,211,153,0.12); border-color: rgba(52,211,153,0.30); color: #6ee7b7; }
+    .ai-grade-watch { background: rgba(251,191,36,0.10); border-color: rgba(251,191,36,0.28); color: #fde68a; }
+    .ai-grade-pass { background: rgba(148,163,184,0.10); border-color: rgba(148,163,184,0.24); color: #94a3b8; }
+
+    /* Sinyal filtre satırı */
+    .ai-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+    .ai-filter-label {
+      font-size: 11px; font-weight: 900; letter-spacing: 0.05em;
+      text-transform: uppercase; color: var(--text-soft); padding-right: 4px;
+    }
+    .ai-filter-btn {
+      padding: 5px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 800;
+      border: 1px solid var(--border); background: rgba(20,18,32,0.7);
+      color: var(--text-soft); cursor: pointer; line-height: 1.2;
+    }
+    .ai-filter-btn:hover { border-color: rgba(124,92,246,0.45); color: var(--text); }
+    .ai-filter-btn.active { color: var(--text); }
+    .ai-filter-btn.tier-a.active { background: rgba(52,211,153,0.18); border-color: rgba(52,211,153,0.5); color: #a7f3d0; }
+    .ai-filter-btn.tier-b.active { background: rgba(34,211,238,0.16); border-color: rgba(34,211,238,0.5); color: #bae6fd; }
+    .ai-filter-btn.tier-c.active { background: rgba(251,191,36,0.16); border-color: rgba(251,191,36,0.5); color: #fef3c7; }
+    .ai-filter-btn.tier-d.active { background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.45); color: #fecaca; }
+    .ai-filter-btn.grade-elite.active { background: rgba(167,139,250,0.22); border-color: rgba(167,139,250,0.55); color: #ddd6fe; }
+    .ai-filter-btn.grade-strong.active { background: rgba(52,211,153,0.18); border-color: rgba(52,211,153,0.5); color: #a7f3d0; }
+    .ai-filter-btn.grade-watch.active { background: rgba(251,191,36,0.16); border-color: rgba(251,191,36,0.5); color: #fef3c7; }
+    .ai-filter-btn.grade-pass.active { background: rgba(148,163,184,0.16); border-color: rgba(148,163,184,0.4); color: #cbd5e1; }
+
     .bet-cell {
       display: inline-flex; align-items: center; justify-content: center;
       width: 34px; height: 34px; border: 0; background: transparent;
       color: inherit; padding: 0; font: inherit; cursor: pointer; position: relative;
     }
-    /* === Profesyonel Sinyal Modal === */
+    /* === Sinyal modalı === */
     .sig-hero {
       display: flex; align-items: center; gap: 14px;
-      padding: 16px; border-radius: 14px; margin-bottom: 14px;
-      background: linear-gradient(135deg, rgba(34,211,238,0.10), rgba(124,92,246,0.10));
-      border: 1px solid rgba(124,92,246,0.22);
+      padding: 14px 16px; border-radius: 12px; margin-bottom: 12px;
+      background: rgba(16,20,34,0.92);
+      border: 1px solid rgba(96,165,250,0.20);
     }
     .sig-hero .hero-text { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
-    .sig-hero .hero-meta { font-size: 12px; color: var(--text-soft); margin-top: 2px; }
+    .sig-hero .hero-meta { font-size: 12.5px; color: var(--text-soft); margin-top: 2px; line-height: 1.55; }
 
-    .sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
     .sig-grid.full { grid-template-columns: 1fr; }
     .sig-card {
-      padding: 12px 14px; border-radius: 10px;
-      background: rgba(15,23,42,0.55); border: 1px solid rgba(148,163,184,0.18);
+      padding: 13px 14px; border-radius: 10px;
+      background: rgba(13,18,30,0.78); border: 1px solid rgba(148,163,184,0.16);
     }
     .sig-card h4 {
-      margin: 0 0 8px; font-size: 11px; font-weight: 800; letter-spacing: 0.6px;
-      text-transform: uppercase; color: var(--text-soft);
+      margin: 0 0 9px; font-size: 11px; font-weight: 900; letter-spacing: 0.04em;
+      text-transform: uppercase; color: #bfdbfe;
     }
-    .sig-card .row { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; font-size: 13px; }
+    .sig-card .row {
+      display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+      padding: 6px 0; font-size: 13px; border-top: 1px solid rgba(148,163,184,0.08);
+    }
+    .sig-card .row:first-of-type { border-top: 0; padding-top: 0; }
     .sig-card .row span { color: var(--text-soft); }
-    .sig-card .row strong { font-weight: 800; }
+    .sig-card .row strong { font-weight: 850; text-align: right; overflow-wrap: anywhere; }
     .sig-card .row strong.alt-tag { color: #6ee7b7; }
     .sig-card .row strong.ust-tag { color: #fca5a5; }
 
@@ -453,7 +572,7 @@
     .sig-edge-box.ust { background: rgba(239,68,68,0.10); border-color: rgba(239,68,68,0.30); color: #fca5a5; }
     .sig-edge-box.neutral { background: rgba(148,163,184,0.08); border-color: rgba(148,163,184,0.25); color: #cbd5e1; }
     .sig-edge-box .arrow { font-size: 22px; font-weight: 900; }
-    .sig-edge-box .text { font-size: 13px; font-weight: 700; }
+    .sig-edge-box .text { font-size: 13px; font-weight: 750; line-height: 1.45; }
 
     .sig-warnings { list-style: none; padding: 0; margin: 0; }
     .sig-warnings li {
@@ -484,6 +603,19 @@
     }
     .sig-actions .ignore { background: rgba(148,163,184,0.10); }
     .sig-actions .ignore.active { background: rgba(100,116,139,0.40); }
+
+    .sig-help {
+      font-size: 11.5px;
+      color: var(--text-soft);
+      margin: -2px 0 8px;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 720px) {
+      .sig-grid { grid-template-columns: 1fr; }
+      .sig-actions { grid-template-columns: repeat(2, 1fr); }
+      .sig-card .row { align-items: flex-start; }
+    }
 
     .fair-cell { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
     .fair-alert { color: #f87171; font-weight: 900; }
@@ -703,17 +835,87 @@
       padding: 9px 12px;
     }
 
+    .ai-guide-box { width: min(96vw, 920px); }
+
+    .ai-guide-body {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      overflow-y: auto;
+      line-height: 1.5;
+    }
+
+    .ai-guide-lead {
+      padding: 13px 14px;
+      border-radius: 12px;
+      background: rgba(20,18,36,0.95);
+      border: 1px solid rgba(124,92,246,0.18);
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .ai-guide-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 10px;
+    }
+
+    .ai-guide-card {
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(12,10,22,0.85);
+      border: 1px solid rgba(100,80,180,0.12);
+    }
+
+    .ai-guide-card.wide { grid-column: 1 / -1; }
+
+    .ai-guide-card h4 {
+      margin: 0 0 8px;
+      color: #bfdbfe;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .ai-guide-list {
+      display: grid;
+      gap: 7px;
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+
+    .ai-guide-list li {
+      padding: 8px 9px;
+      border-radius: 9px;
+      background: rgba(8,8,16,0.72);
+      border: 1px solid rgba(100,80,180,0.1);
+      color: var(--text-soft);
+      font-size: 12.5px;
+    }
+
+    .ai-guide-list strong {
+      color: var(--text);
+      font-weight: 850;
+    }
+
+    .ai-guide-list .good { color: #6ee7b7; }
+    .ai-guide-list .warn { color: #fde68a; }
+
     @media (max-width: 900px) {
       .table-wrap { display: none; }
       .cards-wrap { display: flex; }
       .toolbar-side { justify-content: flex-start; }
       .bet-toolbar { grid-template-columns: 1fr; }
       .detail-grid { grid-template-columns: 1fr; }
+      .ai-guide-grid { grid-template-columns: 1fr; }
     }
 
     @media (max-width: 720px) {
       .actions, .toolbar-main, .toolbar-side, .search-box, .btn, .nav-tab { width: 100%; }
       .btn, .nav-tab { text-align: center; justify-content: center; }
+      .help-btn { width: 100%; border-radius: 10px; }
       .card-grid { grid-template-columns: 1fr; }
       .card-actions { grid-template-columns: repeat(3, minmax(0,1fr)); }
       .brand-title { white-space: normal; }
@@ -827,6 +1029,7 @@
         <span class="btn primary">Canlı</span>
         <a href="/deleted-matches" class="btn">Silinen</a>
         <a href="/bankroll" class="btn">Bankroll</a>
+        <button class="btn help-btn" type="button" onclick="openSignalGuide()" aria-label="Sinyal rehberi" title="Sinyal rehberi">?</button>
         <button class="btn primary" onclick="manualRefresh()">Yenile</button>
         <button class="btn danger" onclick="clearDatabase()">Tümünü Sil</button>
       </div>
@@ -891,7 +1094,7 @@
 
       <div id="banner" class="banner"></div>
 
-      <section class="panel">
+      <section class="panel table-panel">
         <div class="table-wrap">
           <table>
             <thead>
@@ -899,9 +1102,9 @@
                 <th class="select-cell"><input class="match-select" id="selectAll" type="checkbox" onchange="selectPage(this.checked)" aria-label="Sayfadaki maçları seç"></th>
                 <th data-sort="alerted_at">Zaman</th>
                 <th data-sort="direction">Sinyal</th>
-                <th data-sort="ai_score">AI</th>
                 <th data-sort="fair_line">Adil</th>
                 <th data-sort="projected">Proj.</th>
+                <th>SF</th>
                 <th data-sort="match_name">Maç</th>
                 <th data-sort="tournament">Turnuva</th>
                 <th data-sort="status">Durum</th>
@@ -999,6 +1202,68 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="signalGuideModal" onclick="if(event.target===this)closeSignalGuide()">
+    <div class="modal-box ai-guide-box">
+      <div class="modal-header">
+        <h3>Sinyal Rehberi</h3>
+        <button class="modal-close" onclick="closeSignalGuide()">&times;</button>
+      </div>
+      <div class="ai-guide-body">
+        <div class="ai-guide-lead">
+          Bu ekran canlı hat, skor/süre projeksiyonu, son form, H2H, tempo sapması ve geçmiş sonuç filtrelerini birlikte okuyup “bu sinyal takip edilmeye değer mi?” sorusuna cevap verir.
+        </div>
+
+        <div class="ai-guide-grid">
+          <div class="ai-guide-card">
+            <h4>ALT / ÜST Ne Demek?</h4>
+            <ul class="ai-guide-list">
+              <li><strong>ALT</strong>: Mevcut canlı toplam çizgisinin maç sonu için yüksek kaldığını gösterir.</li>
+              <li><strong>ÜST</strong>: Mevcut canlı toplam çizgisinin maç sonu için düşük kaldığını gösterir.</li>
+              <li><strong>Klasik yön → Yeni karar</strong>: Eski barem sinyali ile güncel karar karşılaştırılır. “Değişti” yazıyorsa sinyal yönü tersine dönmüştür.</li>
+            </ul>
+          </div>
+
+          <div class="ai-guide-card">
+            <h4>Adil Hat ve Edge</h4>
+            <ul class="ai-guide-list">
+              <li><strong>Adil hat</strong>: Projeksiyon, pazar, son form ve H2H bileşenlerinden üretilen tahmini doğru çizgi.</li>
+              <li><strong>Hat avantajı</strong>: Adil hat eksi canlı hat. Pozitif fark ÜST, negatif fark ALT tarafını destekler.</li>
+              <li><strong>Projeksiyon</strong>: Skor ve süreye göre maçın nereye gidebileceğini söyler; düşük canlı veri puanında daha temkinli okunur.</li>
+            </ul>
+          </div>
+
+          <div class="ai-guide-card">
+            <h4>SF, H2H ve Oylar</h4>
+            <ul class="ai-guide-list">
+              <li><strong>SF</strong>: Takımların son maç toplam profili. Canlı hat SF’den çok uzaksa regresyon ihtimali takip edilir.</li>
+              <li><strong>H2H</strong>: Sadece bu iki takımın birbirine karşı maçları. Maç sayısı azsa tek başına karar verdirmez.</li>
+              <li><strong>Sinyal oyları</strong>: Tempo, hat hareketi, tarihçe, canlı edge gibi alt sinyallerin hangi yöne puan verdiğini gösterir.</li>
+            </ul>
+          </div>
+
+          <div class="ai-guide-card">
+            <h4>Nasıl Takip Edilmeli?</h4>
+            <ul class="ai-guide-list">
+              <li><strong>Bahis Oyna</strong>: Sadece kendi kontrolünden de geçen, gerekçesi ve canlı akışı uyumlu sinyallerde kullan.</li>
+              <li><strong>Takip Et</strong>: Yeni gelen sinyal, veri kalitesi düşük veya hat değişimi beklenen maçlarda kullan.</li>
+              <li><strong>Gözardı Et</strong>: Risk notu yoğun, skor/süre bozuk veya maç akışı modele ters görünüyorsa kullan.</li>
+            </ul>
+          </div>
+
+          <div class="ai-guide-card wide">
+            <h4>Pratik Okuma Sırası</h4>
+            <ul class="ai-guide-list">
+              <li><strong>1.</strong> Sinyal yönü ile adil hat avantajı aynı tarafı mı gösteriyor?</li>
+              <li><strong>2.</strong> Canlı veri puanı, SF/H2H ve risk notları kararı bozuyor mu?</li>
+              <li><strong>3.</strong> Aynı maç tekrar sinyal verdiyse yeni hat daha mı iyi, yoksa geç kalınmış mı?</li>
+              <li><strong>4.</strong> Emin değilsen “Takip Et” işaretle; sistem maçı ayırır, karar vermeye zorlamaz.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     let allAlerts = [];
     let currentFilter = 'all';
@@ -1067,6 +1332,14 @@
       if (message) setTimeout(() => { banner.style.display = 'none'; }, 4000);
     }
 
+    function openSignalGuide() {
+      $('signalGuideModal').classList.add('active');
+    }
+
+    function closeSignalGuide() {
+      $('signalGuideModal').classList.remove('active');
+    }
+
     function setBetStatus(message, type = 'success') {
       const target = $('betStatus');
       target.textContent = message || '';
@@ -1099,11 +1372,38 @@
       return `<span class="badge small-badge">${fmt(alert.projected)}</span>`;
     }
 
-    function aiScoreHtml(alert) {
-      const score = num(alert.ai_score);
-      if (score === null) return '<span class="badge small-badge">-</span>';
-      const tier = alert.ai_tier ? ` ${escapeHtml(alert.ai_tier)}` : '';
-      return `<span class="badge small-badge" title="AI Skor">${score.toFixed(0)}${tier}</span>`;
+    function last6Profiles(alert) {
+      const analysis = parseAnalysis(alert);
+      const ctx = analysis.team_context || alert.team_context || {};
+      const home = analysis.home_last6 || alert.home_last6 || ctx.home_last6_profile || {};
+      const away = analysis.away_last6 || alert.away_last6 || ctx.away_last6_profile || {};
+      return { home, away };
+    }
+
+    function last6Label(profile) {
+      if (!profile || typeof profile !== 'object') return 'Son 3-4-5 alınamıyor';
+      if (profile.label) return String(profile.label);
+      const ppg = num(profile.ppg);
+      const oppg = num(profile.oppg);
+      const total = num(profile.avg_total);
+      if (ppg === null || oppg === null) return 'Son 3-4-5 alınamıyor';
+      return `${Math.round(ppg)}+${Math.round(oppg)} = ${Math.round(total ?? (ppg + oppg))}`;
+    }
+
+    function last6Title(profile) {
+      const games = num(profile?.games);
+      return games !== null && games >= 3 ? `Son ${Math.round(games)}` : 'Son form';
+    }
+
+    function last6Html(alert) {
+      const total = num(alert.team_recent_total ?? parseAnalysis(alert).team_recent_total);
+      const label = total === null ? '-' : total.toFixed(1);
+      const { home, away } = last6Profiles(alert);
+      const tip = [];
+      if (home && home.team) tip.push(`${home.team}: ${last6Label(home)}`);
+      if (away && away.team) tip.push(`${away.team}: ${last6Label(away)}`);
+      const title = tip.length ? `${tip.join(' · ')} (detay için tıkla)` : 'Son form detayını aç';
+      return `<button class="badge small-badge sf-badge" type="button" title="${escapeHtml(title)}" onclick="openSignalModal(${Number(alert.id || 0)})">${escapeHtml(label)}</button>`;
     }
 
     function matchLink(alert) {
@@ -1141,7 +1441,7 @@
     }
 
     function sortValue(alert, field) {
-      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count', 'ai_score'].includes(field)) {
+      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count'].includes(field)) {
         return num(alert[field]) ?? Number.NEGATIVE_INFINITY;
       }
       if (field === 'alerted_at') return alert.alerted_at ? new Date(`${String(alert.alerted_at).replace(' ', 'T')}Z`).getTime() : 0;
@@ -1163,7 +1463,7 @@
       if (searchQuery) {
         const q = searchQuery.toLocaleLowerCase('tr-TR');
         list = list.filter(a => [
-          a.match_name, a.tournament, a.status, a.score, a.note, a.recommendation, a.ai_score, a.ai_tier,
+          a.match_name, a.tournament, a.status, a.score, a.note, a.recommendation,
         ].some(v => String(v || '').toLocaleLowerCase('tr-TR').includes(q)));
       }
       list.sort((a, b) => {
@@ -1226,11 +1526,11 @@
             <td class="select-cell"><input class="match-select" type="checkbox" ${selectedMatchIds.has(matchId) ? 'checked' : ''} onchange='toggleSelected(${matchIdArg}, this.checked)' aria-label="Maç seç"></td>
             <td class="mono">${timeText(a.alerted_at)}</td>
             <td>${directionBadge(a)} ${Number(a.signal_count || 1) > 1 ? `<span class="badge small-badge">${Number(a.signal_count)}. sinyal</span>` : ''}</td>
-            <td>${aiScoreHtml(a)}</td>
             <td>${fairHtml(a)}</td>
             <td>${projectedHtml(a)}</td>
+            <td>${last6Html(a)}</td>
             <td><div class="match-cell-wrap">${focusButton(a)}${matchLink(a)}${noteInfoButton(a)}</div></td>
-            <td><span class="subline" style="max-width:168px;margin:0;">${tournament}</span></td>
+            <td><span class="subline tournament-cell">${tournament}</span></td>
             <td>${escapeHtml(a.status || '-')}</td>
             <td><strong>${escapeHtml(a.score || '-')}</strong></td>
             <td class="mono">${fmt(a.opening)}</td>
@@ -1264,9 +1564,9 @@
               <div class="card-metric"><span>Zaman</span><strong>${timeText(a.alerted_at)}</strong></div>
               <div class="card-metric"><span>Durum</span><strong>${escapeHtml(a.status || '-')}</strong></div>
               <div class="card-metric"><span>Skor</span><strong>${escapeHtml(a.score || '-')}</strong></div>
-              <div class="card-metric"><span>AI Skor</span><strong>${fmt(a.ai_score, 0)}${a.ai_tier ? ' ' + escapeHtml(a.ai_tier) : ''}</strong></div>
               <div class="card-metric"><span>Açılış / Canlı</span><strong>${fmt(a.opening)} → ${fmt(a.live)}</strong></div>
               <div class="card-metric"><span>Adil / Proj.</span><strong>${fmt(a.fair_line)} / ${fmt(a.projected)}</strong></div>
+              <div class="card-metric"><span>SF</span>${last6Html(a)}</div>
               <div class="card-metric"><span>Fark</span><strong class="${diffCls}">${signed(a.diff)}</strong></div>
             </div>
             <div class="card-actions">
@@ -1481,7 +1781,7 @@
     }
 
     function signalWeightsText(weights) {
-      const labels = { projection: 'Projeksiyon', market: 'Piyasa', team_recent: 'Son maç', h2h: 'H2H' };
+      const labels = { projection: 'Projeksiyon', market: 'Piyasa', team_recent: 'Son form', h2h: 'H2H' };
       const parts = Object.entries(weights || {})
         .filter(([k, v]) => labels[k] && Number(v) > 0)
         .map(([k, v]) => `${labels[k]} %${Number(v).toFixed(0)}`);
@@ -1502,14 +1802,14 @@
 
     function signalTeamContextHtml(context) {
       if (!context || typeof context !== 'object') return '';
-      const home = context.home_profile || {};
-      const away = context.away_profile || {};
+      const home = context.home_last6_profile || {};
+      const away = context.away_last6_profile || {};
       const alignCode = context.alignment_code || 'neutral';
       const teamCard = profile => {
         if (!profile || !profile.team) return '';
         return `
           <div class="team-context-card">
-            <div class="team-context-card-head">${escapeHtml(profile.team || '-')}</div>
+            <div class="team-context-card-head">${escapeHtml(last6Title(profile))} · ${escapeHtml(profile.team || '-')}</div>
             <div class="team-context-card-total">${fmt(profile.avg_total)}</div>
             <div class="team-context-card-breakdown">PPG ${fmt(profile.ppg)} / Rakip ${fmt(profile.oppg)}</div>
             <div class="team-context-card-label">${escapeHtml(profile.label || '-')}</div>
@@ -1518,7 +1818,7 @@
       const teams = [teamCard(home), teamCard(away)].filter(Boolean).join('');
       return `
         <div class="team-context">
-          <div class="team-context-title">Takım / H2H Profili</div>
+          <div class="team-context-title">Profil Yorumu</div>
           <span class="team-context-align ${escapeHtml(alignCode)}">${escapeHtml(context.alignment || 'Nötr')}</span>
           ${context.regression_note ? `<div class="team-context-regression ${(context.regression_direction || '').toLowerCase().replace('ü', 'u')}">${escapeHtml(context.regression_note)}</div>` : ''}
           ${teams ? `<div class="team-context-teams">${teams}</div>` : ''}
@@ -1548,13 +1848,17 @@
       const projected = num(alert.projected ?? analysis.projected_total);
       const h2h = num(alert.h2h_total ?? analysis.h2h_total);
       const teamRecent = num(alert.team_recent_total ?? analysis.team_recent_total);
-      const aiScore = num(alert.ai_score ?? analysis.ai_score);
-      const aiTier = alert.ai_tier || analysis.ai_tier || '-';
+      const selectionReason = alert.selection_reason || analysis.selection_reason || '';
+      const projectionQuality = num(alert.projection_quality ?? analysis.projection_quality);
       const legacyDir = analysis.legacy_direction || alert.legacy_direction || sigDir;
       const signalScores = analysis.signal_scores || alert.signal_scores || {};
       const voteRows = Array.isArray(analysis.signal_votes || alert.signal_votes) ? (analysis.signal_votes || alert.signal_votes).slice(0, 5) : [];
       const voteHtml = voteRows.length
-        ? `<div class="sig-card" style="margin-bottom:12px;"><h4>AI Skor Sinyalleri</h4>${voteRows.map(v => `<div class="row"><span>${escapeHtml(v.name || '-')} · ${escapeHtml(v.direction || '-')}</span><strong>${fmt(v.score, 1)}</strong></div>`).join('')}</div>`
+        ? `<div class="sig-card" style="margin-bottom:12px;">
+            <h4>Sinyal Oyları</h4>
+            <div class="sig-help">Her satır karara puan veren ayrı bir sinyaldir.</div>
+            ${voteRows.map(v => `<div class="row"><span>${escapeHtml(v.name || '-')} <span style="color:var(--text-soft);font-weight:600;">→ ${escapeHtml(v.direction || '-')}</span></span><strong>${fmt(v.score, 1)} puan</strong></div>`).join('')}
+          </div>`
         : '';
 
       let edgeBox = '';
@@ -1562,38 +1866,66 @@
         let cls = 'neutral', arrow = '⇆', text = '';
         if (fairEdge <= -3) {
           cls = 'alt'; arrow = '▼';
-          text = `Adil barem canlının ${Math.abs(fairEdge).toFixed(1)} puan altında — <b>ALT yönlü değer</b>.`;
+          text = `Adil hat canlıdan <b>${Math.abs(fairEdge).toFixed(1)} puan düşük</b>. Değer: <b>ALT</b>.`;
         } else if (fairEdge >= 3) {
           cls = 'ust'; arrow = '▲';
-          text = `Adil barem canlının ${fairEdge.toFixed(1)} puan üstünde — <b>ÜST yönlü değer</b>.`;
+          text = `Adil hat canlıdan <b>${fairEdge.toFixed(1)} puan yüksek</b>. Değer: <b>ÜST</b>.`;
         } else {
-          text = `Adil barem canlıya yakın (${fairEdge >= 0 ? '+' : ''}${fairEdge.toFixed(1)}) — net değer alanı dar.`;
+          text = `Adil hat canlıya yakın. Fark: <b>${fairEdge >= 0 ? '+' : ''}${fairEdge.toFixed(1)}</b>.`;
         }
         edgeBox = `<div class="sig-edge-box ${cls}"><span class="arrow">${arrow}</span><span class="text">${text}</span></div>`;
       }
 
-      // ==== Takım profili ====
-      const ctx = analysis.team_context || alert.team_context;
-      let teamCard = '';
-      if (ctx) {
-        const home = ctx.home_profile || {};
-        const away = ctx.away_profile || {};
-        const homeRow = home.team
-          ? `<div class="row"><span>${escapeHtml(home.team)}</span><strong>son 5 ort ${fmt(home.avg_total)}${home.over_pct != null ? ' · over %' + Math.round(home.over_pct) : ''}</strong></div>`
-          : '';
-        const awayRow = away.team
-          ? `<div class="row"><span>${escapeHtml(away.team)}</span><strong>son 5 ort ${fmt(away.avg_total)}${away.over_pct != null ? ' · over %' + Math.round(away.over_pct) : ''}</strong></div>`
-          : '';
-        const h2hRow = ctx.h2h_avg_total != null
-          ? `<div class="row"><span>H2H ${ctx.h2h_games || ''} maç</span><strong>ort ${fmt(ctx.h2h_avg_total)}${ctx.h2h_over_pct != null ? ' · over %' + Math.round(ctx.h2h_over_pct) : ''}</strong></div>`
-          : '';
-        const expRow = ctx.expected_total != null
-          ? `<div class="row"><span>Beklenen toplam</span><strong>${fmt(ctx.expected_total)}${ctx.regression_delta != null ? ' (canlı ' + (ctx.regression_delta >= 0 ? '+' : '') + ctx.regression_delta.toFixed(1) + ')' : ''}</strong></div>`
-          : '';
-        teamCard = (homeRow || awayRow || h2hRow || expRow)
-          ? `<div class="sig-card"><h4>🏟 Takım & H2H Profili</h4>${homeRow}${awayRow}${h2hRow}${expRow}</div>`
-          : '';
-      }
+      // ==== Takım profili (SF) ve H2H — ayrı kartlar ====
+      const profiles = last6Profiles(alert);
+      const ctx = analysis.team_context || alert.team_context || {};
+      const homeProfile = ctx.home_last6_profile || profiles.home || {};
+      const awayProfile = ctx.away_last6_profile || profiles.away || {};
+      const profileRow = (profile) => {
+        if (!profile || !profile.team) return '';
+        const total = num(profile.avg_total);
+        const totalStr = total !== null ? total.toFixed(1) : '-';
+        const detail = `Attığı ${fmt(profile.ppg)} · Yediği ${fmt(profile.oppg)}`;
+        return `
+          <div class="row">
+            <span>${escapeHtml(last6Title(profile))} · ${escapeHtml(profile.team)}</span>
+            <strong>${escapeHtml(totalStr)} <span style="color:var(--text-soft);font-weight:600;">(${escapeHtml(detail)})</span></strong>
+          </div>`;
+      };
+      const homeRow = profileRow(homeProfile);
+      const awayRow = profileRow(awayProfile);
+      const sonFormRow = teamRecent !== null
+        ? `<div class="row" style="border-top:1px solid rgba(148,163,184,0.18);margin-top:6px;padding-top:8px;"><span><b>İki takımın ortalaması</b></span><strong style="color:#a78bfa;font-size:15px;">${teamRecent.toFixed(1)}</strong></div>`
+        : `<div class="row" style="border-top:1px solid rgba(148,163,184,0.18);margin-top:6px;padding-top:8px;"><span><b>İki takımın ortalaması</b></span><strong style="color:var(--text-soft);">-</strong></div>`;
+      const sfLiveDiff = (teamRecent !== null && live !== null) ? Math.round((live - teamRecent) * 10) / 10 : null;
+      const sfLiveRow = sfLiveDiff !== null
+        ? `<div class="row"><span>Canlı − son form</span><strong>${sfLiveDiff >= 0 ? '+' : ''}${sfLiveDiff.toFixed(1)}<span style="color:var(--text-soft);font-weight:600;font-size:11px;"> ${sfLiveDiff >= 4 ? 'canlı yüksek' : (sfLiveDiff <= -4 ? 'canlı düşük' : 'yakın')}</span></strong></div>`
+        : '';
+      const sfCard = (homeRow || awayRow || teamRecent !== null)
+        ? `<div class="sig-card">
+            <h4>Son Form (SF)</h4>
+            <div class="sig-help">Takımların son maç toplam ortalaması.</div>
+            ${homeRow}${awayRow}${sonFormRow}${sfLiveRow}
+          </div>`
+        : `<div class="sig-card"><h4>Son Form (SF)</h4><div style="font-size:12.5px;color:var(--text-soft);padding:6px 0;">Son 3-4-5 maç verisi okunamadı.</div></div>`;
+
+      // H2H kartı (sadece birbirleri ile oynadıkları)
+      const h2hAvg = ctx.h2h_avg_total != null ? num(ctx.h2h_avg_total) : h2h;
+      const h2hGames = ctx.h2h_games != null ? ctx.h2h_games : analysis.h2h_games;
+      const h2hOverPct = ctx.h2h_over_pct != null ? num(ctx.h2h_over_pct) : null;
+      const h2hLiveDiff = (h2hAvg !== null && live !== null) ? Math.round((live - h2hAvg) * 10) / 10 : null;
+      const h2hRows = [];
+      h2hRows.push(`<div class="row"><span>Ortalama toplam</span><strong>${h2hAvg !== null ? h2hAvg.toFixed(1) : '-'}</strong></div>`);
+      h2hRows.push(`<div class="row"><span>Maç sayısı</span><strong>${h2hGames != null ? h2hGames : '-'}</strong></div>`);
+      if (h2hOverPct !== null) h2hRows.push(`<div class="row"><span>ÜST oranı</span><strong>%${Math.round(h2hOverPct)}</strong></div>`);
+      if (h2hLiveDiff !== null) h2hRows.push(`<div class="row"><span>Canlı hatta göre</span><strong>${h2hLiveDiff >= 0 ? '+' : ''}${h2hLiveDiff.toFixed(1)}</strong></div>`);
+      const h2hCard = (h2hAvg !== null || h2hGames != null)
+        ? `<div class="sig-card">
+            <h4>H2H</h4>
+            <div class="sig-help">Sadece bu iki takımın birbirine karşı maçları.</div>
+            ${h2hRows.join('')}
+          </div>`
+        : `<div class="sig-card"><h4>H2H</h4><div style="font-size:12.5px;color:var(--text-soft);padding:6px 0;">Okunabilir H2H verisi yok.</div></div>`;
 
       // ==== Risk uyarıları ====
       const allWarnings = [
@@ -1630,46 +1962,81 @@
           <button onclick="closeSignalModal()">Kapat</button>
         </div>`;
 
+      // ==== Adil hat bileşenleri (ağırlıklı ortalama) ====
+      const weights = analysis.weights || alert.weights || {};
+      const components = analysis.fair_components || alert.fair_components || {};
+      const compRow = (label, key, hint) => {
+        const value = num(components[key]);
+        const weight = num(weights[key]);
+        const weightStr = weight !== null && weight > 0 ? ` <span style="color:var(--text-soft);font-weight:600;">(ağırlık %${Math.round(weight)})</span>` : ' <span style="color:var(--text-soft);font-weight:600;">(kullanılmadı)</span>';
+        const valStr = value !== null ? value.toFixed(1) : '-';
+        const hintStr = hint ? `<div style="font-size:11px;color:var(--text-soft);margin-top:-2px;margin-bottom:4px;">${escapeHtml(hint)}</div>` : '';
+        return `<div class="row"><span>${escapeHtml(label)}</span><strong>${valStr}${weightStr}</strong></div>${hintStr}`;
+      };
+      const fairBreakdownRows = [
+        compRow('Canlı projeksiyon', 'projection', 'Skor ve süreye göre.'),
+        compRow('Bahis pazarı', 'market', 'Açılış / maç önü.'),
+        compRow('Son form (SF)', 'team_recent', 'Takımların son maçları.'),
+        compRow('H2H', 'h2h', 'Birbirlerine karşı maçlar.'),
+      ].join('');
+
+      // Hat hareketinin ne anlama geldiğini sade yaz
+      const moveText = lineMove === null ? ''
+        : (lineMove > 0 ? 'açılıştan yukarı'
+            : lineMove < 0 ? 'açılıştan aşağı'
+            : 'aynı');
+
       $('signalModalTitle').textContent = matchName;
       $('signalModalBody').innerHTML = `
         <div class="sig-hero">
           <div class="hero-text">
             <div class="hero-meta">
-              Sinyal: <strong class="${sigCls}">${sigEmoji} ${escapeHtml(sigDir)}</strong>
-              · ${escapeHtml(alert.status || '-')}
+              Sinyal yönü: <strong class="${sigCls}">${sigEmoji} ${escapeHtml(sigDir)}</strong>
+              · Durum: <b>${escapeHtml(alert.status || '-')}</b>
               · Skor: <b>${escapeHtml(alert.score || '-')}</b>
-              · ${escapeHtml(alert.tournament || '-')}
+              · Lig: ${escapeHtml(alert.tournament || '-')}
             </div>
           </div>
         </div>
 
+        ${edgeBox ? `<div style="margin-bottom:12px;">${edgeBox}</div>` : ''}
+
         <div class="sig-grid">
           <div class="sig-card">
-            <h4>📈 Piyasa Hareketi</h4>
-            <div class="row"><span>Açılış</span><strong>${fmt(alert.opening)}</strong></div>
-            <div class="row"><span>Canlı</span><strong>${fmt(alert.live)}</strong></div>
-            <div class="row"><span>Hareket</span><strong class="${moveColor}">${lineMoveStr}</strong></div>
-            ${alert.signal_count > 1 ? `<div class="row"><span>Tekrar</span><strong>#${alert.signal_count}. sinyal</strong></div>` : ''}
+            <h4>Bahis Hattı</h4>
+            <div class="row"><span>Açılış hattı</span><strong>${fmt(alert.opening)}</strong></div>
+            <div class="row"><span>Canlı hat</span><strong>${fmt(alert.live)}</strong></div>
+            <div class="row"><span>Hareket (canlı − açılış)</span><strong class="${moveColor}">${lineMoveStr}${moveText ? ' <span style="color:var(--text-soft);font-weight:600;">' + escapeHtml(moveText) + '</span>' : ''}</strong></div>
+            ${alert.signal_count > 1 ? `<div class="row"><span>Tekrar</span><strong>${alert.signal_count}. kez sinyal verdi</strong></div>` : ''}
           </div>
           <div class="sig-card">
-            <h4>📊 Adil Ölçüler</h4>
-            <div class="row"><span>AI skor</span><strong>${aiScore !== null ? aiScore.toFixed(0) + '/100 ' + escapeHtml(aiTier) : '-'}</strong></div>
-            <div class="row"><span>Eski / AI yön</span><strong>${escapeHtml(legacyDir)} → ${escapeHtml(sigDir)}</strong></div>
-            <div class="row"><span>ALT / ÜST puan</span><strong>${fmt(signalScores.ALT, 1)} / ${fmt(signalScores['ÜST'], 1)}</strong></div>
-            <div class="row"><span>Adil barem</span><strong>${fairNum !== null ? fairNum.toFixed(1) : '-'}</strong></div>
-            <div class="row"><span>Projeksiyon</span><strong>${projected !== null ? projected.toFixed(1) : '-'}</strong></div>
-            <div class="row"><span>H2H ort.</span><strong>${h2h !== null ? h2h.toFixed(1) : '-'}</strong></div>
-            <div class="row"><span>Son 5 maç ort.</span><strong>${teamRecent !== null ? teamRecent.toFixed(1) : '-'}</strong></div>
+            <h4>Karar Özeti</h4>
+            <div class="row"><span>Canlı veri</span><strong>${projectionQuality !== null ? projectionQuality.toFixed(0) + ' / 100' : '-'}</strong></div>
+            <div class="row"><span>Klasik yön → Yeni karar</span><strong>${escapeHtml(legacyDir)} → ${escapeHtml(sigDir)}${legacyDir !== sigDir ? ' <span style="color:#fbbf24;font-weight:600;">(değişti)</span>' : ''}</strong></div>
+            <div class="row"><span>ALT puanı / ÜST puanı</span><strong>${fmt(signalScores.ALT, 1)} / ${fmt(signalScores['ÜST'], 1)}</strong></div>
+            ${selectionReason ? `<div class="row"><span>Karar gerekçesi</span><strong style="font-weight:600;">${escapeHtml(selectionReason)}</strong></div>` : ''}
           </div>
         </div>
 
-        ${edgeBox ? `<div style="margin-bottom:12px;">${edgeBox}</div>` : ''}
+        <div class="sig-grid">
+          ${sfCard}
+          ${h2hCard}
+        </div>
+
+        <div class="sig-card" style="margin-bottom:12px;">
+          <h4>Adil Hat Hesabı</h4>
+          <div class="sig-help">Adil hat, aşağıdaki bileşenlerin ağırlıklı ortalamasıdır.</div>
+          <div class="row"><span>Adil hat</span><strong style="color:#a78bfa;font-size:15px;">${fairNum !== null ? fairNum.toFixed(1) : '-'}</strong></div>
+          <div class="row"><span>Canlı hat</span><strong>${fmt(alert.live)}</strong></div>
+          <div class="row"><span>Hat avantajı (adil − canlı)</span><strong class="${fairEdge !== null && fairEdge > 0 ? 'alt-tag' : (fairEdge !== null && fairEdge < 0 ? 'ust-tag' : '')}">${fairEdge !== null ? (fairEdge >= 0 ? '+' : '') + fairEdge.toFixed(1) : '-'}<span style="color:var(--text-soft);font-weight:600;font-size:11px;"> ${fairEdge !== null && fairEdge > 0 ? 'adil yüksek → ÜST' : (fairEdge !== null && fairEdge < 0 ? 'adil düşük → ALT' : '')}</span></strong></div>
+          <div style="margin-top:10px;padding-top:8px;border-top:1px dashed rgba(148,163,184,0.18);font-size:11px;color:var(--text-soft);font-weight:800;letter-spacing:0.04em;text-transform:uppercase;">Bileşenler</div>
+          ${fairBreakdownRows}
+        </div>
+
         ${voteHtml}
 
-        ${teamCard ? `<div style="margin-bottom:12px;">${teamCard}</div>` : ''}
-
         <div class="sig-card">
-          <h4>⚠️ Risk & Notlar</h4>
+          <h4>Riskler ve Notlar</h4>
           ${warningsHtml}
         </div>
 

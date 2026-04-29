@@ -50,6 +50,9 @@ def build_live_row(match: dict) -> dict:
             else None
         ),
         "market_locked": bool(match.get("market_locked")),
+        "quarter_scores": match.get("quarter_scores") or {},
+        "live_stats": match.get("live_stats") or {},
+        "odds_snapshot": match.get("odds_snapshot") or {},
     }
 
 

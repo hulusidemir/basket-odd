@@ -45,6 +45,78 @@ def _parse_analysis(raw) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _strip_score_labels(value):
+    legacy_prefix = "ai"
+    score_keys = {
+        f"{legacy_prefix}_score",
+        f"{legacy_prefix}_tier",
+        f"{legacy_prefix}_confidence",
+        "signal_" + "grade",
+        "dashboard_" + "action",
+        "selection_" + "policy",
+    }
+    if isinstance(value, dict):
+        return {
+            key: _strip_score_labels(item)
+            for key, item in value.items()
+            if key not in score_keys
+        }
+    if isinstance(value, list):
+        return [_strip_score_labels(item) for item in value]
+    if isinstance(value, str):
+        legacy_label = "A" + "I"
+        cleaned = re.sub(rf"\b{legacy_label}\s+\d+(?:[.,]\d+)?\s*,?\s*", "", value)
+        replacements = {
+            f"Nihai {legacy_label} yön": "Nihai yön",
+            f"{legacy_label} karar": "Yeni karar",
+            f"{legacy_label} yön": "Yeni yön",
+            f"{legacy_label} filtresinden": "Filtrelerden",
+            f"{legacy_label} filtre": "Sinyal filtre",
+            f"{legacy_label} ": "",
+        }
+        for old, new in replacements.items():
+            cleaned = cleaned.replace(old, new)
+        return re.sub(r"\s{2,}", " ", cleaned).strip()
+    return value
+
+
+def _sanitize_recent_form_analysis(analysis: dict) -> dict:
+    if not isinstance(analysis, dict):
+        return analysis or {}
+    analysis = _strip_score_labels(analysis)
+    home = analysis.get("home_last6") if isinstance(analysis.get("home_last6"), dict) else {}
+    away = analysis.get("away_last6") if isinstance(analysis.get("away_last6"), dict) else {}
+    home_scores = home.get("scores") if isinstance(home.get("scores"), list) else []
+    away_scores = away.get("scores") if isinstance(away.get("scores"), list) else []
+    same_match_rows = (
+        bool(home_scores and away_scores)
+        and home.get("source") == "match_rows"
+        and away.get("source") == "match_rows"
+        and home_scores == away_scores
+    )
+    h2h_as_form = home.get("source") == "h2h_stats" or away.get("source") == "h2h_stats"
+    if not same_match_rows and not h2h_as_form:
+        return analysis
+
+    cleaned = {**analysis, "home_last6": {}, "away_last6": {}, "team_recent_total": None}
+    warnings = list(cleaned.get("warnings") or [])
+    note = "SF verisi H2H ile karışmış göründüğü için gösterilmedi; yeni çekimde takım son maç bölümü ayrı okunacak."
+    if note not in warnings:
+        cleaned["warnings"] = [note, *warnings]
+    if isinstance(cleaned.get("team_context"), dict):
+        cleaned["team_context"] = {
+            **cleaned["team_context"],
+            "home_last6_profile": {},
+            "away_last6_profile": {},
+            "home_profile": {},
+            "away_profile": {},
+            "expected_total": None,
+        }
+    if isinstance(cleaned.get("fair_components"), dict):
+        cleaned["fair_components"] = {**cleaned["fair_components"], "team_recent": None}
+    return cleaned
+
+
 def _trim_backtest_payload(backtest: dict | None) -> dict:
     if not isinstance(backtest, dict):
         return {}
@@ -82,6 +154,7 @@ def enrich_alerts_with_analysis(alerts: list[dict], backtest_profile: dict | Non
             )
         elif backtest_profile is not None:
             analysis = enrich_analysis_with_backtest(alert, analysis, backtest_profile, config.THRESHOLD)
+        analysis = _sanitize_recent_form_analysis(analysis)
         if analysis.get("projected_total") is None:
             analysis = {**analysis}
             analysis["fair_line"] = None
@@ -113,17 +186,19 @@ def enrich_alerts_with_analysis(alerts: list[dict], backtest_profile: dict | Non
         alert["projected"] = analysis.get("projected_total")
         alert["market_total"] = analysis.get("market_total")
         alert["team_recent_total"] = analysis.get("team_recent_total")
+        alert["home_last6"] = analysis.get("home_last6") or {}
+        alert["away_last6"] = analysis.get("away_last6") or {}
         alert["h2h_total"] = analysis.get("h2h_total")
         alert["history_total"] = analysis.get("history_total")
         alert["recommendation"] = analysis.get("recommendation") or ""
         alert["legacy_direction"] = analysis.get("legacy_direction") or alert.get("direction")
         alert["final_direction"] = analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
-        alert["ai_score"] = analysis.get("ai_score")
-        alert["ai_tier"] = analysis.get("ai_tier")
-        alert["ai_confidence"] = analysis.get("ai_confidence")
         alert["signal_scores"] = analysis.get("signal_scores") or {}
         alert["signal_votes"] = analysis.get("signal_votes") if isinstance(analysis.get("signal_votes"), list) else []
         alert["backtest"] = _trim_backtest_payload(analysis.get("backtest"))
+        alert["telegram_eligible"] = bool(analysis.get("telegram_eligible"))
+        alert["selection_reason"] = analysis.get("selection_reason") or ""
+        alert["projection_quality"] = analysis.get("projection_quality")
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
     return alerts
 
@@ -212,6 +287,8 @@ def build_bet_builder(max_count: int) -> dict:
         direction = str(alert.get("direction") or "").strip().upper().replace("UST", "ÜST")
         if direction not in {"ALT", "ÜST"}:
             continue
+        if not bool(alert.get("telegram_eligible")):
+            continue
 
         opening = _safe_float(alert.get("opening"))
         live = _safe_float(alert.get("live"))
@@ -222,9 +299,8 @@ def build_bet_builder(max_count: int) -> dict:
         history_total = alert.get("history_total")
         opening_gap = round(live - opening, 1)
         signal_priority = abs(diff)
-        ai_score = _safe_float(alert.get("ai_score"))
-        if ai_score > 0:
-            signal_priority += ai_score / 10
+        fair_priority = abs(fair_edge) if fair_edge is not None else 0
+        signal_priority += fair_priority / 5
         candidates.append({
             "match_id": alert.get("match_id"),
             "match_name": alert.get("match_name", ""),
@@ -245,8 +321,6 @@ def build_bet_builder(max_count: int) -> dict:
             "opening_gap": opening_gap,
             "diff": round(diff, 1),
             "signal_priority": signal_priority,
-            "ai_score": round(ai_score, 1) if ai_score > 0 else None,
-            "ai_tier": alert.get("ai_tier"),
             "bet_placed": int(alert.get("bet_placed") or 0),
             "followed": int(alert.get("followed") or 0),
             "ignored": int(alert.get("ignored") or 0),
@@ -320,7 +394,7 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
 
     numeric_float_fields = {
         "opening", "live", "projected", "fair_line", "fair_edge",
-        "history_total", "opening_gap", "diff", "signal_priority", "ai_score",
+        "history_total", "opening_gap", "diff", "signal_priority",
     }
     numeric_int_fields = set()
     keep_fields = {
@@ -334,7 +408,6 @@ def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
         "status",
         "score",
         "recommendation",
-        "ai_tier",
     }
     bool_fields = {"bet_placed", "followed", "ignored"}
 
@@ -401,6 +474,7 @@ def _lightweight_enrich_deleted_alerts(alerts: list[dict], backtest_profile: dic
             analysis = {}
         elif backtest_profile is not None:
             analysis = enrich_analysis_with_backtest(alert, analysis, backtest_profile, config.THRESHOLD)
+        analysis = _sanitize_recent_form_analysis(analysis)
         if isinstance(analysis.get("backtest"), dict):
             analysis = {**analysis, "backtest": _trim_backtest_payload(analysis.get("backtest"))}
         alert["analysis"] = analysis
@@ -409,17 +483,19 @@ def _lightweight_enrich_deleted_alerts(alerts: list[dict], backtest_profile: dic
         alert["projected"] = analysis.get("projected_total")
         alert["market_total"] = analysis.get("market_total")
         alert["team_recent_total"] = analysis.get("team_recent_total")
+        alert["home_last6"] = analysis.get("home_last6") or {}
+        alert["away_last6"] = analysis.get("away_last6") or {}
         alert["h2h_total"] = analysis.get("h2h_total")
         alert["history_total"] = analysis.get("history_total")
         alert["recommendation"] = analysis.get("recommendation") or ""
         alert["legacy_direction"] = analysis.get("legacy_direction") or alert.get("direction")
         alert["final_direction"] = analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
-        alert["ai_score"] = analysis.get("ai_score")
-        alert["ai_tier"] = analysis.get("ai_tier")
-        alert["ai_confidence"] = analysis.get("ai_confidence")
         alert["signal_scores"] = analysis.get("signal_scores") or {}
         alert["signal_votes"] = analysis.get("signal_votes") if isinstance(analysis.get("signal_votes"), list) else []
         alert["backtest"] = _trim_backtest_payload(analysis.get("backtest"))
+        alert["telegram_eligible"] = bool(analysis.get("telegram_eligible"))
+        alert["selection_reason"] = analysis.get("selection_reason") or ""
+        alert["projection_quality"] = analysis.get("projection_quality")
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
     return alerts
 
@@ -446,7 +522,7 @@ def api_export_finished_deleted_matches_csv():
     writer = csv.writer(output)
     writer.writerow([
         "Maç", "Sinyal Anı", "Sinyal Türü", "Skor",
-        "Açılış", "Canlı", "Proj.", "Adil Barem", "AI Skor", "Sonuç", "Not",
+        "Açılış", "Canlı", "Proj.", "Adil Barem", "Sonuç", "Not",
     ])
 
     for row in rows:
@@ -466,7 +542,6 @@ def api_export_finished_deleted_matches_csv():
             row.get("live") if row.get("live") is not None else "",
             projected_cell,
             fair_line_cell,
-            row.get("ai_score") if row.get("ai_score") is not None else "",
             row.get("result") or "",
             row.get("note") or "",
         ])

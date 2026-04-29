@@ -107,13 +107,7 @@ async def process_match(
     legacy_direction = "ALT" if diff > 0 else "ÜST"
 
     total_alerts = db.count_match_alerts(match_id)
-    if total_alerts >= config.MAX_SIGNALS_PER_MATCH:
-        log.debug("Skipped (match cap %s reached): id=%s", config.MAX_SIGNALS_PER_MATCH, match_id)
-        return
-
-    if period is not None and db.was_alerted_in_period(match_id, period):
-        log.debug("Skipped (period %s already alerted): id=%s", period, match_id)
-        return
+    period_has_any_alert = period is not None and db.was_alerted_in_period(match_id, period)
 
     signal_count = total_alerts + 1
     context = {"h2h": {"body_text": match.get("h2h_body_text", "")}}
@@ -132,14 +126,21 @@ async def process_match(
         backtest_profile=backtest_profile,
     )
     direction = analysis.get("direction") or legacy_direction
+    is_telegram_signal = bool(analysis.get("telegram_eligible"))
 
-    await notifier.send_alert(
-        match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
-        score=score, signal_count=signal_count, prematch=prematch_total, analysis=analysis,
-        period=period,
-    )
+    if is_telegram_signal:
+        telegram_count = db.count_match_telegram_alerts(match_id)
+        if telegram_count >= config.MAX_SIGNALS_PER_MATCH:
+            log.debug("Skipped telegram (match cap %s reached): id=%s", config.MAX_SIGNALS_PER_MATCH, match_id)
+            return
+        if period is not None and db.was_telegram_alerted_in_period(match_id, period):
+            log.debug("Skipped telegram (period %s already sent): id=%s", period, match_id)
+            return
+    elif period_has_any_alert:
+        log.debug("Skipped dashboard duplicate (period %s already tracked): id=%s", period, match_id)
+        return
 
-    db.save_alert(
+    alert_id = db.save_alert(
         match_id, match_name, opening_total, inplay_total, direction, abs_diff,
         tournament=tournament, status=status, url=url, score=score,
         signal_count=signal_count, prematch=prematch_total,
@@ -148,9 +149,19 @@ async def process_match(
         alert_moment=" | ".join(p for p in (status, score) if p),
     )
 
+    if is_telegram_signal:
+        await notifier.send_alert(
+            match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
+            score=score, signal_count=signal_count, prematch=prematch_total, analysis=analysis,
+            period=period,
+        )
+        delivery = "telegram"
+    else:
+        delivery = "dashboard-only"
+
     log.info(
-        "Alert sent: id=%s | %s | %s | diff=%.2f | fair_line=%s",
-        match_id, match_name, direction, abs_diff, analysis.get("fair_line"),
+        "Signal saved (%s): alert_id=%s match_id=%s | %s | %s | diff=%.2f | fair_line=%s",
+        delivery, alert_id, match_id, match_name, direction, abs_diff, analysis.get("fair_line"),
     )
 
 

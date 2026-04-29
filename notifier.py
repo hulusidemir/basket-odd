@@ -59,9 +59,7 @@ class TelegramNotifier:
         prematch_line = f"Maç Öncesi: <b>{prematch:.1f}</b>\n" if prematch is not None else ""
         analysis = analysis or {}
         legacy_direction = analysis.get("legacy_direction") or direction
-        ai_score = analysis.get("ai_score")
-        ai_tier = analysis.get("ai_tier")
-        ai_confidence = analysis.get("ai_confidence")
+        projection_quality = analysis.get("projection_quality")
         signal_scores = analysis.get("signal_scores") or {}
         flip_reason = analysis.get("flip_reason") or ""
         fair_line = analysis.get("fair_line")
@@ -69,6 +67,8 @@ class TelegramNotifier:
         projected = analysis.get("projected_total")
         market_total = analysis.get("market_total")
         team_recent_total = analysis.get("team_recent_total")
+        home_last6 = analysis.get("home_last6") or {}
+        away_last6 = analysis.get("away_last6") or {}
         h2h_total = analysis.get("h2h_total")
         weights = analysis.get("weights") or {}
         recommendation = analysis.get("recommendation") or ""
@@ -78,14 +78,14 @@ class TelegramNotifier:
 
         projected_line = f"Projeksiyon: <b>{float(projected):.1f}</b>\n" if projected is not None else ""
         market_line = f"Piyasa Bazı: <b>{float(market_total):.1f}</b>\n" if market_total is not None else ""
-        team_line = f"Son Maç: <b>{float(team_recent_total):.1f}</b>\n" if team_recent_total is not None else ""
+        team_line = f"Son Form: <b>{float(team_recent_total):.1f}</b>\n" if team_recent_total is not None else ""
         h2h_line = f"H2H: <b>{float(h2h_total):.1f}</b>\n" if h2h_total is not None else ""
         fair_line_text = f"{float(fair_line):.1f}" if fair_line is not None else "Hesaplanamadı"
         fair_edge_line = f"Canlıya Göre: <b>{float(fair_edge):+.1f}</b>\n" if fair_edge is not None else ""
         weight_labels = {
             "projection": "projeksiyon",
             "market": "piyasa",
-            "team_recent": "son maç",
+            "team_recent": "son form",
             "h2h": "H2H",
         }
         weight_parts = [
@@ -107,21 +107,23 @@ class TelegramNotifier:
                     f"<b>{fair_edge_abs:.1f}</b> puan fark var.\n"
                 )
         recommendation_line = f"💡 <b>Tavsiye:</b> {recommendation}\n" if recommendation else ""
-        ai_line = ""
-        if ai_score is not None:
-            side_scores = ""
-            if signal_scores:
-                side_scores = (
-                    f" (ALT {float(signal_scores.get('ALT', 0)):.1f} / "
-                    f"ÜST {float(signal_scores.get('ÜST', 0)):.1f})"
-                )
-            ai_line = (
-                f"• AI Skor: <b>{float(ai_score):.1f}/100</b>"
-                f"{f' ({ai_tier})' if ai_tier else ''}"
-                f"{f' · güven %{float(ai_confidence):.0f}' if ai_confidence is not None else ''}"
-                f"{side_scores}\n"
+        decision_line = ""
+        side_scores = ""
+        if signal_scores:
+            side_scores = (
+                f" · ALT {float(signal_scores.get('ALT', 0)):.1f} / "
+                f"ÜST {float(signal_scores.get('ÜST', 0)):.1f}"
             )
-        flip_line = f"• Eski sinyal: <b>{legacy_direction}</b> → AI karar: <b>{direction}</b>\n" if legacy_direction != direction else ""
+        if projection_quality is not None or signal_scores:
+            quality_line = (
+                f"Canlı veri: <b>{float(projection_quality):.0f}/100</b>"
+                if projection_quality is not None else ""
+            )
+            separator = " · " if quality_line and side_scores else ""
+            decision_line = (
+                f"• {quality_line}{separator}{side_scores.lstrip(' · ')}\n"
+            )
+        flip_line = f"• Eski sinyal: <b>{legacy_direction}</b> → Yeni karar: <b>{direction}</b>\n" if legacy_direction != direction else ""
 
         # Çeyrek hız anomali bloğu
         pace_anomaly_line = ""
@@ -131,6 +133,14 @@ class TelegramNotifier:
         if quarter_paces:
             qp_parts = [f"Q{q}:{v:.0f}" for q, v in sorted(quarter_paces.items())]
             quarter_pace_line = f"📈 Çeyrek hız (puan/10dk): <b>{' | '.join(qp_parts)}</b>\n"
+
+        def recent_form_line(profile: dict, fallback: str) -> str:
+            if not isinstance(profile, dict) or not profile.get("label"):
+                return ""
+            games = profile.get("games")
+            source = f"Son {int(games)}" if games else "Son form"
+            team = profile.get("team") or fallback
+            return f"• {source} {team}: <b>{profile.get('label')}</b>\n"
 
         warning_line = "\n".join(f"❔ {item}" for item in warnings[:6])
         if warning_line:
@@ -158,7 +168,9 @@ class TelegramNotifier:
         projection_lines = "".join([
             f"• Projeksiyon: <b>{float(projected):.1f}</b>\n" if projected is not None else "",
             f"• Piyasa: <b>{float(market_total):.1f}</b>\n" if market_total is not None else "",
-            f"• Son Maç: <b>{float(team_recent_total):.1f}</b>\n" if team_recent_total is not None else "",
+            f"• Son Form Beklenti: <b>{float(team_recent_total):.1f}</b>\n" if team_recent_total is not None else "",
+            recent_form_line(home_last6, "Ev"),
+            recent_form_line(away_last6, "Dep"),
             f"• H2H: <b>{float(h2h_total):.1f}</b>\n" if h2h_total is not None else "",
         ])
         weight_inline = f"  <i>({' / '.join(weight_parts)})</i>\n" if weight_parts else ""
@@ -168,16 +180,16 @@ class TelegramNotifier:
         if projection_lines or fair_line is not None:
             projection_section = (
                 f"\n<b>🧮 Analiz</b>\n"
-                f"{ai_line}"
+                f"{decision_line}"
                 f"{flip_line}"
                 f"{projection_lines}"
                 f"{weight_inline}"
                 f"{fair_block}"
             )
-        elif ai_line:
+        elif decision_line:
             projection_section = (
                 f"\n<b>🧮 Analiz</b>\n"
-                f"{ai_line}"
+                f"{decision_line}"
                 f"{flip_line}"
             )
 
@@ -204,7 +216,7 @@ class TelegramNotifier:
         if recommendation_line or tip:
             footer = (
                 f"\n{recommendation_line}"
-                f"💡 <i>{tip} Nihai AI yön: {direction}.</i>\n"
+                f"💡 <i>{tip} Nihai yön: {direction}.</i>\n"
             )
 
         text = (

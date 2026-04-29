@@ -321,6 +321,7 @@ class AiscoreScraper:
               let opening = null;
               let prematch = null;
               let inplay = null;
+              let oddsSnapshot = { opening_lines: [], prematch_lines: [], inplay_lines: [], bookmaker_count: 0 };
 
               // Helper: find the first basketball total line value (100-400 range) in text
               const findLine = (txt) => {
@@ -350,6 +351,25 @@ class AiscoreScraper:
                              || document.querySelector('[class*="oddsContent"]');
 
               if (container) {
+                const median = arr => {
+                  const xs = arr.filter(v => Number.isFinite(v)).sort((a,b) => a-b);
+                  if (!xs.length) return null;
+                  const mid = Math.floor(xs.length / 2);
+                  return xs.length % 2 ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2;
+                };
+                const uniqueRounded = arr => {
+                  const out = [];
+                  const seen = new Set();
+                  for (const v of arr) {
+                    if (!Number.isFinite(v) || v < 100 || v > 400) continue;
+                    const key = v.toFixed(1);
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    out.push(parseFloat(key));
+                  }
+                  return out;
+                };
+
                 // ── Strategy 1: class-based (openingBg / inPlayBg) ──
                 // Each bookmaker has 3 rows: opening, pre-match, in-play
                 const openingEls = container.querySelectorAll('[class*="openingBg"]');
@@ -446,6 +466,48 @@ class AiscoreScraper:
                     if (inplay === null) inplay = leafLines[leafLines.length - 1];
                   }
                 }
+
+                // Consensus snapshot: use all bookmaker rows we can identify,
+                // not only the first row. This gives the analysis engine market
+                // spread and median line instead of a single bookmaker's number.
+                const contentDivs_snapshot = Array.from(container.querySelectorAll('.content'));
+                const openingLines = [];
+                const prematchLines = [];
+                const inplayLines = [];
+                for (const content of contentDivs_snapshot) {
+                  if (isLocked(content)) continue;
+                  const rows = Array.from(content.children).filter(el => !isLocked(el));
+                  const lineRows = rows
+                    .map(el => ({ el, value: findLine(text(el.innerText)), cls: (el.className || '').toString() }))
+                    .filter(item => item.value !== null);
+                  if (lineRows.length >= 3) {
+                    openingLines.push(lineRows[0].value);
+                    prematchLines.push(lineRows[1].value);
+                    inplayLines.push(lineRows[2].value);
+                  } else {
+                    for (const item of lineRows) {
+                      if (item.cls.includes('openingBg')) openingLines.push(item.value);
+                      else if (item.cls.includes('inPlayBg')) inplayLines.push(item.value);
+                      else prematchLines.push(item.value);
+                    }
+                  }
+                }
+                const openingUnique = uniqueRounded(openingLines);
+                const prematchUnique = uniqueRounded(prematchLines);
+                const inplayUnique = uniqueRounded(inplayLines);
+                oddsSnapshot = {
+                  opening_lines: openingUnique,
+                  prematch_lines: prematchUnique,
+                  inplay_lines: inplayUnique,
+                  opening_median: median(openingUnique),
+                  prematch_median: median(prematchUnique),
+                  inplay_median: median(inplayUnique),
+                  opening_min: openingUnique.length ? Math.min(...openingUnique) : null,
+                  opening_max: openingUnique.length ? Math.max(...openingUnique) : null,
+                  inplay_min: inplayUnique.length ? Math.min(...inplayUnique) : null,
+                  inplay_max: inplayUnique.length ? Math.max(...inplayUnique) : null,
+                  bookmaker_count: Math.max(openingUnique.length, inplayUnique.length),
+                };
               }
 
               // --- Match info ---
@@ -654,7 +716,143 @@ class AiscoreScraper:
                 score = '';
               }
 
-              return { opening, prematch, inplay, matchName, tournament, status, isQ4, remainingMinutes, hasLockedRows, isFinished, score };
+              if (opening !== null && !oddsSnapshot.opening_lines.length) {
+                oddsSnapshot.opening_lines = [opening];
+                oddsSnapshot.opening_median = opening;
+                oddsSnapshot.opening_min = opening;
+                oddsSnapshot.opening_max = opening;
+              }
+              if (prematch !== null && !oddsSnapshot.prematch_lines.length) {
+                oddsSnapshot.prematch_lines = [prematch];
+                oddsSnapshot.prematch_median = prematch;
+              }
+              if (inplay !== null && !oddsSnapshot.inplay_lines.length) {
+                oddsSnapshot.inplay_lines = [inplay];
+                oddsSnapshot.inplay_median = inplay;
+                oddsSnapshot.inplay_min = inplay;
+                oddsSnapshot.inplay_max = inplay;
+              }
+              oddsSnapshot.bookmaker_count = Math.max(
+                oddsSnapshot.bookmaker_count || 0,
+                oddsSnapshot.opening_lines.length,
+                oddsSnapshot.inplay_lines.length
+              );
+
+              let quarterScores = { home: [], away: [], source: '', quality: 0 };
+              if (score) {
+                const parts = score.split(/\s*[-–]\s*/).map(v => parseInt(v, 10));
+                const scoreHome = parts[0], scoreAway = parts[1];
+                const parseQuarterRow = (txt, total) => {
+                  const nums = (txt.match(/\b\d{1,3}\b/g) || []).map(n => parseInt(n, 10));
+                  if (nums.length < 2) return null;
+                  const totalIdx = nums.lastIndexOf(total);
+                  if (totalIdx < 0) return null;
+                  const periods = nums.slice(Math.max(0, totalIdx - 4), totalIdx);
+                  const usable = periods.filter(v => v >= 0 && v <= 80);
+                  if (!usable.length) return null;
+                  const sum = usable.reduce((a,b) => a + b, 0);
+                  if (Math.abs(sum - total) > 4) return null;
+                  return usable;
+                };
+
+                const detailBox = document.querySelector('.scoresDetails, [class*="scoresDetails"], [class*="scoreDetail"]');
+                if (detailBox) {
+                  const contentRows = Array.from(detailBox.querySelectorAll('.content, [class*="content"]'))
+                    .map(el => text(el.innerText))
+                    .filter(Boolean);
+                  let homePeriods = null;
+                  let awayPeriods = null;
+                  for (const row of contentRows) {
+                    const homeRow = parseQuarterRow(row, scoreHome);
+                    const awayRow = parseQuarterRow(row, scoreAway);
+                    if (homeRow && !homePeriods) homePeriods = homeRow;
+                    if (awayRow && !awayPeriods && row !== contentRows.find(r => parseQuarterRow(r, scoreHome))) awayPeriods = awayRow;
+                  }
+                  if (homePeriods && awayPeriods) {
+                    quarterScores = {
+                      home: homePeriods,
+                      away: awayPeriods,
+                      source: 'scoreboard_dom',
+                      quality: 90,
+                    };
+                  }
+                }
+
+                const lines = (document.body.innerText || '')
+                  .split(/\n+/)
+                  .map(text)
+                  .filter(Boolean)
+                  .slice(0, 220);
+                const rowCandidates = [];
+                for (let idx = 0; idx < lines.length; idx++) {
+                  const nums = (lines[idx].match(/\b\d{1,3}\b/g) || []).map(n => parseInt(n, 10));
+                  if (nums.length < 2 || nums.length > 8) continue;
+                  const last = nums[nums.length - 1];
+                  if (last !== scoreHome && last !== scoreAway) continue;
+                  const periods = nums.slice(0, -1).slice(-4);
+                  const sum = periods.reduce((a,b) => a + b, 0);
+                  if (periods.length >= 1 && Math.abs(sum - last) <= 3) {
+                    rowCandidates.push({ idx, total: last, periods });
+                  }
+                }
+                for (let i = 0; i < rowCandidates.length; i++) {
+                  for (let j = i + 1; j < rowCandidates.length; j++) {
+                    const a = rowCandidates[i], b = rowCandidates[j];
+                    if (Math.abs(a.idx - b.idx) > 8) continue;
+                    if (
+                      (a.total === scoreHome && b.total === scoreAway)
+                      || (a.total === scoreAway && b.total === scoreHome)
+                    ) {
+                      const homeRow = a.total === scoreHome ? a : b;
+                      const awayRow = a.total === scoreHome ? b : a;
+                      quarterScores = {
+                        home: homeRow.periods,
+                        away: awayRow.periods,
+                        source: 'scoreboard_rows',
+                        quality: 75,
+                      };
+                      i = rowCandidates.length;
+                      break;
+                    }
+                  }
+                }
+              }
+
+              const overviewStats = { rows: [], totals: {}, quality: 0, source: 'overview_scoreboard' };
+              const statLabels = Array.from(document.querySelectorAll('.midDes_text, [class*="midDes"]'));
+              const seenStats = new Set();
+              for (const labelEl of statLabels) {
+                const label = text(labelEl.innerText);
+                if (!label || label.length > 28) continue;
+                let row = labelEl;
+                let rowText = '';
+                for (let i = 0; i < 5; i++) {
+                  rowText = text(row.innerText);
+                  const labelRe = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+                  const re = new RegExp('(\\d{1,3})\\s+' + labelRe + '\\s+(\\d{1,3})', 'i');
+                  const m = rowText.match(re);
+                  if (m) {
+                    const home = parseFloat(m[1]);
+                    const away = parseFloat(m[2]);
+                    const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+                    if (!seenStats.has(key)) {
+                      seenStats.add(key);
+                      overviewStats.rows.push({ label, home: { raw: m[1], value: home }, away: { raw: m[2], value: away } });
+                      overviewStats.totals[key] = home + away;
+                    }
+                    break;
+                  }
+                  if (!row.parentElement) break;
+                  row = row.parentElement;
+                }
+              }
+              overviewStats.quality = overviewStats.rows.length >= 3 ? 55 : (overviewStats.rows.length ? 30 : 0);
+
+              return {
+                opening, prematch, inplay, matchName, tournament, status,
+                isQ4, remainingMinutes, hasLockedRows, isFinished, score,
+                quarterScores, oddsSnapshot, overviewStats
+              };
             }
             """
         )
@@ -682,6 +880,22 @@ class AiscoreScraper:
             logger.debug("Q4 <=4min remaining, skipping: %s (%.1f min)", url, remaining)
             return None
 
+        overview_data = await self._fetch_overview_data(page, url)
+        if overview_data.get("status"):
+            parsed["status"] = overview_data.get("status")
+        if overview_data.get("score"):
+            parsed["score"] = overview_data.get("score")
+        quarter_scores = (
+            overview_data.get("quarterScores")
+            if (overview_data.get("quarterScores") or {}).get("home")
+            else parsed.get("quarterScores")
+        ) or {}
+
+        live_stats = await self._fetch_mobile_live_stats(
+            page,
+            url,
+            parsed.get("score") or "",
+        )
         h2h_body = "" if self.skip_h2h else await self._fetch_h2h_body(page, url)
 
         match_id = self._extract_match_id(url)
@@ -698,7 +912,356 @@ class AiscoreScraper:
             "market_locked": bool(parsed.get("hasLockedRows", False)),
             "has_prematch": prematch is not None,
             "h2h_body_text": h2h_body,
+            "quarter_scores": quarter_scores,
+            "odds_snapshot": parsed.get("oddsSnapshot") or {},
+            "live_stats": live_stats,
         }
+
+    async def _fetch_overview_data(self, page, url: str) -> dict:
+        try:
+            await page.goto(url.rstrip("/"), wait_until="domcontentloaded")
+            await page.wait_for_timeout(1800)
+            return await page.evaluate(r"""
+                () => {
+                  const text = s => (s || '').replace(/\s+/g, ' ').trim();
+
+                  let status = '';
+                  const statusEl = Array.from(document.querySelectorAll('span, div'))
+                    .map(e => text(e.innerText))
+                    .find(v => /^(Q[1-4]|[1-4]Q|OT)\s*[-\s]?\s*\d{1,2}:\d{2}$/i.test(v));
+                  if (statusEl) status = statusEl;
+
+                  let score = '';
+                  const scoreEls = Array.from(document.querySelectorAll('span, div, strong, b'))
+                    .filter(el => el.children.length === 0)
+                    .map(el => ({
+                      txt: text(el.innerText),
+                      rect: el.getBoundingClientRect(),
+                      size: parseFloat(window.getComputedStyle(el).fontSize) || 0,
+                      cls: (el.className || '').toString(),
+                    }))
+                    .filter(o => /^\d{1,3}$/.test(o.txt));
+                  const scoreClassEls = scoreEls.filter(n =>
+                    n.cls.split(/\s+/).includes('score') && n.size >= 16
+                  );
+                  if (scoreClassEls.length >= 2) {
+                    scoreClassEls.sort((a, b) => b.size - a.size || a.rect.left - b.rect.left);
+                    const a = scoreClassEls[0], b = scoreClassEls[1];
+                    const left = a.rect.left <= b.rect.left ? a : b;
+                    const right = a.rect.left <= b.rect.left ? b : a;
+                    score = `${left.txt} - ${right.txt}`;
+                  }
+
+                  const parseQuarterRow = (txt, total) => {
+                    const nums = (txt.match(/\b\d{1,3}\b/g) || []).map(n => parseInt(n, 10));
+                    if (nums.length < 2) return null;
+                    const totalIdx = nums.lastIndexOf(total);
+                    if (totalIdx < 0) return null;
+                    const periods = nums.slice(Math.max(0, totalIdx - 4), totalIdx).filter(v => v >= 0 && v <= 80);
+                    if (!periods.length) return null;
+                    const sum = periods.reduce((a,b) => a + b, 0);
+                    if (Math.abs(sum - total) > 4) return null;
+                    return periods;
+                  };
+
+                  let quarterScores = { home: [], away: [], source: '', quality: 0 };
+                  if (score) {
+                    const parts = score.split(/\s*[-–]\s*/).map(v => parseInt(v, 10));
+                    const scoreHome = parts[0], scoreAway = parts[1];
+                    const detailBox = document.querySelector('.scoresDetails, [class*="scoresDetails"], [class*="scoreDetail"]');
+                    if (detailBox) {
+                      const rows = Array.from(detailBox.querySelectorAll('.content, [class*="content"]'))
+                        .map(el => text(el.innerText))
+                        .filter(Boolean);
+                      let homePeriods = null;
+                      let awayPeriods = null;
+                      for (const row of rows) {
+                        if (!homePeriods) homePeriods = parseQuarterRow(row, scoreHome);
+                        if (!awayPeriods) awayPeriods = parseQuarterRow(row, scoreAway);
+                      }
+                      if (homePeriods && awayPeriods) {
+                        quarterScores = {
+                          home: homePeriods,
+                          away: awayPeriods,
+                          source: 'overview_scoreboard_dom',
+                          quality: 90,
+                        };
+                      }
+                    }
+                  }
+
+                  const overviewStats = { rows: [], totals: {}, quality: 0, source: 'overview_scoreboard' };
+                  const statLabels = Array.from(document.querySelectorAll('.midDes_text, [class*="midDes"]'));
+                  const seenStats = new Set();
+                  for (const labelEl of statLabels) {
+                    const label = text(labelEl.innerText);
+                    if (!label || label.length > 28) continue;
+                    let row = labelEl;
+                    for (let i = 0; i < 6; i++) {
+                      const rowText = text(row.innerText);
+                      const labelRe = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+                      const re = new RegExp('(\\d{1,3})\\s+' + labelRe + '\\s+(\\d{1,3})', 'i');
+                      const m = rowText.match(re);
+                      if (m) {
+                        const home = parseFloat(m[1]);
+                        const away = parseFloat(m[2]);
+                        const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+                        if (!seenStats.has(key)) {
+                          seenStats.add(key);
+                          overviewStats.rows.push({ label, home: { raw: m[1], value: home }, away: { raw: m[2], value: away } });
+                          overviewStats.totals[key] = home + away;
+                        }
+                        break;
+                      }
+                      if (!row.parentElement) break;
+                      row = row.parentElement;
+                    }
+                  }
+                  overviewStats.quality = overviewStats.rows.length >= 3 ? 55 : (overviewStats.rows.length ? 30 : 0);
+
+                  return { status, score, quarterScores, overviewStats };
+                }
+            """)
+        except Exception as exc:
+            logger.debug("Overview data fetch failed for %s: %s", url, exc)
+            return {}
+
+    def _mobile_match_url(self, url: str) -> str:
+        base_url = re.sub(r'/(h2h|odds|stats|lineups|standings|summary)/?$', '', (url or "").rstrip("/"))
+        base_url = re.sub(r'https?://(?:www\.)?aiscore\.com', 'https://m.aiscore.com', base_url)
+        base_url = re.sub(r'https?://m\.aiscore\.com', 'https://m.aiscore.com', base_url)
+        return base_url
+
+    async def _fetch_mobile_live_stats(self, page, url: str, expected_score: str = "") -> dict:
+        """
+        Read only AiScore mobile overview live stats. Quarter scores stay on the
+        existing web overview path.
+        """
+        mobile_url = self._mobile_match_url(url)
+        mobile_context = None
+        mobile_page = page
+        previous_viewport = None
+        try:
+            browser = page.context.browser
+            if browser:
+                mobile_context = await browser.new_context(
+                    user_agent=(
+                        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+                        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
+                        "Mobile/15E148 Safari/604.1"
+                    ),
+                    viewport={"width": 390, "height": 844},
+                    locale="en-US",
+                )
+                await mobile_context.add_init_script(
+                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+                )
+                mobile_page = await mobile_context.new_page()
+                mobile_page.set_default_timeout(self.page_timeout_ms)
+            else:
+                previous_viewport = page.viewport_size
+                await page.set_viewport_size({"width": 390, "height": 844})
+
+            await mobile_page.goto(mobile_url, wait_until="domcontentloaded")
+            await mobile_page.wait_for_timeout(1800)
+            data = await mobile_page.evaluate(
+                r"""
+                (expectedScore) => {
+                    const text = s => (s || '').replace(/\s+/g, ' ').trim();
+                    const body = text(document.body?.innerText || '');
+                    const parseScore = raw => {
+                        const m = text(raw).match(/(\d{1,3})\s*[-–]\s*(\d{1,3})/);
+                        return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : null;
+                    };
+
+                    const statusScore = body.match(
+                        /\b(?:Full Time|Q\d(?:-Ended)?(?:\s+\d{1,2}:\d{2})?)\s+\d{1,3}\s*[-–]\s*\d{1,3}\b/
+                    );
+                    const score = parseScore(statusScore ? statusScore[0] : '') || parseScore(expectedScore);
+                    const statMatch = body.match(
+                        /2 points\s+(\d{1,3})\s+(\d{1,3})\s+3 points\s+(\d{1,3})\s+(\d{1,3})\s+Free throws\s+(\d{1,3})\s+(\d{1,3})/i
+                    );
+
+                    if (!statMatch) {
+                        return {
+                            rows: [],
+                            totals: {},
+                            raw_totals: {},
+                            quality: 0,
+                            source: 'mobile_overview',
+                            valid_for_projection: false,
+                            score_consistent: false,
+                            notes: ['Mobil overview istatistik bloğu bulunamadı.'],
+                        };
+                    }
+
+                    const twoHome = parseInt(statMatch[1], 10);
+                    const twoAway = parseInt(statMatch[2], 10);
+                    const threeHome = parseInt(statMatch[3], 10);
+                    const threeAway = parseInt(statMatch[4], 10);
+                    const ftHome = parseInt(statMatch[5], 10);
+                    const ftAway = parseInt(statMatch[6], 10);
+
+                    let reboundsHome = null;
+                    let reboundsAway = null;
+                    let foulsHome = null;
+                    let foulsAway = null;
+                    let turnoversHome = null;
+                    let turnoversAway = null;
+                    const extraMatch = body.match(
+                        /Rebounds\s+Foul\s+(\d{1,3})\s+(\d{1,3})\s+Foul\s+Turnovers\s+(\d{1,3})\s+(\d{1,3})\s+(\d{1,3})\s+(\d{1,3})/i
+                    );
+                    if (extraMatch) {
+                        reboundsHome = parseInt(extraMatch[1], 10);
+                        reboundsAway = parseInt(extraMatch[2], 10);
+                        foulsHome = parseInt(extraMatch[3], 10);
+                        foulsAway = parseInt(extraMatch[6], 10);
+                        turnoversHome = parseInt(extraMatch[4], 10);
+                        turnoversAway = parseInt(extraMatch[5], 10);
+                    }
+
+                    const calculatedScore = [
+                        twoHome * 2 + threeHome * 3 + ftHome,
+                        twoAway * 2 + threeAway * 3 + ftAway,
+                    ];
+                    const scoreConsistent = Boolean(
+                        score
+                        && calculatedScore[0] === score[0]
+                        && calculatedScore[1] === score[1]
+                    );
+
+                    const rows = [
+                        { label: '2 points', home: { raw: String(twoHome), value: twoHome }, away: { raw: String(twoAway), value: twoAway } },
+                        { label: '3 points', home: { raw: String(threeHome), value: threeHome }, away: { raw: String(threeAway), value: threeAway } },
+                        { label: 'Free throws', home: { raw: String(ftHome), value: ftHome }, away: { raw: String(ftAway), value: ftAway } },
+                    ];
+                    const rawTotals = {
+                        two_point_makes: twoHome + twoAway,
+                        three_point_makes: threeHome + threeAway,
+                        ft_makes: ftHome + ftAway,
+                        points_from_shot_stats: calculatedScore[0] + calculatedScore[1],
+                    };
+
+                    if (reboundsHome !== null && reboundsAway !== null) {
+                        rows.push({ label: 'Rebounds', home: { raw: String(reboundsHome), value: reboundsHome }, away: { raw: String(reboundsAway), value: reboundsAway } });
+                        rawTotals.rebounds = reboundsHome + reboundsAway;
+                    }
+                    if (foulsHome !== null && foulsAway !== null) {
+                        rows.push({ label: 'Fouls', home: { raw: String(foulsHome), value: foulsHome }, away: { raw: String(foulsAway), value: foulsAway } });
+                        rawTotals.fouls = foulsHome + foulsAway;
+                    }
+                    if (turnoversHome !== null && turnoversAway !== null) {
+                        rows.push({ label: 'Turnovers', home: { raw: String(turnoversHome), value: turnoversHome }, away: { raw: String(turnoversAway), value: turnoversAway } });
+                        rawTotals.turnovers = turnoversHome + turnoversAway;
+                    }
+
+                    return {
+                        rows,
+                        totals: scoreConsistent ? rawTotals : {},
+                        raw_totals: rawTotals,
+                        score: score ? `${score[0]} - ${score[1]}` : '',
+                        calculated_score: `${calculatedScore[0]} - ${calculatedScore[1]}`,
+                        quality: scoreConsistent ? 75 : 35,
+                        source: 'mobile_overview',
+                        valid_for_projection: scoreConsistent,
+                        score_consistent: scoreConsistent,
+                        notes: scoreConsistent
+                            ? []
+                            : ['Mobil istatistik şut toplamı resmi skoru açıklamıyor; projeksiyonda kullanılmadı.'],
+                    };
+                }
+                """,
+                expected_score,
+            )
+            return data if isinstance(data, dict) else {}
+        except Exception as exc:
+            logger.debug("Mobile live stats fetch failed for %s: %s", url, exc)
+            return {}
+        finally:
+            if mobile_context:
+                try:
+                    await mobile_context.close()
+                except Exception:
+                    pass
+            elif previous_viewport:
+                try:
+                    await page.set_viewport_size(previous_viewport)
+                except Exception:
+                    pass
+
+    async def _fetch_stats_data(self, page, url: str) -> dict:
+        stats_url = url.rstrip("/") + "/stats"
+        try:
+            await page.goto(stats_url, wait_until="domcontentloaded")
+            await page.wait_for_timeout(1800)
+            data = await page.evaluate(r"""
+                () => {
+                    const text = s => (s || '').replace(/\s+/g, ' ').trim();
+                    const parseVal = raw => {
+                        const t = text(raw).replace(',', '.');
+                        const madeAtt = t.match(/^(\d{1,3})\s*[-/]\s*(\d{1,3})$/);
+                        if (madeAtt) return {
+                            raw: t,
+                            made: parseFloat(madeAtt[1]),
+                            attempted: parseFloat(madeAtt[2]),
+                            value: parseFloat(madeAtt[2])
+                        };
+                        const pct = t.match(/^(\d+(?:\.\d+)?)%$/);
+                        if (pct) return { raw: t, value: parseFloat(pct[1]), percent: true };
+                        const num = t.match(/^-?\d+(?:\.\d+)?$/);
+                        if (num) return { raw: t, value: parseFloat(t) };
+                        return { raw: t, value: null };
+                    };
+                    const labelLooksValid = label => {
+                        const l = text(label);
+                        if (!l || l.length < 2 || l.length > 42) return false;
+                        return /field|goal|shot|free|throw|rebound|assist|turnover|foul|steal|block|3|2|three|personal|timeout|possession/i.test(l);
+                    };
+                    const valueRe = /^(\d{1,3}(?:\.\d+)?%?|\d{1,3}\s*[-/]\s*\d{1,3})$/;
+                    const rows = [];
+                    const elements = Array.from(document.querySelectorAll('div, li, tr, section'));
+                    for (const el of elements) {
+                        const children = Array.from(el.children || []);
+                        if (children.length < 3 || children.length > 8) continue;
+                        const vals = children.map(c => text(c.innerText)).filter(Boolean);
+                        if (vals.length < 3 || vals.join(' ').length > 120) continue;
+                        for (let i = 0; i < vals.length - 2; i++) {
+                            const left = vals[i], mid = vals[i + 1], right = vals[i + 2];
+                            if (valueRe.test(left) && labelLooksValid(mid) && valueRe.test(right)) {
+                                rows.push({ label: mid, home: parseVal(left), away: parseVal(right) });
+                            } else if (labelLooksValid(left) && valueRe.test(mid) && valueRe.test(right)) {
+                                rows.push({ label: left, home: parseVal(mid), away: parseVal(right) });
+                            }
+                        }
+                    }
+                    const byLabel = {};
+                    for (const row of rows) {
+                        const key = row.label.toLowerCase().replace(/\s+/g, '_');
+                        if (!byLabel[key]) byLabel[key] = row;
+                    }
+                    const totals = {};
+                    Object.entries(byLabel).forEach(([key, row]) => {
+                        const hv = row.home.value;
+                        const av = row.away.value;
+                        if (Number.isFinite(hv) && Number.isFinite(av)) {
+                            const combined = row.home.percent && row.away.percent
+                                ? (hv + av) / 2
+                                : hv + av;
+                            totals[key] = Math.round(combined * 10) / 10;
+                        }
+                    });
+                    return {
+                        rows: Object.values(byLabel).slice(0, 30),
+                        totals,
+                        quality: Object.keys(byLabel).length >= 5 ? 80 : (Object.keys(byLabel).length >= 2 ? 50 : 15),
+                        source: 'stats_page',
+                    };
+                }
+            """)
+            return data if isinstance(data, dict) else {}
+        except Exception as exc:
+            logger.debug("Stats page fetch failed for %s: %s", url, exc)
+            return {}
 
     async def _fetch_h2h_body(self, page, url: str) -> str:
         h2h_url = url.rstrip("/") + "/h2h"
@@ -745,6 +1308,7 @@ class AiscoreScraper:
                         if (/last\s*5/.test(t)) score += 1;
                         return score;
                     };
+                    const fullBody = (document.body.innerText || '').replace(/\s+/g, ' ').trim();
                     const candidates = Array.from(document.querySelectorAll(
                         'main, [class*="matchDetail"], [class*="match-detail"], ' +
                         '[class*="h2h"], [class*="H2H"], [class*="head-to-head"], ' +
@@ -757,11 +1321,17 @@ class AiscoreScraper:
                     })).filter(c => c.len > 200);
                     // Prefer blocks with H2H keywords, fall back to largest.
                     candidates.sort((a, b) => (b.hits - a.hits) || (b.len - a.len));
+                    // Return the full page text when it has the relevant H2H/Last
+                    // markers. A narrow H2H block often excludes each team's own
+                    // latest-match sections, which causes SF to be confused with H2H.
+                    if (fullBody.length > 200 && keyHits(fullBody) > 0) {
+                        return fullBody;
+                    }
                     if (candidates.length > 0 && candidates[0].hits > 0) {
                         return candidates[0].el.innerText.replace(/\s+/g, ' ').trim();
                     }
                     // If no candidate has relevant keywords, use whole body
-                    return (document.body.innerText || '').replace(/\s+/g, ' ').trim();
+                    return fullBody;
                 }
             """)
             body = body or ""
