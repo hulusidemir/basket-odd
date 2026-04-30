@@ -783,7 +783,6 @@ def _pace_note(
     gap = round(projected_total - live, 1)
     current_pace = projection_components.get("current_pace_per_min")
     sustainable_pace = projection_components.get("sustainable_pace_per_min")
-    stats_adj = projection_components.get("stats_adjustment")
     script_adj = projection_components.get("script_adjustment")
     history_total = h2h_metrics.get("expected_total") or h2h_metrics.get("h2h_avg_total")
     history_gap = round(float(history_total) - live, 1) if history_total is not None else None
@@ -799,8 +798,6 @@ def _pace_note(
             sustainability = " Mevcut tempo çeyrek ortalamasıyla uyumlu; ani regresyon sinyali zayıf."
 
     context_bits = []
-    if stats_adj is not None and abs(float(stats_adj)) >= 2:
-        context_bits.append(f"istatistik düzeltmesi {float(stats_adj):+.1f}")
     if script_adj is not None and abs(float(script_adj)) >= 2:
         context_bits.append(f"maç scripti {float(script_adj):+.1f}")
     if history_gap is not None and abs(history_gap) >= 6:
@@ -1480,7 +1477,6 @@ def build_signal_analysis(
     status = match.get("status", "")
     score = match.get("score", "")
     quarter_scores = match.get("quarter_scores") if isinstance(match.get("quarter_scores"), dict) else {}
-    live_stats = match.get("live_stats") if isinstance(match.get("live_stats"), dict) else {}
     odds_snapshot = match.get("odds_snapshot") if isinstance(match.get("odds_snapshot"), dict) else {}
 
     legacy_direction = _normalize_direction(match.get("direction") or ("ALT" if live - opening > 0 else "ÜST"))
@@ -1496,7 +1492,6 @@ def build_signal_analysis(
         match_name,
         tournament,
         quarter_scores=quarter_scores,
-        live_stats=live_stats.get("totals") if isinstance(live_stats, dict) else None,
         market_total=market_total,
         opening_total=opening,
     )
@@ -1688,7 +1683,6 @@ def build_signal_analysis(
         "projection_notes": live_projection.get("notes") or [],
         "raw_projected_total": live_projection.get("raw_projected_total"),
         "quarter_scores": quarter_scores,
-        "live_stats": live_stats,
         "odds_snapshot": odds_snapshot,
         "opening_delta": line_delta_open,
         "recommendation": recommendation,

@@ -197,39 +197,6 @@ def _safe_float(value) -> float | None:
         return None
 
 
-def _stat_value(stats: dict | None, *names: str) -> float | None:
-    if not isinstance(stats, dict):
-        return None
-    normalized = {
-        re.sub(r"[^a-z0-9]", "", str(k).lower()): v
-        for k, v in stats.items()
-    }
-    for name in names:
-        key = re.sub(r"[^a-z0-9]", "", name.lower())
-        for candidate, value in normalized.items():
-            if key in candidate or candidate in key:
-                return _safe_float(value)
-    return None
-
-
-def _stat_percent_value(stats: dict | None, *names: str) -> float | None:
-    if not isinstance(stats, dict):
-        return None
-    normalized = {
-        re.sub(r"[^a-z0-9%]", "", str(k).lower()): v
-        for k, v in stats.items()
-    }
-    percent_markers = ("pct", "percent", "percentage", "%")
-    for name in names:
-        key = re.sub(r"[^a-z0-9%]", "", name.lower())
-        for candidate, value in normalized.items():
-            if not any(marker in candidate for marker in percent_markers):
-                continue
-            if key in candidate or candidate in key:
-                return _safe_float(value)
-    return None
-
-
 def _quarter_totals(quarter_scores: dict | None) -> list[int]:
     """
     Çeyrek toplamlarını döndürür. AiScore canlı yayında devam eden veya
@@ -265,7 +232,6 @@ def calculate_live_projection(
     tournament: str = "",
     *,
     quarter_scores: dict | None = None,
-    live_stats: dict | None = None,
     market_total: float | None = None,
     opening_total: float | None = None,
 ) -> dict:
@@ -273,8 +239,8 @@ def calculate_live_projection(
     Canlı final projeksiyonu.
 
     Basit skor/süre projeksiyonunu temel alır, sonra AiScore'dan çekilen
-    çeyrek dağılımı ve canlı istatistiklerle düzeltir. Amaç tek bir lineer pace
-    hesabı yapmak değil; maçın sürdürülebilir temposunu tahmin etmektir.
+    çeyrek dağılımıyla düzeltir. Amaç tek bir lineer pace hesabı yapmak değil;
+    maçın sürdürülebilir temposunu tahmin etmektir.
     """
     base = calculate_projected_total(score, status, match_name, tournament)
     home_score, away_score = parse_score(score)
@@ -355,56 +321,6 @@ def calculate_live_projection(
         components["market_anchor"] = round(market_anchor, 1)
         components["market_weight"] = round(mw, 2)
 
-    # Live stats modifiers. Bunlar final toplamını değil kalan tempo beklentisini
-    # düzeltir; şut yüzdesi aşırılıklarında regresyon, faul/FT'de tempo artışı.
-    stat_adj = 0.0
-    fg_pct = _stat_percent_value(live_stats, "field goal", "fg")
-    three_pct = _stat_percent_value(live_stats, "3 point", "three point", "3pt")
-    ft_attempts = _stat_value(live_stats, "free throw attempts", "fta")
-    ft_makes = _stat_value(live_stats, "ft_makes", "free throws", "free throw", "ft")
-    fouls = _stat_value(live_stats, "fouls", "personal fouls")
-    turnovers = _stat_value(live_stats, "turnovers")
-
-    if three_pct is not None:
-        if three_pct >= 43:
-            stat_adj -= 2.5
-            notes.append("3 sayı yüzdesi yüksek; şut regresyonu projeksiyonu aşağı çeker.")
-        elif three_pct <= 25:
-            stat_adj += 2.0
-            notes.append("3 sayı yüzdesi düşük; normalleşme projeksiyonu yukarı çekebilir.")
-    if fg_pct is not None:
-        if fg_pct >= 53:
-            stat_adj -= 1.8
-        elif fg_pct <= 39:
-            stat_adj += 1.5
-    if elapsed and (ft_attempts is not None or ft_makes is not None):
-        ft_value = ft_attempts if ft_attempts is not None else ft_makes
-        ft_per_40 = ft_value / elapsed * 40
-        components["ft_per_40"] = round(ft_per_40, 1)
-        components["ft_source"] = "attempts" if ft_attempts is not None else "made"
-        high_ft = 42 if ft_attempts is not None else 26
-        low_ft = 18 if ft_attempts is not None else 10
-        if ft_per_40 >= high_ft:
-            stat_adj += 3.0
-            notes.append("FT trafiği yüksek; oyun durarak skor üretimi destekleniyor.")
-        elif ft_value > 0 and ft_per_40 <= low_ft:
-            stat_adj -= 1.5
-    if fouls is not None and elapsed:
-        fouls_per_40 = fouls / elapsed * 40
-        components["fouls_per_40"] = round(fouls_per_40, 1)
-        if fouls_per_40 >= 44:
-            stat_adj += 2.0
-    if turnovers is not None and elapsed:
-        tov_per_40 = turnovers / elapsed * 40
-        components["turnovers_per_40"] = round(tov_per_40, 1)
-        if tov_per_40 >= 32:
-            stat_adj -= 2.0
-            notes.append("Top kaybı oranı yüksek; hücum verimi aşağı baskılanıyor.")
-
-    projected += stat_adj
-    pure_pre_anchor += stat_adj  # saf projeksiyon da stat düzeltmesini alır
-    components["stats_adjustment"] = round(stat_adj, 1)
-
     # Maç scripti: blowout/close-game etkisi.
     gap = abs(home_score - away_score)
     script_adj = 0.0
@@ -426,8 +342,6 @@ def calculate_live_projection(
     if elapsed is not None:
         data_quality += 20
     if q_totals:
-        data_quality += 15
-    if isinstance(live_stats, dict) and live_stats:
         data_quality += 15
     if market_anchor is not None:
         data_quality += 5
