@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import re
 from playwright.async_api import Error as PlaywrightError
 from urllib.parse import urljoin
@@ -22,13 +23,17 @@ class AiscoreScraper:
             headless=True,
             args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"],
         )
+        context = await self._new_desktop_context(browser)
+        return browser, context
+
+    async def _new_desktop_context(self, browser):
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
             viewport={"width": 1920, "height": 1080},
             locale="en-US",
         )
         await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
-        return browser, context
+        return context
 
     async def _close_browser(self, browser):
         await browser.close()
@@ -42,10 +47,16 @@ class AiscoreScraper:
             list_page = await context.new_page()
             list_page.set_default_timeout(self.page_timeout_ms)
             try:
-                await list_page.goto(self.aiscore_url, wait_until="domcontentloaded")
-                await list_page.wait_for_timeout(10 * 1000)
+                links = []
+                for attempt in range(1, 4):
+                    await list_page.goto(self.aiscore_url, wait_until="domcontentloaded")
+                    await list_page.wait_for_timeout(10 * 1000)
+                    links = await self._collect_match_links(list_page)
+                    if links:
+                        break
+                    if attempt < 3:
+                        logger.warning("AIScore listing returned 0 links; retrying list load (%s/3).", attempt + 1)
 
-                links = await self._collect_match_links(list_page)
                 if not links:
                     page_title = await list_page.title()
                     page_url = list_page.url
@@ -65,7 +76,11 @@ class AiscoreScraper:
                 logger.info("Found %s match links on AIScore.", len(links))
                 out = []
 
-                concurrent_tabs = 4
+                await list_page.close()
+                await context.close()
+                context = await self._new_desktop_context(browser)
+
+                concurrent_tabs = max(1, int(os.getenv("AISCORE_CONCURRENCY", "1")))
                 batch_links = links[: self.max_matches_per_cycle]
 
                 for i in range(0, len(batch_links), concurrent_tabs):
@@ -80,7 +95,9 @@ class AiscoreScraper:
 
                 return out
             finally:
-                await list_page.close()
+                if not list_page.is_closed():
+                    await list_page.close()
+                await context.close()
                 await self._close_browser(browser)
 
     async def _extract_single(self, context, link: str) -> dict | None:
@@ -288,7 +305,8 @@ class AiscoreScraper:
         return links
 
     async def _extract_match(self, page, url: str) -> dict | None:
-        odds_url = url.rstrip("/") + "/odds"
+        clean_url = url.rstrip("/")
+        odds_url = clean_url if clean_url.endswith("/odds") else clean_url + "/odds"
         await page.goto(odds_url, wait_until="domcontentloaded")
         await page.wait_for_timeout(3000)
 
@@ -568,6 +586,14 @@ class AiscoreScraper:
                 status = periodTime.trim();
               }
 
+              // Strateji 1b: "Q2-Ended" — çeyrek arası, maç bitmiş değil
+              if (!status) {
+                const periodEnded = statusCandidates
+                  .map(({txt}) => txt)
+                  .find(v => /^(Q[1-4]|[1-4]Q)\s*[-\s]?\s*Ended$/i.test(v.trim()));
+                if (periodEnded) status = periodEnded.trim();
+              }
+
               // Strateji 2: Period ve zaman ayrı elementlerde — birleştir
               if (!status) {
                 const periodEl = statusCandidates.find(({txt}) =>
@@ -606,13 +632,13 @@ class AiscoreScraper:
               if (!status) {
                 const periodOnly = statusCandidates
                   .map(({txt}) => txt)
-                  .find(v => /^(Q[1-4]|[1-4]Q|OT|HT|FT|1st|2nd|3rd|4th)$/i.test(v.trim()));
+                  .find(v => /^(Q[1-4]|[1-4]Q)(?:\s*[-\s]?\s*Ended)?$|^(OT|HT|FT|1st|2nd|3rd|4th)$/i.test(v.trim()));
                 if (periodOnly) status = periodOnly.trim();
               }
 
               // Strateji 5: Sayfa başlığında period ipucu
               if (!status) {
-                const titlePm = text(document.title || '').match(/\b(Q[1-4]|[1-4]Q|HT|OT)\b/i);
+                const titlePm = text(document.title || '').match(/\b(Q[1-4]|[1-4]Q)(?:\s*[-\s]?\s*Ended)?\b|\b(HT|OT)\b/i);
                 if (titlePm) status = titlePm[0];
               }
 
@@ -623,7 +649,9 @@ class AiscoreScraper:
                 if (tm) remainingMinutes = parseInt(tm[1]) + parseInt(tm[2]) / 60;
               }
 
-              let isFinished = /\b(FT|Finished|Ended|Full Time)\b/i.test(status);
+              const isQuarterEnded = /\b(Q[1-4]|[1-4]Q)\s*[-\s]?\s*Ended\b/i.test(status);
+              let isFinished = /\b(FT|Finished|Full Time)\b/i.test(status)
+                || (/\bEnded\b/i.test(status) && !isQuarterEnded);
               if (!isFinished) {
                 // Only narrow final-score hooks; [class*="score"] / [class*="ended"] alone
                 // also match the live-score container and helper classes on AiScore.
@@ -1157,17 +1185,17 @@ class AiscoreScraper:
 
                     return {
                         rows,
-                        totals: scoreConsistent ? rawTotals : {},
+                        totals: rawTotals,
                         raw_totals: rawTotals,
                         score: score ? `${score[0]} - ${score[1]}` : '',
                         calculated_score: `${calculatedScore[0]} - ${calculatedScore[1]}`,
-                        quality: scoreConsistent ? 75 : 35,
+                        quality: scoreConsistent ? 75 : 65,
                         source: 'mobile_overview',
-                        valid_for_projection: scoreConsistent,
+                        valid_for_projection: true,
                         score_consistent: scoreConsistent,
                         notes: scoreConsistent
                             ? []
-                            : ['Mobil istatistik şut toplamı resmi skoru açıklamıyor; projeksiyonda kullanılmadı.'],
+                            : ['Mobil istatistik bloğu bulundu; resmi skorla birebir tutmasa da projeksiyonda kullanıldı.'],
                     };
                 }
                 """,

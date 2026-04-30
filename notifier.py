@@ -83,6 +83,10 @@ class TelegramNotifier:
         fair_line_text = f"{float(fair_line):.1f}" if fair_line is not None else "Hesaplanamadı"
         fair_edge_line = f"Canlıya Göre: <b>{float(fair_edge):+.1f}</b>\n" if fair_edge is not None else ""
         weight_labels = {
+            "opening": "açılış",
+            "prematch": "maç öncesi",
+            "live_projection": "canlı projeksiyon",
+            # Eski şema uyumluluğu (geçmişten kalmış kayıtlar):
             "projection": "projeksiyon",
             "market": "piyasa",
             "team_recent": "son form",

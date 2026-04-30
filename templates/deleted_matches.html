@@ -1586,6 +1586,13 @@
       return `<button class="badge ${cls} signal-open-btn" type="button" title="Sinyal bilgilerini aç" onclick="openSignalInfo(${Number(alert.id || 0)})">${escapeHtml(direction)}</button>`;
     }
 
+    function normalizeDirection(value) {
+      const dir = String(value || '').trim().toUpperCase().replace('UST', 'ÜST');
+      if (dir === 'ALT') return 'ALT';
+      if (dir === 'ÜST') return 'ÜST';
+      return '';
+    }
+
     function signalEdgeNoteHtml(edge) {
       const value = Number(edge);
       if (!Number.isFinite(value)) return '';
@@ -1602,11 +1609,33 @@
     }
 
     function fairEdgeAlertHtml(alert) {
+      const analysis = alertAnalysis(alert);
       const edge = fairEdgeValue(alert);
       if (edge === null) return '';
       const abs = Math.abs(edge);
       if (abs < 5 || abs > 20) return '';
-      return `<span class="fair-edge-alert" title="Canlı ile Adil barem arasında ${abs.toFixed(1)} puan fark var">!</span>`;
+
+      const quality = Number(alert.projection_quality ?? analysis.projection_quality);
+      if (!Number.isFinite(quality) || quality < 60) return '';
+
+      const fairDirection = edge > 0 ? 'ÜST' : 'ALT';
+      const signalDirection = normalizeDirection(
+        alert.final_direction || analysis.final_direction || alert.direction || analysis.direction
+      );
+      if (signalDirection && signalDirection !== fairDirection) return '';
+
+      let projectedGap = Number(alert.projected_gap ?? analysis.projected_gap);
+      if (!Number.isFinite(projectedGap)) {
+        const projected = Number(alert.projected ?? analysis.projected_total);
+        const live = Number(alert.live);
+        projectedGap = Number.isFinite(projected) && Number.isFinite(live) ? projected - live : NaN;
+      }
+      if (Number.isFinite(projectedGap) && Math.abs(projectedGap) >= 4) {
+        const projectionDirection = projectedGap > 0 ? 'ÜST' : 'ALT';
+        if (projectionDirection !== fairDirection) return '';
+      }
+
+      return `<span class="fair-edge-alert" title="Adil fark ${abs.toFixed(1)} puan; yön ve veri uyumlu">!</span>`;
     }
 
     function fairLineCell(alert) {
@@ -1621,6 +1650,8 @@
 
     function weightsText(weights) {
       const labels = {
+        opening: 'Açılış',
+        live_projection: 'Canlı projeksiyon',
         projection: 'Projeksiyon',
         market: 'Piyasa',
         team_recent: 'Son form',

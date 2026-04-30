@@ -58,6 +58,16 @@ def game_clock(status: str, match_name: str = "", tournament: str = "") -> dict:
         remaining_min = 0.0
 
     if period is None:
+        ended_q_match = re.match(
+            r"^(?:Q(\d)|(\d)Q)\s*[-\s]?\s*Ended$",
+            status_clean,
+            re.IGNORECASE,
+        )
+        if ended_q_match:
+            period = int(ended_q_match.group(1) or ended_q_match.group(2))
+            remaining_min = 0.0
+
+    if period is None:
         q_match = re.match(
             r"(?:Q(\d)|(\d)Q)\s*[-:\s]?\s*(\d{1,2}):(\d{2})",
             status_clean,
@@ -221,6 +231,12 @@ def _stat_percent_value(stats: dict | None, *names: str) -> float | None:
 
 
 def _quarter_totals(quarter_scores: dict | None) -> list[int]:
+    """
+    Çeyrek toplamlarını döndürür. AiScore canlı yayında devam eden veya
+    henüz başlamamış çeyrekleri 0 olarak ya da kısmi skorla listelediği
+    için, listenin sonundan başlayarak şüpheli (0 veya 12 puanın altı)
+    girdileri atar — bunlar tamamlanmış çeyrek olamaz.
+    """
     if not isinstance(quarter_scores, dict):
         return []
     home = quarter_scores.get("home") or []
@@ -233,6 +249,12 @@ def _quarter_totals(quarter_scores: dict | None) -> list[int]:
             continue
         if 0 <= total <= 100:
             totals.append(total)
+    # Trailing zero veya gerçekçi olmayan düşük çeyrek toplamlarını ayıkla.
+    # Tamamlanmış bir basket çeyreğinde iki takım toplamı çok nadiren 8'in
+    # altında olur (savunmacı kadın basketbolu / amatör ligler dahil).
+    # 8 altı genelde devam eden ya da boş kayıttır.
+    while totals and totals[-1] < 8:
+        totals.pop()
     return totals[:4]
 
 
@@ -313,6 +335,10 @@ def calculate_live_projection(
         projected = total_pts + pace_blend * remaining_total
         components["pace_blend_projection"] = round(projected, 1)
 
+    # "Saf" projeksiyon: market_anchor uygulanmadan önceki değer.
+    # Adil barem hesabı bunu kullanır (gizli double-counting'i önler).
+    pure_pre_anchor = projected
+
     # Market anchor: canlı line piyasanın injury/rotation haberlerini de içerir.
     # Erken bölümde daha çok, son bölümde daha az ağırlık verilir.
     market_anchor = _safe_float(market_total) or _safe_float(opening_total)
@@ -334,7 +360,8 @@ def calculate_live_projection(
     stat_adj = 0.0
     fg_pct = _stat_percent_value(live_stats, "field goal", "fg")
     three_pct = _stat_percent_value(live_stats, "3 point", "three point", "3pt")
-    ft_attempts = _stat_value(live_stats, "free throw attempts", "free throws")
+    ft_attempts = _stat_value(live_stats, "free throw attempts", "fta")
+    ft_makes = _stat_value(live_stats, "ft_makes", "free throws", "free throw", "ft")
     fouls = _stat_value(live_stats, "fouls", "personal fouls")
     turnovers = _stat_value(live_stats, "turnovers")
 
@@ -350,13 +377,17 @@ def calculate_live_projection(
             stat_adj -= 1.8
         elif fg_pct <= 39:
             stat_adj += 1.5
-    if ft_attempts is not None and elapsed:
-        fta_per_40 = ft_attempts / elapsed * 40
-        components["fta_per_40"] = round(fta_per_40, 1)
-        if fta_per_40 >= 42:
+    if elapsed and (ft_attempts is not None or ft_makes is not None):
+        ft_value = ft_attempts if ft_attempts is not None else ft_makes
+        ft_per_40 = ft_value / elapsed * 40
+        components["ft_per_40"] = round(ft_per_40, 1)
+        components["ft_source"] = "attempts" if ft_attempts is not None else "made"
+        high_ft = 42 if ft_attempts is not None else 26
+        low_ft = 18 if ft_attempts is not None else 10
+        if ft_per_40 >= high_ft:
             stat_adj += 3.0
             notes.append("FT trafiği yüksek; oyun durarak skor üretimi destekleniyor.")
-        elif ft_attempts > 0 and fta_per_40 <= 18:
+        elif ft_value > 0 and ft_per_40 <= low_ft:
             stat_adj -= 1.5
     if fouls is not None and elapsed:
         fouls_per_40 = fouls / elapsed * 40
@@ -371,6 +402,7 @@ def calculate_live_projection(
             notes.append("Top kaybı oranı yüksek; hücum verimi aşağı baskılanıyor.")
 
     projected += stat_adj
+    pure_pre_anchor += stat_adj  # saf projeksiyon da stat düzeltmesini alır
     components["stats_adjustment"] = round(stat_adj, 1)
 
     # Maç scripti: blowout/close-game etkisi.
@@ -387,6 +419,7 @@ def calculate_live_projection(
         script_adj -= 2.5
         notes.append("Maç kopma eğiliminde; tempo sürdürülebilirliği düşebilir.")
     projected += script_adj
+    pure_pre_anchor += script_adj  # saf projeksiyon script düzeltmesini de alır
     components["script_adjustment"] = round(script_adj, 1)
 
     data_quality = 45
@@ -402,6 +435,9 @@ def calculate_live_projection(
     return {
         "projected_total": round(projected, 1),
         "raw_projected_total": round(base, 1),
+        # pure_projected_total = pace_blend + stat_adj + script_adj (market_anchor YOK)
+        # Adil barem bu alanı kullanır, prematch ile "temiz" şekilde harmanlamak için.
+        "pure_projected_total": round(pure_pre_anchor, 1),
         "data_quality": max(0, min(100, data_quality)),
         "components": components,
         "notes": notes,

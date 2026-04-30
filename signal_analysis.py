@@ -1,8 +1,75 @@
 import json
+import math
 import re
-from statistics import mean, median
+from statistics import mean
 
 from projection import calculate_live_projection, game_clock, parse_score
+
+
+def calculate_fair_line(
+    *,
+    prematch: float | None,
+    pure_pace_projection: float | None,
+    elapsed_minutes: float | None,
+    total_game_minutes: int = 40,
+    data_quality: float = 50.0,
+) -> tuple[float | None, dict]:
+    """
+    İki bileşenli adil barem: açılış baremi + saf canlı tempo projeksiyonu
+    (market_anchor IÇERMEYEN). H2H ve son form veriler buraya girmez — bookmaker'ın
+    açılış çizgisi onları zaten büyük ölçüde fiyatlamıştır (double-counting önlenir).
+
+    Mekanizma:
+      - Sigmoidal time-decay: maç ilerledikçe live ağırlığı doğal S-eğrisiyle artar.
+      - Data quality modülasyonu: 0-100 → 0.5-1.0 arası çarpan; düşük kaliteli
+        canlı projeksiyonlarda açılış baremine geri sığınılır.
+      - Minimum açılış sığınağı %15: maçın en sonunda bile bookmaker'ın çizgisi
+        bir miktar ağırlığını korur (garbage-time / blowout savrulmalarına karşı).
+
+    Profesyonel basket analisti mantığı:
+      - Açılış baremi piyasanın ilk ana referans noktasıdır.
+      - Saf canlı projeksiyon = pace_blend + shot/foul düzeltmeleri + script
+        düzeltmesi (close-game / blowout). Tempo regresyonu içeride uygulanır.
+      - Bu iki sinyal birbirinden bağımsız ve aralarındaki ağırlık dengelenmesi
+        maçın kendi gelişimine göre yapılır.
+    """
+    if prematch is None:
+        return (pure_pace_projection, {
+            "prematch_weight": 0.0, "opening_weight": 0.0, "live_weight": 1.0,
+            "progress": 0.0, "data_quality": data_quality, "anchor": "live_only",
+        }) if pure_pace_projection is not None else (None, {
+            "prematch_weight": 0.0, "opening_weight": 0.0, "live_weight": 0.0,
+            "progress": 0.0, "data_quality": data_quality, "anchor": "none",
+        })
+    if pure_pace_projection is None or elapsed_minutes is None:
+        return (float(prematch), {
+            "prematch_weight": 1.0, "live_weight": 0.0,
+            "opening_weight": 1.0, "progress": 0.0, "data_quality": data_quality, "anchor": "opening_only",
+        })
+
+    total = max(20, int(total_game_minutes or 40))
+    progress = max(0.0, min(1.0, float(elapsed_minutes) / total))
+
+    # Sigmoidal: progress 0.0→%3, 0.25→%15, 0.5→%50, 0.75→%85, 1.0→%97
+    sigmoid_live = 1.0 / (1.0 + math.exp(-7.0 * (progress - 0.5)))
+
+    # Data quality modülasyonu: kalite=30 → 0.65, kalite=70 → 0.85, kalite=100 → 1.0
+    quality_factor = 0.5 + 0.5 * max(0.0, min(1.0, float(data_quality) / 100.0))
+    live_weight = sigmoid_live * quality_factor
+
+    # Minimum prematch sığınağı %15 — Q4 sonunda bile bookmaker anchor'ı korunur.
+    live_weight = max(0.0, min(0.85, live_weight))
+    prematch_weight = 1.0 - live_weight
+
+    fair = float(prematch) * prematch_weight + float(pure_pace_projection) * live_weight
+    return round(fair, 1), {
+        "prematch_weight": round(prematch_weight, 3),
+        "opening_weight": round(prematch_weight, 3),
+        "live_weight": round(live_weight, 3),
+        "progress": round(progress, 3),
+        "data_quality": round(float(data_quality), 1),
+        "anchor": "blended",
+    }
 
 
 def _safe_float(value) -> float | None:
@@ -667,14 +734,18 @@ def build_team_context(h2h_metrics: dict, live: float, direction: str) -> dict |
 
 def _market_total(match: dict, opening: float) -> float | None:
     odds = match.get("odds_snapshot") if isinstance(match.get("odds_snapshot"), dict) else {}
+    for key in ("opening_total", "opening", "baseline"):
+        parsed = _safe_float(match.get(key))
+        if parsed is not None:
+            return round(parsed, 1)
     for value in (
-        odds.get("prematch_median"),
         odds.get("opening_median"),
+        odds.get("prematch_median"),
     ):
         parsed = _safe_float(value)
         if parsed is not None:
             return round(parsed, 1)
-    for key in ("prematch_total", "prematch", "baseline", "opening_total", "opening"):
+    for key in ("prematch_total", "prematch"):
         value = match.get(key)
         parsed = _safe_float(value)
         if parsed is not None:
@@ -682,67 +753,10 @@ def _market_total(match: dict, opening: float) -> float | None:
     return round(opening, 1)
 
 
-def _fair_weight_profile(status: str, match_name: str, tournament: str) -> dict:
-    # Erken periyotta pace numunesi küçük, projeksiyon varyansı çok yüksek.
-    # Geçmiş maç profili erken bölümde daha etkilidir; maç ilerledikçe
-    # canlı tempo daha fazla ağırlık alır.
-    period = game_clock(status, match_name, tournament)["period"]
-    is_live_unknown = (period is None) and re.match(
-        r"^live\b", (status or "").strip(), re.IGNORECASE
-    )
-    if is_live_unknown:
-        return {"projection": 0, "market": 55, "team_recent": 30, "h2h": 15}
-    if period == 1:
-        return {"projection": 10, "market": 55, "team_recent": 20, "h2h": 15}
-    if period == 2:
-        return {"projection": 35, "market": 35, "team_recent": 20, "h2h": 10}
-    if period == 3:
-        return {"projection": 50, "market": 25, "team_recent": 17, "h2h": 8}
-    if period and period >= 4:
-        return {"projection": 60, "market": 20, "team_recent": 15, "h2h": 5}
-    return {"projection": 0, "market": 55, "team_recent": 30, "h2h": 15}
-
-
-def _normalize_weights(weights: dict) -> dict:
-    total = sum(weights.values())
-    if total <= 0:
-        return {key: 0 for key in weights}
-    exact = {key: (value / total) * 100 for key, value in weights.items()}
-    rounded = {key: int(value) for key, value in exact.items()}
-    remainder = 100 - sum(rounded.values())
-    ranked = sorted(exact, key=lambda key: exact[key] - rounded[key], reverse=True)
-    for key in ranked[:remainder]:
-        rounded[key] += 1
-    return rounded
-
-
-def _weighted_fair_line(components: dict, base_weights: dict) -> tuple[float | None, dict]:
-    if components.get("projection") is None:
-        return None, {key: 0 for key in base_weights}
-
-    usable = {
-        key: float(value)
-        for key, value in components.items()
-        if value is not None and key in base_weights and base_weights.get(key, 0) > 0
-    }
-    if not usable:
-        return None, {key: 0 for key in base_weights}
-
-    # Robust guard: tek bir bileşen (özellikle erken maç projeksiyonu veya zayıf H2H)
-    # diğer tüm okumalardan koparsa adil baremi saçma yere sürüklemesin.
-    # Tamamen atmak yerine medyana doğru yumuşatıyoruz; çünkü uç değer bazen
-    # gerçek tempo kırılmasını da gösterebilir.
-    if len(usable) >= 3:
-        center = median(usable.values())
-        for key, value in list(usable.items()):
-            gap = value - center
-            if abs(gap) > 28:
-                usable[key] = center + (28 if gap > 0 else -28) + (gap - (28 if gap > 0 else -28)) * 0.35
-
-    active_weights = {key: base_weights[key] for key in usable}
-    weight_sum = sum(active_weights.values())
-    fair_line = sum(usable[key] * active_weights[key] for key in usable) / weight_sum
-    return round(fair_line, 1), _normalize_weights(active_weights)
+# Eski çoklu-bileşenli (projection + market + team_recent + h2h) ağırlıklı adil
+# barem hesaplama yardımcıları kaldırıldı. Yeni mimari:
+#   calculate_fair_line(prematch, pure_pace_projection, elapsed_minutes, ...)
+# H2H ve son form artık fair_line'a girmiyor — prematch çizgisi onları zaten fiyatlamıştır.
 
 
 def _pace_note(
@@ -1110,126 +1124,67 @@ def _backtest_direction_scores(profile: dict | None, keys: list[str]) -> dict:
 
 def _classify_signal(decision: dict) -> dict:
     """
-    Basketbol mantığı: piyasa büyük hareket ettiğinde (>22 puan) genelde haklıdır;
-    fade etmek tehlikelidir. Karar yön çevirdiğinde (flip) kazanma oranı yüksektir.
-    Sweet spot diff 11-16 arasıdır. Q3 sinyalleri tarihsel olarak en zayıf bölgedir.
-    Skor veya sınıf etiketi üretmez; sadece gönderim uygunluğu ve gerekçe döndürür.
+    Telegram gönderim filtresi + insan-okunur açıklama döndürür.
+    Sayısal puan ya da sınıf etiketi üretmez (kullanıcı isteğiyle kaldırıldı).
+
+    Filtre mantığı: Adil baremin canlıya göre net farkı (|fair_edge| >= 5) ve
+    yön kararıyla uyumlu olduğunda Telegram'a uygun. Diğer durumlarda dashboard'da
+    görünür kalır ama mesaj atılmaz.
     """
     scores = decision.get("signal_scores") or {}
     margin = abs(float(scores.get("ALT", 0) or 0) - float(scores.get("ÜST", 0) or 0))
     final_direction = _normalize_direction(decision.get("direction"))
     legacy_direction = _normalize_direction(decision.get("legacy_direction") or final_direction)
-    flipped = final_direction != legacy_direction
     fair_edge = _safe_float(decision.get("fair_edge"))
     projected_gap = _safe_float(decision.get("projected_gap"))
-    projection_quality = float(decision.get("projection_quality") or 0)
-    live_edge_score = float(decision.get("live_edge_score") or 0)
-    abs_diff = float(decision.get("abs_diff") or 0)
-    signal_count = int(decision.get("signal_count") or 1)
-    alert_period = decision.get("alert_period")
 
     fair_direction = None
-    projection_direction = None
     if fair_edge is not None and abs(fair_edge) >= 3:
         fair_direction = "ÜST" if fair_edge > 0 else "ALT"
+    projection_direction = None
     if projected_gap is not None and abs(projected_gap) >= 4:
         projection_direction = "ÜST" if projected_gap > 0 else "ALT"
-    live_agreement = (
-        fair_direction == final_direction
-        and projection_direction == final_direction
+
+    fair_edge_abs = abs(fair_edge) if fair_edge is not None else 0.0
+    fair_aligned = fair_direction == final_direction
+    projection_aligned = projection_direction == final_direction
+    flipped = final_direction != legacy_direction
+
+    # Telegram'a sadece adil barem net şekilde sapmışsa ve yönle uyumluysa çık.
+    telegram_eligible = (
+        fair_edge_abs >= 5.0
+        and fair_aligned
+        and (projection_aligned or projection_direction is None)
+        and margin >= 3.0
     )
 
-    # Tehlike bölgeleri.
-    danger_block = ""
-    if abs_diff >= 22:
-        danger_block = (
-            f"Piyasa hareketi çok büyük ({abs_diff:.0f} puan): fade riskli, "
-            "tarihsel kazanç oranı düşük."
+    if telegram_eligible:
+        reason = (
+            f"Adil barem canlıdan {fair_edge_abs:.1f} puan {'yüksek' if fair_edge > 0 else 'düşük'}; "
+            f"yön {final_direction} ile uyumlu."
         )
-    elif signal_count >= 4:
-        danger_block = (
-            f"Sinyal sayısı yüksek (#{signal_count}): çizgi tekrar tekrar kaydı, "
-            "piyasa direnci güçlü."
-        )
-    elif alert_period == 3 and abs_diff >= 14:
-        danger_block = (
-            "Q3 sinyali ve fark >=14: bu bölge tarihsel olarak en zayıf, "
-            "skor çoktan oluşmuş."
-        )
+        if flipped:
+            reason += f" Karar eski yönü çevirdi ({legacy_direction}→{final_direction})."
+    else:
+        if fair_edge is None:
+            reason = "Adil barem hesaplanamadı; gönderim için yeterli güven yok."
+        elif fair_edge_abs < 5.0:
+            reason = (
+                f"Adil barem canlıya çok yakın ({fair_edge_abs:.1f} puan); "
+                "net değer alanı zayıf."
+            )
+        elif not fair_aligned:
+            reason = (
+                "Adil barem yönü ile karar yönü uyumsuz; sinyal güvenilir değil."
+            )
+        else:
+            reason = (
+                f"Taraf ayrışması zayıf ({margin:.1f}); gönderim için kademe eksik."
+            )
 
-    elite_model = (
-        not danger_block
-        and (
-            (flipped and signal_count <= 2 and 9 <= abs_diff <= 18 and margin >= 3)
-            or (
-                live_agreement
-                and 11 <= abs_diff <= 16
-                and signal_count == 1
-                and alert_period in (1, 2, 4)
-                and projection_quality >= 65
-                and margin >= 5
-            )
-        )
-    )
-    strong_model = (
-        not danger_block
-        and (
-            (flipped and signal_count <= 2 and margin >= 2.5)
-            or (
-                signal_count <= 2
-                and 11 <= abs_diff <= 18
-                and alert_period != 3
-                and live_agreement
-                and margin >= 4
-            )
-        )
-    )
-    watch_model = margin >= 5 and signal_count <= 3
-
-    if elite_model:
-        reason_core = (
-            f"Karar yön çevirdi ({legacy_direction}→{final_direction}); "
-            "tarihsel olarak en yüksek başarı kategorisi."
-            if flipped
-            else (
-                f"Sweet spot fark {abs_diff:.1f}, ilk sinyal, üç model aynı yöne; "
-                "bahse uygun kombinasyon."
-            )
-        )
-        return {
-            "telegram_eligible": True,
-            "selection_reason": (
-                f"Kalite {projection_quality:.0f}/100, fark {abs_diff:.1f}, "
-                f"sinyal #{signal_count}. {reason_core}"
-            ),
-        }
-    if strong_model:
-        return {
-            "telegram_eligible": False,
-            "selection_reason": (
-                f"Fark {abs_diff:.1f}, sinyal #{signal_count}; "
-                "gönderim eşiği tutmadı."
-            ),
-        }
-    if danger_block:
-        return {
-            "telegram_eligible": False,
-            "selection_reason": danger_block,
-        }
-    if watch_model:
-        return {
-            "telegram_eligible": False,
-            "selection_reason": (
-                f"Taraf ayrışması {margin:.1f}; "
-                "bahis için yeterli ayrışma yok."
-            ),
-        }
     return {
-        "telegram_eligible": False,
-        "selection_reason": (
-            f"Canlı edge {live_edge_score:.1f}; "
-            "güven filtresinden geçmedi."
-        ),
+        "telegram_eligible": telegram_eligible,
+        "selection_reason": reason,
     }
 
 
@@ -1434,55 +1389,13 @@ def _decision_from_components(
     best_rate = backtest_scores.get(final_direction, {}).get("rate")
     fair_abs = abs(float(fair_edge)) if fair_edge is not None else 0.0
     projected_abs = abs(float(projected_gap)) if projected_gap is not None else 0.0
-    # Edge skorunu sınırla: >10 fair_abs zaten parazit sinyali
-    live_edge_score = _clamp(
-        (_clamp(fair_abs, 0, 10) * 4.5) + (_clamp(projected_abs, 0, 12) * 3.5),
-        0,
-        100,
-    )
     flipped = final_direction != legacy_direction
-
-    # Periyot bilgisi: alert_moment veya status'tan periyot çıkar
-    period_key = _period_key(status, alert_moment)
-    if period_key == "period:q1":
-        alert_period = 1
-    elif period_key == "period:q2_ht":
-        alert_period = 2
-    elif period_key == "period:q3":
-        alert_period = 3
-    elif period_key == "period:q4":
-        alert_period = 4
-    else:
-        alert_period = None
-
-    # Basketbol gerçeği: tehlike bölgeleri (backtest doğrulu)
-    danger_penalty = 0.0
-    if abs_diff > 18:
-        danger_penalty += min(18.0, (abs_diff - 18) * 1.4)
-    if alert_period == 3:
-        danger_penalty += 8.0
-    if signal_count >= 3:
-        danger_penalty += min(15.0, (signal_count - 2) * 5.0)
-    if not flipped and abs_diff >= 16:
-        # Karar yön değiştirmediği halde çizgi büyük kaymışsa riskli.
-        danger_penalty += 4.0
-
-    # Sweet spot bonusu: ilk sinyal + 11-16 fark + flip
-    sweet_bonus = 0.0
-    if 11 <= abs_diff <= 16:
-        sweet_bonus += 6.0
-    if signal_count == 1:
-        sweet_bonus += 4.0
-    if flipped:
-        sweet_bonus += 10.0  # FLIP backtest'te %75 kazanıyor, en güçlü sinyal
-    if alert_period in (1, 2):
-        sweet_bonus += 2.0
 
     flip_reason = ""
     if flipped:
         flip_reason = (
             f"Eski sinyal {legacy_direction}, yeni karar {final_direction}: "
-            f"tempo/adil barem/piyasa toplamı yönü çevirdi (tarihsel olarak en başarılı tip)."
+            f"tempo/adil barem/piyasa oyları yönü çevirdi."
         )
 
     return {
@@ -1491,16 +1404,11 @@ def _decision_from_components(
         "signal_scores": {key: round(value, 1) for key, value in totals.items()},
         "signal_votes": sorted(votes, key=lambda item: item["score"], reverse=True),
         "projection_quality": projection_quality,
-        "live_edge_score": round(live_edge_score, 1),
         "fair_edge": fair_edge,
         "fair_edge_abs": round(fair_abs, 1),
         "projected_gap": projected_gap,
         "projected_gap_abs": round(projected_abs, 1),
-        "abs_diff": round(abs_diff, 1),
         "signal_count": signal_count,
-        "alert_period": alert_period,
-        "danger_penalty": round(danger_penalty, 1),
-        "sweet_bonus": round(sweet_bonus, 1),
         "backtest": {
             "sample_size": (backtest_profile or {}).get("sample_size", 0),
             "keys": backtest_keys,
@@ -1593,9 +1501,26 @@ def build_signal_analysis(
         opening_total=opening,
     )
     raw_projected = live_projection.get("projected_total")
-    pace_adj = _script_pace_adjustment(score, status, match_name, tournament)
-    projected_total = round(raw_projected * pace_adj, 1) if raw_projected is not None else None
+    pure_projected_raw = live_projection.get("pure_projected_total")
+    projected_total = round(raw_projected, 1) if raw_projected is not None else None
+    pure_projected_total = (
+        round(pure_projected_raw, 1) if pure_projected_raw is not None else None
+    )
     projection_quality = live_projection.get("data_quality")
+
+    # Geçen süre — adil barem time-decay ağırlıkları için
+    period = clock.get("period")
+    remaining_min = clock.get("remaining_min")
+    quarter_length = clock.get("quarter_length") or 10
+    total_game_min = clock.get("total_game_min") or 40
+    if period and remaining_min is not None:
+        elapsed_minutes = (period - 1) * quarter_length + (quarter_length - remaining_min)
+    else:
+        elapsed_minutes = None
+
+    # H2H ve son form verisini DB'de tutmaya devam ediyoruz (görünürlük için),
+    # ancak adil barem hesabında SIFIR ağırlığa sahipler — açılış çizgisi
+    # bu bilgileri zaten büyük ölçüde fiyatlamış (double-counting'i önler).
     team_recent_total = h2h_metrics.get("expected_total")
     h2h_total = h2h_metrics.get("h2h_avg_total")
     h2h_games = h2h_metrics.get("h2h_games")
@@ -1604,31 +1529,29 @@ def build_signal_analysis(
     history_values = [value for value in (team_recent_total, h2h_total) if value is not None]
     history_total = round(mean(history_values), 1) if history_values else None
 
+    # Şeffaflık için bileşenleri raporlamaya devam ediyoruz (H2H/form 0 weight).
     components = {
-        "projection": projected_total,
+        "opening": market_total,
         "market": market_total,
+        "live_projection": pure_projected_total,
+        "projection": pure_projected_total,
         "team_recent": team_recent_total,
         "h2h": h2h_total,
     }
-    base_weights = _fair_weight_profile(status, match_name, tournament)
-    if projection_quality is not None and projection_quality >= 80:
-        base_weights = {
-            **base_weights,
-            "projection": base_weights.get("projection", 0) + 10,
-            "market": max(10, base_weights.get("market", 0) - 8),
-        }
-    elif projection_quality is not None and projection_quality < 55:
-        base_weights = {
-            **base_weights,
-            "projection": max(0, base_weights.get("projection", 0) - 15),
-            "market": base_weights.get("market", 0) + 10,
-        }
-    # H2H numunesi 3'ten az ise güvenilmez — ağırlığını sıfırla.
-    if h2h_games is not None and h2h_games < 3:
-        base_weights = {**base_weights, "h2h": 0}
-        h2h_total = None
-        components["h2h"] = None
-    fair_line, weights = _weighted_fair_line(components, base_weights)
+    fair_line, fair_meta = calculate_fair_line(
+        prematch=market_total,
+        pure_pace_projection=pure_projected_total,
+        elapsed_minutes=elapsed_minutes,
+        total_game_minutes=total_game_min,
+        data_quality=projection_quality if projection_quality is not None else 50.0,
+    )
+    weights = {
+        "opening": int(round(fair_meta.get("opening_weight", fair_meta.get("prematch_weight", 0)) * 100)),
+        "live_projection": int(round(fair_meta.get("live_weight", 0) * 100)),
+        "team_recent": 0,
+        "h2h": 0,
+    }
+    base_weights = weights  # Geriye uyumluluk için aynı yapıyı koru.
     fair_edge = round(fair_line - live, 1) if fair_line is not None else None
 
     team_context = build_team_context(h2h_metrics, live, direction)
@@ -1757,6 +1680,9 @@ def build_signal_analysis(
         "weights": weights,
         "base_weights": base_weights,
         "fair_components": {key: _safe_round(value) for key, value in components.items()},
+        "fair_meta": fair_meta,
+        "pure_projected_total": _safe_round(pure_projected_total),
+        "elapsed_minutes": _safe_round(elapsed_minutes) if elapsed_minutes is not None else None,
         "projection_quality": projection_quality,
         "projection_components": live_projection.get("components") or {},
         "projection_notes": live_projection.get("notes") or [],

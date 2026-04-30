@@ -1037,15 +1037,15 @@
 
     <main class="section-shell">
       <div class="nav-tabs">
-        <span class="nav-tab active">Anomaliler</span>
+        <span class="nav-tab active">Canlı Sinyaller</span>
       </div>
 
       <section class="panel stats">
         <div class="stat-chip alt"><span>ALT</span><strong id="statAlt">0</strong></div>
         <div class="stat-chip ust"><span>ÜST</span><strong id="statUst">0</strong></div>
-        <div class="stat-chip bet"><span>Bahislenen</span><strong id="statBet">0</strong></div>
+        <div class="stat-chip bet"><span>Bahis</span><strong id="statBet">0</strong></div>
         <div class="stat-chip follow"><span>Takipte</span><strong id="statFollow">0</strong></div>
-        <div class="stat-chip"><span>Toplam Sinyal</span><strong id="statTotal">0</strong></div>
+        <div class="stat-chip"><span>Toplam</span><strong id="statTotal">0</strong></div>
       </section>
 
       <section class="panel">
@@ -1072,7 +1072,7 @@
           <button class="btn" data-filter="pending">Bekleyen</button>
           <button class="btn" data-filter="bet">Bahis</button>
           <button class="btn" data-filter="follow">Takip</button>
-          <button class="btn" data-filter="ignored">Gözardı</button>
+          <button class="btn" data-filter="ignored">Pas Geçilen</button>
           <button class="btn" data-filter="alt">ALT</button>
           <button class="btn" data-filter="ust">ÜST</button>
         </div>
@@ -1210,53 +1210,53 @@
       </div>
       <div class="ai-guide-body">
         <div class="ai-guide-lead">
-          Bu ekran canlı hat, skor/süre projeksiyonu, son form, H2H, tempo sapması ve geçmiş sonuç filtrelerini birlikte okuyup “bu sinyal takip edilmeye değer mi?” sorusuna cevap verir.
+          Bu ekran şunu söyler: Canlı barem açılışa göre çok değişti mi, bizim adil barem canlıdan uzak mı, risk var mı?
         </div>
 
         <div class="ai-guide-grid">
           <div class="ai-guide-card">
             <h4>ALT / ÜST Ne Demek?</h4>
             <ul class="ai-guide-list">
-              <li><strong>ALT</strong>: Mevcut canlı toplam çizgisinin maç sonu için yüksek kaldığını gösterir.</li>
-              <li><strong>ÜST</strong>: Mevcut canlı toplam çizgisinin maç sonu için düşük kaldığını gösterir.</li>
-              <li><strong>Klasik yön → Yeni karar</strong>: Eski barem sinyali ile güncel karar karşılaştırılır. “Değişti” yazıyorsa sinyal yönü tersine dönmüştür.</li>
+              <li><strong>ALT</strong>: Sistem canlı baremi yüksek buluyor.</li>
+              <li><strong>ÜST</strong>: Sistem canlı baremi düşük buluyor.</li>
+              <li>Yön butonuna basınca maçın kısa açıklaması açılır.</li>
             </ul>
           </div>
 
           <div class="ai-guide-card">
-            <h4>Adil Hat ve Edge</h4>
+            <h4>Adil Barem</h4>
             <ul class="ai-guide-list">
-              <li><strong>Adil hat</strong>: Projeksiyon, pazar, son form ve H2H bileşenlerinden üretilen tahmini doğru çizgi.</li>
-              <li><strong>Hat avantajı</strong>: Adil hat eksi canlı hat. Pozitif fark ÜST, negatif fark ALT tarafını destekler.</li>
-              <li><strong>Projeksiyon</strong>: Skor ve süreye göre maçın nereye gidebileceğini söyler; düşük canlı veri puanında daha temkinli okunur.</li>
+              <li><strong>Adil barem</strong>: Sistemin bu maç için doğru gördüğü toplam sayı çizgisi.</li>
+              <li>Adil barem canlıdan yüksekse <strong>ÜST</strong> tarafı değerli görünür.</li>
+              <li>Adil barem canlıdan düşükse <strong>ALT</strong> tarafı değerli görünür.</li>
             </ul>
           </div>
 
           <div class="ai-guide-card">
-            <h4>SF, H2H ve Oylar</h4>
+            <h4>Projeksiyon</h4>
             <ul class="ai-guide-list">
-              <li><strong>SF</strong>: Takımların son maç toplam profili. Canlı hat SF’den çok uzaksa regresyon ihtimali takip edilir.</li>
-              <li><strong>H2H</strong>: Sadece bu iki takımın birbirine karşı maçları. Maç sayısı azsa tek başına karar verdirmez.</li>
-              <li><strong>Sinyal oyları</strong>: Tempo, hat hareketi, tarihçe, canlı edge gibi alt sinyallerin hangi yöne puan verdiğini gösterir.</li>
+              <li>Projeksiyon, maç bu tempoda giderse kaç sayı olabilir sorusunun cevabıdır.</li>
+              <li>Açılış baremi ile canlı projeksiyon karıştırılır ve adil barem oluşur.</li>
+              <li>Son form ve H2H sadece arka plan bilgisidir; ana karar değildir.</li>
             </ul>
           </div>
 
           <div class="ai-guide-card">
-            <h4>Nasıl Takip Edilmeli?</h4>
+            <h4>Nasıl Okunur?</h4>
             <ul class="ai-guide-list">
-              <li><strong>Bahis Oyna</strong>: Sadece kendi kontrolünden de geçen, gerekçesi ve canlı akışı uyumlu sinyallerde kullan.</li>
-              <li><strong>Takip Et</strong>: Yeni gelen sinyal, veri kalitesi düşük veya hat değişimi beklenen maçlarda kullan.</li>
-              <li><strong>Gözardı Et</strong>: Risk notu yoğun, skor/süre bozuk veya maç akışı modele ters görünüyorsa kullan.</li>
+              <li>Önce sinyal yönüne bak.</li>
+              <li>Sonra adil barem ile canlı barem farkına bak.</li>
+              <li>Risk notu varsa temkinli ol.</li>
             </ul>
           </div>
 
           <div class="ai-guide-card wide">
             <h4>Pratik Okuma Sırası</h4>
             <ul class="ai-guide-list">
-              <li><strong>1.</strong> Sinyal yönü ile adil hat avantajı aynı tarafı mı gösteriyor?</li>
-              <li><strong>2.</strong> Canlı veri puanı, SF/H2H ve risk notları kararı bozuyor mu?</li>
-              <li><strong>3.</strong> Aynı maç tekrar sinyal verdiyse yeni hat daha mı iyi, yoksa geç kalınmış mı?</li>
-              <li><strong>4.</strong> Emin değilsen “Takip Et” işaretle; sistem maçı ayırır, karar vermeye zorlamaz.</li>
+              <li><strong>1.</strong> Canlı barem açılıştan ne kadar uzaklaşmış?</li>
+              <li><strong>2.</strong> Adil barem canlıdan kaç puan farklı?</li>
+              <li><strong>3.</strong> Açıklama ALT mı ÜST mü diyor?</li>
+              <li><strong>4.</strong> Risk notu varsa maçı takip et, hemen karar verme.</li>
             </ul>
           </div>
         </div>
@@ -1361,10 +1361,46 @@
       return `<button class="badge ${cls}" onclick="openSignalModal(${Number(alert.id || 0)})">${icon} ${escapeHtml(dir)}</button>`;
     }
 
+    function normalizeDirection(value) {
+      const dir = String(value || '').trim().toUpperCase().replace('UST', 'ÜST');
+      if (dir === 'ALT') return 'ALT';
+      if (dir === 'ÜST') return 'ÜST';
+      return '';
+    }
+
+    function fairAlertMarker(alert) {
+      const analysis = parseAnalysis(alert);
+      const edge = num(alert.fair_edge ?? analysis.fair_edge);
+      if (edge === null) return '';
+      const abs = Math.abs(edge);
+      if (abs < 5 || abs > 20) return '';
+
+      const quality = num(alert.projection_quality ?? analysis.projection_quality);
+      if (quality === null || quality < 60) return '';
+
+      const fairDirection = edge > 0 ? 'ÜST' : 'ALT';
+      const signalDirection = normalizeDirection(
+        alert.final_direction || analysis.final_direction || alert.direction || analysis.direction
+      );
+      if (signalDirection && signalDirection !== fairDirection) return '';
+
+      let projectedGap = num(alert.projected_gap ?? analysis.projected_gap);
+      const projected = num(alert.projected ?? analysis.projected_total);
+      const live = num(alert.live);
+      if (projectedGap === null && projected !== null && live !== null) {
+        projectedGap = projected - live;
+      }
+      if (projectedGap !== null && Math.abs(projectedGap) >= 4) {
+        const projectionDirection = projectedGap > 0 ? 'ÜST' : 'ALT';
+        if (projectionDirection !== fairDirection) return '';
+      }
+
+      return `<span class="fair-alert" title="Adil fark ${abs.toFixed(1)} puan; yön ve veri uyumlu">!</span>`;
+    }
+
     function fairHtml(alert) {
       const fair = fmt(alert.fair_line);
-      const edge = Math.abs(Number(alert.fair_edge));
-      const marker = Number.isFinite(edge) && edge >= 5 && edge <= 20 ? '<span class="fair-alert">!</span>' : '';
+      const marker = fairAlertMarker(alert);
       return `<span class="fair-cell"><span class="badge small-badge">${fair}</span>${marker}</span>`;
     }
 
@@ -1433,7 +1469,7 @@
         <div class="row-actions">
           <button class="row-action bet-action ${alert.bet_placed ? 'active-bet' : ''}" onclick="runAction('bet', ${id}, this)" aria-label="Bahis oyna" title="${alert.bet_placed ? 'Bahis oynandı' : 'Bahis oyna'}">${alert.bet_placed ? '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1.5,6.5 5,10 11.5,2.5"/></svg>' : '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="5.5"/><circle cx="7" cy="7" r="2" fill="currentColor" stroke="none"/><line x1="7" y1="1.5" x2="7" y2="3.2"/><line x1="7" y1="10.8" x2="7" y2="12.5"/><line x1="1.5" y1="7" x2="3.2" y2="7"/><line x1="10.8" y1="7" x2="12.5" y2="7"/></svg>'}</button>
           <button class="row-action follow-action ${alert.followed ? 'active-follow' : ''}" onclick="runAction('follow', ${id}, this)" aria-label="Takip et" title="Takip et">👁</button>
-          <button class="row-action ignore-action ${alert.ignored ? 'active-ignore' : ''}" onclick="runAction('ignore', ${id}, this)" aria-label="Gözardı et" title="Gözardı et">⊘</button>
+          <button class="row-action ignore-action ${alert.ignored ? 'active-ignore' : ''}" onclick="runAction('ignore', ${id}, this)" aria-label="Pas geç" title="Pas geç">⊘</button>
           <button class="row-action note-action ${hasNote ? 'has-note' : ''}" onclick="openNoteModal(${id})" aria-label="Not" title="${hasNote ? 'Notu düzenle' : 'Not ekle'}">✏</button>
           <button class="row-action danger" onclick="runAction('delete', ${id}, this)" aria-label="Sil" title="Sil">🗑</button>
         </div>
@@ -1781,7 +1817,14 @@
     }
 
     function signalWeightsText(weights) {
-      const labels = { projection: 'Projeksiyon', market: 'Piyasa', team_recent: 'Son form', h2h: 'H2H' };
+      const labels = {
+        opening: 'Açılış',
+        live_projection: 'Canlı projeksiyon',
+        projection: 'Projeksiyon',
+        market: 'Piyasa',
+        team_recent: 'Son form',
+        h2h: 'H2H'
+      };
       const parts = Object.entries(weights || {})
         .filter(([k, v]) => labels[k] && Number(v) > 0)
         .map(([k, v]) => `${labels[k]} %${Number(v).toFixed(0)}`);
@@ -1835,99 +1878,37 @@
       const sigEmoji = sigDir === 'ALT' ? '▼' : (sigDir === 'ÜST' ? '▲' : '·');
       const sigCls = sigDir === 'ALT' ? 'alt-tag' : (sigDir === 'ÜST' ? 'ust-tag' : '');
 
-      // ==== Piyasa kutusu ====
       const opening = num(alert.opening);
       const live = num(alert.live);
       const lineMove = (live !== null && opening !== null) ? (live - opening) : null;
       const lineMoveStr = lineMove === null ? '-' : (lineMove >= 0 ? '+' : '') + lineMove.toFixed(1);
       const moveColor = lineMove === null ? '' : (lineMove > 0 ? 'alt-tag' : 'ust-tag');
-
-      // ==== Adil barem / projeksiyon ====
       const fairNum = num(alert.fair_line ?? analysis.fair_line);
       const fairEdge = num(alert.fair_edge ?? analysis.fair_edge);
       const projected = num(alert.projected ?? analysis.projected_total);
-      const h2h = num(alert.h2h_total ?? analysis.h2h_total);
-      const teamRecent = num(alert.team_recent_total ?? analysis.team_recent_total);
-      const selectionReason = alert.selection_reason || analysis.selection_reason || '';
       const projectionQuality = num(alert.projection_quality ?? analysis.projection_quality);
-      const legacyDir = analysis.legacy_direction || alert.legacy_direction || sigDir;
-      const signalScores = analysis.signal_scores || alert.signal_scores || {};
-      const voteRows = Array.isArray(analysis.signal_votes || alert.signal_votes) ? (analysis.signal_votes || alert.signal_votes).slice(0, 5) : [];
-      const voteHtml = voteRows.length
-        ? `<div class="sig-card" style="margin-bottom:12px;">
-            <h4>Sinyal Oyları</h4>
-            <div class="sig-help">Her satır karara puan veren ayrı bir sinyaldir.</div>
-            ${voteRows.map(v => `<div class="row"><span>${escapeHtml(v.name || '-')} <span style="color:var(--text-soft);font-weight:600;">→ ${escapeHtml(v.direction || '-')}</span></span><strong>${fmt(v.score, 1)} puan</strong></div>`).join('')}
-          </div>`
-        : '';
+      const teamRecent = num(alert.team_recent_total ?? analysis.team_recent_total);
+      const h2h = num(alert.h2h_total ?? analysis.h2h_total);
+      const selectionReason = alert.selection_reason || analysis.selection_reason || '';
 
-      let edgeBox = '';
+      let edgeText = 'Adil barem hesaplanamadı. Bu sinyali sadece hat hareketi olarak izle.';
+      let edgeClass = 'neutral';
+      let edgeArrow = '·';
       if (fairEdge !== null) {
-        let cls = 'neutral', arrow = '⇆', text = '';
         if (fairEdge <= -3) {
-          cls = 'alt'; arrow = '▼';
-          text = `Adil hat canlıdan <b>${Math.abs(fairEdge).toFixed(1)} puan düşük</b>. Değer: <b>ALT</b>.`;
+          edgeClass = 'alt';
+          edgeArrow = '▼';
+          edgeText = `Adil barem canlıdan <b>${Math.abs(fairEdge).toFixed(1)} puan düşük</b>. Sistem <b>ALT</b> tarafını daha mantıklı görüyor.`;
         } else if (fairEdge >= 3) {
-          cls = 'ust'; arrow = '▲';
-          text = `Adil hat canlıdan <b>${fairEdge.toFixed(1)} puan yüksek</b>. Değer: <b>ÜST</b>.`;
+          edgeClass = 'ust';
+          edgeArrow = '▲';
+          edgeText = `Adil barem canlıdan <b>${fairEdge.toFixed(1)} puan yüksek</b>. Sistem <b>ÜST</b> tarafını daha mantıklı görüyor.`;
         } else {
-          text = `Adil hat canlıya yakın. Fark: <b>${fairEdge >= 0 ? '+' : ''}${fairEdge.toFixed(1)}</b>.`;
+          edgeText = `Adil barem canlıya yakın. Fark sadece <b>${fairEdge >= 0 ? '+' : ''}${fairEdge.toFixed(1)}</b>. Net avantaj zayıf.`;
         }
-        edgeBox = `<div class="sig-edge-box ${cls}"><span class="arrow">${arrow}</span><span class="text">${text}</span></div>`;
       }
+      const edgeBox = `<div class="sig-edge-box ${edgeClass}"><span class="arrow">${edgeArrow}</span><span class="text">${edgeText}</span></div>`;
 
-      // ==== Takım profili (SF) ve H2H — ayrı kartlar ====
-      const profiles = last6Profiles(alert);
-      const ctx = analysis.team_context || alert.team_context || {};
-      const homeProfile = ctx.home_last6_profile || profiles.home || {};
-      const awayProfile = ctx.away_last6_profile || profiles.away || {};
-      const profileRow = (profile) => {
-        if (!profile || !profile.team) return '';
-        const total = num(profile.avg_total);
-        const totalStr = total !== null ? total.toFixed(1) : '-';
-        const detail = `Attığı ${fmt(profile.ppg)} · Yediği ${fmt(profile.oppg)}`;
-        return `
-          <div class="row">
-            <span>${escapeHtml(last6Title(profile))} · ${escapeHtml(profile.team)}</span>
-            <strong>${escapeHtml(totalStr)} <span style="color:var(--text-soft);font-weight:600;">(${escapeHtml(detail)})</span></strong>
-          </div>`;
-      };
-      const homeRow = profileRow(homeProfile);
-      const awayRow = profileRow(awayProfile);
-      const sonFormRow = teamRecent !== null
-        ? `<div class="row" style="border-top:1px solid rgba(148,163,184,0.18);margin-top:6px;padding-top:8px;"><span><b>İki takımın ortalaması</b></span><strong style="color:#a78bfa;font-size:15px;">${teamRecent.toFixed(1)}</strong></div>`
-        : `<div class="row" style="border-top:1px solid rgba(148,163,184,0.18);margin-top:6px;padding-top:8px;"><span><b>İki takımın ortalaması</b></span><strong style="color:var(--text-soft);">-</strong></div>`;
-      const sfLiveDiff = (teamRecent !== null && live !== null) ? Math.round((live - teamRecent) * 10) / 10 : null;
-      const sfLiveRow = sfLiveDiff !== null
-        ? `<div class="row"><span>Canlı − son form</span><strong>${sfLiveDiff >= 0 ? '+' : ''}${sfLiveDiff.toFixed(1)}<span style="color:var(--text-soft);font-weight:600;font-size:11px;"> ${sfLiveDiff >= 4 ? 'canlı yüksek' : (sfLiveDiff <= -4 ? 'canlı düşük' : 'yakın')}</span></strong></div>`
-        : '';
-      const sfCard = (homeRow || awayRow || teamRecent !== null)
-        ? `<div class="sig-card">
-            <h4>Son Form (SF)</h4>
-            <div class="sig-help">Takımların son maç toplam ortalaması.</div>
-            ${homeRow}${awayRow}${sonFormRow}${sfLiveRow}
-          </div>`
-        : `<div class="sig-card"><h4>Son Form (SF)</h4><div style="font-size:12.5px;color:var(--text-soft);padding:6px 0;">Son 3-4-5 maç verisi okunamadı.</div></div>`;
-
-      // H2H kartı (sadece birbirleri ile oynadıkları)
-      const h2hAvg = ctx.h2h_avg_total != null ? num(ctx.h2h_avg_total) : h2h;
-      const h2hGames = ctx.h2h_games != null ? ctx.h2h_games : analysis.h2h_games;
-      const h2hOverPct = ctx.h2h_over_pct != null ? num(ctx.h2h_over_pct) : null;
-      const h2hLiveDiff = (h2hAvg !== null && live !== null) ? Math.round((live - h2hAvg) * 10) / 10 : null;
-      const h2hRows = [];
-      h2hRows.push(`<div class="row"><span>Ortalama toplam</span><strong>${h2hAvg !== null ? h2hAvg.toFixed(1) : '-'}</strong></div>`);
-      h2hRows.push(`<div class="row"><span>Maç sayısı</span><strong>${h2hGames != null ? h2hGames : '-'}</strong></div>`);
-      if (h2hOverPct !== null) h2hRows.push(`<div class="row"><span>ÜST oranı</span><strong>%${Math.round(h2hOverPct)}</strong></div>`);
-      if (h2hLiveDiff !== null) h2hRows.push(`<div class="row"><span>Canlı hatta göre</span><strong>${h2hLiveDiff >= 0 ? '+' : ''}${h2hLiveDiff.toFixed(1)}</strong></div>`);
-      const h2hCard = (h2hAvg !== null || h2hGames != null)
-        ? `<div class="sig-card">
-            <h4>H2H</h4>
-            <div class="sig-help">Sadece bu iki takımın birbirine karşı maçları.</div>
-            ${h2hRows.join('')}
-          </div>`
-        : `<div class="sig-card"><h4>H2H</h4><div style="font-size:12.5px;color:var(--text-soft);padding:6px 0;">Okunabilir H2H verisi yok.</div></div>`;
-
-      // ==== Risk uyarıları ====
       const allWarnings = [
         analysis.pace_anomaly_note,
         analysis.script_note && !analysis.script_note.includes('belirgin ekstra risk yok') ? analysis.script_note : null,
@@ -1941,12 +1922,17 @@
           if (!key || warnSeen.has(key)) return false;
           warnSeen.add(key); return true;
         })
-        .slice(0, 5);
+        .slice(0, 3);
       const warningsHtml = warnings.length
         ? `<ul class="sig-warnings">${warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul>`
-        : '<div style="font-size:12.5px;color:var(--text-soft);padding:6px 0;">Belirgin risk uyarısı yok.</div>';
+        : '<div style="font-size:12.5px;color:var(--text-soft);padding:6px 0;">Öne çıkan risk notu yok.</div>';
 
-      // ==== Action butonları ====
+      const dataLabel = projectionQuality === null
+        ? '-'
+        : projectionQuality >= 75 ? 'İyi'
+        : projectionQuality >= 55 ? 'Orta'
+        : 'Zayıf';
+
       const aid = Number(alert.id || 0);
       const actionsHtml = `
         <div class="sig-actions">
@@ -1957,30 +1943,34 @@
             ${alert.followed ? '👁 Takipte' : '👁 Takip Et'}
           </button>
           <button class="ignore ${alert.ignored ? 'active' : ''}" onclick="runAction('ignore', ${aid}, this); closeSignalModal();">
-            ${alert.ignored ? '⊘ Gözardı' : '⊘ Pas Geç'}
+            ${alert.ignored ? '⊘ Pas Geçildi' : '⊘ Pas Geç'}
           </button>
           <button onclick="closeSignalModal()">Kapat</button>
         </div>`;
 
-      // ==== Adil hat bileşenleri (ağırlıklı ortalama) ====
       const weights = analysis.weights || alert.weights || {};
       const components = analysis.fair_components || alert.fair_components || {};
-      const compRow = (label, key, hint) => {
-        const value = num(components[key]);
-        const weight = num(weights[key]);
+      const compRow = (label, keys, hint) => {
+        const keyList = Array.isArray(keys) ? keys : [keys];
+        let value = null;
+        let weight = null;
+        for (const key of keyList) {
+          if (value === null) value = num(components[key]);
+          const candidateWeight = num(weights[key]);
+          if (weight === null && candidateWeight !== null && candidateWeight > 0) {
+            weight = candidateWeight;
+          }
+        }
         const weightStr = weight !== null && weight > 0 ? ` <span style="color:var(--text-soft);font-weight:600;">(ağırlık %${Math.round(weight)})</span>` : ' <span style="color:var(--text-soft);font-weight:600;">(kullanılmadı)</span>';
         const valStr = value !== null ? value.toFixed(1) : '-';
         const hintStr = hint ? `<div style="font-size:11px;color:var(--text-soft);margin-top:-2px;margin-bottom:4px;">${escapeHtml(hint)}</div>` : '';
         return `<div class="row"><span>${escapeHtml(label)}</span><strong>${valStr}${weightStr}</strong></div>${hintStr}`;
       };
       const fairBreakdownRows = [
-        compRow('Canlı projeksiyon', 'projection', 'Skor ve süreye göre.'),
-        compRow('Bahis pazarı', 'market', 'Açılış / maç önü.'),
-        compRow('Son form (SF)', 'team_recent', 'Takımların son maçları.'),
-        compRow('H2H', 'h2h', 'Birbirlerine karşı maçlar.'),
+        compRow('Canlı projeksiyon', ['live_projection', 'live_projection_pure', 'projection'], 'Skor ve süreye göre.'),
+        compRow('Açılış baremi', ['opening', 'market', 'prematch'], 'Ana referans baremi.'),
       ].join('');
 
-      // Hat hareketinin ne anlama geldiğini sade yaz
       const moveText = lineMove === null ? ''
         : (lineMove > 0 ? 'açılıştan yukarı'
             : lineMove < 0 ? 'açılıştan aşağı'
@@ -1999,44 +1989,48 @@
           </div>
         </div>
 
-        ${edgeBox ? `<div style="margin-bottom:12px;">${edgeBox}</div>` : ''}
+        <div style="margin-bottom:12px;">${edgeBox}</div>
 
         <div class="sig-grid">
           <div class="sig-card">
-            <h4>Bahis Hattı</h4>
-            <div class="row"><span>Açılış hattı</span><strong>${fmt(alert.opening)}</strong></div>
-            <div class="row"><span>Canlı hat</span><strong>${fmt(alert.live)}</strong></div>
-            <div class="row"><span>Hareket (canlı − açılış)</span><strong class="${moveColor}">${lineMoveStr}${moveText ? ' <span style="color:var(--text-soft);font-weight:600;">' + escapeHtml(moveText) + '</span>' : ''}</strong></div>
+            <h4>1. Hat Hareketi</h4>
+            <div class="sig-help">Canlı baremin açılışa göre nereye gittiğini gösterir.</div>
+            <div class="row"><span>Açılış</span><strong>${fmt(alert.opening)}</strong></div>
+            <div class="row"><span>Canlı</span><strong>${fmt(alert.live)}</strong></div>
+            <div class="row"><span>Fark</span><strong class="${moveColor}">${lineMoveStr}${moveText ? ' <span style="color:var(--text-soft);font-weight:600;">' + escapeHtml(moveText) + '</span>' : ''}</strong></div>
             ${alert.signal_count > 1 ? `<div class="row"><span>Tekrar</span><strong>${alert.signal_count}. kez sinyal verdi</strong></div>` : ''}
           </div>
           <div class="sig-card">
-            <h4>Karar Özeti</h4>
-            <div class="row"><span>Canlı veri</span><strong>${projectionQuality !== null ? projectionQuality.toFixed(0) + ' / 100' : '-'}</strong></div>
-            <div class="row"><span>Klasik yön → Yeni karar</span><strong>${escapeHtml(legacyDir)} → ${escapeHtml(sigDir)}${legacyDir !== sigDir ? ' <span style="color:#fbbf24;font-weight:600;">(değişti)</span>' : ''}</strong></div>
-            <div class="row"><span>ALT puanı / ÜST puanı</span><strong>${fmt(signalScores.ALT, 1)} / ${fmt(signalScores['ÜST'], 1)}</strong></div>
-            ${selectionReason ? `<div class="row"><span>Karar gerekçesi</span><strong style="font-weight:600;">${escapeHtml(selectionReason)}</strong></div>` : ''}
+            <h4>2. Sistem Ne Diyor?</h4>
+            <div class="sig-help">Kısa karar özeti.</div>
+            <div class="row"><span>Yön</span><strong class="${sigCls}">${escapeHtml(sigDir)}</strong></div>
+            <div class="row"><span>Veri durumu</span><strong>${escapeHtml(dataLabel)}${projectionQuality !== null ? ` <span style="color:var(--text-soft);font-weight:600;">(${projectionQuality.toFixed(0)}/100)</span>` : ''}</strong></div>
+            ${selectionReason ? `<div class="row"><span>Açıklama</span><strong style="font-weight:600;">${escapeHtml(selectionReason)}</strong></div>` : ''}
           </div>
         </div>
 
-        <div class="sig-grid">
-          ${sfCard}
-          ${h2hCard}
-        </div>
-
         <div class="sig-card" style="margin-bottom:12px;">
-          <h4>Adil Hat Hesabı</h4>
-          <div class="sig-help">Adil hat, aşağıdaki bileşenlerin ağırlıklı ortalamasıdır.</div>
-          <div class="row"><span>Adil hat</span><strong style="color:#a78bfa;font-size:15px;">${fairNum !== null ? fairNum.toFixed(1) : '-'}</strong></div>
-          <div class="row"><span>Canlı hat</span><strong>${fmt(alert.live)}</strong></div>
-          <div class="row"><span>Hat avantajı (adil − canlı)</span><strong class="${fairEdge !== null && fairEdge > 0 ? 'alt-tag' : (fairEdge !== null && fairEdge < 0 ? 'ust-tag' : '')}">${fairEdge !== null ? (fairEdge >= 0 ? '+' : '') + fairEdge.toFixed(1) : '-'}<span style="color:var(--text-soft);font-weight:600;font-size:11px;"> ${fairEdge !== null && fairEdge > 0 ? 'adil yüksek → ÜST' : (fairEdge !== null && fairEdge < 0 ? 'adil düşük → ALT' : '')}</span></strong></div>
-          <div style="margin-top:10px;padding-top:8px;border-top:1px dashed rgba(148,163,184,0.18);font-size:11px;color:var(--text-soft);font-weight:800;letter-spacing:0.04em;text-transform:uppercase;">Bileşenler</div>
+          <h4>3. Adil Barem</h4>
+          <div class="sig-help">Adil barem, sistemin “bu maçın canlı toplam çizgisi bana göre kaç olmalı?” cevabıdır.</div>
+          <div class="row"><span>Adil barem</span><strong style="color:#a78bfa;font-size:15px;">${fairNum !== null ? fairNum.toFixed(1) : '-'}</strong></div>
+          <div class="row"><span>Canlı barem</span><strong>${fmt(alert.live)}</strong></div>
+          <div class="row"><span>Adil − canlı</span><strong class="${fairEdge !== null && fairEdge > 0 ? 'alt-tag' : (fairEdge !== null && fairEdge < 0 ? 'ust-tag' : '')}">${fairEdge !== null ? (fairEdge >= 0 ? '+' : '') + fairEdge.toFixed(1) : '-'}</strong></div>
+          <div class="row"><span>Projeksiyon</span><strong>${projected !== null ? projected.toFixed(1) : '-'}</strong></div>
+          <div style="margin-top:10px;padding-top:8px;border-top:1px dashed rgba(148,163,184,0.18);font-size:11px;color:var(--text-soft);font-weight:800;letter-spacing:0.04em;text-transform:uppercase;">Hesapta kullanılan ana parçalar</div>
           ${fairBreakdownRows}
         </div>
 
-        ${voteHtml}
+        ${(teamRecent !== null || h2h !== null) ? `
+          <div class="sig-card" style="margin-bottom:12px;">
+            <h4>Ek Bilgi</h4>
+            <div class="sig-help">Bunlar ana karar değil, sadece arka plan kontrolüdür.</div>
+            ${teamRecent !== null ? `<div class="row"><span>Son form ortalaması</span><strong>${teamRecent.toFixed(1)}</strong></div>` : ''}
+            ${h2h !== null ? `<div class="row"><span>H2H ortalaması</span><strong>${h2h.toFixed(1)}</strong></div>` : ''}
+          </div>
+        ` : ''}
 
         <div class="sig-card">
-          <h4>Riskler ve Notlar</h4>
+          <h4>4. Dikkat Notları</h4>
           ${warningsHtml}
         </div>
 
@@ -2212,7 +2206,7 @@
         allAlerts = allAlerts.map(a => normalizeId(a.match_id) === matchId ? { ...a, ignored: 1, bet_placed: 0, followed: 0 } : a);
         renderSlip(latestSlip);
         render();
-        setBetStatus('Maç kupondan çıkarıldı ve gözardı edildi.');
+        setBetStatus('Maç kupondan çıkarıldı ve pas geçildi.');
       } catch (error) {
         setBetStatus(error.message || 'Maç çıkarılamadı.', 'error');
       }

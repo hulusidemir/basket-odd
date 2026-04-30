@@ -35,6 +35,7 @@ class PaceTracker:
         period: int,
         total_pts: int,
         quarter_length: float,
+        remaining_min: float | None = None,
     ) -> dict:
         """
         Her scraping döngüsünde çağrılır.
@@ -42,6 +43,7 @@ class PaceTracker:
         period          : Mevcut çeyrek (1-4)
         total_pts       : İki takımın toplam skoru
         quarter_length  : Çeyrek süresi (dakika), NBA=12, FIBA=10
+        remaining_min   : Mevcut çeyrekte kalan süre
 
         Döndürür: pace analiz sözlüğü (quarter_paces, anomaly_direction, pace_note, ...)
         """
@@ -54,7 +56,7 @@ class PaceTracker:
         state.last_period = period
         state.last_total = total_pts
 
-        return _build_analysis(state, period, total_pts, quarter_length)
+        return _build_analysis(state, period, total_pts, quarter_length, remaining_min)
 
     def clear(self, match_id: str) -> None:
         self._matches.pop(match_id, None)
@@ -70,6 +72,7 @@ def _build_analysis(
     current_period: int,
     current_total: int,
     quarter_length: float,
+    remaining_min: float | None = None,
 ) -> dict:
     qet = state.quarter_end_totals  # {periyot: kümülatif_skor}
 
@@ -92,8 +95,12 @@ def _build_analysis(
     completed_total = prev
     current_q_pts = max(0, current_total - completed_total)
     current_q_pace: float | None = None
-    if current_q_pts >= 4:
-        # Çeyreğin ne kadarının geçtiğini bilmiyoruz — "tam dolmuş gibi" kaba hız
+    elapsed_q_min = None
+    if remaining_min is not None:
+        elapsed_q_min = max(0.0, min(float(quarter_length), float(quarter_length) - float(remaining_min)))
+    if current_q_pts >= 4 and elapsed_q_min is not None and elapsed_q_min >= 1.0:
+        current_q_pace = round(current_q_pts / elapsed_q_min * 10, 1)
+    elif current_q_pts >= 4:
         current_q_pace = round(current_q_pts / quarter_length * 10, 1)
 
     anomaly_direction: str | None = None

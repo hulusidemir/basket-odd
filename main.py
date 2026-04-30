@@ -11,6 +11,7 @@ import logging
 import random
 import re
 import sys
+import time
 
 from aiscore_scraper import AiscoreScraper
 from config import Config
@@ -63,10 +64,18 @@ async def process_match(
     quarter_length = clock["quarter_length"]
 
     if period is None:
-        log.info(
-            "Skipped (çeyrek bilgisi okunamadı): %s | status=%r | score=%r",
-            match_name, status, score,
-        )
+        # Status boş ise yayın henüz canlı sayfaya gelmemiş demek (gürültü değil).
+        # Status dolu ama parse edilemediyse format değişmiş, ilgilenmek lazım.
+        if status:
+            log.warning(
+                "Status format tanınmadı (çeyrek bilgisi okunamadı): %s | status=%r | score=%r",
+                match_name, status, score,
+            )
+        else:
+            log.debug(
+                "Skipped (henüz canlı status yok): %s | score=%r",
+                match_name, score,
+            )
         return
 
     if period == 4 and remaining_min is not None and remaining_min < 5:
@@ -83,7 +92,11 @@ async def process_match(
         home_score, away_score = parse_score(match.get("score", ""))
         if home_score is not None and away_score is not None:
             pace_data = pace_tracker.update(
-                match_id, period, home_score + away_score, quarter_length
+                match_id,
+                period,
+                home_score + away_score,
+                quarter_length,
+                remaining_min=remaining_min,
             )
 
     if config.BLACKLIST:
@@ -198,8 +211,14 @@ async def run():
 
     while True:
         try:
+            cycle_started = time.monotonic()
             matches = await scraper.get_live_basketball_totals()
-            log.info("Captured opening/in-play totals for %s matches.", len(matches))
+            scrape_seconds = time.monotonic() - cycle_started
+            log.info(
+                "Captured opening/in-play totals for %s matches in %.1fs.",
+                len(matches),
+                scrape_seconds,
+            )
             backtest_profile = build_backtest_profile(db.recent_deleted_alerts(limit=None))
 
             for match in matches:

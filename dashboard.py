@@ -353,7 +353,7 @@ def build_bet_builder(max_count: int) -> dict:
     if excluded_total > 0:
         message += (
             f" {excluded_total} maç daha önce işaretlendiği/kaydedildiği için otomatik dışlandı "
-            f"(Biten: {excluded_finished}, Gözardı: {excluded_ignored}, Bahis: {excluded_bet}, "
+            f"(Biten: {excluded_finished}, Pas geçilen: {excluded_ignored}, Bahis: {excluded_bet}, "
             f"Takip: {excluded_follow}, Eski kupon: {excluded_saved})."
         )
 
