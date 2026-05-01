@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gelecek Maçlar</title>
+  <style>
+    :root {
+      --bg: #0a0a10;
+      --surface: #111118;
+      --surface-2: #17172200;
+      --surface-3: #1e1e2a;
+      --surface-4: #25253400;
+      --panel: rgba(17,17,24,0.97);
+      --border: rgba(120,100,220,0.14);
+      --border-strong: rgba(120,100,220,0.24);
+      --text: #ede9ff;
+      --text-dim: #7870a0;
+      --text-soft: #7870a0;
+      --accent: #7c5cf6;
+      --accent-2: #34d399;
+      --warn: #fbbf24;
+      --bad: #f87171;
+      --blue: #60a5fa;
+      --shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse at 80% 0%, rgba(124,92,246,0.14), transparent 52%),
+        radial-gradient(ellipse at 0% 100%, rgba(52,211,153,0.08), transparent 45%),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, "Segoe UI", system-ui, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button, .btn, .nav-tab, .page-btn, .row-action {
+      touch-action: manipulation;
+      user-select: none;
+    }
+
+    .app-shell {
+      width: calc(100% - 4px);
+      max-width: none;
+      margin: 2px auto 16px;
+    }
+    .topbar, .panel {
+      background: rgba(17,17,24,0.97);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+      border-radius: 18px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+      border-color: rgba(120,100,220,0.22);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .status-pill {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: rgba(124,92,246,0.15);
+      border: 1px solid rgba(124,92,246,0.35);
+      position: relative;
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .status-pill::after {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #7c5cf6;
+      box-shadow: 0 0 10px rgba(124,92,246,0.8);
+    }
+    .brand-title {
+      font-size: 19px;
+      font-weight: 900;
+      letter-spacing: -0.3px;
+      white-space: nowrap;
+      background: linear-gradient(90deg, #a78bfa, #e879f9);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .brand-sub { font-size: 12px; color: var(--text-soft); margin-top: 2px; }
+
+    .actions, .toolbar-main, .filter-row, .summary, .pagination {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn, .nav-tab, .page-btn {
+      appearance: none;
+      border: 1px solid var(--border-strong);
+      background: rgba(30,28,48,0.9);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 9px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s, opacity 0.15s, box-shadow 0.15s;
+      white-space: nowrap;
+    }
+    .btn:hover, .nav-tab:hover, .page-btn:hover:not(:disabled) {
+      border-color: rgba(124,92,246,0.55);
+      background: rgba(40,36,68,0.96);
+      box-shadow: 0 0 0 1px rgba(124,92,246,0.12);
+    }
+    .btn.primary, .nav-tab.active {
+      color: white;
+      border-color: transparent;
+      background: linear-gradient(135deg, #6d42e8, #7c5cf6);
+      box-shadow: 0 4px 14px rgba(124,92,246,0.35);
+    }
+    .btn.warning {
+      background: rgba(251,191,36,0.12);
+      border-color: rgba(251,191,36,0.32);
+      color: #fde68a;
+    }
+    .btn.danger {
+      background: rgba(239,68,68,0.13);
+      border-color: rgba(239,68,68,0.32);
+      color: #fca5a5;
+    }
+    .btn:disabled { opacity: 0.45; cursor: wait; }
+
+    .section-shell {
+      background: rgba(11,11,17,0.95);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 10px 4px 12px;
+    }
+    .nav-tabs {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .nav-tab { cursor: default; }
+    .panel {
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .toolbar {
+      display: flex;
+      align-items: stretch;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .toolbar-main {
+      align-items: stretch;
+      flex: 1 1 720px;
+    }
+    .search-box, .column-filter {
+      background: rgba(9,8,16,0.84);
+      color: var(--text);
+      border: 1px solid rgba(124,92,246,0.22);
+      border-radius: 10px;
+      outline: none;
+      font-size: 12px;
+    }
+    .search-box {
+      min-width: min(420px, 100%);
+      flex: 1 1 300px;
+      border: 1px solid var(--border-strong);
+      background: rgba(10,10,16,0.98);
+      padding: 10px 14px;
+      font-size: 14px;
+    }
+    .search-box:focus, .column-filter:focus {
+      border-color: rgba(124,92,246,0.62);
+      box-shadow: 0 0 0 3px rgba(124,92,246,0.14);
+    }
+    .meta { color: var(--text-soft); font-size: 12px; font-weight: 700; }
+    .status {
+      display: none;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(96,165,250,0.1);
+      border: 1px solid rgba(96,165,250,0.26);
+      color: #bfdbfe;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .status.show { display: block; }
+    .status.error {
+      background: rgba(248,113,113,0.1);
+      border-color: rgba(248,113,113,0.32);
+      color: #fecaca;
+    }
+    .summary .chip {
+      padding: 7px 10px;
+      border-radius: 10px;
+      background: rgba(20,19,34,0.96);
+      border: 1px solid var(--border);
+      color: var(--text-soft);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .summary .chip strong { color: var(--text); margin-left: 5px; }
+
+    .table-panel { padding: 0; overflow: hidden; }
+    .table-wrap {
+      max-height: calc(100vh - 285px);
+      overflow: auto;
+      border-radius: 14px 14px 0 0;
+      background: rgba(8,8,14,0.95);
+    }
+    table {
+      width: 100%;
+      min-width: 1720px;
+      border-collapse: collapse;
+      font-size: 13px;
+      table-layout: fixed;
+    }
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      padding: 11px 13px;
+      background: rgba(16,14,28,0.98);
+      color: var(--text-soft);
+      border-bottom: 1px solid var(--border-strong);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 10px;
+      font-weight: 800;
+      text-align: left;
+      white-space: nowrap;
+    }
+    thead tr.filters th {
+      top: 38px;
+      background: rgba(13,12,21,0.98);
+      padding: 7px 8px;
+      z-index: 3;
+    }
+    th[data-sort] { cursor: pointer; user-select: none; }
+    th[data-sort]:hover, th.sorted {
+      color: var(--text);
+      background: rgba(30,26,50,0.98);
+    }
+    th.sorted::after {
+      content: " " attr(data-arrow);
+      color: var(--accent-2);
+      font-size: 11px;
+    }
+    .column-filter {
+      width: 100%;
+      height: 30px;
+      padding: 5px 7px;
+      font-weight: 700;
+    }
+    select.column-filter { color-scheme: dark; }
+
+    tbody td {
+      padding: 11px 13px;
+      border-bottom: 1px solid rgba(100,80,180,0.1);
+      vertical-align: middle;
+      font-size: 13px;
+    }
+    col.match-col { width: 380px; }
+    col.league-col { width: 260px; }
+    col.time-col { width: 160px; }
+    col.num-col { width: 120px; }
+    col.sf-col { width: 140px; }
+    col.signal-col { width: 110px; }
+    col.action-col { width: 180px; }
+    tbody tr:nth-child(even) { background: rgba(124,92,246,0.035); }
+    tbody tr:hover { background: rgba(124,92,246,0.075); }
+    tbody tr.is-followed { background: rgba(251,191,36,0.05); }
+    tbody tr.is-ignored { opacity: 0.28; filter: grayscale(0.8); }
+    tbody tr.is-ignored td { text-decoration: line-through; text-decoration-color: rgba(255,255,255,0.25); }
+    tbody tr.bet-placed { opacity: 0.22; filter: grayscale(0.6); }
+    .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 800; }
+    .match-name {
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.3;
+      max-width: 420px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .match-name a { color: inherit; text-decoration: none; }
+    .match-name a:hover { color: #c4b5fd; }
+    .subline {
+      font-size: 11px;
+      color: var(--text-soft);
+      margin-top: 3px;
+      max-width: 420px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sf-cell { text-align: right; font-variant-numeric: tabular-nums; }
+    .sf-main { font-weight: 900; color: var(--accent-2); }
+    .sf-sub { display: block; margin-top: 2px; color: var(--text-soft); font-size: 10.5px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 42px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 900;
+      background: rgba(124,92,246,0.16);
+      color: var(--text);
+    }
+    .pill.warn { background: rgba(251,191,36,0.16); color: #fde68a; }
+    .pill.alt, .pill.bad { background: rgba(248,113,113,0.15); color: #fecaca; }
+    .pill.ust, .pill.good { background: rgba(52,211,153,0.15); color: #a7f3d0; }
+    .row-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 5px; white-space: nowrap; }
+    .row-action {
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      border: 1px solid rgba(124,92,246,0.24);
+      background: rgba(12,10,20,0.72);
+      color: var(--text-dim);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 900;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.08s;
+    }
+    .row-action:hover { color: var(--text); border-color: rgba(124,92,246,0.5); transform: translateY(-1px); }
+    .row-action:disabled { opacity: 0.5; cursor: progress; transform: none; }
+    .row-action.bet-action { color: #a7f3d0; border-color: rgba(52,211,153,0.24); }
+    .row-action.follow-action { color: #fde68a; border-color: rgba(251,191,36,0.28); }
+    .row-action.ignore-action { color: #fecaca; border-color: rgba(248,113,113,0.28); }
+    .row-action.danger { color: #fecaca; background: rgba(127,29,29,0.22); border-color: rgba(248,113,113,0.32); }
+    .row-action.active-bet { color: #052e1a; background: linear-gradient(135deg,#34d399,#86efac); border-color: transparent; }
+    .row-action.active-follow { color: #422006; background: linear-gradient(135deg,#fbbf24,#fde68a); border-color: transparent; }
+    .row-action.active-ignore { color: #450a0a; background: linear-gradient(135deg,#fb7185,#fecaca); border-color: transparent; }
+    .empty {
+      text-align: center;
+      color: var(--text-dim);
+      padding: 42px;
+      font-weight: 750;
+    }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.28);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .pagination {
+      justify-content: flex-end;
+      margin: 10px 12px 12px;
+      padding: 0;
+      border-top: 1px solid rgba(124,92,246,0.14);
+      background: transparent;
+    }
+    .page-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    @media (max-width: 760px) {
+      body { padding: 10px; }
+      .topbar, .toolbar { align-items: stretch; }
+      .actions, .toolbar-main, .search-box, .btn { width: 100%; }
+      .btn { text-align: center; justify-content: center; }
+      .table-wrap { max-height: calc(100vh - 360px); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="status-pill"></div>
+        <div>
+          <div class="brand-title">Basket Sinyal</div>
+          <div class="brand-sub">Gelecek Maçlar</div>
+        </div>
+      </div>
+      <div class="actions">
+        <a href="/" class="btn">Canlı</a>
+        <a href="/deleted-matches" class="btn">Silinen</a>
+        <span class="btn primary">Gelecek Maçlar</span>
+        <a href="/bankroll" class="btn">Bankroll</a>
+        <button class="btn warning" id="fetchBtn" type="button">Gelecek Maçları Çek</button>
+        <button class="btn danger" id="clearAllBtn" type="button">Tümünü Sil</button>
+      </div>
+    </header>
+
+    <main class="section-shell">
+      <div class="nav-tabs">
+        <span class="nav-tab active">Gelecek Maç Sinyalleri</span>
+      </div>
+
+      <section class="panel toolbar">
+        <div class="toolbar-main">
+          <input id="searchInput" class="search-box" type="search" placeholder="Takım, lig veya maç ara">
+          <button class="btn primary" data-filter="all">Tümü</button>
+          <button class="btn" data-filter="ust">ÜST</button>
+          <button class="btn" data-filter="alt">ALT</button>
+          <button class="btn" data-filter="pending">Bekleyen</button>
+          <button class="btn" data-filter="bet">Bahis</button>
+          <button class="btn" data-filter="follow">Takip</button>
+          <button class="btn" data-filter="ignored">Gözardı</button>
+          <button class="btn" data-filter="withOdds">Baremli</button>
+          <button class="btn" data-filter="withSf">SF Verili</button>
+          <button class="btn" id="clearFiltersBtn" type="button">Temizle</button>
+        </div>
+        <div class="meta" id="lastFetched">Henüz veri çekilmedi</div>
+      </section>
+
+      <section class="panel">
+        <div class="status" id="status"></div>
+        <div class="summary" id="summary">
+          <div class="chip">Maç <strong id="chipCount">0</strong></div>
+          <div class="chip">Barem <strong id="chipWithOdds">0</strong></div>
+          <div class="chip">SF <strong id="chipWithSf">0</strong></div>
+          <div class="chip">Sinyal <strong id="chipSignals">0</strong></div>
+        </div>
+      </section>
+
+      <section class="panel table-panel">
+        <div class="table-wrap">
+          <table>
+            <colgroup>
+              <col class="match-col">
+              <col class="league-col">
+              <col class="time-col">
+              <col class="num-col">
+              <col class="num-col">
+              <col class="sf-col">
+              <col class="sf-col">
+              <col class="num-col">
+              <col class="signal-col">
+              <col class="num-col">
+              <col class="action-col">
+            </colgroup>
+            <thead>
+              <tr>
+                <th data-sort="match_name">Maç</th>
+                <th data-sort="tournament">Lig</th>
+                <th data-sort="kickoff">Tarih/Saat</th>
+                <th class="num" data-sort="opening_total">Açılış</th>
+                <th class="num" data-sort="prematch_total">Pre-Match</th>
+                <th class="num" data-sort="home_sf">Ev SF</th>
+                <th class="num" data-sort="away_sf">Dep. SF</th>
+                <th class="num" data-sort="expected_total">SF Ort.</th>
+                <th class="num" data-sort="signal_direction">Sinyal</th>
+                <th class="num" data-sort="signal_diff">Fark</th>
+                <th class="num">Aksiyon</th>
+              </tr>
+              <tr class="filters">
+                <th><input class="column-filter" data-field="match_name" type="search" placeholder="Maç"></th>
+                <th><input class="column-filter" data-field="tournament" type="search" placeholder="Lig"></th>
+                <th><input class="column-filter" data-field="kickoff" type="search" placeholder="Tarih/Saat"></th>
+                <th><input class="column-filter" data-field="opening_total" type="search" placeholder="Min"></th>
+                <th><input class="column-filter" data-field="prematch_total" type="search" placeholder="Min"></th>
+                <th><input class="column-filter" data-field="home_sf" type="search" placeholder="Min"></th>
+                <th><input class="column-filter" data-field="away_sf" type="search" placeholder="Min"></th>
+                <th><input class="column-filter" data-field="expected_total" type="search" placeholder="Min"></th>
+                <th>
+                  <select class="column-filter" data-field="signal_direction">
+                    <option value="">Tümü</option>
+                    <option value="ÜST">ÜST</option>
+                    <option value="ALT">ALT</option>
+                  </select>
+                </th>
+                <th><input class="column-filter" data-field="signal_diff" type="search" placeholder="Min"></th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="rows">
+              <tr><td colspan="11" class="empty">Kayıtlı gelecek maç yok.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination">
+          <button class="page-btn" id="prevPage" type="button">Önceki</button>
+          <span class="meta" id="pageInfo">1 / 1</span>
+          <button class="page-btn" id="nextPage" type="button">Sonraki</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const fetchBtn = document.getElementById('fetchBtn');
+    const statusEl = document.getElementById('status');
+    const rowsEl = document.getElementById('rows');
+    const lastEl = document.getElementById('lastFetched');
+    const searchInput = document.getElementById('searchInput');
+    const chipCount = document.getElementById('chipCount');
+    const chipOdds = document.getElementById('chipWithOdds');
+    const chipSf = document.getElementById('chipWithSf');
+    const chipSignals = document.getElementById('chipSignals');
+    const pageInfo = document.getElementById('pageInfo');
+    const prevPage = document.getElementById('prevPage');
+    const nextPage = document.getElementById('nextPage');
+    const clearFiltersBtn = document.getElementById('clearFiltersBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+
+    let allMatches = [];
+    let currentFilter = 'all';
+    let sortField = 'signal_diff';
+    let sortAsc = false;
+    let page = 1;
+    const pageSize = 50;
+    const columnFilters = {};
+
+    function showStatus(msg, kind) {
+      statusEl.textContent = msg;
+      statusEl.classList.add('show');
+      statusEl.classList.toggle('error', kind === 'error');
+    }
+    function hideStatus() {
+      statusEl.classList.remove('show', 'error');
+      statusEl.textContent = '';
+    }
+    function escapeHtml(s) {
+      return String(s || '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[c]);
+    }
+    function num(v) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+    function fmtNum(v) {
+      const n = num(v);
+      if (n === null) return '<span class="pill warn">-</span>';
+      return n.toFixed(1);
+    }
+    function sfValue(row, side) {
+      const profile = side === 'home' ? row.home_last6 : row.away_last6;
+      return num(profile && profile.avg_total);
+    }
+    function fmtSf(profile) {
+      const avg = num(profile && profile.avg_total);
+      if (avg === null) return '<span class="pill warn">yok</span>';
+      const games = profile.games || (profile.scores && profile.scores.length) || '-';
+      const ppg = num(profile.ppg);
+      const oppg = num(profile.oppg);
+      return `<span class="sf-main">${avg.toFixed(1)}</span>` +
+             `<span class="sf-sub">${ppg === null ? '-' : ppg.toFixed(1)} + ${oppg === null ? '-' : oppg.toFixed(1)} · ${games} maç</span>`;
+    }
+    function fmtSignal(row) {
+      const direction = row.signal_direction || '';
+      if (!direction) return '<span class="pill warn">-</span>';
+      const cls = direction === 'ÜST' ? 'ust' : 'alt';
+      return `<span class="pill ${cls}">${escapeHtml(direction)}</span>`;
+    }
+    function actionButtons(row) {
+      const id = encodeURIComponent(row.match_id || '');
+      return `
+        <div class="row-actions">
+          <button class="row-action bet-action ${row.bet_placed ? 'active-bet' : ''}" onclick="runAction('bet', '${id}', this)" aria-label="Bahis oyna" title="${row.bet_placed ? 'Bahis oynandı' : 'Bahis oyna'}">${row.bet_placed ? '✓' : '◎'}</button>
+          <button class="row-action follow-action ${row.followed ? 'active-follow' : ''}" onclick="runAction('follow', '${id}', this)" aria-label="Takip et" title="${row.followed ? 'Takipte' : 'Takip et'}">👁</button>
+          <button class="row-action ignore-action ${row.ignored ? 'active-ignore' : ''}" onclick="runAction('ignore', '${id}', this)" aria-label="Gözardı et" title="${row.ignored ? 'Gözardı edildi' : 'Gözardı et'}">⊘</button>
+          <button class="row-action danger" onclick="runAction('delete', '${id}', this)" aria-label="Sil" title="Sil">×</button>
+        </div>
+      `;
+    }
+    function fmtMatch(row) {
+      const name = escapeHtml(row.match_name || '');
+      const link = row.url ? `<a href="${escapeHtml(row.url)}" target="_blank" rel="noopener">${name}</a>` : name;
+      const teams = [row.home_team, row.away_team].filter(Boolean).map(escapeHtml).join(' / ');
+      return `<div class="match-name">${link}</div>${teams ? `<div class="subline">${teams}</div>` : ''}`;
+    }
+    function rowValue(row, field) {
+      if (field === 'home_sf') return sfValue(row, 'home');
+      if (field === 'away_sf') return sfValue(row, 'away');
+      if (field === 'signal_diff') return num(row.signal_diff);
+      if (['opening_total', 'prematch_total', 'expected_total'].includes(field)) return num(row[field]);
+      return row[field] ?? '';
+    }
+    function matchesColumnFilter(row, field, rawFilter) {
+      const filter = String(rawFilter || '').trim();
+      if (!filter) return true;
+      const value = rowValue(row, field);
+      if (['opening_total', 'prematch_total', 'expected_total', 'home_sf', 'away_sf', 'signal_diff'].includes(field)) {
+        const target = num(value);
+        const min = num(filter.replace(',', '.'));
+        return min === null || (target !== null && target >= min);
+      }
+      return String(value || '').toLocaleLowerCase('tr-TR').includes(filter.toLocaleLowerCase('tr-TR'));
+    }
+    function filteredMatches() {
+      const q = searchInput.value.trim().toLocaleLowerCase('tr-TR');
+      let list = [...allMatches];
+      if (currentFilter === 'ust') list = list.filter(m => m.signal_direction === 'ÜST');
+      if (currentFilter === 'alt') list = list.filter(m => m.signal_direction === 'ALT');
+      if (currentFilter === 'pending') list = list.filter(m => !m.bet_placed && !m.ignored && !m.followed);
+      if (currentFilter === 'bet') list = list.filter(m => m.bet_placed);
+      if (currentFilter === 'follow') list = list.filter(m => m.followed);
+      if (currentFilter === 'ignored') list = list.filter(m => m.ignored);
+      if (currentFilter === 'withOdds') list = list.filter(m => m.opening_total != null || m.prematch_total != null);
+      if (currentFilter === 'withSf') list = list.filter(m => m.expected_total != null);
+      if (q) {
+        list = list.filter(m => [m.match_name, m.tournament, m.home_team, m.away_team, m.kickoff]
+          .some(v => String(v || '').toLocaleLowerCase('tr-TR').includes(q)));
+      }
+      for (const [field, value] of Object.entries(columnFilters)) {
+        list = list.filter(row => matchesColumnFilter(row, field, value));
+      }
+      list.sort((a, b) => {
+        const av = rowValue(a, sortField);
+        const bv = rowValue(b, sortField);
+        const an = num(av);
+        const bn = num(bv);
+        let cmp;
+        if (an !== null || bn !== null) {
+          cmp = (an ?? -Infinity) - (bn ?? -Infinity);
+        } else {
+          cmp = String(av || '').localeCompare(String(bv || ''), 'tr');
+        }
+        return sortAsc ? cmp : -cmp;
+      });
+      return list;
+    }
+    function updateSortHeaders() {
+      document.querySelectorAll('th[data-sort]').forEach(th => {
+        const active = th.dataset.sort === sortField;
+        th.classList.toggle('sorted', active);
+        th.dataset.arrow = active ? (sortAsc ? '↑' : '↓') : '';
+      });
+    }
+    function updateFilterButtons() {
+      document.querySelectorAll('[data-filter]').forEach(btn => {
+        btn.classList.toggle('primary', btn.dataset.filter === currentFilter);
+      });
+    }
+    function render() {
+      updateSortHeaders();
+      updateFilterButtons();
+      const list = filteredMatches();
+      const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+      page = Math.min(Math.max(1, page), totalPages);
+      const visible = list.slice((page - 1) * pageSize, page * pageSize);
+
+      const withOdds = list.filter(m => m.opening_total != null || m.prematch_total != null).length;
+      const withSf = list.filter(m => m.expected_total != null).length;
+      const signals = list.filter(m => m.signal_direction).length;
+      chipCount.textContent = String(list.length);
+      chipOdds.textContent = String(withOdds);
+      chipSf.textContent = String(withSf);
+      chipSignals.textContent = String(signals);
+      pageInfo.textContent = `${page} / ${totalPages}`;
+      prevPage.disabled = page <= 1;
+      nextPage.disabled = page >= totalPages;
+
+      if (!visible.length) {
+        rowsEl.innerHTML = '<tr><td colspan="11" class="empty">Sonuç yok.</td></tr>';
+        return;
+      }
+      rowsEl.innerHTML = visible.map(m => `
+        <tr class="${m.bet_placed ? 'bet-placed' : ''} ${m.followed ? 'is-followed' : ''} ${m.ignored ? 'is-ignored' : ''}">
+          <td>${fmtMatch(m)}</td>
+          <td>${escapeHtml(m.tournament || '-')}</td>
+          <td>${escapeHtml(m.kickoff || '-')}</td>
+          <td class="num">${fmtNum(m.opening_total)}</td>
+          <td class="num">${fmtNum(m.prematch_total)}</td>
+          <td class="sf-cell">${fmtSf(m.home_last6 || {})}</td>
+          <td class="sf-cell">${fmtSf(m.away_last6 || {})}</td>
+          <td class="num"><span class="sf-main">${fmtNum(m.expected_total)}</span></td>
+          <td class="num">${fmtSignal(m)}</td>
+          <td class="num">${fmtNum(m.signal_diff)}</td>
+          <td class="num">${actionButtons(m)}</td>
+        </tr>
+      `).join('');
+    }
+    function setMatches(matches) {
+      allMatches = Array.isArray(matches) ? matches : [];
+      page = 1;
+      render();
+    }
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+    async function pollFetch() {
+      for (;;) {
+        const res = await fetch('api/status', { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || res.statusText);
+        if (!data.running) return data;
+        showStatus('Çekim devam ediyor; maçlar arka planda kaydediliyor.');
+        await sleep(2500);
+      }
+    }
+    async function loadSaved() {
+      try {
+        const res = await fetch('api/list', { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || res.statusText);
+        setMatches(data.matches || []);
+        if (data.count) lastEl.textContent = `Kayıtlı: ${data.count} maç`;
+      } catch (err) {
+        showStatus('Kayıtlı maçlar okunamadı: ' + err.message, 'error');
+      }
+    }
+    async function runFetch() {
+      hideStatus();
+      fetchBtn.disabled = true;
+      fetchBtn.innerHTML = '<span class="spinner"></span>Çekiliyor...';
+      try {
+        const res = await fetch('api/fetch', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok && res.status !== 202) throw new Error(data.error || res.statusText);
+        const finalData = data.running ? await pollFetch() : data;
+        setMatches(finalData.matches || []);
+        lastEl.textContent = 'Son çekim: ' + new Date().toLocaleTimeString('tr-TR');
+        showStatus(`${finalData.count || 0} maç kaydedildi, ${finalData.saved_signals || 0} sinyal üretildi.`);
+      } catch (err) {
+        showStatus('Çekim başarısız: ' + err.message, 'error');
+      } finally {
+        fetchBtn.disabled = false;
+        fetchBtn.textContent = 'Gelecek Maçları Çek';
+      }
+    }
+
+    function applyStatusUpdate(payload) {
+      if (!payload || !payload.match_id) return;
+      allMatches = allMatches.map(m => {
+        if (String(m.match_id) !== String(payload.match_id)) return m;
+        return {
+          ...m,
+          bet_placed: payload.bet_placed ?? m.bet_placed,
+          ignored: payload.ignored ?? m.ignored,
+          followed: payload.followed ?? m.followed,
+        };
+      });
+    }
+
+    async function runAction(action, encodedMatchId, button) {
+      const matchId = decodeURIComponent(encodedMatchId);
+      const row = allMatches.find(m => String(m.match_id) === String(matchId));
+      if (!row) return;
+      if (action === 'delete' && !confirm(`"${row.match_name || matchId}" maçını gelecek maç listesinden silmek istiyor musun?`)) return;
+      if (button) button.disabled = true;
+      try {
+        const res = await fetch(`api/matches/${encodedMatchId}/${action}`, { method: 'POST' });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload.error || 'İşlem tamamlanamadı.');
+        if (action === 'delete') {
+          allMatches = allMatches.filter(m => String(m.match_id) !== String(payload.match_id || matchId));
+          showStatus('Maç silindi.');
+        } else {
+          applyStatusUpdate(payload);
+        }
+        render();
+      } catch (err) {
+        showStatus(err.message || 'İşlem tamamlanamadı.', 'error');
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+
+    async function clearAllUpcoming() {
+      if (!confirm('Tüm gelecek maç kayıtları ve bu sayfanın ürettiği gelecek maç sinyalleri veritabanından kalıcı olarak silinsin mi?')) return;
+      clearAllBtn.disabled = true;
+      try {
+        const res = await fetch('api/clear', { method: 'POST' });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload.error || 'Kayıtlar silinemedi.');
+        allMatches = [];
+        page = 1;
+        render();
+        lastEl.textContent = 'Kayıtlı: 0 maç';
+        showStatus(`${payload.deleted_upcoming || 0} gelecek maç, ${payload.deleted_alerts || 0} sinyal veritabanından silindi.`);
+      } catch (err) {
+        showStatus(err.message || 'Kayıtlar silinemedi.', 'error');
+      } finally {
+        clearAllBtn.disabled = false;
+      }
+    }
+
+    document.querySelectorAll('th[data-sort]').forEach(th => {
+      th.addEventListener('click', () => {
+        const field = th.dataset.sort;
+        if (sortField === field) sortAsc = !sortAsc;
+        else {
+          sortField = field;
+          sortAsc = !['signal_diff', 'expected_total', 'opening_total', 'prematch_total', 'home_sf', 'away_sf'].includes(field);
+        }
+        render();
+      });
+    });
+    document.querySelectorAll('.column-filter').forEach(input => {
+      input.addEventListener('input', () => {
+        columnFilters[input.dataset.field] = input.value;
+        page = 1;
+        render();
+      });
+      input.addEventListener('change', () => {
+        columnFilters[input.dataset.field] = input.value;
+        page = 1;
+        render();
+      });
+    });
+    document.querySelectorAll('[data-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentFilter = btn.dataset.filter;
+        page = 1;
+        render();
+      });
+    });
+    searchInput.addEventListener('input', () => { page = 1; render(); });
+    clearFiltersBtn.addEventListener('click', () => {
+      currentFilter = 'all';
+      searchInput.value = '';
+      for (const input of document.querySelectorAll('.column-filter')) {
+        input.value = '';
+        columnFilters[input.dataset.field] = '';
+      }
+      sortField = 'signal_diff';
+      sortAsc = false;
+      page = 1;
+      render();
+    });
+    prevPage.addEventListener('click', () => { page -= 1; render(); });
+    nextPage.addEventListener('click', () => { page += 1; render(); });
+    fetchBtn.addEventListener('click', runFetch);
+    clearAllBtn.addEventListener('click', clearAllUpcoming);
+    loadSaved();
+  </script>
+</body>
+</html>

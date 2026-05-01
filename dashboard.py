@@ -30,6 +30,9 @@ db.init()
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
+from upcoming_app import upcoming_bp
+app.register_blueprint(upcoming_bp)
+
 BET_BUILDER_ALERT_WINDOW_MINUTES = 240
 
 
