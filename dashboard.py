@@ -525,7 +525,7 @@ def api_export_finished_deleted_matches_csv():
     writer = csv.writer(output)
     writer.writerow([
         "Maç", "Sinyal Anı", "Sinyal Türü", "Skor",
-        "Açılış", "Canlı", "Proj.", "Adil Barem", "Sonuç", "Not",
+        "Açılış", "Canlı", "Proj.", "Adil Barem", "Sonuç", "Not", "SF",
     ])
 
     for row in rows:
@@ -536,6 +536,8 @@ def api_export_finished_deleted_matches_csv():
         projected_cell = f"{float(projected):.1f}" if projected is not None else ""
         fair_line = row.get("fair_line")
         fair_line_cell = f"{float(fair_line):.1f}" if fair_line is not None else "Hesaplanamıyor"
+        team_recent_total = row.get("team_recent_total")
+        team_recent_cell = f"{float(team_recent_total):.1f}" if team_recent_total is not None else ""
         writer.writerow([
             match_name,
             row.get("alert_moment") or "",
@@ -547,6 +549,7 @@ def api_export_finished_deleted_matches_csv():
             fair_line_cell,
             row.get("result") or "",
             row.get("note") or "",
+            team_recent_cell,
         ])
 
     filename = f"silinen-biten-maclar-{datetime.now().strftime('%Y%m%d-%H%M')}.csv"

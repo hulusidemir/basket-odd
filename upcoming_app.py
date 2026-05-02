@@ -125,10 +125,10 @@ def upcoming_api_match_action(match_id: str, action: str):
             }
         )
 
-    current = db.get_match_action_status(match_key)
+    current = db.get_upcoming_match_action_status(match_key)
     if action == "bet":
         new_val = not bool(current.get("bet_placed"))
-        affected = db.set_match_statuses(
+        affected = db.set_upcoming_match_statuses(
             match_key,
             bet_placed=new_val,
             ignored=False if new_val else None,
@@ -146,7 +146,7 @@ def upcoming_api_match_action(match_id: str, action: str):
 
     if action == "ignore":
         new_val = not bool(current.get("ignored"))
-        affected = db.set_match_statuses(
+        affected = db.set_upcoming_match_statuses(
             match_key,
             ignored=new_val,
             bet_placed=False if new_val else None,
@@ -164,7 +164,7 @@ def upcoming_api_match_action(match_id: str, action: str):
 
     if action == "follow":
         new_val = not bool(current.get("followed"))
-        affected = db.set_match_statuses(
+        affected = db.set_upcoming_match_statuses(
             match_key,
             followed=new_val,
             bet_placed=False if new_val else None,
@@ -189,6 +189,8 @@ def _run_fetch_job():
         aiscore_url=config.AISCORE_URL,
         page_timeout_ms=config.PAGE_TIMEOUT_MS,
         max_matches=None,
+        days_ahead=config.UPCOMING_DAYS_AHEAD,
+        timezone_id=config.AISCORE_TIMEZONE,
     )
     try:
         matches = asyncio.run(scraper.fetch())

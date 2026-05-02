@@ -19,7 +19,9 @@ import asyncio
 import logging
 import os
 import re
+from datetime import date, datetime, timedelta
 from urllib.parse import urljoin
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from playwright.async_api import async_playwright
 
@@ -34,10 +36,20 @@ class UpcomingScraper:
         aiscore_url: str = "https://www.aiscore.com/basketball",
         page_timeout_ms: int = 35000,
         max_matches: int | None = None,
+        days_ahead: int | None = None,
+        timezone_id: str | None = None,
     ):
         self.aiscore_url = aiscore_url
         self.page_timeout_ms = page_timeout_ms
         self.max_matches = max_matches
+        self.days_ahead = max(0, int(days_ahead if days_ahead is not None else os.getenv("UPCOMING_DAYS_AHEAD", "0")))
+        self.timezone_id = timezone_id or os.getenv("AISCORE_TIMEZONE", "Europe/Istanbul")
+        try:
+            ZoneInfo(self.timezone_id)
+        except ZoneInfoNotFoundError:
+            logger.warning("Unknown AISCORE_TIMEZONE=%s; falling back to UTC.", self.timezone_id)
+            self.timezone_id = "UTC"
+        self._listing_rows_by_id: dict[str, dict] = {}
 
     async def fetch(self) -> list[dict]:
         async with async_playwright() as p:
@@ -86,6 +98,7 @@ class UpcomingScraper:
             ),
             viewport={"width": 1920, "height": 1080},
             locale="en-US",
+            timezone_id=self.timezone_id,
         )
         await context.add_init_script(
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
@@ -95,15 +108,149 @@ class UpcomingScraper:
     # ── Listing: collect upcoming match links from AiScore ─────────────
 
     async def _collect_upcoming_links(self, context) -> list[str]:
-        links = await self._collect_homepage_future_links(context)
-        if links:
-            logger.info("Collected %s homepage future match links.", len(links))
-            return links
+        self._listing_rows_by_id = {}
+        today_links = await self._collect_homepage_scheduled_links(context)
+        if not today_links:
+            today_links = await self._collect_today_match_links(context)
+        future_links = []
+        if self.days_ahead > 0:
+            future_links = await self._collect_homepage_future_links(context)
 
-        logger.info("Homepage future list was empty; falling back to today-matches.")
-        links = await self._collect_today_match_links(context)
-        logger.info("Collected %s today-matches upcoming links.", len(links))
+        links: list[str] = []
+        seen: set[str] = set()
+        for href in [*today_links, *future_links]:
+            if not href or href in seen:
+                continue
+            seen.add(href)
+            links.append(href)
+
+        logger.info(
+            "Collected %s upcoming links (%s today-matches, %s homepage future).",
+            len(links),
+            len(today_links),
+            len(future_links),
+        )
         return links
+
+    async def _collect_homepage_scheduled_links(self, context) -> list[str]:
+        """Collect the visible Scheduled/Today's Upcoming payload from /basketball.
+
+        This is the source behind AiScore's "Today's Upcoming Matches" odds
+        table. Unlike the footer `matchesFuture` list, it includes today's
+        scheduled rows and their current total-points line.
+        """
+        page = await context.new_page()
+        page.set_default_timeout(self.page_timeout_ms)
+        try:
+            listing_url = self._dated_aiscore_url()
+            try:
+                await page.goto(listing_url, wait_until="domcontentloaded")
+            except Exception as exc:
+                logger.debug("Scheduled payload nav failed (%s): %s", listing_url, exc)
+                return []
+            await page.wait_for_timeout(3000)
+            try:
+                await page.wait_for_function(
+                    r"""
+                    () => {
+                        const b = (window.__NUXT__ && window.__NUXT__.state && window.__NUXT__.state.basketball) || {};
+                        return Array.isArray(b.matchesData_matches)
+                            && b.matchesData_matches.length > 0
+                            && Array.isArray(b.matchesData_teams)
+                            && b.matchesData_teams.length > 0;
+                    }
+                    """,
+                    timeout=min(15000, self.page_timeout_ms),
+                )
+            except Exception as exc:
+                logger.debug("Homepage matches payload was not available: %s", exc)
+                return []
+
+            rows = await page.evaluate(
+                r"""
+                ({ daysAhead }) => {
+                    const b = (window.__NUXT__ && window.__NUXT__.state && window.__NUXT__.state.basketball) || {};
+                    const matches = Array.isArray(b.matchesData_matches) ? b.matchesData_matches : [];
+                    const teams = Array.isArray(b.matchesData_teams) ? b.matchesData_teams : [];
+                    const comps = Array.isArray(b.matchesData_competitions) ? b.matchesData_competitions : [];
+                    const teamMap = new Map(teams.map(t => [t.id, t]));
+                    const compMap = new Map(comps.map(c => [c.id, c]));
+                    const compByMatch = b.matchToCompMap || {};
+                    const pad2 = n => String(n).padStart(2, '0');
+                    const localStamp = ts => {
+                        const d = new Date((Number(ts) || 0) * 1000);
+                        if (!Number.isFinite(d.getTime())) return '';
+                        return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+                    };
+                    const dateKey = stamp => String(stamp || '').slice(0, 10);
+                    const today = dateKey(localStamp(Date.now() / 1000));
+                    const endDate = (() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() + Number(daysAhead || 0));
+                        return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+                    })();
+                    const findTotal = match => {
+                        const items = match?.ext?.odds?.oddItems || [];
+                        const candidates = [];
+                        for (const item of items) {
+                            for (const raw of (item?.odd || [])) {
+                                const v = parseFloat(raw);
+                                if (Number.isFinite(v) && v >= 100 && v <= 400) candidates.push(v);
+                            }
+                        }
+                        return candidates.length ? candidates[candidates.length - 1] : null;
+                    };
+                    const out = [];
+                    for (const match of matches) {
+                        if (!match?.id || Number(match.statusId) !== 1 || Number(match.matchStatus) !== 1) continue;
+                        const home = teamMap.get(match?.homeTeam?.id);
+                        const away = teamMap.get(match?.awayTeam?.id);
+                        if (!home?.slug || !away?.slug) continue;
+                        const kickoff = localStamp(match.matchTime);
+                        const day = dateKey(kickoff);
+                        if (day < today || day > endDate) continue;
+                        const comp = compMap.get(match?.competition?.id) || compByMatch[match.id] || {};
+                        const country = comp?.category?.name || comp?.country?.name || '';
+                        const tournament = [country, comp?.name].filter(Boolean).join(' : ');
+                        const total = findTotal(match);
+                        out.push({
+                            match_id: match.id,
+                            url: `/basketball/match-${home.slug}-${away.slug}/${match.id}`,
+                            match_name: `${home.name || home.shortName || home.slug} - ${away.name || away.shortName || away.slug}`,
+                            home_team: home.name || home.shortName || '',
+                            away_team: away.name || away.shortName || '',
+                            tournament,
+                            kickoff,
+                            opening_total: total,
+                            prematch_total: total,
+                        });
+                    }
+                    return out;
+                }
+                """,
+                {"daysAhead": self.days_ahead},
+            )
+
+            links: list[str] = []
+            seen: set[str] = set()
+            suffix_re = re.compile(r"/(h2h|odds|stats|lineups|standings|summary)/?$")
+            for row in rows or []:
+                href = row.get("url")
+                match_id = str(row.get("match_id") or "").strip()
+                if not href or not match_id:
+                    continue
+                cleaned = suffix_re.sub("", urljoin(page.url, href))
+                if cleaned in seen:
+                    continue
+                seen.add(cleaned)
+                row = {**row, "url": cleaned}
+                self._listing_rows_by_id[match_id] = row
+                links.append(cleaned)
+            logger.info("Scheduled payload produced %s upcoming rows.", len(links))
+            return links
+        finally:
+            if not page.is_closed():
+                await page.close()
 
     async def _collect_homepage_future_links(self, context) -> list[str]:
         """Read the homepage 'future/upcoming' payload and build match URLs.
@@ -247,11 +394,32 @@ class UpcomingScraper:
         page = await context.new_page()
         page.set_default_timeout(self.page_timeout_ms)
         try:
+            match_id = self._extract_match_id(link)
+            listing_data = dict(self._listing_rows_by_id.get(match_id) or {})
             odds_data = await self._read_odds_page(page, link)
+            if not odds_data and listing_data:
+                odds_data = dict(listing_data)
             if not odds_data:
                 return None
+            for key in (
+                "match_name", "home_team", "away_team", "tournament", "kickoff",
+                "opening_total", "prematch_total", "url",
+            ):
+                if odds_data.get(key) in (None, "") and listing_data.get(key) not in (None, ""):
+                    odds_data[key] = listing_data.get(key)
+            if odds_data.get("opening") is None and listing_data.get("opening_total") is not None:
+                odds_data["opening"] = listing_data.get("opening_total")
+            if odds_data.get("prematch") is None and listing_data.get("prematch_total") is not None:
+                odds_data["prematch"] = listing_data.get("prematch_total")
             if odds_data.get("is_live") or odds_data.get("is_finished"):
                 logger.debug("Skipping (not upcoming): %s", link)
+                return None
+            if not self._kickoff_in_allowed_window(odds_data.get("kickoff") or ""):
+                logger.debug(
+                    "Skipping (outside today/tomorrow window): %s kickoff=%s",
+                    link,
+                    odds_data.get("kickoff") or "",
+                )
                 return None
 
             opening = odds_data.get("opening")
@@ -294,12 +462,11 @@ class UpcomingScraper:
             away_last6 = metrics.get("away_last6") or {}
             expected_total = metrics.get("expected_total")
 
-            match_id = self._extract_match_id(link)
             return {
                 "match_id": match_id,
                 "match_name": match_name or f"Match {match_id}",
-                "home_team": home_team,
-                "away_team": away_team,
+                "home_team": odds_data.get("home_team") or home_team,
+                "away_team": odds_data.get("away_team") or away_team,
                 "tournament": odds_data.get("tournament") or "",
                 "kickoff": odds_data.get("kickoff") or "",
                 "opening_total": opening,
@@ -626,3 +793,33 @@ class UpcomingScraper:
         )
         parts = cleaned.split("/")
         return parts[-1] if parts else url
+
+    def _kickoff_in_allowed_window(self, kickoff: str) -> bool:
+        """Keep AiScore upcoming rows scoped to Today's Upcoming Matches by default.
+
+        The list pages sometimes expose only a time like "17:30"; keep those
+        candidates because they come from the today-matches page. Detail pages
+        normally normalize to "YYYY-MM-DD HH:MM", which lets us drop stale rows.
+        """
+        text = str(kickoff or "").strip()
+        if not text:
+            return True
+        match = re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", text)
+        if not match:
+            return True
+        try:
+            kickoff_date = datetime.strptime(match.group(0), "%Y-%m-%d").date()
+        except ValueError:
+            return True
+        today = self._today()
+        return today <= kickoff_date <= today + timedelta(days=self.days_ahead)
+
+    def _today(self) -> date:
+        try:
+            return datetime.now(ZoneInfo(self.timezone_id)).date()
+        except ZoneInfoNotFoundError:
+            return date.today()
+
+    def _dated_aiscore_url(self) -> str:
+        base = re.sub(r"/\d{8}/?$", "", self.aiscore_url.rstrip("/"))
+        return f"{base}/{self._today().strftime('%Y%m%d')}"

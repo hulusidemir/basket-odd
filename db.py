@@ -1,6 +1,9 @@
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 class Database:
@@ -125,6 +128,15 @@ class Database:
 
                 CREATE INDEX IF NOT EXISTS idx_upcoming_matches_fetched_at
                 ON upcoming_matches(fetched_at DESC);
+
+                CREATE TABLE IF NOT EXISTS upcoming_match_actions (
+                    match_id    TEXT PRIMARY KEY,
+                    bet_placed  INTEGER NOT NULL DEFAULT 0,
+                    ignored     INTEGER NOT NULL DEFAULT 0,
+                    followed    INTEGER NOT NULL DEFAULT 0,
+                    deleted_at  TIMESTAMP,
+                    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
             """)
             # Backward-compatible migrations for older DB files. New installs
             # get the clean schema above; old installs keep their extra quality_*
@@ -181,6 +193,18 @@ class Database:
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_upcoming_matches_fetched_at ON upcoming_matches(fetched_at DESC)"
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS upcoming_match_actions (
+                    match_id    TEXT PRIMARY KEY,
+                    bet_placed  INTEGER NOT NULL DEFAULT 0,
+                    ignored     INTEGER NOT NULL DEFAULT 0,
+                    followed    INTEGER NOT NULL DEFAULT 0,
+                    deleted_at  TIMESTAMP,
+                    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
             )
             try:
                 conn.execute(
@@ -688,10 +712,23 @@ class Database:
 
     # ---------- upcoming matches ----------
 
+    def _upcoming_date_window(self) -> tuple[str, str]:
+        timezone_id = os.getenv("AISCORE_TIMEZONE", "Europe/Istanbul")
+        try:
+            today = datetime.now(ZoneInfo(timezone_id)).date()
+        except ZoneInfoNotFoundError:
+            today = date.today()
+        try:
+            days_ahead = max(0, int(os.getenv("UPCOMING_DAYS_AHEAD", "0") or 0))
+        except ValueError:
+            days_ahead = 0
+        return today.isoformat(), (today + timedelta(days=days_ahead)).isoformat()
+
     def save_upcoming_matches_and_signals(self, matches: list[dict]) -> dict:
         saved_matches = 0
         saved_signals = 0
         enriched: list[dict] = []
+        saved_match_ids: list[str] = []
 
         with self._conn() as conn:
             for raw in matches or []:
@@ -761,33 +798,60 @@ class Database:
                     ),
                 )
                 saved_matches += 1
-
-                if opening is not None:
-                    conn.execute(
-                        """
-                        INSERT INTO opening_lines (match_id, match_name, opening)
-                        VALUES (?, ?, ?)
-                        ON CONFLICT(match_id) DO UPDATE SET
-                            match_name = excluded.match_name,
-                            opening = excluded.opening
-                        """,
-                        (match_id, match_name, opening),
-                    )
+                saved_match_ids.append(match_id)
 
                 if direction and diff is not None:
-                    signal_id = self._upsert_upcoming_alert(
-                        conn,
-                        row=row,
-                        opening=opening,
-                        prematch=prematch,
-                        expected=expected,
-                        direction=direction,
-                        diff=diff,
-                    )
-                    row["signal_id"] = signal_id
                     saved_signals += 1
 
                 enriched.append(row)
+
+            start_date, end_date = self._upcoming_date_window()
+            stale_ids: list[str] = []
+            stale_params: list[str] = [start_date, end_date]
+            stale_where = """
+                WHERE (
+                    kickoff IS NOT NULL
+                    AND kickoff != ''
+                    AND length(kickoff) >= 10
+                    AND (substr(kickoff, 1, 10) < ? OR substr(kickoff, 1, 10) > ?)
+                )
+            """
+            if saved_match_ids:
+                placeholders = ", ".join("?" for _ in saved_match_ids)
+                stale_where += f" OR match_id NOT IN ({placeholders})"
+                stale_params.extend(saved_match_ids)
+            rows = conn.execute(
+                f"SELECT match_id FROM upcoming_matches {stale_where}",
+                tuple(stale_params),
+            ).fetchall()
+            stale_ids = [str(row["match_id"]) for row in rows if str(row["match_id"] or "").strip()]
+            if stale_ids:
+                placeholders = ", ".join("?" for _ in stale_ids)
+                conn.execute(
+                    f"DELETE FROM upcoming_matches WHERE match_id IN ({placeholders})",
+                    tuple(stale_ids),
+                )
+                conn.execute(
+                    f"DELETE FROM upcoming_match_actions WHERE match_id IN ({placeholders})",
+                    tuple(stale_ids),
+                )
+
+            legacy_ids = list({*saved_match_ids, *stale_ids})
+            if legacy_ids:
+                placeholders = ", ".join("?" for _ in legacy_ids)
+                conn.execute(
+                    f"""
+                    DELETE FROM alerts
+                    WHERE match_id IN ({placeholders})
+                      AND alert_period = -1
+                      AND alert_moment = 'Gelecek Maç'
+                    """,
+                    tuple(legacy_ids),
+                )
+                conn.execute(
+                    f"DELETE FROM opening_lines WHERE match_id IN ({placeholders})",
+                    tuple(legacy_ids),
+                )
 
         return {
             "matches": enriched,
@@ -796,6 +860,7 @@ class Database:
         }
 
     def list_upcoming_matches(self, limit: int = 200) -> list[dict]:
+        start_date, end_date = self._upcoming_date_window()
         with self._conn() as conn:
             rows = conn.execute(
                 """
@@ -803,13 +868,18 @@ class Database:
                        opening_total, prematch_total, expected_total, direction, diff,
                        url, payload_json, fetched_at
                 FROM upcoming_matches
+                WHERE kickoff IS NULL
+                   OR kickoff = ''
+                   OR length(kickoff) < 10
+                   OR substr(kickoff, 1, 10) BETWEEN ? AND ?
                 ORDER BY
+                    kickoff ASC,
                     CASE WHEN diff IS NULL THEN 1 ELSE 0 END,
                     diff DESC,
                     fetched_at DESC
                 LIMIT ?
                 """,
-                (max(1, int(limit or 200)),),
+                (start_date, end_date, max(1, int(limit or 200))),
             ).fetchall()
 
         items: list[dict] = []
@@ -829,16 +899,87 @@ class Database:
             item.pop("payload_json", None)
             items.append(item)
 
-        status_by_match = self.latest_alerts_by_match_ids([item["match_id"] for item in items])
-        action_by_match = self.match_action_statuses([item["match_id"] for item in items])
+        action_by_match = self.upcoming_match_action_statuses([item["match_id"] for item in items])
         for item in items:
             match_id = str(item.get("match_id") or "")
-            latest = status_by_match.get(match_id) or {}
             action = action_by_match.get(match_id) or {}
-            item["alert_id"] = latest.get("id")
+            item["alert_id"] = None
             for key in ("bet_placed", "followed", "ignored"):
-                item[key] = int((latest.get(key) if latest.get(key) is not None else action.get(key)) or 0)
+                item[key] = int(action.get(key) or 0)
         return items
+
+    def upcoming_match_action_statuses(self, match_ids: list[str]) -> dict[str, dict]:
+        keys = [str(mid) for mid in match_ids if str(mid).strip()]
+        if not keys:
+            return {}
+        placeholders = ", ".join("?" for _ in keys)
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT match_id, bet_placed, ignored, followed, deleted_at
+                FROM upcoming_match_actions
+                WHERE match_id IN ({placeholders})
+                """,
+                tuple(keys),
+            ).fetchall()
+        return {str(row["match_id"]): dict(row) for row in rows}
+
+    def get_upcoming_match_action_status(self, match_id: str) -> dict:
+        key = str(match_id or "").strip()
+        if not key:
+            return {"bet_placed": 0, "ignored": 0, "followed": 0}
+        action = self.upcoming_match_action_statuses([key]).get(key) or {}
+        return {
+            "match_id": key,
+            "bet_placed": int(action.get("bet_placed") or 0),
+            "ignored": int(action.get("ignored") or 0),
+            "followed": int(action.get("followed") or 0),
+        }
+
+    def set_upcoming_match_statuses(
+        self,
+        match_id: str,
+        *,
+        bet_placed: bool | None = None,
+        ignored: bool | None = None,
+        followed: bool | None = None,
+    ) -> int:
+        key = str(match_id or "").strip()
+        if not key:
+            return 0
+
+        cols = ["match_id"]
+        vals = [key]
+        updates = []
+        if bet_placed is not None:
+            cols.append("bet_placed")
+            vals.append(1 if bet_placed else 0)
+            updates.append("bet_placed = excluded.bet_placed")
+        if ignored is not None:
+            cols.append("ignored")
+            vals.append(1 if ignored else 0)
+            updates.append("ignored = excluded.ignored")
+        if followed is not None:
+            cols.append("followed")
+            vals.append(1 if followed else 0)
+            updates.append("followed = excluded.followed")
+        if not updates:
+            return 0
+
+        cols.append("updated_at")
+        vals.append(datetime.now().isoformat(sep=" ", timespec="seconds"))
+        updates.append("updated_at = excluded.updated_at")
+        placeholders = ", ".join("?" for _ in vals)
+        with self._conn() as conn:
+            cursor = conn.execute(
+                f"""
+                INSERT INTO upcoming_match_actions ({', '.join(cols)})
+                VALUES ({placeholders})
+                ON CONFLICT(match_id) DO UPDATE SET {', '.join(updates)}
+                """,
+                tuple(vals),
+            )
+        return int(cursor.rowcount or 0)
 
     def match_action_statuses(self, match_ids: list[str]) -> dict[str, dict]:
         keys = [str(mid) for mid in match_ids if str(mid).strip()]
@@ -874,16 +1015,26 @@ class Database:
         key = str(match_id or "").strip()
         if not key:
             return 0
-        deleted_count = self.delete_match_data(key)
         with self._conn() as conn:
-            conn.execute("DELETE FROM upcoming_matches WHERE match_id = ?", (key,))
-        return deleted_count
+            upcoming_count = conn.execute("DELETE FROM upcoming_matches WHERE match_id = ?", (key,)).rowcount
+            conn.execute("DELETE FROM upcoming_match_actions WHERE match_id = ?", (key,))
+            conn.execute(
+                """
+                DELETE FROM alerts
+                WHERE match_id = ?
+                  AND alert_period = -1
+                  AND alert_moment = 'Gelecek Maç'
+                """,
+                (key,),
+            )
+        return int(upcoming_count or 0)
 
     def clear_upcoming_matches(self) -> dict:
         with self._conn() as conn:
             rows = conn.execute("SELECT match_id FROM upcoming_matches").fetchall()
             match_ids = [str(row["match_id"]) for row in rows if str(row["match_id"] or "").strip()]
             upcoming_count = conn.execute("DELETE FROM upcoming_matches").rowcount
+            action_count = conn.execute("DELETE FROM upcoming_match_actions").rowcount
 
             alert_count = 0
             opening_count = 0
@@ -905,114 +1056,10 @@ class Database:
 
         return {
             "deleted_upcoming": int(upcoming_count or 0),
+            "deleted_actions": int(action_count or 0),
             "deleted_alerts": int(alert_count or 0),
             "deleted_openings": int(opening_count or 0),
         }
-
-    def _upsert_upcoming_alert(
-        self,
-        conn,
-        *,
-        row: dict,
-        opening: float,
-        prematch: float | None,
-        expected: float,
-        direction: str,
-        diff: float,
-    ) -> int:
-        match_id = str(row.get("match_id") or "")
-        match_name = str(row.get("match_name") or "")
-        analysis = {
-            "source": "upcoming",
-            "direction": direction,
-            "final_direction": direction,
-            "market_total": opening,
-            "opening_total": opening,
-            "prematch_total": prematch,
-            "team_recent_total": expected,
-            "projected_total": expected,
-            "fair_line": expected,
-            "fair_edge": round(expected - opening, 2),
-            "home_last6": row.get("home_last6") or {},
-            "away_last6": row.get("away_last6") or {},
-            "recommendation": f"SF açılış bareminden {'büyük' if direction == 'ÜST' else 'küçük'}: {direction}",
-            "warnings": ["Gelecek maç sinyali: SF ile açılış baremi karşılaştırıldı."],
-            "telegram_eligible": False,
-        }
-        payload = json.dumps(analysis, ensure_ascii=False)
-        existing = conn.execute(
-            """
-            SELECT id
-            FROM alerts
-            WHERE match_id = ?
-              AND alert_period = -1
-              AND alert_moment = 'Gelecek Maç'
-              AND (deleted_at IS NULL OR deleted_at = '')
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (match_id,),
-        ).fetchone()
-
-        params = (
-            match_name,
-            opening,
-            prematch,
-            expected,
-            direction,
-            diff,
-            str(row.get("tournament") or ""),
-            "Gelecek",
-            str(row.get("url") or ""),
-            str(row.get("kickoff") or ""),
-            payload,
-        )
-        if existing:
-            conn.execute(
-                """
-                UPDATE alerts
-                SET match_name = ?,
-                    opening = ?,
-                    prematch = ?,
-                    live = ?,
-                    direction = ?,
-                    diff = ?,
-                    tournament = ?,
-                    status = ?,
-                    url = ?,
-                    score = ?,
-                    signal_count = 1,
-                    ai_analysis = ?,
-                    alerted_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (*params, existing["id"]),
-            )
-            return int(existing["id"])
-
-        action = conn.execute(
-            "SELECT bet_placed, ignored, followed, deleted_at FROM match_actions WHERE match_id = ?",
-            (match_id,),
-        ).fetchone()
-        cursor = conn.execute(
-            """
-            INSERT INTO alerts (
-                match_id, match_name, opening, prematch, live, direction, diff,
-                tournament, status, url, score, signal_count, ai_analysis,
-                bet_placed, ignored, followed, deleted_at, alert_period, alert_moment
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, -1, 'Gelecek Maç')
-            """,
-            (
-                match_id,
-                *params,
-                action["bet_placed"] if action else 0,
-                action["ignored"] if action else 0,
-                action["followed"] if action else 0,
-                action["deleted_at"] if action else None,
-            ),
-        )
-        return int(cursor.lastrowid)
 
     @staticmethod
     def _to_float(value) -> float | None:

@@ -287,7 +287,12 @@
     tbody tr.is-followed { background: rgba(251,191,36,0.05); }
     tbody tr.is-ignored { opacity: 0.28; filter: grayscale(0.8); }
     tbody tr.is-ignored td { text-decoration: line-through; text-decoration-color: rgba(255,255,255,0.25); }
-    tbody tr.bet-placed { opacity: 0.22; filter: grayscale(0.6); }
+    tbody tr.bet-placed {
+      opacity: 0.22;
+      filter: grayscale(0.6);
+      background: rgba(52, 211, 153, 0.16);
+      box-shadow: inset 3px 0 0 rgba(52, 211, 153, 0.55);
+    }
     .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 800; }
     .match-name {
       font-weight: 700;
@@ -327,6 +332,7 @@
     .pill.warn { background: rgba(251,191,36,0.16); color: #fde68a; }
     .pill.alt, .pill.bad { background: rgba(248,113,113,0.15); color: #fecaca; }
     .pill.ust, .pill.good { background: rgba(52,211,153,0.15); color: #a7f3d0; }
+    .pill.blue { background: rgba(96,165,250,0.15); color: #93c5fd; }
     .row-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 5px; white-space: nowrap; }
     .row-action {
       width: 30px;
@@ -404,6 +410,7 @@
         <a href="/deleted-matches" class="btn">Silinen</a>
         <span class="btn primary">Gelecek Maçlar</span>
         <a href="/bankroll" class="btn">Bankroll</a>
+        <button class="btn" id="exportCsvBtn" type="button">CSV İndir</button>
         <button class="btn warning" id="fetchBtn" type="button">Gelecek Maçları Çek</button>
         <button class="btn danger" id="clearAllBtn" type="button">Tümünü Sil</button>
       </div>
@@ -445,9 +452,9 @@
         <div class="table-wrap">
           <table>
             <colgroup>
+              <col class="time-col">
               <col class="match-col">
               <col class="league-col">
-              <col class="time-col">
               <col class="num-col">
               <col class="num-col">
               <col class="sf-col">
@@ -459,9 +466,9 @@
             </colgroup>
             <thead>
               <tr>
+                <th data-sort="kickoff">Tarih/Saat</th>
                 <th data-sort="match_name">Maç</th>
                 <th data-sort="tournament">Lig</th>
-                <th data-sort="kickoff">Tarih/Saat</th>
                 <th class="num" data-sort="opening_total">Açılış</th>
                 <th class="num" data-sort="prematch_total">Pre-Match</th>
                 <th class="num" data-sort="home_sf">Ev SF</th>
@@ -471,25 +478,7 @@
                 <th class="num" data-sort="signal_diff">Fark</th>
                 <th class="num">Aksiyon</th>
               </tr>
-              <tr class="filters">
-                <th><input class="column-filter" data-field="match_name" type="search" placeholder="Maç"></th>
-                <th><input class="column-filter" data-field="tournament" type="search" placeholder="Lig"></th>
-                <th><input class="column-filter" data-field="kickoff" type="search" placeholder="Tarih/Saat"></th>
-                <th><input class="column-filter" data-field="opening_total" type="search" placeholder="Min"></th>
-                <th><input class="column-filter" data-field="prematch_total" type="search" placeholder="Min"></th>
-                <th><input class="column-filter" data-field="home_sf" type="search" placeholder="Min"></th>
-                <th><input class="column-filter" data-field="away_sf" type="search" placeholder="Min"></th>
-                <th><input class="column-filter" data-field="expected_total" type="search" placeholder="Min"></th>
-                <th>
-                  <select class="column-filter" data-field="signal_direction">
-                    <option value="">Tümü</option>
-                    <option value="ÜST">ÜST</option>
-                    <option value="ALT">ALT</option>
-                  </select>
-                </th>
-                <th><input class="column-filter" data-field="signal_diff" type="search" placeholder="Min"></th>
-                <th></th>
-              </tr>
+
             </thead>
             <tbody id="rows">
               <tr><td colspan="11" class="empty">Kayıtlı gelecek maç yok.</td></tr>
@@ -520,6 +509,53 @@
     const nextPage = document.getElementById('nextPage');
     const clearFiltersBtn = document.getElementById('clearFiltersBtn');
     const clearAllBtn = document.getElementById('clearAllBtn');
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
+
+    if (exportCsvBtn) {
+      exportCsvBtn.addEventListener('click', () => {
+        const list = filteredMatches();
+        if (!list || !list.length) {
+          showStatus('Dışa aktarılacak veri bulunamadı.', 'error');
+          return;
+        }
+
+        const exportColumns = [
+          { header: 'MAÇ', field: 'match_name' },
+          { header: 'LİG', field: 'tournament' },
+          { header: 'TARİH-SAAT', field: 'kickoff' },
+          { header: 'AÇILIŞ', field: 'opening_total' },
+          { header: 'SF ORT.', field: 'expected_total' },
+          { header: 'SİNYAL', field: 'signal_direction' },
+          { header: 'FARK', field: 'signal_diff' }
+        ];
+
+        let csv = "\uFEFF" + exportColumns.map(c => c.header).join(";") + "\r\n";
+        
+        list.forEach(row => {
+          const rowData = exportColumns.map(col => {
+            let val = row[col.field];
+            if (val === null || val === undefined) val = '';
+            
+            if (typeof val === 'number') {
+              val = String(val).replace('.', ',');
+            }
+            
+            return '"' + String(val).replace(/"/g, '""').replace(/\n/g, ' ') + '"';
+          });
+          csv += rowData.join(";") + "\r\n";
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `gelecek_maclar_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      });
+    }
 
     let allMatches = [];
     let currentFilter = 'all';
@@ -527,7 +563,6 @@
     let sortAsc = false;
     let page = 1;
     const pageSize = 50;
-    const columnFilters = {};
 
     function showStatus(msg, kind) {
       statusEl.textContent = msg;
@@ -551,6 +586,11 @@
       const n = num(v);
       if (n === null) return '<span class="pill warn">-</span>';
       return n.toFixed(1);
+    }
+    function fmtSfAvg(v) {
+      const n = num(v);
+      if (n === null) return '<span class="pill warn">-</span>';
+      return `<span class="pill blue">${n.toFixed(1)}</span>`;
     }
     function sfValue(row, side) {
       const profile = side === 'home' ? row.home_last6 : row.away_last6;
@@ -585,8 +625,7 @@
     function fmtMatch(row) {
       const name = escapeHtml(row.match_name || '');
       const link = row.url ? `<a href="${escapeHtml(row.url)}" target="_blank" rel="noopener">${name}</a>` : name;
-      const teams = [row.home_team, row.away_team].filter(Boolean).map(escapeHtml).join(' / ');
-      return `<div class="match-name">${link}</div>${teams ? `<div class="subline">${teams}</div>` : ''}`;
+      return `<div class="match-name">${link}</div>`;
     }
     function rowValue(row, field) {
       if (field === 'home_sf') return sfValue(row, 'home');
@@ -595,17 +634,7 @@
       if (['opening_total', 'prematch_total', 'expected_total'].includes(field)) return num(row[field]);
       return row[field] ?? '';
     }
-    function matchesColumnFilter(row, field, rawFilter) {
-      const filter = String(rawFilter || '').trim();
-      if (!filter) return true;
-      const value = rowValue(row, field);
-      if (['opening_total', 'prematch_total', 'expected_total', 'home_sf', 'away_sf', 'signal_diff'].includes(field)) {
-        const target = num(value);
-        const min = num(filter.replace(',', '.'));
-        return min === null || (target !== null && target >= min);
-      }
-      return String(value || '').toLocaleLowerCase('tr-TR').includes(filter.toLocaleLowerCase('tr-TR'));
-    }
+
     function filteredMatches() {
       const q = searchInput.value.trim().toLocaleLowerCase('tr-TR');
       let list = [...allMatches];
@@ -621,9 +650,7 @@
         list = list.filter(m => [m.match_name, m.tournament, m.home_team, m.away_team, m.kickoff]
           .some(v => String(v || '').toLocaleLowerCase('tr-TR').includes(q)));
       }
-      for (const [field, value] of Object.entries(columnFilters)) {
-        list = list.filter(row => matchesColumnFilter(row, field, value));
-      }
+
       list.sort((a, b) => {
         const av = rowValue(a, sortField);
         const bv = rowValue(b, sortField);
@@ -676,14 +703,14 @@
       }
       rowsEl.innerHTML = visible.map(m => `
         <tr class="${m.bet_placed ? 'bet-placed' : ''} ${m.followed ? 'is-followed' : ''} ${m.ignored ? 'is-ignored' : ''}">
+          <td>${escapeHtml(m.kickoff || '-')}</td>
           <td>${fmtMatch(m)}</td>
           <td>${escapeHtml(m.tournament || '-')}</td>
-          <td>${escapeHtml(m.kickoff || '-')}</td>
           <td class="num">${fmtNum(m.opening_total)}</td>
           <td class="num">${fmtNum(m.prematch_total)}</td>
           <td class="sf-cell">${fmtSf(m.home_last6 || {})}</td>
           <td class="sf-cell">${fmtSf(m.away_last6 || {})}</td>
-          <td class="num"><span class="sf-main">${fmtNum(m.expected_total)}</span></td>
+          <td class="num">${fmtSfAvg(m.expected_total)}</td>
           <td class="num">${fmtSignal(m)}</td>
           <td class="num">${fmtNum(m.signal_diff)}</td>
           <td class="num">${actionButtons(m)}</td>
@@ -806,18 +833,7 @@
         render();
       });
     });
-    document.querySelectorAll('.column-filter').forEach(input => {
-      input.addEventListener('input', () => {
-        columnFilters[input.dataset.field] = input.value;
-        page = 1;
-        render();
-      });
-      input.addEventListener('change', () => {
-        columnFilters[input.dataset.field] = input.value;
-        page = 1;
-        render();
-      });
-    });
+
     document.querySelectorAll('[data-filter]').forEach(btn => {
       btn.addEventListener('click', () => {
         currentFilter = btn.dataset.filter;
@@ -829,10 +845,6 @@
     clearFiltersBtn.addEventListener('click', () => {
       currentFilter = 'all';
       searchInput.value = '';
-      for (const input of document.querySelectorAll('.column-filter')) {
-        input.value = '';
-        columnFilters[input.dataset.field] = '';
-      }
       sortField = 'signal_diff';
       sortAsc = false;
       page = 1;
