@@ -443,6 +443,15 @@
     .trust.reliable { color: #6ee7b7; border-color: rgba(52,211,153,0.28); }
     .trust.watch { color: #fde68a; border-color: rgba(251,191,36,0.28); }
     .trust.weak { color: #fca5a5; border-color: rgba(239,68,68,0.28); }
+    .quality-badge { min-width: 54px; cursor: pointer; font-variant-numeric: tabular-nums; }
+    .quality-badge.strong { color: #6ee7b7; border-color: rgba(52,211,153,0.36); background: rgba(52,211,153,0.13); }
+    .quality-badge.playable { color: #93c5fd; border-color: rgba(96,165,250,0.36); background: rgba(96,165,250,0.13); }
+    .quality-badge.watch { color: #fde68a; border-color: rgba(251,191,36,0.34); background: rgba(251,191,36,0.12); }
+    .quality-badge.pass { color: #fca5a5; border-color: rgba(239,68,68,0.32); background: rgba(239,68,68,0.12); }
+    .strong { color: #6ee7b7; }
+    .playable { color: #93c5fd; }
+    .watch { color: #fde68a; }
+    .pass { color: #fca5a5; }
 
     .ai-cell {
       display: inline-flex; align-items: center; justify-content: center;
@@ -565,6 +574,54 @@
     .sig-card .row strong.alt-tag { color: #6ee7b7; }
     .sig-card .row strong.ust-tag { color: #fca5a5; }
 
+    .history-guard-panel {
+      margin-top: 14px; border-radius: 10px;
+      background: rgba(13,18,30,0.78); border: 1px solid rgba(148,163,184,0.16);
+      overflow: hidden;
+    }
+    .history-guard-summary {
+      cursor: pointer; padding: 12px 14px; color: #bfdbfe;
+      font-size: 11px; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase;
+      user-select: none;
+    }
+    .history-guard-summary::marker { color: #c4b5fd; }
+    .history-guard-content { padding: 0 14px 14px; }
+    .history-guard-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+    .history-guard-list { display: grid; gap: 7px; }
+    .history-guard-row {
+      display: grid; grid-template-columns: minmax(110px,1fr) auto; align-items: center; gap: 8px;
+      padding: 8px 9px; border-radius: 9px;
+      background: rgba(8,8,16,0.62); border: 1px solid rgba(148,163,184,0.10);
+      font-size: 12px;
+    }
+    .history-guard-name { color: var(--text); font-weight: 850; overflow-wrap: anywhere; }
+    .history-guard-sub { color: var(--text-soft); font-size: 11px; margin-top: 2px; line-height: 1.35; }
+    .history-pill {
+      display: inline-flex; align-items: center; justify-content: center; min-width: 92px;
+      padding: 5px 8px; border-radius: 999px; font-size: 11px; font-weight: 900;
+      border: 1px solid rgba(148,163,184,0.20);
+    }
+    .history-pill.good { color: #86efac; background: rgba(34,197,94,0.14); border-color: rgba(34,197,94,0.34); }
+    .history-pill.bad { color: #fecaca; background: rgba(239,68,68,0.16); border-color: rgba(239,68,68,0.38); }
+    .history-pill.warn { color: #fde68a; background: rgba(251,191,36,0.14); border-color: rgba(251,191,36,0.35); }
+    .history-pill.neutral { color: #cbd5e1; background: rgba(148,163,184,0.10); }
+    .history-pill.thin, .history-pill.empty { color: #c4b5fd; background: rgba(124,92,246,0.12); border-color: rgba(124,92,246,0.28); }
+    .history-guard-note {
+      margin-top: 8px; padding: 8px 10px; border-radius: 9px;
+      background: rgba(251,191,36,0.08); border-left: 3px solid #fbbf24;
+      color: #fde68a; font-size: 12px; line-height: 1.45;
+    }
+    .history-direction-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; margin-top: 8px; }
+    .history-direction-row {
+      padding: 8px 9px; border-radius: 9px;
+      background: rgba(8,8,16,0.48); border: 1px solid rgba(148,163,184,0.10);
+      font-size: 12px; line-height: 1.45;
+    }
+    .history-direction-row .dir { display: block; font-weight: 900; margin-bottom: 2px; }
+    .history-direction-row .dir.alt { color: #6ee7b7; }
+    .history-direction-row .dir.ust { color: #fca5a5; }
+    .history-direction-row .counts { color: var(--text-soft); font-size: 11px; }
+
     .sig-edge-box {
       display: flex; align-items: center; gap: 12px;
       padding: 10px 12px; margin-top: 8px; border-radius: 10px;
@@ -615,6 +672,8 @@
 
     @media (max-width: 720px) {
       .sig-grid { grid-template-columns: 1fr; }
+      .history-guard-grid { grid-template-columns: 1fr; }
+      .history-direction-grid { grid-template-columns: 1fr; }
       .sig-actions { grid-template-columns: repeat(2, 1fr); }
       .sig-card .row { align-items: flex-start; }
     }
@@ -1106,9 +1165,10 @@
             <thead>
               <tr>
                 <th class="select-cell"><input class="match-select" id="selectAll" type="checkbox" onchange="selectPage(this.checked)" aria-label="Sayfadaki maçları seç"></th>
-                <th data-sort="alerted_at">Zaman</th>
-                <th data-sort="direction">Sinyal</th>
-                <th data-sort="fair_line">Adil</th>
+	                <th data-sort="alerted_at">Zaman</th>
+	                <th data-sort="direction">Sinyal</th>
+	                <th data-sort="signal_quality_score">Puan</th>
+	                <th data-sort="fair_line">Adil</th>
                 <th data-sort="projected">Proj.</th>
                 <th>SF</th>
                 <th data-sort="match_name">Maç</th>
@@ -1360,12 +1420,30 @@
       return date.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     }
 
-    function directionBadge(alert) {
-      const dir = String(alert.direction || '-');
-      const cls = dir === 'ALT' ? 'badge-alt' : 'badge-ust';
-      const icon = dir === 'ALT' ? '▼' : '▲';
-      return `<button class="badge ${cls}" onclick="openSignalModal(${Number(alert.id || 0)})">${icon} ${escapeHtml(dir)}</button>`;
-    }
+	    function directionBadge(alert) {
+	      const dir = String(alert.direction || '-');
+	      const cls = dir === 'ALT' ? 'badge-alt' : 'badge-ust';
+	      const icon = dir === 'ALT' ? '▼' : '▲';
+	      return `<button class="badge ${cls}" onclick="openSignalModal(${Number(alert.id || 0)})">${icon} ${escapeHtml(dir)}</button>`;
+	    }
+
+	    function qualityClass(score) {
+	      if (score === null) return 'watch';
+	      if (score >= 75) return 'strong';
+	      if (score >= 65) return 'playable';
+	      if (score >= 50) return 'watch';
+	      return 'pass';
+	    }
+
+	    function qualityHtml(alert) {
+	      const analysis = parseAnalysis(alert);
+	      const score = num(alert.signal_quality_score ?? analysis.signal_quality_score);
+	      const label = alert.signal_quality_label || analysis.signal_quality_label || (score === null ? 'İzle' : (score >= 75 ? 'Güçlü' : score >= 65 ? 'Oynanabilir' : score >= 50 ? 'İzle' : 'Pas'));
+	      const advice = alert.signal_quality_advice || analysis.signal_quality_advice || '';
+	      const text = score === null ? '-' : Math.round(score);
+	      const title = `${label}${advice ? ' · ' + advice : ''}`;
+	      return `<button class="badge small-badge quality-badge ${qualityClass(score)}" type="button" title="${escapeHtml(title)}" onclick="openSignalModal(${Number(alert.id || 0)})">${escapeHtml(text)}</button>`;
+	    }
 
     function normalizeDirection(value) {
       const dir = String(value || '').trim().toUpperCase().replace('UST', 'ÜST');
@@ -1483,9 +1561,9 @@
     }
 
     function sortValue(alert, field) {
-      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count'].includes(field)) {
-        return num(alert[field]) ?? Number.NEGATIVE_INFINITY;
-      }
+	      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count', 'signal_quality_score'].includes(field)) {
+	        return num(alert[field]) ?? Number.NEGATIVE_INFINITY;
+	      }
       if (field === 'alerted_at') return alert.alerted_at ? new Date(`${String(alert.alerted_at).replace(' ', 'T')}Z`).getTime() : 0;
       return String(alert[field] || '').toLocaleLowerCase('tr-TR');
     }
@@ -1566,9 +1644,10 @@
         return `
           <tr class="${classes}">
             <td class="select-cell"><input class="match-select" type="checkbox" ${selectedMatchIds.has(matchId) ? 'checked' : ''} onchange='toggleSelected(${matchIdArg}, this.checked)' aria-label="Maç seç"></td>
-            <td class="mono">${timeText(a.alerted_at)}</td>
-            <td>${directionBadge(a)} ${Number(a.signal_count || 1) > 1 ? `<span class="badge small-badge">${Number(a.signal_count)}. sinyal</span>` : ''}</td>
-            <td>${fairHtml(a)}</td>
+	            <td class="mono">${timeText(a.alerted_at)}</td>
+	            <td>${directionBadge(a)} ${Number(a.signal_count || 1) > 1 ? `<span class="badge small-badge">${Number(a.signal_count)}. sinyal</span>` : ''}</td>
+	            <td>${qualityHtml(a)}</td>
+	            <td>${fairHtml(a)}</td>
             <td>${projectedHtml(a)}</td>
             <td>${last6Html(a)}</td>
             <td><div class="match-cell-wrap">${focusButton(a)}${matchLink(a)}${noteInfoButton(a)}</div></td>
@@ -1600,12 +1679,13 @@
           <article class="alert-card ${a.bet_placed ? 'bet-placed' : ''} ${selectedMatchIds.has(matchId) ? 'is-selected' : ''}">
             <div class="card-head">
               <div class="card-title"><span class="match-cell-wrap">${focusButton(a)}${matchLink(a)}${noteInfoButton(a)}</span><div class="subline" style="max-width:none;">${escapeHtml(a.tournament || '-')}</div></div>
-              <div>${directionBadge(a)}</div>
+	              <div>${directionBadge(a)} ${qualityHtml(a)}</div>
             </div>
             <div class="card-grid">
               <div class="card-metric"><span>Zaman</span><strong>${timeText(a.alerted_at)}</strong></div>
-              <div class="card-metric"><span>Durum</span><strong>${escapeHtml(a.status || '-')}</strong></div>
-              <div class="card-metric"><span>Skor</span><strong>${escapeHtml(a.score || '-')}</strong></div>
+	              <div class="card-metric"><span>Durum</span><strong>${escapeHtml(a.status || '-')}</strong></div>
+	              <div class="card-metric"><span>Puan</span>${qualityHtml(a)}</div>
+	              <div class="card-metric"><span>Skor</span><strong>${escapeHtml(a.score || '-')}</strong></div>
               <div class="card-metric"><span>Açılış / Canlı</span><strong>${fmt(a.opening)} → ${fmt(a.live)}</strong></div>
               <div class="card-metric"><span>Adil / Proj.</span><strong>${fmt(a.fair_line)} / ${fmt(a.projected)}</strong></div>
               <div class="card-metric"><span>SF</span>${last6Html(a)}</div>
@@ -1875,6 +1955,90 @@
         </div>`;
     }
 
+    function historyGuardStatHtml(title, stat) {
+      const s = stat && typeof stat === 'object' ? stat : {};
+      const resolved = Number(s.resolved || 0);
+      const success = Number(s.success || 0);
+      const fail = Number(s.fail || 0);
+      const rate = num(s.rate);
+      const label = s.label || 'Geçmiş yok';
+      const level = s.level || 'empty';
+      const matches = Number(s.unique_matches || 0);
+      const rateText = resolved ? `%${(rate ?? 0).toFixed(1)}` : '-';
+      const detail = resolved
+        ? `${success}/${resolved} başarılı · ${fail} başarısız · ${matches} maç`
+        : 'Sonuçlanmış geçmiş kayıt yok';
+      return `
+        <div class="history-guard-row">
+          <div>
+            <div class="history-guard-name">${escapeHtml(title)}</div>
+            <div class="history-guard-sub">${escapeHtml(rateText)} · ${escapeHtml(detail)}</div>
+          </div>
+          <span class="history-pill ${escapeHtml(level)}">${escapeHtml(label)}</span>
+        </div>`;
+    }
+
+    function historyDirectionBreakdownHtml(directions) {
+      const stats = directions && typeof directions === 'object' ? directions : {};
+      return `
+        <div class="history-direction-grid">
+          ${['ALT', 'ÜST'].map(dir => {
+            const s = stats[dir] && typeof stats[dir] === 'object' ? stats[dir] : {};
+            const resolved = Number(s.resolved || 0);
+            const success = Number(s.success || 0);
+            const fail = Number(s.fail || 0);
+            const rate = num(s.rate);
+            const rateText = resolved ? ` · %${(rate ?? 0).toFixed(1)}` : '';
+            const cls = dir === 'ALT' ? 'alt' : 'ust';
+            return `
+              <div class="history-direction-row">
+                <span class="dir ${cls}">${dir}</span>
+                <span class="counts">Başarılı ${success} · Başarısız ${fail}${rateText}</span>
+              </div>`;
+          }).join('')}
+        </div>`;
+    }
+
+    function historyGuardHtml(alert) {
+      const guard = alert.history_guard;
+      if (!guard || typeof guard !== 'object') return '';
+      const league = guard.league || {};
+      const direction = guard.direction || alert.direction || '-';
+      const leagueName = league.name || alert.tournament || '-';
+      const teams = Array.isArray(guard.teams) ? guard.teams : [];
+      const notes = Array.isArray(guard.notes) ? guard.notes.filter(Boolean) : [];
+      const teamRows = teams.length
+        ? teams.map(team => `
+            ${historyGuardStatHtml(`${team.role || 'Takım'} · ${team.name || '-'}`, team.overall)}
+            ${historyGuardStatHtml(`${team.name || '-'} / ${direction}`, team.direction)}
+            ${historyDirectionBreakdownHtml(team.directions)}
+          `).join('')
+        : '<div class="history-guard-sub">Takım adı ayrıştırılamadı.</div>';
+      return `
+        <details class="history-guard-panel">
+          <summary class="history-guard-summary">Geçmiş lig ve maç kontrolü</summary>
+          <div class="history-guard-content">
+            <div class="history-guard-grid">
+              <div class="sig-card">
+                <h4>Geçmiş Lig Kontrolü</h4>
+                <div class="sig-help">Sadece bilgi amaçlıdır; sinyal akışını değiştirmez.</div>
+                <div class="history-guard-list">
+                  ${historyGuardStatHtml(leagueName, league.overall)}
+                  ${historyGuardStatHtml(`${leagueName} / ${direction}`, league.direction)}
+                </div>
+                ${historyDirectionBreakdownHtml(league.directions)}
+                ${notes.map(note => `<div class="history-guard-note">${escapeHtml(note)}</div>`).join('')}
+              </div>
+              <div class="sig-card">
+                <h4>Geçmiş Maç/Takım Kontrolü</h4>
+                <div class="sig-help">ALT/ÜST geçmişini ayrı ayrı gösterir; örnek azsa sadece uyarı olarak oku.</div>
+                <div class="history-guard-list">${teamRows}</div>
+              </div>
+            </div>
+          </div>
+        </details>`;
+    }
+
     function openSignalModal(id) {
       const alert = allAlerts.find(a => Number(a.id) === Number(id));
       if (!alert) return;
@@ -1893,9 +2057,15 @@
       const fairEdge = num(alert.fair_edge ?? analysis.fair_edge);
       const projected = num(alert.projected ?? analysis.projected_total);
       const projectionQuality = num(alert.projection_quality ?? analysis.projection_quality);
-      const teamRecent = num(alert.team_recent_total ?? analysis.team_recent_total);
-      const h2h = num(alert.h2h_total ?? analysis.h2h_total);
-      const selectionReason = alert.selection_reason || analysis.selection_reason || '';
+	      const teamRecent = num(alert.team_recent_total ?? analysis.team_recent_total);
+	      const h2h = num(alert.h2h_total ?? analysis.h2h_total);
+	      const selectionReason = alert.selection_reason || analysis.selection_reason || '';
+	      const signalQualityScore = num(alert.signal_quality_score ?? analysis.signal_quality_score);
+	      const signalQualityLabel = alert.signal_quality_label || analysis.signal_quality_label || (signalQualityScore === null ? '-' : (signalQualityScore >= 75 ? 'Güçlü' : signalQualityScore >= 65 ? 'Oynanabilir' : signalQualityScore >= 50 ? 'İzle' : 'Pas'));
+	      const signalQualityAdvice = alert.signal_quality_advice || analysis.signal_quality_advice || '';
+	      const signalQualityReasons = Array.isArray(alert.signal_quality_reasons)
+	        ? alert.signal_quality_reasons
+	        : (Array.isArray(analysis.signal_quality_reasons) ? analysis.signal_quality_reasons : []);
 
       let edgeText = 'Adil barem hesaplanamadı. Bu sinyali sadece hat hareketi olarak izle.';
       let edgeClass = 'neutral';
@@ -2009,10 +2179,13 @@
           <div class="sig-card">
             <h4>2. Sistem Ne Diyor?</h4>
             <div class="sig-help">Kısa karar özeti.</div>
-            <div class="row"><span>Yön</span><strong class="${sigCls}">${escapeHtml(sigDir)}</strong></div>
-            <div class="row"><span>Veri durumu</span><strong>${escapeHtml(dataLabel)}${projectionQuality !== null ? ` <span style="color:var(--text-soft);font-weight:600;">(${projectionQuality.toFixed(0)}/100)</span>` : ''}</strong></div>
-            ${selectionReason ? `<div class="row"><span>Açıklama</span><strong style="font-weight:600;">${escapeHtml(selectionReason)}</strong></div>` : ''}
-          </div>
+	            <div class="row"><span>Yön</span><strong class="${sigCls}">${escapeHtml(sigDir)}</strong></div>
+	            <div class="row"><span>Sinyal puanı</span><strong class="${qualityClass(signalQualityScore)}">${signalQualityScore !== null ? Math.round(signalQualityScore) + '/100' : '-'} <span style="color:var(--text-soft);font-weight:600;">${escapeHtml(signalQualityLabel)}</span></strong></div>
+	            ${signalQualityAdvice ? `<div class="row"><span>Karar</span><strong style="font-weight:600;">${escapeHtml(signalQualityAdvice)}</strong></div>` : ''}
+	            <div class="row"><span>Veri durumu</span><strong>${escapeHtml(dataLabel)}${projectionQuality !== null ? ` <span style="color:var(--text-soft);font-weight:600;">(${projectionQuality.toFixed(0)}/100)</span>` : ''}</strong></div>
+	            ${selectionReason ? `<div class="row"><span>Açıklama</span><strong style="font-weight:600;">${escapeHtml(selectionReason)}</strong></div>` : ''}
+	            ${signalQualityReasons.length ? `<div class="sig-help">${signalQualityReasons.slice(0, 3).map(escapeHtml).join(' ')}</div>` : ''}
+	          </div>
         </div>
 
         <div class="sig-card" style="margin-bottom:12px;">
@@ -2041,6 +2214,8 @@
         </div>
 
         ${actionsHtml}
+
+        ${historyGuardHtml(alert)}
       `;
       $('signalModal').classList.add('active');
     }

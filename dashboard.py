@@ -139,7 +139,11 @@ def _trim_backtest_payload(backtest: dict | None) -> dict:
     }
 
 
-def enrich_alerts_with_analysis(alerts: list[dict], backtest_profile: dict | None = None) -> list[dict]:
+def enrich_alerts_with_analysis(
+    alerts: list[dict],
+    backtest_profile: dict | None = None,
+    history_profile: dict | None = None,
+) -> list[dict]:
     for alert in alerts:
         analysis = _parse_analysis(alert.get("ai_analysis"))
         alert.pop("ai_analysis", None)
@@ -198,11 +202,17 @@ def enrich_alerts_with_analysis(alerts: list[dict], backtest_profile: dict | Non
         alert["final_direction"] = analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
         alert["signal_scores"] = analysis.get("signal_scores") or {}
         alert["signal_votes"] = analysis.get("signal_votes") if isinstance(analysis.get("signal_votes"), list) else []
+        alert["signal_quality_score"] = analysis.get("signal_quality_score")
+        alert["signal_quality_label"] = analysis.get("signal_quality_label") or ""
+        alert["signal_quality_advice"] = analysis.get("signal_quality_advice") or ""
+        alert["signal_quality_reasons"] = analysis.get("signal_quality_reasons") if isinstance(analysis.get("signal_quality_reasons"), list) else []
         alert["backtest"] = _trim_backtest_payload(analysis.get("backtest"))
         alert["telegram_eligible"] = bool(analysis.get("telegram_eligible"))
         alert["selection_reason"] = analysis.get("selection_reason") or ""
         alert["projection_quality"] = analysis.get("projection_quality")
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
+        if history_profile is not None:
+            alert["history_guard"] = _build_alert_history_guard(alert, history_profile)
     return alerts
 
 
@@ -241,6 +251,131 @@ def _safe_float(value, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _normalize_direction(value) -> str:
+    text = str(value or "").strip().upper().replace("UST", "ÜST")
+    if text in {"ALT", "ÜST"}:
+        return text
+    return text or "-"
+
+
+def _split_match_teams(match_name: str) -> tuple[str, str]:
+    parts = re.split(r"\s+-\s+", str(match_name or ""), maxsplit=1)
+    if len(parts) == 2:
+        return parts[0].strip(), parts[1].strip()
+    return str(match_name or "").strip(), ""
+
+
+def _empty_history_bucket() -> dict:
+    return {"resolved": 0, "success": 0, "fail": 0, "match_ids": set()}
+
+
+def _add_history_result(bucket: dict, row: dict, successful: bool):
+    bucket["resolved"] += 1
+    bucket["success"] += 1 if successful else 0
+    bucket["fail"] += 0 if successful else 1
+    match_id = str(row.get("match_id") or "").strip()
+    if match_id:
+        bucket["match_ids"].add(match_id)
+
+
+def _build_history_profile(rows: list[dict]) -> dict:
+    profile = {
+        "league": {},
+        "league_direction": {},
+        "team": {},
+        "team_direction": {},
+    }
+    for row in rows:
+        result_key = _fold(row.get("result"))
+        if result_key not in {"basarili", "basarisiz"}:
+            continue
+        successful = result_key == "basarili"
+        league = str(row.get("tournament") or "").strip()
+        direction = _normalize_direction(row.get("direction"))
+        teams = [team for team in _split_match_teams(row.get("match_name") or "") if team]
+
+        if league:
+            _add_history_result(profile["league"].setdefault(league, _empty_history_bucket()), row, successful)
+            _add_history_result(profile["league_direction"].setdefault((league, direction), _empty_history_bucket()), row, successful)
+        for team in teams:
+            _add_history_result(profile["team"].setdefault(team, _empty_history_bucket()), row, successful)
+            _add_history_result(profile["team_direction"].setdefault((team, direction), _empty_history_bucket()), row, successful)
+    return profile
+
+
+def _history_label(resolved: int, rate: float, min_samples: int) -> tuple[str, str]:
+    if resolved <= 0:
+        return "empty", "Geçmiş yok"
+    if resolved < min_samples:
+        return "thin", "Veri az"
+    if rate >= 60:
+        return "good", "Güven veriyor"
+    if rate <= 35:
+        return "bad", "Saçmalıyor"
+    if rate <= 45:
+        return "warn", "Riskli"
+    return "neutral", "Nötr"
+
+
+def _history_stat(bucket: dict | None, *, min_samples: int) -> dict:
+    bucket = bucket or _empty_history_bucket()
+    resolved = int(bucket.get("resolved") or 0)
+    success = int(bucket.get("success") or 0)
+    fail = int(bucket.get("fail") or 0)
+    rate = _pct(success, resolved)
+    level, label = _history_label(resolved, rate, min_samples)
+    return {
+        "resolved": resolved,
+        "success": success,
+        "fail": fail,
+        "rate": rate,
+        "unique_matches": len(bucket.get("match_ids") or []),
+        "level": level,
+        "label": label,
+    }
+
+
+def _direction_history_stats(history_profile: dict, group_name: str, key_prefix, *, min_samples: int) -> dict:
+    return {
+        direction: _history_stat(
+            history_profile.get(group_name, {}).get((*key_prefix, direction)),
+            min_samples=min_samples,
+        )
+        for direction in ("ALT", "ÜST")
+    }
+
+
+def _build_alert_history_guard(alert: dict, history_profile: dict) -> dict:
+    league = str(alert.get("tournament") or "").strip()
+    direction = _normalize_direction(alert.get("direction"))
+    home_team, away_team = _split_match_teams(alert.get("match_name") or "")
+    notes = []
+    if league.startswith("EPL Standings"):
+        notes.append("Lig etiketi geniş/karışık görünüyor; bu satırı tek bir gerçek lig gibi yorumlama.")
+    teams = []
+    for role, team in (("Ev", home_team), ("Dep", away_team)):
+        if not team:
+            continue
+        teams.append({
+            "role": role,
+            "name": team,
+            "overall": _history_stat(history_profile.get("team", {}).get(team), min_samples=8),
+            "direction": _history_stat(history_profile.get("team_direction", {}).get((team, direction)), min_samples=5),
+            "directions": _direction_history_stats(history_profile, "team_direction", (team,), min_samples=5),
+        })
+    return {
+        "direction": direction,
+        "league": {
+            "name": league,
+            "overall": _history_stat(history_profile.get("league", {}).get(league), min_samples=10),
+            "direction": _history_stat(history_profile.get("league_direction", {}).get((league, direction)), min_samples=8),
+            "directions": _direction_history_stats(history_profile, "league_direction", (league,), min_samples=8),
+        },
+        "teams": teams,
+        "notes": notes,
+    }
 
 
 def build_bet_builder(max_count: int) -> dict:
@@ -465,8 +600,10 @@ def deleted_matches():
 
 @app.route("/api/alerts")
 def api_alerts():
-    backtest_profile = build_backtest_profile(db.recent_deleted_alerts(limit=None))
-    return jsonify(enrich_alerts_with_analysis(db.recent_alerts(limit=500), backtest_profile))
+    deleted_rows = db.recent_deleted_alerts(limit=None)
+    backtest_profile = build_backtest_profile(deleted_rows)
+    history_profile = _build_history_profile(deleted_rows)
+    return jsonify(enrich_alerts_with_analysis(db.recent_alerts(limit=500), backtest_profile, history_profile))
 
 
 def _lightweight_enrich_deleted_alerts(alerts: list[dict], backtest_profile: dict | None = None) -> list[dict]:
@@ -495,6 +632,10 @@ def _lightweight_enrich_deleted_alerts(alerts: list[dict], backtest_profile: dic
         alert["final_direction"] = analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
         alert["signal_scores"] = analysis.get("signal_scores") or {}
         alert["signal_votes"] = analysis.get("signal_votes") if isinstance(analysis.get("signal_votes"), list) else []
+        alert["signal_quality_score"] = analysis.get("signal_quality_score")
+        alert["signal_quality_label"] = analysis.get("signal_quality_label") or ""
+        alert["signal_quality_advice"] = analysis.get("signal_quality_advice") or ""
+        alert["signal_quality_reasons"] = analysis.get("signal_quality_reasons") if isinstance(analysis.get("signal_quality_reasons"), list) else []
         alert["backtest"] = _trim_backtest_payload(analysis.get("backtest"))
         alert["telegram_eligible"] = bool(analysis.get("telegram_eligible"))
         alert["selection_reason"] = analysis.get("selection_reason") or ""

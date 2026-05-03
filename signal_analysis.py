@@ -1119,10 +1119,161 @@ def _backtest_direction_scores(profile: dict | None, keys: list[str]) -> dict:
     return result
 
 
+def _period_number_from_status(status: str = "", alert_moment: str = "") -> int | None:
+    text = f"{alert_moment or ''} {status or ''}".strip()
+    folded = _fold(text)
+    for number in (1, 2, 3, 4):
+        if (
+            re.search(rf"\bq{number}\b", text, re.IGNORECASE)
+            or re.search(rf"\b{number}q\b", text, re.IGNORECASE)
+            or folded.startswith(f"{number}.")
+            or f"{number}. ceyrek" in folded
+        ):
+            return number
+    if folded.startswith("ht") or "devre arasi" in folded:
+        return 2
+    return None
+
+
+def _signal_quality_from_components(
+    *,
+    direction: str,
+    live: float,
+    opening: float,
+    diff: float,
+    status: str = "",
+    alert_moment: str = "",
+    signal_count: int = 1,
+    fair_edge: float | None = None,
+    projected_gap: float | None = None,
+    team_recent_total: float | None = None,
+) -> dict:
+    direction = _normalize_direction(direction)
+    period = _period_number_from_status(status, alert_moment)
+
+    fair_direction = None
+    if fair_edge is not None and abs(float(fair_edge)) >= 3:
+        fair_direction = "ÜST" if float(fair_edge) > 0 else "ALT"
+
+    projection_direction = None
+    if projected_gap is not None and abs(float(projected_gap)) >= 4:
+        projection_direction = "ÜST" if float(projected_gap) > 0 else "ALT"
+
+    sf_direction = None
+    if team_recent_total is not None:
+        sf_direction = "ÜST" if float(team_recent_total) > float(opening) else (
+            "ALT" if float(team_recent_total) < float(opening) else None
+        )
+
+    score = 50
+    reasons: list[str] = []
+
+    if period == 1:
+        score -= 12
+        reasons.append("Q1 erken; güven düşürüldü.")
+    elif period in (2, 3):
+        score += 8
+        reasons.append("Q2/Q3 bölgesi daha okunabilir.")
+    elif period == 4:
+        score += 5
+        reasons.append("Q4 verisi daha oturmuş.")
+
+    if int(signal_count or 1) >= 2:
+        score += 10
+        reasons.append("Tekrar sinyal güveni artırdı.")
+    else:
+        score -= 5
+
+    if fair_direction == direction:
+        score += 14
+        reasons.append("Adil Barem yönle uyumlu.")
+    elif fair_direction is None:
+        score -= 4
+        reasons.append("Adil Barem canlıya yakın.")
+    else:
+        score -= 22
+        reasons.append("Adil Barem yönle ters.")
+
+    if fair_edge is not None:
+        fair_abs = abs(float(fair_edge))
+        if 6 <= fair_abs <= 10:
+            score += 10
+            reasons.append("Adil fark ideal bölgede (6-10).")
+        elif 3 <= fair_abs < 6:
+            score += 4
+        elif fair_abs > 12:
+            score -= 8
+            reasons.append("Adil fark aşırı büyük; riskli.")
+
+    if projection_direction == direction:
+        score += 18
+        reasons.append("Projeksiyon yönü destekliyor.")
+    elif projection_direction is None:
+        score += 4
+        reasons.append("Projeksiyon ters değil.")
+    else:
+        score -= 18
+        reasons.append("Projeksiyon yönle ters.")
+
+    if sf_direction == direction:
+        score += 6 if direction == "ALT" else 3
+        reasons.append("SF açılışa göre yönü destekliyor.")
+    elif sf_direction is not None:
+        score -= 4
+        reasons.append("SF açılışa göre yönle ters.")
+
+    if direction == "ÜST":
+        score -= 6
+        if period in (1, 2) and projection_direction != direction:
+            score -= 12
+            reasons.append("Erken ÜST, projeksiyon desteği yok.")
+        if fair_direction == direction and projection_direction != direction:
+            score -= 8
+            reasons.append("ÜST için Adil Barem tek başına yetmedi.")
+    else:
+        if fair_direction == direction and fair_edge is not None and 6 <= abs(float(fair_edge)) <= 10:
+            score += 5
+
+    abs_diff = abs(float(diff or 0))
+    if direction == "ALT" and 20 <= abs_diff < 30:
+        score += 5
+    if abs_diff >= 30:
+        score -= 8
+        reasons.append("Canlı-açılış hareketi aşırı büyük.")
+
+    score = int(round(_clamp(score, 0, 100)))
+    if score >= 75:
+        label = "Güçlü"
+        advice = "Oynanabilir sinyal."
+    elif score >= 65:
+        label = "Oynanabilir"
+        advice = "Temkinli oynanabilir."
+    elif score >= 50:
+        label = "İzle"
+        advice = "Bahis için acele etme."
+    else:
+        label = "Pas"
+        advice = "Bu sinyali oynama."
+
+    return {
+        "signal_quality_score": score,
+        "signal_quality_label": label,
+        "signal_quality_advice": advice,
+        "signal_quality_reasons": reasons[:5],
+        "quality_inputs": {
+            "period": period,
+            "fair_direction": fair_direction,
+            "projection_direction": projection_direction,
+            "sf_direction": sf_direction,
+            "projected_gap": round(float(projected_gap), 1) if projected_gap is not None else None,
+        },
+    }
+
+
 def _classify_signal(decision: dict) -> dict:
     """
     Telegram gönderim filtresi + insan-okunur açıklama döndürür.
-    Sayısal puan ya da sınıf etiketi üretmez (kullanıcı isteğiyle kaldırıldı).
+    Sinyal kalite puanı _decision_from_components içinde üretilir.
 
     Filtre mantığı: Adil baremin canlıya göre net farkı (|fair_edge| >= 5) ve
     yön kararıyla uyumlu olduğunda Telegram'a uygun. Diğer durumlarda dashboard'da
@@ -1213,6 +1364,7 @@ def _decision_from_components(
     tournament: str = "",
     projected_total: float | None = None,
     fair_edge: float | None = None,
+    team_recent_total: float | None = None,
     history_total: float | None = None,
     h2h_over_pct: float | None = None,
     h2h_quality_score: float | None = None,
@@ -1387,6 +1539,18 @@ def _decision_from_components(
     fair_abs = abs(float(fair_edge)) if fair_edge is not None else 0.0
     projected_abs = abs(float(projected_gap)) if projected_gap is not None else 0.0
     flipped = final_direction != legacy_direction
+    quality = _signal_quality_from_components(
+        direction=final_direction,
+        live=live,
+        opening=opening,
+        diff=diff,
+        status=status,
+        alert_moment=alert_moment,
+        signal_count=signal_count,
+        fair_edge=fair_edge,
+        projected_gap=projected_gap,
+        team_recent_total=team_recent_total,
+    )
 
     flip_reason = ""
     if flipped:
@@ -1401,6 +1565,7 @@ def _decision_from_components(
         "signal_scores": {key: round(value, 1) for key, value in totals.items()},
         "signal_votes": sorted(votes, key=lambda item: item["score"], reverse=True),
         "projection_quality": projection_quality,
+        **quality,
         "fair_edge": fair_edge,
         "fair_edge_abs": round(fair_abs, 1),
         "projected_gap": projected_gap,
@@ -1445,6 +1610,7 @@ def enrich_analysis_with_backtest(
         tournament=alert.get("tournament") or "",
         projected_total=analysis.get("projected_total"),
         fair_edge=analysis.get("fair_edge"),
+        team_recent_total=analysis.get("team_recent_total"),
         history_total=analysis.get("history_total"),
         h2h_over_pct=(analysis.get("team_context") or {}).get("h2h_over_pct") if isinstance(analysis.get("team_context"), dict) else None,
         h2h_quality_score=analysis.get("h2h_quality_score"),
@@ -1619,6 +1785,7 @@ def build_signal_analysis(
         tournament=tournament,
         projected_total=projected_total,
         fair_edge=fair_edge,
+        team_recent_total=team_recent_total,
         history_total=history_total,
         h2h_over_pct=h2h_metrics.get("h2h_over_pct"),
         h2h_quality_score=h2h_quality_score,
@@ -1700,6 +1867,11 @@ def build_signal_analysis(
         "pace_anomaly_note": pace_anomaly_note,
         "signal_scores": decision.get("signal_scores"),
         "signal_votes": decision.get("signal_votes"),
+        "signal_quality_score": decision.get("signal_quality_score"),
+        "signal_quality_label": decision.get("signal_quality_label"),
+        "signal_quality_advice": decision.get("signal_quality_advice"),
+        "signal_quality_reasons": decision.get("signal_quality_reasons") or [],
+        "quality_inputs": decision.get("quality_inputs") or {},
         "backtest": decision.get("backtest"),
         "flip_reason": decision.get("flip_reason"),
         "telegram_eligible": selection.get("telegram_eligible"),

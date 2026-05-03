@@ -60,6 +60,9 @@ class TelegramNotifier:
         analysis = analysis or {}
         legacy_direction = analysis.get("legacy_direction") or direction
         projection_quality = analysis.get("projection_quality")
+        signal_quality_score = analysis.get("signal_quality_score")
+        signal_quality_label = analysis.get("signal_quality_label") or ""
+        signal_quality_advice = analysis.get("signal_quality_advice") or ""
         signal_scores = analysis.get("signal_scores") or {}
         flip_reason = analysis.get("flip_reason") or ""
         fair_line = analysis.get("fair_line")
@@ -127,6 +130,13 @@ class TelegramNotifier:
             decision_line = (
                 f"• {quality_line}{separator}{side_scores.lstrip(' · ')}\n"
             )
+        signal_quality_line = ""
+        if signal_quality_score is not None:
+            signal_quality_line = (
+                f"• Sinyal Puanı: <b>{float(signal_quality_score):.0f}/100</b>"
+                f"{f' ({signal_quality_label})' if signal_quality_label else ''}"
+                f"{f' — {signal_quality_advice}' if signal_quality_advice else ''}\n"
+            )
         flip_line = f"• Eski sinyal: <b>{legacy_direction}</b> → Yeni karar: <b>{direction}</b>\n" if legacy_direction != direction else ""
 
         # Çeyrek hız anomali bloğu
@@ -184,15 +194,17 @@ class TelegramNotifier:
         if projection_lines or fair_line is not None:
             projection_section = (
                 f"\n<b>🧮 Analiz</b>\n"
+                f"{signal_quality_line}"
                 f"{decision_line}"
                 f"{flip_line}"
                 f"{projection_lines}"
                 f"{weight_inline}"
                 f"{fair_block}"
             )
-        elif decision_line:
+        elif decision_line or signal_quality_line:
             projection_section = (
                 f"\n<b>🧮 Analiz</b>\n"
+                f"{signal_quality_line}"
                 f"{decision_line}"
                 f"{flip_line}"
             )
