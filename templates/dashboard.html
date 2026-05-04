@@ -1430,15 +1430,15 @@
 	    function qualityClass(score) {
 	      if (score === null) return 'watch';
 	      if (score >= 75) return 'strong';
-	      if (score >= 65) return 'playable';
-	      if (score >= 50) return 'watch';
+	      if (score >= 60) return 'playable';
+	      if (score >= 45) return 'watch';
 	      return 'pass';
 	    }
 
 	    function qualityHtml(alert) {
 	      const analysis = parseAnalysis(alert);
 	      const score = num(alert.signal_quality_score ?? analysis.signal_quality_score);
-	      const label = alert.signal_quality_label || analysis.signal_quality_label || (score === null ? 'İzle' : (score >= 75 ? 'Güçlü' : score >= 65 ? 'Oynanabilir' : score >= 50 ? 'İzle' : 'Pas'));
+	      const label = alert.signal_quality_label || analysis.signal_quality_label || (score === null ? 'İzle' : (score >= 75 ? 'Güçlü' : score >= 60 ? 'Oynanabilir' : score >= 45 ? 'İzle' : 'Pas'));
 	      const advice = alert.signal_quality_advice || analysis.signal_quality_advice || '';
 	      const text = score === null ? '-' : Math.round(score);
 	      const title = `${label}${advice ? ' · ' + advice : ''}`;
@@ -2061,7 +2061,7 @@
 	      const h2h = num(alert.h2h_total ?? analysis.h2h_total);
 	      const selectionReason = alert.selection_reason || analysis.selection_reason || '';
 	      const signalQualityScore = num(alert.signal_quality_score ?? analysis.signal_quality_score);
-	      const signalQualityLabel = alert.signal_quality_label || analysis.signal_quality_label || (signalQualityScore === null ? '-' : (signalQualityScore >= 75 ? 'Güçlü' : signalQualityScore >= 65 ? 'Oynanabilir' : signalQualityScore >= 50 ? 'İzle' : 'Pas'));
+	      const signalQualityLabel = alert.signal_quality_label || analysis.signal_quality_label || (signalQualityScore === null ? '-' : (signalQualityScore >= 75 ? 'Güçlü' : signalQualityScore >= 60 ? 'Oynanabilir' : signalQualityScore >= 45 ? 'İzle' : 'Pas'));
 	      const signalQualityAdvice = alert.signal_quality_advice || analysis.signal_quality_advice || '';
 	      const signalQualityReasons = Array.isArray(alert.signal_quality_reasons)
 	        ? alert.signal_quality_reasons

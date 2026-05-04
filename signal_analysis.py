@@ -120,6 +120,10 @@ def _split_match_name(match_name: str) -> tuple[str, str]:
     return match_name or "Home", "Away"
 
 
+_TEAM_SCORE_MIN = 20  # covers low-scoring women's/youth leagues (e.g. Senegal W-D1)
+_TEAM_SCORE_MAX = 180
+
+
 def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
     text = re.sub(r"\s+", " ", body_text or "").strip()
     home_team, away_team = _split_match_name(match_name)
@@ -201,32 +205,55 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         escaped = re.escape(team_name)
         pts_sep = r"[-–—\u2012\u2015]"
         per_game = r"(?:per\s*game|/\s*game|pts?/game|points?/game)"
+        # (pattern, default_games_when_no_capture, games_in_first_group)
         patterns = [
-            rf"(?:Last\s*5|Last\s*Matches|Recent\s*Form).{{0,220}}{escaped}.{{0,220}}"
-            rf"(\d{{2,3}}(?:\.\d+)?)\s*points?\s*per\s*match[,\s]*"
-            rf"(\d{{2,3}}(?:\.\d+)?)\s*opponent\s*points?\s*per\s*game.{{0,160}}"
-            rf"(?:Total\s*points?\s*over%[:\s]*(\d+(?:\.\d+)?)%)?",
-            rf"(?:Last\s*5|Last\s*Matches|Recent\s*Form).{{0,260}}{escaped}.{{0,260}}"
-            rf"pts\s+(\d{{2,3}}(?:\.\d+)?)\s*{pts_sep}\s*(\d{{2,3}}(?:\.\d+)?)\s+"
-            rf"{per_game}",
+            (
+                rf"(?:Last\s*5|Last\s*Matches|Recent\s*Form).{{0,220}}{escaped}.{{0,220}}"
+                rf"(\d{{2,3}}(?:\.\d+)?)\s*points?\s*per\s*match[,\s]*"
+                rf"(\d{{2,3}}(?:\.\d+)?)\s*opponent\s*points?\s*per\s*game.{{0,160}}"
+                rf"(?:Total\s*points?\s*over%[:\s]*(\d+(?:\.\d+)?)%)?",
+                5,
+                False,
+            ),
+            (
+                rf"(?:Last\s*5|Last\s*Matches|Recent\s*Form).{{0,260}}{escaped}.{{0,260}}"
+                rf"pts\s+(\d{{2,3}}(?:\.\d+)?)\s*{pts_sep}\s*(\d{{2,3}}(?:\.\d+)?)\s+"
+                rf"{per_game}",
+                5,
+                False,
+            ),
             # AiScore H2H page format: "TeamName N [chars] Home/Away [chars] pts X – Y per game"
-            # \b(?:[1-9]|[12]\d)\b matches game counts (1-29) but NOT basketball scores (50+)
-            # This prevents false matches where a match-row score is followed by the next
-            # section's Home/Away heading within 80 chars.
-            rf"{escaped}.{{0,10}}\b(?:[1-9]|[12]\d)\b.{{0,80}}?(?:Home|Away|All).{{0,250}}?"
-            rf"pts\s+(\d{{2,3}}(?:\.\d+)?)\s*{pts_sep}\s*(\d{{2,3}}(?:\.\d+)?)\s+"
-            rf"{per_game}",
+            # The captured N (1-29) is the actual games count for the section the
+            # page is averaging over; preserve it instead of defaulting to 5.
+            (
+                rf"{escaped}.{{0,10}}\b([1-9]|[12]\d)\b.{{0,80}}?(?:Home|Away|All).{{0,250}}?"
+                rf"pts\s+(\d{{2,3}}(?:\.\d+)?)\s*{pts_sep}\s*(\d{{2,3}}(?:\.\d+)?)\s+"
+                rf"{per_game}",
+                None,
+                True,
+            ),
         ]
-        for pattern in patterns:
+        for pattern, default_games, games_first in patterns:
             m = re.search(pattern, text, re.IGNORECASE)
             if not m:
                 continue
-            ppg, oppg = float(m.group(1)), float(m.group(2))
+            if games_first:
+                games = int(m.group(1))
+                ppg, oppg = float(m.group(2)), float(m.group(3))
+                over_pct = None
+            else:
+                ppg, oppg = float(m.group(1)), float(m.group(2))
+                games = default_games
+                over_pct = (
+                    float(m.group(3))
+                    if m.lastindex and m.lastindex >= 3 and m.group(3)
+                    else None
+                )
             if ppg <= 0 or oppg <= 0:
                 continue
-            over_pct = float(m.group(3)) if m.lastindex and m.lastindex >= 3 and m.group(3) else None
             return {
                 "team": team_name,
+                "games": games,
                 "ppg": ppg,
                 "oppg": oppg,
                 "avg_total": round(ppg + oppg, 1),
@@ -291,7 +318,7 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         if not _team_in_chunk(chunk, team_name):
             return None
         score_matches = list(re.finditer(r"\b(\d{2,3})\b", chunk))
-        score_nums = [m for m in score_matches if 40 <= int(m.group(1)) <= 180]
+        score_nums = [m for m in score_matches if _TEAM_SCORE_MIN <= int(m.group(1)) <= _TEAM_SCORE_MAX]
         if len(score_nums) < 2:
             return None
         # Prefer the first basketball-score pair after the date. Using the last
@@ -305,27 +332,46 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         opp_left = _team_pos(before_scores, opponent_name or "")
         opp_right = _team_pos(after_scores, opponent_name or "")
 
+        # AiScore "recent matches" rows look like:
+        #   "[W|L|D] <home_team> <away_team> <home_score> <away_score>"
+        # The opp_name we pass in is the *upcoming* opponent, not the actual
+        # opponent of this past row, so opp_left/opp_right are usually -1.
+        # When we have no opponent signal, infer team-first vs team-second by
+        # checking whether anything other than the result marker (W/L/D) sits
+        # between chunk-start and the team name.
+        result_prefix_re = r"^[\s,;:]*(?:[WLD](?:NP|ND)?)?[\s,;:]*"
+
+        def _team_is_chunk_head(haystack: str, pos: int) -> bool:
+            if pos < 0:
+                return False
+            head = haystack[:pos]
+            head = re.sub(result_prefix_re, "", head, count=1)
+            return head.strip() == ""
+
         if team_left >= 0 and opp_left >= 0:
             is_first_team = team_left < opp_left
         elif team_right >= 0 and opp_right >= 0:
             # Less common layout: "80 76 Team A Team B".
             is_first_team = team_right < opp_right
         elif team_left >= 0 and team_right < 0:
-            is_first_team = True
+            is_first_team = _team_is_chunk_head(before_scores, team_left)
         elif team_right >= 0 and team_left < 0:
-            is_first_team = False
+            is_first_team = not _team_is_chunk_head(after_scores, team_right)
         else:
             return None
 
         team_score = score_a if is_first_team else score_b
         opp_score = score_b if is_first_team else score_a
-        if not (40 <= team_score <= 180 and 40 <= opp_score <= 180):
+        if not (
+            _TEAM_SCORE_MIN <= team_score <= _TEAM_SCORE_MAX
+            and _TEAM_SCORE_MIN <= opp_score <= _TEAM_SCORE_MAX
+        ):
             return None
         return {"for": team_score, "against": opp_score, "total": team_score + opp_score}
 
     def _is_mutual_score_chunk(chunk: str, left_team: str, right_team: str) -> bool:
         score_matches = list(re.finditer(r"\b(\d{2,3})\b", chunk))
-        score_nums = [m for m in score_matches if 40 <= int(m.group(1)) <= 180]
+        score_nums = [m for m in score_matches if _TEAM_SCORE_MIN <= int(m.group(1)) <= _TEAM_SCORE_MAX]
         if len(score_nums) < 2:
             return False
         first, second = score_nums[0], score_nums[1]
@@ -441,10 +487,11 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
             ppg = round(float(recent["ppg"]), 1)
             oppg = round(float(recent["oppg"]), 1)
             avg_total = round(ppg + oppg, 1)
+            games = recent.get("games") or 5
             return {
                 "team": team_name,
-                "games": 5,
-                "source_label": "Son 5 maç",
+                "games": games,
+                "source_label": f"Son {games} maç",
                 "ppg": ppg,
                 "oppg": oppg,
                 "avg_total": avg_total,
@@ -1143,6 +1190,7 @@ def _signal_quality_from_components(
     diff: float,
     status: str = "",
     alert_moment: str = "",
+    tournament: str = "",
     signal_count: int = 1,
     fair_edge: float | None = None,
     projected_gap: float | None = None,
@@ -1152,7 +1200,7 @@ def _signal_quality_from_components(
     period = _period_number_from_status(status, alert_moment)
 
     fair_direction = None
-    if fair_edge is not None and abs(float(fair_edge)) >= 3:
+    if fair_edge is not None and abs(float(fair_edge)) >= 5:
         fair_direction = "ÜST" if float(fair_edge) > 0 else "ALT"
 
     projection_direction = None
@@ -1160,95 +1208,180 @@ def _signal_quality_from_components(
         projection_direction = "ÜST" if float(projected_gap) > 0 else "ALT"
 
     sf_direction = None
+    sf_gap = None
     if team_recent_total is not None:
-        sf_direction = "ÜST" if float(team_recent_total) > float(opening) else (
-            "ALT" if float(team_recent_total) < float(opening) else None
-        )
+        sf_gap = float(team_recent_total) - float(opening)
+        # SF sadece açılıştan anlamlı uzaksa destek sayılır.
+        # 1-2 puanlık fark basketbolda gürültüdür, güven puanı şişirmemeli.
+        if sf_gap >= 5:
+            sf_direction = "ÜST"
+        elif sf_gap <= -5:
+            sf_direction = "ALT"
+        elif abs(sf_gap) < 3:
+            sf_direction = "NÖTR"
+        else:
+            sf_direction = "ZAYIF_ÜST" if sf_gap > 0 else "ZAYIF_ALT"
 
-    score = 50
+    score = 38
+    cap = 95
     reasons: list[str] = []
+
+    if direction == "ÜST":
+        score -= 8
+        cap = min(cap, 88)
+        reasons.append("ÜST tarafı daha seçici puanlanır.")
 
     if period == 1:
         score -= 12
+        cap = min(cap, 55)
         reasons.append("Q1 erken; güven düşürüldü.")
-    elif period in (2, 3):
-        score += 8
-        reasons.append("Q2/Q3 bölgesi daha okunabilir.")
+    elif period == 2:
+        score += 3
+        cap = min(cap, 78)
+        reasons.append("Q2 hâlâ erken; tavan sınırlı.")
+    elif period == 3:
+        score += 7
+        reasons.append("Q3 bölgesi daha okunabilir.")
     elif period == 4:
         score += 5
         reasons.append("Q4 verisi daha oturmuş.")
 
     if int(signal_count or 1) >= 2:
-        score += 10
+        score += 6
         reasons.append("Tekrar sinyal güveni artırdı.")
     else:
-        score -= 5
+        score -= 4
+        cap = min(cap, 80)
 
     if fair_direction == direction:
-        score += 14
+        score += 18
         reasons.append("Adil Barem yönle uyumlu.")
     elif fair_direction is None:
-        score -= 4
-        reasons.append("Adil Barem canlıya yakın.")
+        score -= 12
+        cap = min(cap, 58)
+        reasons.append("Adil Barem net uzak değil.")
     else:
-        score -= 22
+        score -= 28
+        cap = min(cap, 42)
         reasons.append("Adil Barem yönle ters.")
 
     if fair_edge is not None:
         fair_abs = abs(float(fair_edge))
         if 6 <= fair_abs <= 10:
-            score += 10
+            score += 8
             reasons.append("Adil fark ideal bölgede (6-10).")
-        elif 3 <= fair_abs < 6:
-            score += 4
+        elif 5 <= fair_abs < 6:
+            score += 2
+            cap = min(cap, 78)
         elif fair_abs > 12:
-            score -= 8
+            score -= 10
+            cap = min(cap, 72)
             reasons.append("Adil fark aşırı büyük; riskli.")
 
     if projection_direction == direction:
-        score += 18
+        score += 22
         reasons.append("Projeksiyon yönü destekliyor.")
+        if projected_gap is not None and abs(float(projected_gap)) >= 8:
+            score += 4
     elif projection_direction is None:
-        score += 4
-        reasons.append("Projeksiyon ters değil.")
+        score -= 4
+        cap = min(cap, 74 if direction == "ALT" else 58)
+        reasons.append("Projeksiyon sadece nötr; destek sayılmadı.")
     else:
-        score -= 18
+        score -= 28
+        cap = min(cap, 48 if direction == "ALT" else 40)
         reasons.append("Projeksiyon yönle ters.")
 
     if sf_direction == direction:
-        score += 6 if direction == "ALT" else 3
+        score += 10 if direction == "ALT" else 8
         reasons.append("SF açılışa göre yönü destekliyor.")
+    elif sf_direction in {f"ZAYIF_{direction}", "NÖTR"}:
+        score -= 3
+        cap = min(cap, 78 if direction == "ALT" else 64)
+        reasons.append("SF farkı anlamlı destek vermiyor.")
     elif sf_direction is not None:
-        score -= 4
+        score -= 10
+        cap = min(cap, 70 if direction == "ALT" else 58)
         reasons.append("SF açılışa göre yönle ters.")
+    else:
+        cap = min(cap, 78)
 
     if direction == "ÜST":
-        score -= 6
         if period in (1, 2) and projection_direction != direction:
             score -= 12
+            cap = min(cap, 55)
             reasons.append("Erken ÜST, projeksiyon desteği yok.")
-        if fair_direction == direction and projection_direction != direction:
-            score -= 8
-            reasons.append("ÜST için Adil Barem tek başına yetmedi.")
-    else:
-        if fair_direction == direction and fair_edge is not None and 6 <= abs(float(fair_edge)) <= 10:
-            score += 5
+        if not (fair_direction == direction and projection_direction == direction and sf_direction == direction and period in (3, 4)):
+            cap = min(cap, 72)
+            reasons.append("ÜST için üçlü teyit yok; tavan sınırlı.")
 
     abs_diff = abs(float(diff or 0))
-    if direction == "ALT" and 20 <= abs_diff < 30:
-        score += 5
-    if abs_diff >= 30:
-        score -= 8
+    if abs_diff <= 12:
+        score += 3
+    elif abs_diff <= 18:
+        score += 1
+    elif abs_diff <= 24:
+        score -= 6
+        cap = min(cap, 76)
+        reasons.append("Canlı-açılış hareketi büyümüş.")
+    else:
+        score -= 12
+        cap = min(cap, 62)
         reasons.append("Canlı-açılış hareketi aşırı büyük.")
 
-    score = int(round(_clamp(score, 0, 100)))
+    score_text = ""
+    if alert_moment and "|" in alert_moment:
+        score_text = alert_moment.split("|")[-1].strip()
+    home_score, away_score = parse_score(score_text)
+    if home_score is not None and away_score is not None:
+        gap = abs(home_score - away_score)
+        if period == 4:
+            if gap <= 7:
+                if direction == "ALT":
+                    score -= 14
+                    cap = min(cap, 62)
+                    reasons.append("Yakın Q4, faul/tempo riski ALT için tehlikeli.")
+                else:
+                    score += 4
+            elif gap >= 16:
+                if direction == "ÜST":
+                    score -= 14
+                    cap = min(cap, 56)
+                    reasons.append("Q4 kopuk maç, ÜST için tempo riski.")
+                else:
+                    score -= 6
+                    reasons.append("Q4 kopuk maçta garbage-time ALT riskini artırır.")
+                if gap >= 20:
+                    cap = min(cap, 72)
+                    reasons.append("Skor farkı çok açılmış; son bölüm tahmini oynaktır.")
+        elif period == 3 and gap >= 18 and direction == "ÜST":
+            score -= 8
+            cap = min(cap, 62)
+            reasons.append("Q3 kopma riski ÜST puanını düşürdü.")
+
+    if str(tournament or "").startswith("EPL Standings"):
+        score -= 4
+        cap = min(cap, 84)
+        reasons.append("Lig etiketi karışık; güven tavanı düşürüldü.")
+
+    aligned_count = sum((
+        fair_direction == direction,
+        projection_direction == direction,
+        sf_direction == direction,
+    ))
+    if aligned_count < 3:
+        cap = min(cap, 74)
+    if aligned_count < 2:
+        cap = min(cap, 58)
+
+    score = int(round(_clamp(score, 0, cap)))
     if score >= 75:
         label = "Güçlü"
-        advice = "Oynanabilir sinyal."
-    elif score >= 65:
+        advice = "Sadece küçük oranlı, seçici oynanabilir."
+    elif score >= 60:
         label = "Oynanabilir"
         advice = "Temkinli oynanabilir."
-    elif score >= 50:
+    elif score >= 45:
         label = "İzle"
         advice = "Bahis için acele etme."
     else:
@@ -1265,7 +1398,9 @@ def _signal_quality_from_components(
             "fair_direction": fair_direction,
             "projection_direction": projection_direction,
             "sf_direction": sf_direction,
+            "sf_gap": round(float(sf_gap), 1) if sf_gap is not None else None,
             "projected_gap": round(float(projected_gap), 1) if projected_gap is not None else None,
+            "score_cap": int(cap),
         },
     }
 
@@ -1546,6 +1681,7 @@ def _decision_from_components(
         diff=diff,
         status=status,
         alert_moment=alert_moment,
+        tournament=tournament,
         signal_count=signal_count,
         fair_edge=fair_edge,
         projected_gap=projected_gap,

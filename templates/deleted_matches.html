@@ -120,14 +120,15 @@
       margin-top: 4px;
     }
 
-    .actions,
-    .nav-tabs,
-    .toolbar,
-    .stats {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
+	    .actions,
+	    .nav-tabs,
+	    .toolbar,
+	    .stats,
+	    .period-row {
+	      display: flex;
+	      align-items: center;
+	      gap: 10px;
+	      flex-wrap: wrap;
     }
 
     .btn,
@@ -145,11 +146,47 @@
       white-space: nowrap;
     }
 
-    .btn:hover,
-    .nav-tab:hover {
-      transform: translateY(-1px);
-      border-color: rgba(124, 92, 246, 0.55);
-    }
+	    .btn:hover,
+	    .nav-tab:hover {
+	      transform: translateY(-1px);
+	      border-color: rgba(124, 92, 246, 0.55);
+	    }
+
+	    .period-row { margin-bottom: 10px; }
+	    .period-row:last-child { margin-bottom: 0; }
+	    .period-label {
+	      min-width: 42px;
+	      font-weight: 900;
+	      font-size: 12px;
+	      letter-spacing: 0.04em;
+	    }
+	    .period-label.alt { color: #ffb2b2; }
+	    .period-label.ust { color: #9df0bd; }
+	    .period-btn {
+	      border: 1px solid var(--border-strong);
+	      background: rgba(30, 28, 48, 0.9);
+	      color: var(--text);
+	      border-radius: 9px;
+	      padding: 7px 11px;
+	      font-size: 12px;
+	      font-weight: 800;
+	      cursor: pointer;
+	      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+	    }
+	    .period-btn:hover {
+	      transform: translateY(-1px);
+	      border-color: rgba(124, 92, 246, 0.55);
+	    }
+	    .period-btn.alt.active {
+	      color: #fee2e2;
+	      border-color: rgba(239, 68, 68, 0.55);
+	      background: rgba(239, 68, 68, 0.20);
+	    }
+	    .period-btn.ust.active {
+	      color: #dcfce7;
+	      border-color: rgba(34, 197, 94, 0.55);
+	      background: rgba(34, 197, 94, 0.20);
+	    }
 
     .btn.primary,
     .nav-tab.active {
@@ -1351,9 +1388,9 @@
         <div class="signal-breakdown" id="signalBreakdown"></div>
       </section>
 
-      <section class="panel stats">
-        <div class="stat-chip">
-          <span>Silinen Sinyal</span>
+	      <section class="panel stats">
+	        <div class="stat-chip">
+	          <span>Silinen Sinyal</span>
           <strong id="statSignals">0</strong>
         </div>
         <div class="stat-chip">
@@ -1379,10 +1416,28 @@
         <div class="stat-chip rate">
           <span>Başarı %</span>
           <strong id="statRate">-</strong>
-        </div>
-      </section>
+	        </div>
+	      </section>
 
-      <section class="panel toolbar">
+	      <section class="panel">
+	        <div class="period-row">
+	          <span class="period-label alt">ALT</span>
+	          <button class="period-btn alt" data-dir="ALT" data-period="1">P1</button>
+	          <button class="period-btn alt" data-dir="ALT" data-period="2">P2</button>
+	          <button class="period-btn alt" data-dir="ALT" data-period="3">P3</button>
+	          <button class="period-btn alt" data-dir="ALT" data-period="4">P4</button>
+	        </div>
+	        <div class="period-row">
+	          <span class="period-label ust">ÜST</span>
+	          <button class="period-btn ust" data-dir="ÜST" data-period="1">P1</button>
+	          <button class="period-btn ust" data-dir="ÜST" data-period="2">P2</button>
+	          <button class="period-btn ust" data-dir="ÜST" data-period="3">P3</button>
+	          <button class="period-btn ust" data-dir="ÜST" data-period="4">P4</button>
+	          <button class="btn" style="padding:7px 11px;font-size:12px;" onclick="clearPeriodFilters()">Temizle</button>
+	        </div>
+	      </section>
+
+	      <section class="panel toolbar">
         <input class="search-box" id="searchInput" type="text" placeholder="Maç, turnuva veya skor ara">
         <div class="actions">
           <button class="btn" onclick="resetSearch()">Temizle</button>
@@ -1471,9 +1526,10 @@
     let deletedAlerts = [];
     let searchQuery = '';
     let sortField = 'deleted_at';
-    let sortAsc = false;
-    let activeFilter = null;
-    let currentPage = 1;
+	    let sortAsc = false;
+	    let activeFilter = null;
+	    let activePeriods = new Set();
+	    let currentPage = 1;
     let pageSize = 100;
 
     function escapeHtml(value) {
@@ -1552,10 +1608,20 @@
       return `${num >= 0 ? '+' : ''}${num.toFixed(1)}`;
     }
 
-    function formatFairLine(value) {
-      const num = Number(value);
-      return Number.isFinite(num) ? formatNumber(num) : 'Hesaplanamıyor';
-    }
+	    function formatFairLine(value) {
+	      const num = Number(value);
+	      return Number.isFinite(num) ? formatNumber(num) : 'Hesaplanamıyor';
+	    }
+
+	    function alertPeriod(alert) {
+	      const period = Number(alert.alert_period);
+	      if (Number.isInteger(period) && period >= 1 && period <= 4) return period;
+	      const text = String(alert.alert_moment || alert.status || '').trim();
+	      const match = text.match(/\b(?:Q([1-4])|([1-4])Q)\b/i);
+	      if (match) return Number(match[1] || match[2]);
+	      if (/^HT\b|devre/i.test(text)) return 2;
+	      return null;
+	    }
 
     function last6Profiles(alert) {
       const analysis = alertAnalysis(alert);
@@ -1601,8 +1667,8 @@
 	    function qualityClass(score) {
 	      if (score === null) return 'watch';
 	      if (score >= 75) return 'strong';
-	      if (score >= 65) return 'playable';
-	      if (score >= 50) return 'watch';
+	      if (score >= 60) return 'playable';
+	      if (score >= 45) return 'watch';
 	      return 'pass';
 	    }
 
@@ -1611,7 +1677,7 @@
 	      const score = Number(alert.signal_quality_score ?? analysis.signal_quality_score);
 	      const value = Number.isFinite(score) ? Math.round(score) : null;
 	      const label = alert.signal_quality_label || analysis.signal_quality_label || (
-	        value === null ? 'İzle' : value >= 75 ? 'Güçlü' : value >= 65 ? 'Oynanabilir' : value >= 50 ? 'İzle' : 'Pas'
+	        value === null ? 'İzle' : value >= 75 ? 'Güçlü' : value >= 60 ? 'Oynanabilir' : value >= 45 ? 'İzle' : 'Pas'
 	      );
 	      const advice = alert.signal_quality_advice || analysis.signal_quality_advice || '';
 	      const title = `${label}${advice ? ' · ' + advice : ''}`;
@@ -1738,7 +1804,7 @@
 	      const signalScores = analysis.signal_scores || alert.signal_scores || {};
 	      const signalQualityScore = Number(alert.signal_quality_score ?? analysis.signal_quality_score);
 	      const signalQualityLabel = alert.signal_quality_label || analysis.signal_quality_label || (
-	        Number.isFinite(signalQualityScore) ? (signalQualityScore >= 75 ? 'Güçlü' : signalQualityScore >= 65 ? 'Oynanabilir' : signalQualityScore >= 50 ? 'İzle' : 'Pas') : '-'
+	        Number.isFinite(signalQualityScore) ? (signalQualityScore >= 75 ? 'Güçlü' : signalQualityScore >= 60 ? 'Oynanabilir' : signalQualityScore >= 45 ? 'İzle' : 'Pas') : '-'
 	      );
 	      const signalQualityAdvice = alert.signal_quality_advice || analysis.signal_quality_advice || '';
 	      const signalQualityReasons = Array.isArray(alert.signal_quality_reasons)
@@ -1885,15 +1951,18 @@
 
     function filteredAlerts() {
       let rows = [...deletedAlerts];
-      if (activeFilter) {
-        rows = rows.filter(alert => {
-          if (activeFilter.direction && alert.direction !== activeFilter.direction) return false;
-          if (activeFilter.result && alert.result !== activeFilter.result) return false;
-          if (activeFilter.matchKey && matchKey(alert) !== activeFilter.matchKey) return false;
-          return true;
-        });
-      }
-      if (!searchQuery) return sortedAlerts(rows);
+	      if (activeFilter) {
+	        rows = rows.filter(alert => {
+	          if (activeFilter.direction && alert.direction !== activeFilter.direction) return false;
+	          if (activeFilter.result && alert.result !== activeFilter.result) return false;
+	          if (activeFilter.matchKey && matchKey(alert) !== activeFilter.matchKey) return false;
+	          return true;
+	        });
+	      }
+	      if (activePeriods.size) {
+	        rows = rows.filter(alert => activePeriods.has(`${alert.direction}-${alertPeriod(alert)}`));
+	      }
+	      if (!searchQuery) return sortedAlerts(rows);
       const q = searchQuery.toLowerCase();
       rows = rows.filter(alert => [
         alert.match_name,
@@ -2035,20 +2104,33 @@
       render();
     }
 
-    function updateStatChips() {
-      const chipAlt = document.getElementById('chipAlt');
-      const chipUst = document.getElementById('chipUst');
+	    function updateStatChips() {
+	      const chipAlt = document.getElementById('chipAlt');
+	      const chipUst = document.getElementById('chipUst');
       const chipSuccess = document.getElementById('chipSuccess');
       const chipFail = document.getElementById('chipFail');
       const isDir = activeFilter && !activeFilter.result && !activeFilter.matchKey;
       const isRes = activeFilter && !activeFilter.direction && !activeFilter.matchKey;
       if (chipAlt) chipAlt.classList.toggle('active', isDir && activeFilter.direction === 'ALT');
       if (chipUst) chipUst.classList.toggle('active', isDir && activeFilter.direction === 'ÜST');
-      if (chipSuccess) chipSuccess.classList.toggle('active', isRes && activeFilter.result === 'Başarılı');
-      if (chipFail) chipFail.classList.toggle('active', isRes && activeFilter.result === 'Başarısız');
-    }
+	      if (chipSuccess) chipSuccess.classList.toggle('active', isRes && activeFilter.result === 'Başarılı');
+	      if (chipFail) chipFail.classList.toggle('active', isRes && activeFilter.result === 'Başarısız');
+	    }
 
-    function setSummaryFilter(filter) {
+	    function updatePeriodButtons() {
+	      document.querySelectorAll('.period-btn[data-dir][data-period]').forEach(button => {
+	        const key = `${button.dataset.dir}-${button.dataset.period}`;
+	        button.classList.toggle('active', activePeriods.has(key));
+	      });
+	    }
+
+	    function clearPeriodFilters() {
+	      activePeriods.clear();
+	      currentPage = 1;
+	      render();
+	    }
+
+	    function setSummaryFilter(filter) {
       activeFilter = filter && Object.keys(filter).length ? filter : null;
       currentPage = 1;
       render();
@@ -2067,10 +2149,11 @@
       const empty = document.getElementById('emptyState');
       const pagination = document.getElementById('paginationBar');
 
-      updateStats();
-      updateSortHeaders();
-      updateStatChips();
-      if (rows.length === 0) {
+	      updateStats();
+	      updateSortHeaders();
+	      updateStatChips();
+	      updatePeriodButtons();
+	      if (rows.length === 0) {
         body.innerHTML = '';
         tableWrap.style.display = 'none';
         pagination.style.display = 'none';
@@ -2140,15 +2223,25 @@
       render();
     }
 
-    function showBanner(message, type = 'success') {
-      const banner = document.getElementById('statusBanner');
-      banner.className = `banner ${type === 'error' ? 'error' : ''}`;
-      banner.textContent = message;
-      banner.style.display = 'block';
-      setTimeout(() => { banner.style.display = 'none'; }, 2800);
-    }
+	    function showBanner(message, type = 'success') {
+	      const banner = document.getElementById('statusBanner');
+	      banner.className = `banner ${type === 'error' ? 'error' : ''}`;
+	      banner.textContent = message;
+	      banner.style.display = 'block';
+	      setTimeout(() => { banner.style.display = 'none'; }, 2800);
+	    }
 
-    async function loadDeletedMatches() {
+	    document.querySelectorAll('.period-btn[data-dir][data-period]').forEach(button => {
+	      button.addEventListener('click', () => {
+	        const key = `${button.dataset.dir}-${button.dataset.period}`;
+	        if (activePeriods.has(key)) activePeriods.delete(key);
+	        else activePeriods.add(key);
+	        currentPage = 1;
+	        render();
+	      });
+	    });
+
+	    async function loadDeletedMatches() {
       try {
         const response = await fetch('/api/deleted-matches');
         if (!response.ok) throw new Error('Silinen maçlar alınamadı.');
