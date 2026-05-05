@@ -419,9 +419,7 @@ def build_bet_builder(max_count: int) -> dict:
     )
 
     candidates = []
-    excluded_ignored = 0
     excluded_bet = 0
-    excluded_follow = 0
     excluded_saved = 0
     excluded_finished = 0
 
@@ -430,14 +428,8 @@ def build_bet_builder(max_count: int) -> dict:
         if match_id in finished_match_ids:
             excluded_finished += 1
             continue
-        if bool(alert.get("ignored", 0)):
-            excluded_ignored += 1
-            continue
         if bool(alert.get("bet_placed", 0)):
             excluded_bet += 1
-            continue
-        if bool(alert.get("followed", 0)):
-            excluded_follow += 1
             continue
         if match_id in saved_match_ids:
             excluded_saved += 1
@@ -506,14 +498,11 @@ def build_bet_builder(max_count: int) -> dict:
             f"en büyük barem farkına sahip {leg_count} seçim alındı."
         )
 
-    excluded_total = (
-        excluded_finished + excluded_ignored + excluded_bet + excluded_follow + excluded_saved
-    )
+    excluded_total = excluded_finished + excluded_bet + excluded_saved
     if excluded_total > 0:
         message += (
-            f" {excluded_total} maç daha önce işaretlendiği/kaydedildiği için otomatik dışlandı "
-            f"(Biten: {excluded_finished}, Pas geçilen: {excluded_ignored}, Bahis: {excluded_bet}, "
-            f"Takip: {excluded_follow}, Eski kupon: {excluded_saved})."
+            f" {excluded_total} maç otomatik dışlandı "
+            f"(Biten: {excluded_finished}, Bahis oynandı: {excluded_bet}, Eski kupon: {excluded_saved})."
         )
 
     return {

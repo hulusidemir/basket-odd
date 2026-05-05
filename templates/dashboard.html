@@ -890,14 +890,40 @@
     .bet-table { min-width: 900px; }
 
     .saved-list { display: grid; gap: 7px; margin-top: 12px; }
+    .saved-list-title { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: rgba(200,190,255,.45); text-transform: uppercase; margin: 14px 0 4px; }
 
     .saved-row {
-      display: flex; align-items: center; justify-content: space-between; gap: 9px;
       border: 1px solid rgba(100,80,180,0.12);
       border-radius: 10px;
       background: rgba(10,10,18,0.7);
-      padding: 9px 12px;
+      overflow: hidden;
     }
+    .saved-row-header {
+      display: flex; align-items: center; justify-content: space-between; gap: 9px;
+      padding: 9px 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .saved-row-header:hover { background: rgba(100,80,180,0.07); }
+    .saved-row-toggle { font-size: 11px; color: rgba(200,190,255,.5); transition: transform .2s; flex-shrink: 0; }
+    .saved-row.open .saved-row-toggle { transform: rotate(90deg); }
+    .saved-row-body {
+      display: none;
+      padding: 0 12px 10px;
+      border-top: 1px solid rgba(100,80,180,0.08);
+    }
+    .saved-row.open .saved-row-body { display: block; }
+    .saved-slip-match {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(100,80,180,0.06);
+      font-size: 12px;
+      gap: 8px;
+    }
+    .saved-slip-match:last-child { border-bottom: none; }
+    .saved-slip-dir { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
+    .saved-slip-dir.ust { background: rgba(52,211,153,0.15); color: #a7f3d0; }
+    .saved-slip-dir.alt { background: rgba(248,113,113,0.15); color: #fecaca; }
 
     .ai-guide-box { width: min(96vw, 920px); }
 
@@ -1263,6 +1289,7 @@
         </div>
         <div id="betStatus" class="banner"></div>
         <div id="betResult" class="empty-state" style="display:block;">Kupon oluşturmak için butona bas.</div>
+        <div class="saved-list-title">Geçmiş Bahisler</div>
         <div class="saved-list" id="savedList"></div>
       </div>
     </div>
@@ -2356,18 +2383,41 @@
 
     async function loadSavedSlips() {
       try {
-        const res = await fetch('/api/bet-builder/saved?limit=20');
+        const res = await fetch('/api/bet-builder/saved?limit=30');
         const payload = await res.json();
         const items = Array.isArray(payload) ? payload : [];
-        $('savedList').innerHTML = items.map(item => `
-          <div class="saved-row">
-            <div><strong>${escapeHtml(item.name || '-')}</strong><div class="subline">${escapeHtml(item.created_at || '')} | ${Number(item.selected_count || 0)} maç</div></div>
-            <button class="row-action danger" onclick="deleteSavedSlip(${Number(item.id || 0)})">⌫</button>
-          </div>
-        `).join('');
+        $('savedList').innerHTML = items.length ? items.map(item => {
+          const slip = (item.payload && Array.isArray(item.payload.slip)) ? item.payload.slip : [];
+          const matchRows = slip.map(m => {
+            const dir = (m.direction || '').toUpperCase();
+            const dirCls = dir === 'ÜST' ? 'ust' : 'alt';
+            return `<div class="saved-slip-match">
+              <span>${escapeHtml(cleanMatchName(m.match_name || '-'))}<span class="subline" style="display:inline;margin-left:6px;opacity:.55;">${escapeHtml(m.tournament || '')}</span></span>
+              <span class="saved-slip-dir ${dirCls}">${escapeHtml(dir)}</span>
+            </div>`;
+          }).join('');
+          return `<div class="saved-row" id="savedRow_${Number(item.id)}">
+            <div class="saved-row-header" onclick="toggleSavedRow(${Number(item.id)})">
+              <div>
+                <strong>${escapeHtml(item.name || '-')}</strong>
+                <div class="subline">${escapeHtml(item.created_at || '')} &middot; ${Number(item.selected_count || 0)} maç</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="saved-row-toggle">&#9654;</span>
+                <button class="row-action danger" onclick="event.stopPropagation();deleteSavedSlip(${Number(item.id)})">⌫</button>
+              </div>
+            </div>
+            <div class="saved-row-body">${matchRows || '<div class="subline" style="padding:6px 0;">Maç bilgisi yok.</div>'}</div>
+          </div>`;
+        }).join('') : '<div class="subline" style="padding:6px 0 0;">Kayıtlı kupon yok.</div>';
       } catch {
         $('savedList').innerHTML = '';
       }
+    }
+
+    function toggleSavedRow(id) {
+      const el = document.getElementById('savedRow_' + id);
+      if (el) el.classList.toggle('open');
     }
 
     async function deleteSavedSlip(id) {
