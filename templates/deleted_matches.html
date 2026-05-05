@@ -1375,6 +1375,7 @@
         <span class="btn primary">Silinen</span>
         <a href="/bankroll" class="btn">Bankroll</a>
         <button class="btn report-btn" onclick="openReport()">Rapor</button>
+        <button class="btn report-btn" onclick="openInsights()">Çıkarım ve Tavsiye</button>
         <button class="btn primary" onclick="loadDeletedMatches()">Yenile</button>
         <button class="btn primary" id="checkResultsBtn" onclick="checkFinishedResults()">Bitmişleri Kontrol Et</button>
         <a href="/api/deleted-matches/export.csv" class="btn" download>Bitenleri Dışa Aktar</a>
@@ -1496,6 +1497,19 @@
       </div>
       <div id="reportContent">
         <div class="report-loading">Rapor yükleniyor…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Insights Modal -->
+  <div class="modal-overlay" id="insightsModal" onclick="if(event.target===this)closeInsights()">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2>Çıkarım ve Tavsiye</h2>
+        <button class="modal-close" onclick="closeInsights()">Kapat</button>
+      </div>
+      <div id="insightsContent">
+        <div class="report-loading">Çıkarımlar hazırlanıyor…</div>
       </div>
     </div>
   </div>
@@ -1786,11 +1800,51 @@
       `;
     }
 
-    function openSignalInfo(alertId) {
-      const alert = deletedAlerts.find(item => Number(item.id || 0) === Number(alertId || 0));
+    const signalDetailsCache = new Map();
+    let signalInfoToken = 0;
+
+    async function fetchSignalDetails(alertId) {
+      const id = Number(alertId || 0);
+      if (!id) return null;
+      if (signalDetailsCache.has(id)) return signalDetailsCache.get(id);
+      const response = await fetch(`/api/deleted-matches/${id}/details`);
+      if (!response.ok) throw new Error('Sinyal detayı alınamadı.');
+      const data = await response.json();
+      signalDetailsCache.set(id, data);
+      return data;
+    }
+
+    async function openSignalInfo(alertId) {
+      const id = Number(alertId || 0);
       const modal = document.getElementById('signalInfoModal');
       const content = document.getElementById('signalInfoContent');
-      if (!modal || !content || !alert) return;
+      if (!modal || !content || !id) return;
+
+      const listAlert = deletedAlerts.find(item => Number(item.id || 0) === id);
+      const matchName = cleanMatchName(listAlert?.match_name || '-');
+      content.innerHTML = `
+        <div class="signal-info-headline">
+          <div class="signal-info-match">${escapeHtml(matchName)}</div>
+          <div class="signal-info-meta">Detaylar yükleniyor…</div>
+        </div>
+      `;
+      modal.classList.add('open');
+
+      const token = ++signalInfoToken;
+      let alert;
+      try {
+        alert = await fetchSignalDetails(id);
+      } catch (error) {
+        if (token !== signalInfoToken) return;
+        content.innerHTML = `
+          <div class="signal-info-headline">
+            <div class="signal-info-match">${escapeHtml(matchName)}</div>
+            <div class="signal-info-meta" style="color:var(--accent-red)">${escapeHtml(error.message || 'Detay alınamadı.')}</div>
+          </div>
+        `;
+        return;
+      }
+      if (token !== signalInfoToken || !alert) return;
 
       const analysis = alertAnalysis(alert);
       const opening = Number(alert.opening);
@@ -1823,7 +1877,6 @@
         analysis.history_note,
         ...warnings,
       ].filter(Boolean);
-      const matchName = cleanMatchName(alert.match_name || '-');
       const voteSection = voteRows.length
         ? `<div class="signal-info-section wide">
             <div class="signal-info-section-title">Sinyal Oyları</div>
@@ -1885,7 +1938,6 @@
           </div>
         </div>
       `;
-      modal.classList.add('open');
     }
 
     function closeSignalInfo() {
@@ -2246,6 +2298,7 @@
         const response = await fetch('/api/deleted-matches');
         if (!response.ok) throw new Error('Silinen maçlar alınamadı.');
         deletedAlerts = await response.json();
+        signalDetailsCache.clear();
         currentPage = 1;
         render();
       } catch (error) {
@@ -2263,6 +2316,7 @@
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload?.error || 'Kayıt silinemedi.');
         deletedAlerts = deletedAlerts.filter(item => Number(item.id) !== Number(alertId));
+        signalDetailsCache.delete(Number(alertId));
         render();
         showBanner('Kayıt silindi.');
       } catch (error) {
@@ -2281,6 +2335,7 @@
         const payload = await response.json();
         if (!response.ok) throw new Error(payload?.error || 'Veritabanı temizlenemedi.');
         deletedAlerts = [];
+        signalDetailsCache.clear();
         render();
         showBanner(`${payload.deleted_count || 0} kayıt kalıcı olarak silindi.`);
       } catch (error) {
@@ -2570,6 +2625,251 @@
       `;
     }
 
+    function openInsights() {
+      const modal = document.getElementById('insightsModal');
+      modal.classList.add('open');
+      document.body.style.overflow = 'hidden';
+      fetchInsights();
+    }
+
+    function closeInsights() {
+      document.getElementById('insightsModal').classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    async function fetchInsights() {
+      document.getElementById('insightsContent').innerHTML =
+        '<div class="report-loading">Çıkarımlar hazırlanıyor…</div>';
+      try {
+        const response = await fetch('/api/deleted-matches/insights');
+        if (!response.ok) throw new Error('Çıkarım alınamadı.');
+        const data = await response.json();
+        renderInsights(data);
+      } catch (error) {
+        document.getElementById('insightsContent').innerHTML =
+          `<div class="report-loading" style="color:var(--accent-red)">Çıkarım yüklenemedi: ${escapeHtml(error.message)}</div>`;
+      }
+    }
+
+    function insightItem(seg, color) {
+      const rate = Number(seg.rate || 0);
+      const fadeRate = Number(seg.fade_rate || 0);
+      const delta = Number(seg.delta || 0);
+      const sign = delta > 0 ? '+' : '';
+      return `
+        <div class="report-mixed-item" style="border-left:3px solid ${color};padding-left:10px">
+          <div class="report-mixed-match">
+            <span style="color:var(--text-soft);font-weight:500">${escapeHtml(seg.scope)}</span>
+            &nbsp;→&nbsp;
+            <span>${escapeHtml(seg.label)}</span>
+            <span style="float:right;color:${color};font-weight:600">${escapeHtml(seg.verdict || '')}</span>
+          </div>
+          <div class="report-mixed-detail" style="margin-top:4px">
+            Başarı %${rate.toFixed(1)} · Tersi %${fadeRate.toFixed(1)} · n=${seg.resolved}
+            (${seg.success}/${seg.resolved}) · Genelden ${sign}${delta.toFixed(1)}p
+          </div>
+          <div class="report-mixed-detail" style="margin-top:4px;color:var(--text-soft)">
+            ${escapeHtml(seg.advice || '')}
+          </div>
+        </div>
+      `;
+    }
+
+    function watchlistItem(seg) {
+      const rate = Number(seg.rate || 0);
+      const delta = Number(seg.delta || 0);
+      const sign = delta > 0 ? '+' : '';
+      return `
+        <div class="report-mixed-item" style="border-left:3px solid #fef08a;padding-left:10px">
+          <div class="report-mixed-match">
+            <span style="color:var(--text-soft);font-weight:500">${escapeHtml(seg.scope)}</span>
+            &nbsp;→&nbsp;
+            <span>${escapeHtml(seg.label)}</span>
+            <span style="float:right;color:#fef08a;font-weight:600">İZLE</span>
+          </div>
+          <div class="report-mixed-detail" style="margin-top:4px">
+            Başarı %${rate.toFixed(1)} · n=${seg.resolved} · Genelden ${sign}${delta.toFixed(1)}p
+            <span style="color:var(--text-soft)">— örneklem henüz az, eğilim güçlü.</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderInsights(data) {
+      const overall = data.overall || {};
+      const rate = Number(overall.rate || 0);
+      const fadeRate = Number(overall.fade_rate || 0);
+
+      const cards = [
+        { title: 'Sonuçlanan Sinyal', value: overall.resolved || 0,
+          detail: `Toplam ${overall.total_signals || 0} silinen kayıttan.` },
+        { title: 'Genel Başarı', value: `%${rate.toFixed(1)}`,
+          detail: `${overall.success || 0} başarılı, ${overall.fail || 0} başarısız.` },
+        { title: 'Fade Etseydik', value: `%${fadeRate.toFixed(1)}`,
+          detail: 'Tüm sinyallerin tersi oynansaydı.' },
+        { title: 'Pozitif Segment', value: (data.play || []).length,
+          detail: 'OYNA önerisi alan kombinasyon sayısı.' },
+        { title: 'Negatif/Fade', value: ((data.fade || []).length + (data.avoid || []).length),
+          detail: 'UZAK DUR veya FADE önerilen segment.' },
+        { title: 'Nötr / Yetersiz', value: `${data.neutral_count || 0} / ${data.insufficient_count || 0}`,
+          detail: 'Net çıkarım üretmeyen segmentler.' },
+      ].map(card => `
+        <div class="report-card">
+          <div class="report-card-title">${escapeHtml(card.title)}</div>
+          <div class="report-card-value">${escapeHtml(String(card.value))}</div>
+          <div class="report-card-detail">${escapeHtml(card.detail || '')}</div>
+        </div>
+      `).join('');
+
+      const adviceBlock = (data.advice || []).length ? `
+        <div class="report-action-box">
+          <div class="report-action-title">Genel Tavsiyeler</div>
+          ${(data.advice || []).map(a => `<div class="report-action-item">${escapeHtml(a)}</div>`).join('')}
+        </div>
+      ` : '';
+
+      const playBlock = (data.play || []).length ? `
+        <div class="report-section-title" style="color:#9df0bd">Oyna — Pozitif Segmentler</div>
+        ${(data.play || []).map(s => insightItem(s, '#9df0bd')).join('')}
+      ` : '';
+
+      const fadeBlock = (data.fade || []).length ? `
+        <div class="report-section-title" style="color:#b9dcff">Fade — Sinyalin Tersi Çalışıyor</div>
+        ${(data.fade || []).map(s => insightItem(s, '#b9dcff')).join('')}
+      ` : '';
+
+      const avoidBlock = (data.avoid || []).length ? `
+        <div class="report-section-title" style="color:#ffb2b2">Uzak Dur — Zayıf Segmentler</div>
+        ${(data.avoid || []).map(s => insightItem(s, '#ffb2b2')).join('')}
+      ` : '';
+
+      const watchBlock = (data.watchlist || []).length ? `
+        <div class="report-section-title" style="color:#fef08a">İzleme Listesi (örneklem 3-4, eğilim güçlü)</div>
+        ${(data.watchlist || []).map(watchlistItem).join('')}
+      ` : '';
+
+      const noFindings = !(data.play || []).length && !(data.fade || []).length
+        && !(data.avoid || []).length && !(data.watchlist || []).length
+        ? '<div class="report-mixed-detail" style="margin-top:14px">Henüz net bir segment çıkmadı — daha çok sonuçlanan sinyal gerek.</div>'
+        : '';
+
+      const simulationBlock = renderSimulationBlock(data.simulation, data.rules);
+
+      document.getElementById('insightsContent').innerHTML = `
+        <div class="report-headline">${escapeHtml(data.headline || '')}</div>
+        ${adviceBlock}
+        <div class="report-cards">${cards}</div>
+        ${simulationBlock}
+        ${playBlock}
+        ${fadeBlock}
+        ${avoidBlock}
+        ${watchBlock}
+        ${noFindings}
+        <div class="report-ts">Oluşturuldu: ${escapeHtml(data.generated_at || '')}</div>
+      `;
+    }
+
+    function ruleListBlock(title, items, color, mapItem) {
+      if (!items || !items.length) return '';
+      const rows = items.map(mapItem).join('');
+      return `
+        <div style="margin-top:12px">
+          <div class="report-card-title" style="color:${color};margin-bottom:6px">${escapeHtml(title)} <span style="color:var(--text-soft);font-weight:400">(${items.length})</span></div>
+          <div class="report-tour-list">${rows}</div>
+        </div>
+      `;
+    }
+
+    function ruleTourRow(item, color) {
+      const rate = Number(item.rate || 0);
+      const fadeRate = Number(item.fade_rate || 0);
+      const fadeSpan = Number.isFinite(fadeRate) && fadeRate > 0
+        ? ` <span style="color:var(--text-soft)">· tersi %${fadeRate.toFixed(1)}</span>` : '';
+      return `
+        <div class="report-tour-row">
+          <div class="report-tour-name" title="${escapeHtml(item.label)}">${escapeHtml(item.label)}</div>
+          <div class="report-tour-rate" style="color:${color}">%${rate.toFixed(1)}</div>
+          <div class="report-tour-meta">n=${item.n}${fadeSpan}</div>
+        </div>
+      `;
+    }
+
+    function renderSimulationBlock(simulation, rules) {
+      if (!simulation || !simulation.filtered || !simulation.filtered.n) return '';
+      const baseline = simulation.baseline || {};
+      const filtered = simulation.filtered;
+      const delta = Number(filtered.delta_vs_baseline || 0);
+      const sign = delta >= 0 ? '+' : '';
+      const deltaColor = delta >= 3 ? '#9df0bd' : (delta <= -3 ? '#ffb2b2' : '#fef08a');
+
+      const simCards = [
+        { title: 'Baseline (Ham)', value: `%${Number(baseline.rate || 0).toFixed(1)}`,
+          detail: `${baseline.success || 0}/${baseline.n || 0} sinyal oynanırsa.` },
+        { title: 'Kural Filtresinden Sonra', value: `%${Number(filtered.rate || 0).toFixed(1)}`,
+          detail: `${filtered.success}/${filtered.n} sinyal · Δ <span style="color:${deltaColor};font-weight:600">${sign}${delta.toFixed(1)}p</span>` },
+        { title: 'Atılan Sinyal', value: filtered.skipped,
+          detail: `Bunların ${filtered.skipped_lost_wins || 0} tanesi başarılı olurdu (kaçırılan kazanç).` },
+        { title: 'Ters Oynanan', value: filtered.fade_count,
+          detail: `Fade ile ${filtered.fade_success} kazanç.` },
+      ].map(card => `
+        <div class="report-card">
+          <div class="report-card-title">${escapeHtml(card.title)}</div>
+          <div class="report-card-value">${card.value}</div>
+          <div class="report-card-detail">${card.detail}</div>
+        </div>
+      `).join('');
+
+      const impact = (simulation.rule_impact || []).map(r => {
+        const actionColor = r.action === 'SKIP' ? '#ffb2b2'
+                          : r.action === 'FADE' ? '#b9dcff'
+                          : '#9df0bd';
+        const wouldText = r.action === 'FADE'
+          ? `tersi %${(100 - Number(r.would_have_rate || 0)).toFixed(1)} kazanç`
+          : `bu sinyaller orijinalde %${Number(r.would_have_rate || 0).toFixed(1)} idi`;
+        return `
+          <div class="report-mixed-item" style="border-left:3px solid ${actionColor};padding-left:10px">
+            <div class="report-mixed-match">
+              <span style="color:${actionColor};font-weight:600">${escapeHtml(r.action)}</span>
+              &nbsp;·&nbsp; ${escapeHtml(r.label)}
+              <span style="float:right;color:var(--text-soft)">${r.applied_to} sinyal</span>
+            </div>
+            <div class="report-mixed-detail" style="margin-top:4px;color:var(--text-soft)">${wouldText}</div>
+          </div>
+        `;
+      }).join('');
+
+      const r = rules || {};
+      const ruleLists = [
+        ruleListBlock('Turnuva Beyaz Liste — Öncelik', r.tournament_whitelist, '#9df0bd',
+          item => ruleTourRow(item, '#9df0bd')),
+        ruleListBlock('Turnuva Kara Liste — Atla', r.tournament_blacklist, '#ffb2b2',
+          item => ruleTourRow(item, '#ffb2b2')),
+        ruleListBlock('Turnuva Fade — Tersi Oyna', r.tournament_fade, '#b9dcff',
+          item => ruleTourRow(item, '#b9dcff')),
+        ruleListBlock('Turnuva + Yön Yasağı', r.tournament_direction_skip, '#ffb2b2',
+          item => ruleTourRow(item, '#ffb2b2')),
+        ruleListBlock('Periyot + Yön Yasağı', r.period_direction_skip, '#ffb2b2',
+          item => ruleTourRow(item, '#ffb2b2')),
+        ruleListBlock('Takım Kara Liste — Maçı Atla', r.team_blacklist, '#ffb2b2',
+          item => ruleTourRow(item, '#ffb2b2')),
+        ruleListBlock('Takım Fade — Sinyalin Tersi', r.team_fade, '#b9dcff',
+          item => ruleTourRow(item, '#b9dcff')),
+      ].filter(Boolean).join('');
+
+      const ruleEmpty = !ruleLists
+        ? '<div class="report-mixed-detail" style="margin-top:10px">Anlamlı kural türetilemedi — daha çok sonuçlanan sinyal gerek.</div>'
+        : '';
+
+      return `
+        <div class="report-section-title" style="margin-top:18px">Otomatik Kural Filtresi — Backtest</div>
+        <div class="report-cards">${simCards}</div>
+        ${impact ? `<div style="margin-top:8px"><div class="report-card-title" style="margin-bottom:6px">Kuralların Etkisi</div>${impact}</div>` : ''}
+        <div class="report-section-title" style="margin-top:14px">Türetilen Kural Seti</div>
+        ${ruleLists}
+        ${ruleEmpty}
+      `;
+    }
+
     document.getElementById('searchInput').addEventListener('input', event => {
       searchQuery = event.target.value.trim();
       currentPage = 1;
@@ -2595,6 +2895,7 @@
         closeSignalInfo();
         closeNoteInfo();
         closeReport();
+        closeInsights();
       }
     });
 
