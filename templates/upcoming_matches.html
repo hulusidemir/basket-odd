@@ -275,13 +275,15 @@
       vertical-align: middle;
       font-size: 13px;
     }
-    col.match-col { width: 380px; }
-    col.league-col { width: 260px; }
+    col.match-col { width: 342px; }
+    col.league-col { width: 258px; white-space: nowrap; }
     col.time-col { width: 160px; }
-    col.num-col { width: 120px; }
+    col.num-col { width: 96px; }
+    col.small-num-col { width: 84px; }
     col.sf-col { width: 140px; }
-    col.signal-col { width: 110px; }
+    col.signal-col { width: 77px; }
     col.action-col { width: 180px; }
+    td.league-cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     tbody tr:nth-child(even) { background: rgba(124,92,246,0.035); }
     tbody tr:hover { background: rgba(124,92,246,0.075); }
     tbody tr.is-followed { background: rgba(251,191,36,0.05); }
@@ -459,9 +461,10 @@
               <col class="num-col">
               <col class="sf-col">
               <col class="sf-col">
-              <col class="num-col">
+              <col class="small-num-col">
+              <col class="small-num-col">
               <col class="signal-col">
-              <col class="num-col">
+              <col class="small-num-col">
               <col class="action-col">
             </colgroup>
             <thead>
@@ -474,6 +477,7 @@
                 <th class="num" data-sort="home_sf">Ev SF</th>
                 <th class="num" data-sort="away_sf">Dep. SF</th>
                 <th class="num" data-sort="expected_total">SF Ort.</th>
+                <th class="num" data-sort="offense_total">H. Ort.</th>
                 <th class="num" data-sort="signal_direction">Sinyal</th>
                 <th class="num" data-sort="signal_diff">Fark</th>
                 <th class="num">Aksiyon</th>
@@ -481,7 +485,7 @@
 
             </thead>
             <tbody id="rows">
-              <tr><td colspan="11" class="empty">Kayıtlı gelecek maç yok.</td></tr>
+              <tr><td colspan="12" class="empty">Kayıtlı gelecek maç yok.</td></tr>
             </tbody>
           </table>
         </div>
@@ -592,6 +596,11 @@
       if (n === null) return '<span class="pill warn">-</span>';
       return `<span class="pill blue">${n.toFixed(1)}</span>`;
     }
+    function fmtOffenseAvg(v) {
+      const n = num(v);
+      if (n === null) return '<span class="pill warn">-</span>';
+      return `<span class="pill warn">${n.toFixed(1)}</span>`;
+    }
     function sfValue(row, side) {
       const profile = side === 'home' ? row.home_last6 : row.away_last6;
       return num(profile && profile.avg_total);
@@ -627,10 +636,17 @@
       const link = row.url ? `<a href="${escapeHtml(row.url)}" target="_blank" rel="noopener">${name}</a>` : name;
       return `<div class="match-name">${link}</div>`;
     }
+    function offenseTotal(row) {
+      const home = num(row.home_last6 && row.home_last6.ppg);
+      const away = num(row.away_last6 && row.away_last6.ppg);
+      if (home === null && away === null) return null;
+      return Math.round(((home || 0) + (away || 0)) * 10) / 10;
+    }
     function rowValue(row, field) {
       if (field === 'home_sf') return sfValue(row, 'home');
       if (field === 'away_sf') return sfValue(row, 'away');
       if (field === 'signal_diff') return num(row.signal_diff);
+      if (field === 'offense_total') return offenseTotal(row);
       if (['opening_total', 'prematch_total', 'expected_total'].includes(field)) return num(row[field]);
       return row[field] ?? '';
     }
@@ -698,19 +714,20 @@
       nextPage.disabled = page >= totalPages;
 
       if (!visible.length) {
-        rowsEl.innerHTML = '<tr><td colspan="11" class="empty">Sonuç yok.</td></tr>';
+        rowsEl.innerHTML = '<tr><td colspan="12" class="empty">Sonuç yok.</td></tr>';
         return;
       }
       rowsEl.innerHTML = visible.map(m => `
         <tr class="${m.bet_placed ? 'bet-placed' : ''} ${m.followed ? 'is-followed' : ''} ${m.ignored ? 'is-ignored' : ''}">
           <td>${escapeHtml(m.kickoff || '-')}</td>
           <td>${fmtMatch(m)}</td>
-          <td>${escapeHtml(m.tournament || '-')}</td>
+          <td class="league-cell" title="${escapeHtml(m.tournament || '')}">${escapeHtml(m.tournament || '-')}</td>
           <td class="num">${fmtNum(m.opening_total)}</td>
           <td class="num">${fmtNum(m.prematch_total)}</td>
           <td class="sf-cell">${fmtSf(m.home_last6 || {})}</td>
           <td class="sf-cell">${fmtSf(m.away_last6 || {})}</td>
           <td class="num">${fmtSfAvg(m.expected_total)}</td>
+          <td class="num">${fmtOffenseAvg(offenseTotal(m))}</td>
           <td class="num">${fmtSignal(m)}</td>
           <td class="num">${fmtNum(m.signal_diff)}</td>
           <td class="num">${actionButtons(m)}</td>

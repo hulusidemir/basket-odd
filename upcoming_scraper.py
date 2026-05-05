@@ -209,9 +209,13 @@ class UpcomingScraper:
                         const kickoff = localStamp(match.matchTime);
                         const day = dateKey(kickoff);
                         if (day < today || day > endDate) continue;
-                        const comp = compMap.get(match?.competition?.id) || compByMatch[match.id] || {};
+                        const comp = compMap.get(match?.competition?.id) || {};
+                        const compName = comp?.name || '';
                         const country = comp?.category?.name || comp?.country?.name || '';
-                        const tournament = [country, comp?.name].filter(Boolean).join(' : ');
+                        const promoRe = /standings|popular|trending|featured/i;
+                        const safeCountry = country && !promoRe.test(country) ? country : '';
+                        const safeName = compName && !promoRe.test(compName) ? compName : '';
+                        const tournament = [safeCountry, safeName].filter(Boolean).join(' : ');
                         const total = findTotal(match);
                         out.push({
                             match_id: match.id,
@@ -407,6 +411,13 @@ class UpcomingScraper:
             ):
                 if odds_data.get(key) in (None, "") and listing_data.get(key) not in (None, ""):
                     odds_data[key] = listing_data.get(key)
+            # Reject obviously contaminated tournament strings (e.g. promo
+            # widget leakage like "EPL Standings 2024-25 : CBA").
+            current_tournament = str(odds_data.get("tournament") or "")
+            if re.search(r"standings|popular|trending|featured", current_tournament, re.I):
+                odds_data["tournament"] = ""
+            if not odds_data.get("tournament"):
+                odds_data["tournament"] = self._tournament_from_url(odds_data.get("url") or link)
             if odds_data.get("opening") is None and listing_data.get("opening_total") is not None:
                 odds_data["opening"] = listing_data.get("opening_total")
             if odds_data.get("prematch") is None and listing_data.get("prematch_total") is not None:
@@ -639,20 +650,37 @@ class UpcomingScraper:
 
                 let tournament = '';
                 let country = '';
+                // Scope strictly to the match header. Wider scopes (e.g.
+                // [class*="league"]) catch sidebar/footer "Popular Leagues"
+                // widgets and produce cross-contaminated names.
                 const breadcrumbRoots = Array.from(document.querySelectorAll(
-                    '.breadcrumb, [class*="breadcrumb"], [class*="matchTop"], [class*="matchInfo"], [class*="league"], [class*="competition"]'
+                    '[class*="matchTop"], [class*="matchInfo"], [class*="matchHeader"]'
                 ));
                 const scopedAnchors = breadcrumbRoots.flatMap(root => Array.from(root.querySelectorAll('a')));
-                const anchorSource = scopedAnchors.length ? scopedAnchors : Array.from(document.querySelectorAll('a'));
-                const breadcrumbs = anchorSource
+                const promoRe = /schedule|standings|teams|stats|live\s*score|popular|trending|featured/i;
+                const breadcrumbs = scopedAnchors
                     .map(e => ({ text: text(e.innerText), href: e.getAttribute('href') || '' }))
-                    .filter(e => e.text && !/schedule|standings|teams|stats|live score/i.test(e.text))
+                    .filter(e => e.text && !promoRe.test(e.text))
                     .filter(e => e.href.includes('/tournament-'));
                 if (breadcrumbs.length >= 2) {
                     country = breadcrumbs[0].text;
                     tournament = breadcrumbs[breadcrumbs.length - 1].text;
                 } else if (breadcrumbs.length === 1) {
                     tournament = breadcrumbs[0].text;
+                }
+                // Fallback: derive league name from the tournament link slug
+                // when the visible breadcrumb text wasn't usable.
+                if (!tournament) {
+                    const slugAnchor = scopedAnchors
+                        .map(e => e.getAttribute('href') || '')
+                        .find(h => /\/tournament-[a-z0-9-]+/i.test(h));
+                    if (slugAnchor) {
+                        const m = slugAnchor.match(/\/tournament-([a-z0-9-]+)/i);
+                        if (m && m[1]) {
+                            tournament = m[1].replace(/-/g, ' ')
+                                .replace(/\b\w/g, c => c.toUpperCase());
+                        }
+                    }
                 }
                 const cleanRe = /\s*(live\s*score|betting\s*odds|prediction)\s*/gi;
                 tournament = tournament.replace(cleanRe, '').trim();
@@ -793,6 +821,16 @@ class UpcomingScraper:
         )
         parts = cleaned.split("/")
         return parts[-1] if parts else url
+
+    @staticmethod
+    def _tournament_from_url(url: str) -> str:
+        match = re.search(r"/tournament-([a-z0-9-]+)", str(url or ""), re.I)
+        if not match:
+            return ""
+        slug = match.group(1).strip("-")
+        if not slug:
+            return ""
+        return slug.replace("-", " ").title()
 
     def _kickoff_in_allowed_window(self, kickoff: str) -> bool:
         """Keep AiScore upcoming rows scoped to Today's Upcoming Matches by default.

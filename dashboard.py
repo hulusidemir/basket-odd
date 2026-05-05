@@ -83,6 +83,26 @@ def _strip_score_labels(value):
     return value
 
 
+_TOURNAMENT_PROMO_RE = re.compile(
+    r"\bstandings\b|\bpopular\b|\btrending\b|\bfeatured\b|\bepl\b",
+    re.I,
+)
+
+
+def _sanitize_tournament_display(value: str) -> str:
+    """Strip clearly contaminated tournament strings before they hit the UI.
+
+    Older DB rows can hold values like "EPL Standings 2024-25 : CBA" produced
+    by the previous scraper bug. Show "-" instead of the corrupted label.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if _TOURNAMENT_PROMO_RE.search(text):
+        return ""
+    return text
+
+
 def _sanitize_recent_form_analysis(analysis: dict) -> dict:
     if not isinstance(analysis, dict):
         return analysis or {}
@@ -145,6 +165,7 @@ def enrich_alerts_with_analysis(
     history_profile: dict | None = None,
 ) -> list[dict]:
     for alert in alerts:
+        alert["tournament"] = _sanitize_tournament_display(alert.get("tournament"))
         analysis = _parse_analysis(alert.get("ai_analysis"))
         alert.pop("ai_analysis", None)
         if not analysis:

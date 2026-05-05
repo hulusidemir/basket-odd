@@ -17,6 +17,22 @@ class AiscoreScraper:
         self.max_matches_per_cycle = max_matches_per_cycle
         self.page_timeout_ms = page_timeout_ms
         self.skip_h2h = skip_h2h
+        # Per-match H2H body cache. Last-6 / SF data does not change during a
+        # match, so re-scraping the H2H tab on every poll cycle is wasted work.
+        self._h2h_cache: dict[str, str] = {}
+
+    def forget_h2h_cache(self, match_id: str) -> None:
+        self._h2h_cache.pop(str(match_id), None)
+
+    @staticmethod
+    def _sanitize_tournament(value: str, url: str) -> str:
+        text = (value or "").strip()
+        if text and not re.search(r"standings|popular|trending|featured", text, re.I):
+            return text
+        m = re.search(r"/tournament-([a-z0-9-]+)", str(url or ""), re.I)
+        if m and m.group(1):
+            return m.group(1).replace("-", " ").title()
+        return ""
 
     async def _create_browser_context(self, playwright):
         browser = await playwright.chromium.launch(
@@ -542,31 +558,63 @@ class AiscoreScraper:
 
               let tournament = '';
               let country = '';
-              const breadcrumbs = Array.from(document.querySelectorAll('a'))
-                .map(e => ({text: text(e.innerText), href: e.getAttribute('href') || ''}))
-                .filter(e => e.href.includes('/tournament-'));
-              if (breadcrumbs.length >= 2) {
-                country = breadcrumbs[0].text;
-                tournament = breadcrumbs[breadcrumbs.length - 1].text;
-              } else if (breadcrumbs.length === 1) {
-                tournament = breadcrumbs[0].text;
+              const promoRe = /schedule|standings|teams|stats|live\s*score|popular|trending|featured|odds|prediction|news|home/i;
+              // Strategy 1: top breadcrumb (most reliable — "Basketball Live
+              // Score > <Country/League> > <Match>"). Scope it tightly to
+              // breadcrumb-style containers so we don't pick up the footer's
+              // "Popular Leagues" widget.
+              const breadcrumbRoots = Array.from(document.querySelectorAll(
+                '.breadcrumb, [class*="breadcrumb"], [class*="Breadcrumb"], nav, header, ' +
+                '[class*="matchTop"], [class*="matchInfo"], [class*="matchHeader"]'
+              ));
+              const seen = new Set();
+              const scopedAnchors = [];
+              for (const root of breadcrumbRoots) {
+                for (const a of root.querySelectorAll('a')) {
+                  if (seen.has(a)) continue;
+                  seen.add(a);
+                  scopedAnchors.push(a);
+                }
               }
-              const urlMatch = window.location.pathname.match(/\/basketball\/match-(.+?)\/\d+/);
-              let urlLeague = '';
-              if (urlMatch) {
-                const parts = urlMatch[1].split('-');
-                const vsIdx = parts.indexOf('vs');
-                if (vsIdx > 0) {
-                  urlLeague = parts.slice(0, Math.min(vsIdx, 3)).join(' ');
-                  if (!country && parts.length > 0) {
-                    country = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+              const candidates = scopedAnchors
+                .map(e => ({text: text(e.innerText), href: e.getAttribute('href') || ''}))
+                .filter(e => e.href.includes('/tournament-'))
+                .filter(e => e.text && !promoRe.test(e.text));
+              if (candidates.length >= 2) {
+                country = candidates[0].text;
+                tournament = candidates[candidates.length - 1].text;
+              } else if (candidates.length === 1) {
+                tournament = candidates[0].text;
+              }
+              // Strategy 2: first valid /tournament- anchor anywhere on the
+              // page (document order). Top-of-page nav comes before footers.
+              if (!tournament) {
+                const docCandidate = Array.from(document.querySelectorAll('a'))
+                  .map(e => ({text: text(e.innerText), href: e.getAttribute('href') || ''}))
+                  .filter(e => e.href.includes('/tournament-'))
+                  .filter(e => e.text && !promoRe.test(e.text))
+                  .find(e => e.text.length >= 3 && e.text.length <= 80);
+                if (docCandidate) tournament = docCandidate.text;
+              }
+              // Strategy 3: slug from any /tournament- href in the document.
+              if (!tournament) {
+                const slugHref = Array.from(document.querySelectorAll('a'))
+                  .map(e => e.getAttribute('href') || '')
+                  .find(h => /\/tournament-[a-z0-9-]+/i.test(h));
+                if (slugHref) {
+                  const m = slugHref.match(/\/tournament-([a-z0-9-]+)/i);
+                  if (m && m[1]) {
+                    tournament = m[1].replace(/-/g, ' ')
+                      .replace(/\b\w/g, c => c.toUpperCase());
                   }
                 }
               }
               const cleanRe = /\s*(live\s*score|betting\s*odds|prediction)\s*/gi;
               tournament = tournament.replace(cleanRe, '').trim();
               country = country.replace(cleanRe, '').trim();
-              if (!tournament && urlLeague) tournament = urlLeague;
+              // Reject final string if either half still smells like promo.
+              if (country && promoRe.test(country)) country = '';
+              if (tournament && promoRe.test(tournament)) tournament = '';
               if (country && tournament && !tournament.toLowerCase().startsWith(country.toLowerCase())) {
                 tournament = country + ' : ' + tournament;
               } else if (country && !tournament) {
@@ -919,13 +967,24 @@ class AiscoreScraper:
             else parsed.get("quarterScores")
         ) or {}
 
-        h2h_body = "" if self.skip_h2h else await self._fetch_h2h_body(page, url)
-
         match_id = self._extract_match_id(url)
+
+        h2h_body = ""
+        if not self.skip_h2h:
+            cached = self._h2h_cache.get(match_id)
+            if cached is not None:
+                h2h_body = cached
+            else:
+                h2h_body = await self._fetch_h2h_body(page, url)
+                if h2h_body:
+                    self._h2h_cache[match_id] = h2h_body
+
+        tournament = self._sanitize_tournament(parsed.get("tournament") or "", url)
+
         return {
             "match_id": match_id,
             "match_name": parsed.get("matchName") or f"Match {match_id}",
-            "tournament": parsed.get("tournament") or "Unknown",
+            "tournament": tournament or "Unknown",
             "status": parsed.get("status"),
             "opening_total": float(opening),
             "prematch_total": float(prematch) if prematch is not None else None,
