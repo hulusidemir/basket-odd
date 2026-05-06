@@ -35,10 +35,15 @@ class AiscoreScraper:
         return ""
 
     async def _create_browser_context(self, playwright):
-        browser = await playwright.chromium.launch(
-            headless=True,
-            args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"],
-        )
+        proxy_server = os.getenv("PLAYWRIGHT_PROXY")
+        launch_kwargs: dict = {
+            "headless": True,
+            "args": ["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"],
+        }
+        if proxy_server:
+            launch_kwargs["proxy"] = {"server": proxy_server}
+            logger.info("Using proxy: %s", proxy_server)
+        browser = await playwright.chromium.launch(**launch_kwargs)
         context = await self._new_desktop_context(browser)
         return browser, context
 
@@ -559,6 +564,12 @@ class AiscoreScraper:
               let tournament = '';
               let country = '';
               const promoRe = /schedule|standings|teams|stats|live\s*score|popular|trending|featured|odds|prediction|news|home/i;
+              // Strategy 0: a.not-allow — AiScore renders the league name above
+              // the team names as an anchor with class="not-allow" and href="javascript:;".
+              // This is the most direct source and takes priority over breadcrumb heuristics.
+              const notAllowEl = Array.from(document.querySelectorAll('a.not-allow'))
+                .find(e => { const t = text(e.innerText); return t && t.length >= 3 && t.length <= 80 && !promoRe.test(t); });
+              if (notAllowEl) tournament = text(notAllowEl.innerText);
               // Strategy 1: top breadcrumb (most reliable — "Basketball Live
               // Score > <Country/League> > <Match>"). Scope it tightly to
               // breadcrumb-style containers so we don't pick up the footer's

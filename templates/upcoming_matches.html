@@ -458,9 +458,9 @@
               <col class="match-col">
               <col class="league-col">
               <col class="num-col">
-              <col class="num-col">
               <col class="sf-col">
               <col class="sf-col">
+              <col class="small-num-col">
               <col class="small-num-col">
               <col class="small-num-col">
               <col class="signal-col">
@@ -473,11 +473,11 @@
                 <th data-sort="match_name">Maç</th>
                 <th data-sort="tournament">Lig</th>
                 <th class="num" data-sort="opening_total">Açılış</th>
-                <th class="num" data-sort="prematch_total">Pre-Match</th>
                 <th class="num" data-sort="home_sf">Ev SF</th>
                 <th class="num" data-sort="away_sf">Dep. SF</th>
                 <th class="num" data-sort="expected_total">SF Ort.</th>
                 <th class="num" data-sort="offense_total">H. Ort.</th>
+                <th class="num" data-sort="h2h_avg_total">H2H</th>
                 <th class="num" data-sort="signal_direction">Sinyal</th>
                 <th class="num" data-sort="signal_diff">Fark</th>
                 <th class="num">Aksiyon</th>
@@ -601,6 +601,12 @@
       if (n === null) return '<span class="pill warn">-</span>';
       return `<span class="pill warn">${n.toFixed(1)}</span>`;
     }
+    function fmtH2h(avg, games) {
+      const n = num(avg);
+      if (n === null) return '<span class="pill warn">-</span>';
+      const gameSuffix = (games != null) ? `<span class="sf-sub">${games} maç</span>` : '';
+      return `<span class="pill warn">${n.toFixed(1)}</span>${gameSuffix}`;
+    }
     function sfValue(row, side) {
       const profile = side === 'home' ? row.home_last6 : row.away_last6;
       return num(profile && profile.avg_total);
@@ -647,6 +653,7 @@
       if (field === 'away_sf') return sfValue(row, 'away');
       if (field === 'signal_diff') return num(row.signal_diff);
       if (field === 'offense_total') return offenseTotal(row);
+      if (field === 'h2h_avg_total') return num(row.h2h_avg_total);
       if (['opening_total', 'prematch_total', 'expected_total'].includes(field)) return num(row[field]);
       return row[field] ?? '';
     }
@@ -723,11 +730,11 @@
           <td>${fmtMatch(m)}</td>
           <td class="league-cell" title="${escapeHtml(m.tournament || '')}">${escapeHtml(m.tournament || '-')}</td>
           <td class="num">${fmtNum(m.opening_total)}</td>
-          <td class="num">${fmtNum(m.prematch_total)}</td>
           <td class="sf-cell">${fmtSf(m.home_last6 || {})}</td>
           <td class="sf-cell">${fmtSf(m.away_last6 || {})}</td>
           <td class="num">${fmtSfAvg(m.expected_total)}</td>
           <td class="num">${fmtOffenseAvg(offenseTotal(m))}</td>
+          <td class="num">${fmtH2h(m.h2h_avg_total, m.h2h_games)}</td>
           <td class="num">${fmtSignal(m)}</td>
           <td class="num">${fmtNum(m.signal_diff)}</td>
           <td class="num">${actionButtons(m)}</td>
@@ -845,7 +852,7 @@
         if (sortField === field) sortAsc = !sortAsc;
         else {
           sortField = field;
-          sortAsc = !['signal_diff', 'expected_total', 'opening_total', 'prematch_total', 'home_sf', 'away_sf'].includes(field);
+          sortAsc = !['signal_diff', 'expected_total', 'opening_total', 'prematch_total', 'h2h_avg_total', 'home_sf', 'away_sf'].includes(field);
         }
         render();
       });

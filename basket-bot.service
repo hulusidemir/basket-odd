@@ -1,0 +1,15 @@
+[Unit]
+Description=Basket Odds Monitoring Bot
+After=network.target
+
+[Service]
+Type=simple
+User=pc
+WorkingDirectory=/home/pc/Projects/basket-odd
+EnvironmentFile=/home/pc/Projects/basket-odd/.env
+ExecStart=/home/pc/Projects/basket-odd/venv/bin/python main.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

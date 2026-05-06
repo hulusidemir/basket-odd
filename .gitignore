@@ -11,3 +11,4 @@ __pycache__/
 live_matches_snapshot.json
 discovery_output.json
 CLAUDE.md
+*.service

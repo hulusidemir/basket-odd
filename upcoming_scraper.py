@@ -53,14 +53,18 @@ class UpcomingScraper:
 
     async def fetch(self) -> list[dict]:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(
-                headless=True,
-                args=[
+            proxy_server = os.getenv("PLAYWRIGHT_PROXY")
+            launch_kwargs: dict = {
+                "headless": True,
+                "args": [
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",
                     "--disable-dev-shm-usage",
                 ],
-            )
+            }
+            if proxy_server:
+                launch_kwargs["proxy"] = {"server": proxy_server}
+            browser = await p.chromium.launch(**launch_kwargs)
             context = await self._new_context(browser)
             try:
                 links = await self._collect_upcoming_links(context)
@@ -472,6 +476,8 @@ class UpcomingScraper:
             home_last6 = metrics.get("home_last6") or {}
             away_last6 = metrics.get("away_last6") or {}
             expected_total = metrics.get("expected_total")
+            h2h_avg_total = metrics.get("h2h_avg_total")
+            h2h_games = metrics.get("h2h_games")
 
             return {
                 "match_id": match_id,
@@ -486,6 +492,8 @@ class UpcomingScraper:
                 "home_last6": home_last6,
                 "away_last6": away_last6,
                 "expected_total": expected_total,
+                "h2h_avg_total": h2h_avg_total,
+                "h2h_games": h2h_games,
             }
         except Exception as exc:
             logger.debug("Detail extract failed (%s): %s", link, exc)
@@ -650,6 +658,13 @@ class UpcomingScraper:
 
                 let tournament = '';
                 let country = '';
+                const promoRe = /schedule|standings|teams|stats|live\s*score|popular|trending|featured/i;
+                // Strategy 0: a.not-allow — AiScore renders the league name above
+                // the team names as an anchor with class="not-allow" and href="javascript:;".
+                // This is the most direct source and takes priority over breadcrumb heuristics.
+                const notAllowEl = Array.from(document.querySelectorAll('a.not-allow'))
+                    .find(e => { const t = text(e.innerText); return t && t.length >= 3 && t.length <= 80 && !promoRe.test(t); });
+                if (notAllowEl) tournament = text(notAllowEl.innerText);
                 // Scope strictly to the match header. Wider scopes (e.g.
                 // [class*="league"]) catch sidebar/footer "Popular Leagues"
                 // widgets and produce cross-contaminated names.
@@ -657,7 +672,6 @@ class UpcomingScraper:
                     '[class*="matchTop"], [class*="matchInfo"], [class*="matchHeader"]'
                 ));
                 const scopedAnchors = breadcrumbRoots.flatMap(root => Array.from(root.querySelectorAll('a')));
-                const promoRe = /schedule|standings|teams|stats|live\s*score|popular|trending|featured/i;
                 const breadcrumbs = scopedAnchors
                     .map(e => ({ text: text(e.innerText), href: e.getAttribute('href') || '' }))
                     .filter(e => e.text && !promoRe.test(e.text))

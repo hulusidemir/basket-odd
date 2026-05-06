@@ -5,6 +5,7 @@ Used by both the background worker and manual UI-triggered checks.
 
 import asyncio
 import logging
+import os
 import re
 import time
 
@@ -64,14 +65,19 @@ class AiscoreFinishedMatchChecker:
 
     async def _launch_headless_context(self, playwright):
         try:
-            browser = await playwright.chromium.launch(
-                headless=True,
-                args=[
+            proxy_server = os.getenv("PLAYWRIGHT_PROXY")
+            launch_kwargs: dict = {
+                "headless": True,
+                "args": [
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",
                     "--disable-dev-shm-usage",
                 ],
-            )
+            }
+            if proxy_server:
+                launch_kwargs["proxy"] = {"server": proxy_server}
+                logger.info("Using proxy: %s", proxy_server)
+            browser = await playwright.chromium.launch(**launch_kwargs)
             context = await browser.new_context(
                 user_agent=(
                     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
