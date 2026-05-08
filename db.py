@@ -139,6 +139,17 @@ class Database:
                     deleted_at  TIMESTAMP,
                     updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS saved_match_lists (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name         TEXT NOT NULL,
+                    match_count  INTEGER NOT NULL DEFAULT 0,
+                    matches_json TEXT NOT NULL DEFAULT '[]',
+                    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_saved_match_lists_created_at
+                ON saved_match_lists(created_at DESC, id DESC);
             """)
             # Backward-compatible migrations for older DB files. New installs
             # get the clean schema above; old installs keep their extra quality_*
@@ -1191,6 +1202,60 @@ class Database:
             cursor = conn.execute(
                 "DELETE FROM saved_bet_slips WHERE id = ?",
                 (slip_id,),
+            )
+        return cursor.rowcount > 0
+
+    # ---------- saved match lists ----------
+
+    def save_match_list(self, name: str, matches: list) -> int:
+        clean_name = str(name or "").strip()[:200] or "Liste"
+        with self._conn() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO saved_match_lists (name, match_count, matches_json)
+                VALUES (?, ?, ?)
+                """,
+                (clean_name, len(matches), json.dumps(matches, ensure_ascii=False)),
+            )
+        return cursor.lastrowid
+
+    def list_saved_match_lists(self, limit: int = 100) -> list:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, name, match_count, created_at
+                FROM saved_match_lists
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (max(1, limit),),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_saved_match_list(self, list_id: int) -> dict | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT id, name, match_count, matches_json, created_at
+                FROM saved_match_lists
+                WHERE id = ?
+                """,
+                (list_id,),
+            ).fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        try:
+            item["matches"] = json.loads(item.pop("matches_json") or "[]")
+        except Exception:
+            item["matches"] = []
+        return item
+
+    def delete_saved_match_list(self, list_id: int) -> bool:
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "DELETE FROM saved_match_lists WHERE id = ?",
+                (list_id,),
             )
         return cursor.rowcount > 0
 

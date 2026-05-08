@@ -914,6 +914,9 @@ def build_deleted_matches_report(signals: list) -> dict:
             "mixed_examples": [],
             "diff_buckets": [],
             "period_buckets": [],
+            "half_buckets": [],
+            "best_dir_period": [],
+            "worst_dir_period": [],
             "fade_analysis": None,
             "tournament_top": [],
             "tournament_bottom": [],
@@ -978,7 +981,47 @@ def build_deleted_matches_report(signals: list) -> dict:
             continue
         stats = _bucket_stats(rows)
         stats["label"] = label
+        alt_rows_p = [r for r in rows if _fold(r.get("direction")) == "alt"]
+        ust_rows_p = [r for r in rows if _fold(r.get("direction")) == "üst"]
+        if alt_rows_p:
+            stats["alt"] = _bucket_stats(alt_rows_p)
+        if ust_rows_p:
+            stats["ust"] = _bucket_stats(ust_rows_p)
         period_buckets.append(stats)
+
+    # 1. Yarı vs 2. Yarı karşılaştırması
+    h1_rows = [r for lbl in ["1. Çeyrek", "2. Çeyrek", "Devre Arası"] for r in period_groups.get(lbl, [])]
+    h2_rows = [r for lbl in ["3. Çeyrek", "4. Çeyrek"] for r in period_groups.get(lbl, [])]
+    half_buckets: list[dict] = []
+    for half_label, h_rows in [("1. Yarı (Q1–Q2)", h1_rows), ("2. Yarı (Q3–Q4)", h2_rows)]:
+        if not h_rows:
+            continue
+        st = _bucket_stats(h_rows)
+        st["label"] = half_label
+        h_alt = [r for r in h_rows if _fold(r.get("direction")) == "alt"]
+        h_ust = [r for r in h_rows if _fold(r.get("direction")) == "üst"]
+        if h_alt:
+            st["alt"] = _bucket_stats(h_alt)
+        if h_ust:
+            st["ust"] = _bucket_stats(h_ust)
+        half_buckets.append(st)
+
+    # Yön × Periyot kombinasyon matrisi
+    dir_period_combos: list[dict] = []
+    for direction, dir_label in [("alt", "ALT"), ("üst", "ÜST")]:
+        for period_label in _PERIOD_BUCKET_ORDER:
+            if period_label == "Bilinmiyor":
+                continue
+            combo_rows = [r for r in period_groups.get(period_label, []) if _fold(r.get("direction")) == direction]
+            if not combo_rows:
+                continue
+            st = _bucket_stats(combo_rows)
+            if st["resolved"] < 3:
+                continue
+            dir_period_combos.append({"label": f"{dir_label} · {period_label}", "direction": dir_label, "period": period_label, **st})
+    dir_period_combos.sort(key=lambda x: -x["rate"])
+    best_dir_period = dir_period_combos[:3]
+    worst_dir_period = sorted(dir_period_combos, key=lambda x: x["rate"])[:3]
 
     fade_analysis = {
         "overall": {
@@ -1112,6 +1155,31 @@ def build_deleted_matches_report(signals: list) -> dict:
             f"bu periyotta sinyalleri filtrele."
         )
 
+    if best_dir_period:
+        b = best_dir_period[0]
+        if b["rate"] >= 65 and b["resolved"] >= 4:
+            actions.append(
+                f"En güçlü kombinasyon {b['label']}: %{b['rate']:.1f} başarı "
+                f"({b['success']}/{b['resolved']}) — bu segmenti önceliklendir."
+            )
+    if worst_dir_period:
+        w = worst_dir_period[0]
+        if w["rate"] < 35 and w["resolved"] >= 4:
+            actions.append(
+                f"En zayıf kombinasyon {w['label']}: %{w['rate']:.1f} başarı "
+                f"({w['success']}/{w['resolved']}) — bu kombinezondan kaçın."
+            )
+
+    if len(half_buckets) == 2:
+        h1, h2 = half_buckets[0], half_buckets[1]
+        if h1["resolved"] >= 4 and h2["resolved"] >= 4:
+            delta_h = abs(h1["rate"] - h2["rate"])
+            if delta_h >= 10:
+                better = "1. Yarı" if h1["rate"] > h2["rate"] else "2. Yarı"
+                actions.append(
+                    f"{better} sinyalleri {delta_h:.1f} puan önde — yarı bazında sinyal seçimini değerlendir."
+                )
+
     if tournament_bottom:
         worst_t = tournament_bottom[0]
         if worst_t["rate"] < 30 and worst_t["resolved"] >= 4:
@@ -1239,6 +1307,9 @@ def build_deleted_matches_report(signals: list) -> dict:
         "mixed_examples": mixed_examples,
         "diff_buckets": diff_buckets,
         "period_buckets": period_buckets,
+        "half_buckets": half_buckets,
+        "best_dir_period": best_dir_period,
+        "worst_dir_period": worst_dir_period,
         "fade_analysis": fade_analysis,
         "tournament_top": tournament_top,
         "tournament_bottom": tournament_bottom,

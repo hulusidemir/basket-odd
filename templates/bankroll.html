@@ -62,13 +62,20 @@
       flex-wrap: wrap;
     }
 
-    .topbar-left,
-    .topbar-right {
+    .brand {
       display: flex;
       align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
+      gap: 12px;
     }
+    .brand-title {
+      font-size: 19px;
+      font-weight: 900;
+      letter-spacing: -0.3px;
+      background: linear-gradient(90deg, #a78bfa, #e879f9);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .brand-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
 
     .status-pill {
       width: 38px;
@@ -93,7 +100,6 @@
     }
 
     .top-action,
-    .nav-link,
     .btn,
     .preset-btn,
     .proj-btn,
@@ -105,8 +111,7 @@
       transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
     }
 
-    .top-action,
-    .nav-link {
+    .top-action {
       padding: 11px 15px;
       border-radius: 14px;
       font-size: 13px;
@@ -116,7 +121,6 @@
     }
 
     .top-action:hover,
-    .nav-link:hover,
     .btn:hover,
     .preset-btn:hover,
     .proj-btn:hover,
@@ -124,10 +128,35 @@
       border-color: rgba(124, 92, 246, 0.45);
     }
 
-    .top-action.active {
-      background: linear-gradient(135deg, #6d42e8, #7c5cf6);
-      border-color: transparent;
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-wrap: wrap;
+      background: rgba(8,7,14,0.75);
+      border: 1px solid rgba(120,100,220,0.15);
+      border-radius: 13px;
+      padding: 4px;
+    }
+    .nav-link {
+      padding: 7px 14px;
+      border-radius: 9px;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      color: rgba(180,170,240,0.55);
+      transition: color 0.15s, background 0.15s;
+      white-space: nowrap;
+      letter-spacing: 0.01em;
+    }
+    .topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .nav-link:hover { color: rgba(220,215,255,0.9); background: rgba(124,92,246,0.12); }
+    .nav-link.active {
       color: #fff;
+      background: linear-gradient(135deg, #5c30d0, #7c5cf6);
+      box-shadow: 0 2px 8px rgba(92,48,208,0.45), inset 0 1px 0 rgba(255,255,255,0.1);
+      cursor: default;
+      font-weight: 700;
     }
 
     .top-action.primary {
@@ -520,10 +549,7 @@
         align-items: stretch;
       }
 
-      .topbar-left,
-      .topbar-right {
-        justify-content: space-between;
-      }
+      .brand { justify-content: space-between; }
 
       .setup-panel { flex-direction: column; align-items: stretch; }
       .setup-group input, .setup-group select { min-width: unset; }
@@ -536,14 +562,20 @@
 <body>
   <div class="app-shell">
     <div class="topbar">
-      <div class="topbar-left">
+      <div class="brand">
         <div class="status-pill"></div>
-        <span style="font-size:19px;font-weight:900;letter-spacing:-0.3px;background:linear-gradient(90deg,#a78bfa,#e879f9);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">🏀 Basket Sinyal</span>
+        <div>
+          <div class="brand-title">Basket Sinyal</div>
+          <div class="brand-sub">Bankroll Yönetimi</div>
+        </div>
       </div>
       <div class="topbar-right">
-        <a href="/" class="top-action">Canlı</a>
-        <a href="/deleted-matches" class="top-action">Silinen</a>
-        <a href="/bankroll" class="top-action active">Bankroll</a>
+        <nav class="nav-links">
+          <a href="/" class="nav-link">Canlı</a>
+          <a href="/deleted-matches" class="nav-link">Silinen</a>
+          <a href="/upcoming/" class="nav-link">Gelecek Maçlar</a>
+          <span class="nav-link active">Bankroll</span>
+        </nav>
       </div>
     </div>
 

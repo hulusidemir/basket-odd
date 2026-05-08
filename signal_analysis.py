@@ -1195,12 +1195,14 @@ def _signal_quality_from_components(
     fair_edge: float | None = None,
     projected_gap: float | None = None,
     team_recent_total: float | None = None,
+    h2h_total: float | None = None,
+    h2h_quality_score: float | None = None,
 ) -> dict:
     direction = _normalize_direction(direction)
     period = _period_number_from_status(status, alert_moment)
 
     fair_direction = None
-    if fair_edge is not None and abs(float(fair_edge)) >= 5:
+    if fair_edge is not None and abs(float(fair_edge)) >= 3:
         fair_direction = "ÜST" if float(fair_edge) > 0 else "ALT"
 
     projection_direction = None
@@ -1222,6 +1224,25 @@ def _signal_quality_from_components(
         else:
             sf_direction = "ZAYIF_ÜST" if sf_gap > 0 else "ZAYIF_ALT"
 
+    h2h_direction = None
+    h2h_gap = None
+    h2h_value = _safe_float(h2h_total)
+    if h2h_value is not None:
+        h2h_gap = float(h2h_value) - float(live)
+        if abs(h2h_gap) >= 4:
+            h2h_direction = "ÜST" if h2h_gap > 0 else "ALT"
+        elif abs(h2h_gap) < 3:
+            h2h_direction = "NÖTR"
+    h2h_quality_value = _safe_float(h2h_quality_score)
+    h2h_quality_ok = h2h_quality_value is None or h2h_quality_value >= 70
+    h2h_moderate_ust_support = (
+        direction == "ÜST"
+        and h2h_quality_ok
+        and h2h_direction == "ÜST"
+        and h2h_gap is not None
+        and 4 <= abs(float(h2h_gap)) < 8
+    )
+
     score = 38
     cap = 95
     reasons: list[str] = []
@@ -1235,10 +1256,18 @@ def _signal_quality_from_components(
         score -= 12
         cap = min(cap, 55)
         reasons.append("Q1 erken; güven düşürüldü.")
+        if direction == "ÜST":
+            score -= 8
+            cap = min(cap, 38)
+            reasons.append("Q1 ÜST tarihsel olarak en zayıf segment (~%37 başarı).")
     elif period == 2:
         score += 3
         cap = min(cap, 78)
         reasons.append("Q2 hâlâ erken; tavan sınırlı.")
+        if direction == "ÜST":
+            score -= 10
+            cap = min(cap, 52)
+            reasons.append("Q2 ÜST geçmiş silinenlerde zayıf kaldı.")
     elif period == 3:
         score += 7
         reasons.append("Q3 bölgesi daha okunabilir.")
@@ -1254,80 +1283,218 @@ def _signal_quality_from_components(
         cap = min(cap, 80)
 
     if fair_direction == direction:
-        score += 18
-        reasons.append("Adil Barem yönle uyumlu.")
+        fair_abs = abs(float(fair_edge or 0))
+        if direction == "ALT":
+            score += 14
+            reasons.append("Adil Barem ALT yönüyle uyumlu.")
+            if 3 <= fair_abs < 5 or 8 <= fair_abs <= 12:
+                score += 5
+                reasons.append("ALT adil fark geçmişte verimli bantta.")
+            elif 5 <= fair_abs < 8:
+                score += 2
+        else:
+            score += 2
+            reasons.append("Adil Barem ÜST yönünü yalnızca sınırlı destekler.")
+            if fair_abs >= 5:
+                score -= 5
+                cap = min(cap, 62)
+                reasons.append("ÜST adil farkı tek başına başarı üretmedi.")
     elif fair_direction is None:
-        score -= 12
-        cap = min(cap, 58)
+        if direction == "ÜST":
+            score -= 8
+            cap = min(cap, 58)
+        else:
+            score -= 2
+            cap = min(cap, 76)
         reasons.append("Adil Barem net uzak değil.")
     else:
-        score -= 28
-        cap = min(cap, 42)
+        score -= 18 if direction == "ALT" else 24
+        cap = min(cap, 48 if direction == "ALT" else 40)
         reasons.append("Adil Barem yönle ters.")
 
     if fair_edge is not None:
         fair_abs = abs(float(fair_edge))
-        if 6 <= fair_abs <= 10:
-            score += 8
-            reasons.append("Adil fark ideal bölgede (6-10).")
-        elif 5 <= fair_abs < 6:
-            score += 2
-            cap = min(cap, 78)
-        elif fair_abs > 12:
-            score -= 10
-            cap = min(cap, 72)
+        if fair_abs > 12:
+            score -= 18
+            cap = min(cap, 58 if direction == "ALT" else 50)
             reasons.append("Adil fark aşırı büyük; riskli.")
 
     if projection_direction == direction:
-        score += 22
-        reasons.append("Projeksiyon yönü destekliyor.")
-        if projected_gap is not None and abs(float(projected_gap)) >= 8:
-            score += 4
+        projected_abs = abs(float(projected_gap or 0))
+        if direction == "ALT":
+            score += 10
+            reasons.append("Projeksiyon ALT yönünü destekliyor.")
+            if 3 <= projected_abs < 8:
+                score += 4
+        else:
+            score += 2
+            reasons.append("Projeksiyon ÜST için sınırlı destek sayıldı.")
+            if projected_abs >= 8:
+                score -= 8
+                cap = min(cap, 56)
+                reasons.append("Büyük ÜST projeksiyon farkı geçmişte tuzak oldu.")
     elif projection_direction is None:
-        score -= 4
-        cap = min(cap, 74 if direction == "ALT" else 58)
+        score -= 1 if direction == "ALT" else 5
+        cap = min(cap, 76 if direction == "ALT" else 58)
         reasons.append("Projeksiyon sadece nötr; destek sayılmadı.")
     else:
-        score -= 28
-        cap = min(cap, 48 if direction == "ALT" else 40)
-        reasons.append("Projeksiyon yönle ters.")
+        if direction == "ALT":
+            score -= 4
+            cap = min(cap, 72)
+            reasons.append("Projeksiyon ALT ile ters; geçmişte tek başına eleme sebebi değil.")
+        else:
+            if h2h_moderate_ust_support and abs(float(projected_gap or 0)) <= 5:
+                score -= 4
+                cap = min(cap, 62)
+                reasons.append("Projeksiyon ÜST ile hafif ters; orta H2H desteği korundu.")
+            else:
+                score -= 18
+                cap = min(cap, 46)
+                reasons.append("Projeksiyon ÜST ile ters.")
+
+    # Fair line ve projection paylaşılan pace verisinden besleniyor; ikisi de
+    # aynı yönü desteklerken küçük bir çift-sayım düzeltmesi (büyük edge'lerde geçerli değil).
+    if (fair_direction == direction
+        and projection_direction == direction
+        and fair_edge is not None
+        and abs(float(fair_edge)) < 8):
+        score -= 4
+        reasons.append("Fair+Projection korelasyon düzeltmesi (-4).")
 
     if sf_direction == direction:
-        score += 10 if direction == "ALT" else 8
-        reasons.append("SF açılışa göre yönü destekliyor.")
+        sf_abs = abs(float(sf_gap or 0))
+        if direction == "ALT":
+            score += 8
+            reasons.append("SF açılışa göre ALT yönünü destekliyor.")
+            if sf_abs < 10:
+                score += 3
+        else:
+            if sf_abs < 5:
+                score += 4
+                reasons.append("SF ÜST desteği yalnızca küçük farkta dikkate alındı.")
+            else:
+                score -= 10
+                cap = min(cap, 52)
+                reasons.append("SF büyük ÜST farkı geçmişte düşük başarı verdi.")
     elif sf_direction in {f"ZAYIF_{direction}", "NÖTR"}:
-        score -= 3
-        cap = min(cap, 78 if direction == "ALT" else 64)
+        score -= 1 if direction == "ALT" else 3
+        cap = min(cap, 78 if direction == "ALT" else 62)
         reasons.append("SF farkı anlamlı destek vermiyor.")
     elif sf_direction is not None:
-        score -= 10
-        cap = min(cap, 70 if direction == "ALT" else 58)
-        reasons.append("SF açılışa göre yönle ters.")
+        if direction == "ALT":
+            score -= 1
+            cap = min(cap, 76)
+            reasons.append("SF ALT ile ters; geçmişte zayıf negatif sinyal.")
+        else:
+            score -= 4
+            cap = min(cap, 60)
+            reasons.append("SF ÜST ile ters.")
     else:
         cap = min(cap, 78)
+
+    if h2h_direction is not None and h2h_quality_ok:
+        h2h_abs = abs(float(h2h_gap or 0))
+        if h2h_direction == direction:
+            if direction == "ALT":
+                score += 4
+                reasons.append("H2H canlı bareme göre ALT tarafını destekliyor.")
+            else:
+                if 4 <= h2h_abs < 8:
+                    score += 14
+                    reasons.append("H2H ÜST desteği orta bantta güçlü.")
+                elif h2h_abs >= 8:
+                    score -= 6
+                    cap = min(cap, 56)
+                    reasons.append("H2H ÜST farkı fazla büyük; geçmişte verim düşürdü.")
+        elif h2h_direction == "NÖTR":
+            score += 1 if direction == "ALT" else 0
+        else:
+            if direction == "ÜST":
+                score -= 6
+                cap = min(cap, 54)
+                reasons.append("H2H canlı bareme göre ÜST yönüne karşı.")
+            else:
+                score -= 1
 
     if direction == "ÜST":
         if period in (1, 2) and projection_direction != direction:
             score -= 12
             cap = min(cap, 55)
             reasons.append("Erken ÜST, projeksiyon desteği yok.")
-        if not (fair_direction == direction and projection_direction == direction and sf_direction == direction and period in (3, 4)):
-            cap = min(cap, 72)
-            reasons.append("ÜST için üçlü teyit yok; tavan sınırlı.")
+        cap = min(cap, 64)
+        if opening and 165 <= float(opening) < 180 and period in (3, 4):
+            cap = min(72, cap + 6)
+        reasons.append("ÜST genel başarı düşük; puan tavanı sıkı.")
 
     abs_diff = abs(float(diff or 0))
-    if abs_diff <= 12:
-        score += 3
-    elif abs_diff <= 18:
-        score += 1
-    elif abs_diff <= 24:
-        score -= 6
-        cap = min(cap, 76)
-        reasons.append("Canlı-açılış hareketi büyümüş.")
+    opening_val = float(opening or 0)
+    diff_pct = (abs_diff / opening_val * 100.0) if opening_val > 0 else None
+
+    if diff_pct is not None:
+        # Veri: sweet-spot %5-9 (ALT ~%60), %12+ başarısı düşer.
+        if 5.0 <= diff_pct <= 9.0:
+            score += 4
+            reasons.append("Hareket sweet-spot bandında (%5-9).")
+        elif diff_pct < 5.0:
+            score += 1
+        elif diff_pct <= 12.0:
+            score -= 5
+            cap = min(cap, 76)
+            reasons.append("Hareket %9-12 — sweet-spot dışı, güven düştü.")
+        elif diff_pct <= 16.0:
+            score -= 10
+            cap = min(cap, 66)
+            reasons.append("Hareket %12+ — başarı oranı tarihsel olarak düşer.")
+        else:
+            score -= 16
+            cap = min(cap, 56)
+            reasons.append("Hareket aşırı büyük (%16+); piyasa direnci yüksek.")
     else:
-        score -= 12
-        cap = min(cap, 62)
-        reasons.append("Canlı-açılış hareketi aşırı büyük.")
+        if abs_diff <= 12:
+            score += 3
+        elif abs_diff <= 18:
+            score += 1
+        elif abs_diff <= 24:
+            score -= 6
+            cap = min(cap, 76)
+            reasons.append("Canlı-açılış hareketi büyümüş.")
+        else:
+            score -= 12
+            cap = min(cap, 62)
+            reasons.append("Canlı-açılış hareketi aşırı büyük.")
+
+    # Veri: 18+ mutlak fark ALT için zayıflar (18-22: ~%37, 22+: ~%44).
+    if abs_diff >= 18 and direction == "ALT":
+        score -= 4
+        cap = min(cap, 70)
+        reasons.append("ALT için 18+ mutlak fark zayıf segment.")
+
+    # Veri: <145 toplam ÜST zayıf, ALT çok güçlü. Düşük totalli ligler asimetrik.
+    if opening_val and opening_val < 145:
+        if direction == "ÜST":
+            score -= 18
+            cap = min(cap, 44)
+            reasons.append("Çok düşük toplam (<145); ÜST geçmişte çok zayıf.")
+        else:
+            score += 12
+            reasons.append("Çok düşük toplam (<145); ALT geçmişte çok güçlü.")
+    elif opening_val and opening_val < 155:
+        if direction == "ÜST":
+            score -= 20
+            cap = min(cap, 40)
+            reasons.append("145-155 toplam bandında ÜST geçmişte en zayıf segment.")
+        else:
+            score -= 3
+            cap = min(cap, 66)
+            reasons.append("145-155 toplam bandında ALT avantajı zayıfladı.")
+    elif opening_val and opening_val < 165:
+        if direction == "ÜST":
+            score -= 8
+            cap = min(cap, 56)
+            reasons.append("155-165 toplam bandında ÜST temkinli puanlandı.")
+    elif opening_val and 165 <= opening_val < 180 and direction == "ÜST":
+        score += 4
+        reasons.append("165-180 toplam bandında ÜST daha rekabetçi.")
 
     score_text = ""
     if alert_moment and "|" in alert_moment:
@@ -1336,13 +1503,23 @@ def _signal_quality_from_components(
     if home_score is not None and away_score is not None:
         gap = abs(home_score - away_score)
         if period == 4:
-            if gap <= 7:
+            if gap <= 4:
+                # Veri: Q4 close (≤4) ÜST ~%67 — OT/foul senaryosu dominant.
+                if direction == "ÜST":
+                    score += 12
+                    reasons.append("Q4 çok yakın (≤4); OT/foul senaryosu ÜST'ü güçlendirir.")
+                else:
+                    score -= 18
+                    cap = min(cap, 56)
+                    reasons.append("Q4 çok yakın; ALT için OT/foul riski ciddi.")
+            elif gap <= 7:
                 if direction == "ALT":
                     score -= 14
                     cap = min(cap, 62)
                     reasons.append("Yakın Q4, faul/tempo riski ALT için tehlikeli.")
                 else:
-                    score += 4
+                    score += 6
+                    reasons.append("Yakın Q4, OT olasılığı ÜST için destek.")
             elif gap >= 16:
                 if direction == "ÜST":
                     score -= 14
@@ -1369,10 +1546,18 @@ def _signal_quality_from_components(
         projection_direction == direction,
         sf_direction == direction,
     ))
-    if aligned_count < 3:
-        cap = min(cap, 74)
-    if aligned_count < 2:
-        cap = min(cap, 58)
+    if direction == "ALT":
+        if aligned_count < 2:
+            cap = min(cap, 70)
+        if aligned_count == 0:
+            cap = min(cap, 62)
+    else:
+        if aligned_count < 2 and not h2h_moderate_ust_support:
+            cap = min(cap, 56)
+        elif aligned_count >= 2:
+            cap = min(cap, 62)
+        elif h2h_moderate_ust_support:
+            cap = min(cap, 62)
 
     score = int(round(_clamp(score, 0, cap)))
     if score >= 75:
@@ -1399,6 +1584,8 @@ def _signal_quality_from_components(
             "projection_direction": projection_direction,
             "sf_direction": sf_direction,
             "sf_gap": round(float(sf_gap), 1) if sf_gap is not None else None,
+            "h2h_direction": h2h_direction,
+            "h2h_gap": round(float(h2h_gap), 1) if h2h_gap is not None else None,
             "projected_gap": round(float(projected_gap), 1) if projected_gap is not None else None,
             "score_cap": int(cap),
         },
@@ -1433,13 +1620,23 @@ def _classify_signal(decision: dict) -> dict:
     projection_aligned = projection_direction == final_direction
     flipped = final_direction != legacy_direction
 
-    # Telegram'a sadece adil barem net şekilde sapmışsa ve yönle uyumluysa çık.
+    # Yön-bazlı eşik: ÜST sistematik zayıf (~%45 vs ALT ~%56), daha sıkı kapı.
+    fair_edge_threshold = 6.0 if final_direction == "ÜST" else 4.5
+    opening_val = _safe_float(decision.get("opening")) or 0.0
+
     telegram_eligible = (
-        fair_edge_abs >= 5.0
+        fair_edge_abs >= fair_edge_threshold
         and fair_aligned
         and (projection_aligned or projection_direction is None)
         and margin >= 3.0
     )
+
+    # Düşük totalli ÜST için ek kapı (veri: <150 toplam ÜST ~%18-30 başarı).
+    low_total_ust_block = False
+    if telegram_eligible and final_direction == "ÜST" and 0 < opening_val < 155:
+        if not projection_aligned or fair_edge_abs < 7.0:
+            telegram_eligible = False
+            low_total_ust_block = True
 
     if telegram_eligible:
         reason = (
@@ -1451,10 +1648,15 @@ def _classify_signal(decision: dict) -> dict:
     else:
         if fair_edge is None:
             reason = "Adil barem hesaplanamadı; gönderim için yeterli güven yok."
-        elif fair_edge_abs < 5.0:
+        elif low_total_ust_block:
             reason = (
-                f"Adil barem canlıya çok yakın ({fair_edge_abs:.1f} puan); "
-                "net değer alanı zayıf."
+                f"Düşük totalli lig (<155) ÜST için ek kapı: projeksiyon teyidi "
+                f"ve adil fark ≥7 gerekli."
+            )
+        elif fair_edge_abs < fair_edge_threshold:
+            reason = (
+                f"Adil barem canlıya çok yakın ({fair_edge_abs:.1f} puan, "
+                f"{final_direction} eşik {fair_edge_threshold:.1f}); net değer alanı zayıf."
             )
         elif not fair_aligned:
             reason = (
@@ -1500,6 +1702,7 @@ def _decision_from_components(
     projected_total: float | None = None,
     fair_edge: float | None = None,
     team_recent_total: float | None = None,
+    h2h_total: float | None = None,
     history_total: float | None = None,
     h2h_over_pct: float | None = None,
     h2h_quality_score: float | None = None,
@@ -1686,6 +1889,8 @@ def _decision_from_components(
         fair_edge=fair_edge,
         projected_gap=projected_gap,
         team_recent_total=team_recent_total,
+        h2h_total=h2h_total,
+        h2h_quality_score=h2h_quality_score,
     )
 
     flip_reason = ""
@@ -1706,6 +1911,9 @@ def _decision_from_components(
         "fair_edge_abs": round(fair_abs, 1),
         "projected_gap": projected_gap,
         "projected_gap_abs": round(projected_abs, 1),
+        "opening": float(opening) if opening is not None else None,
+        "live": float(live) if live is not None else None,
+        "abs_diff": round(abs_diff, 1),
         "signal_count": signal_count,
         "backtest": {
             "sample_size": (backtest_profile or {}).get("sample_size", 0),
@@ -1747,6 +1955,7 @@ def enrich_analysis_with_backtest(
         projected_total=analysis.get("projected_total"),
         fair_edge=analysis.get("fair_edge"),
         team_recent_total=analysis.get("team_recent_total"),
+        h2h_total=analysis.get("h2h_total"),
         history_total=analysis.get("history_total"),
         h2h_over_pct=(analysis.get("team_context") or {}).get("h2h_over_pct") if isinstance(analysis.get("team_context"), dict) else None,
         h2h_quality_score=analysis.get("h2h_quality_score"),
@@ -1922,6 +2131,7 @@ def build_signal_analysis(
         projected_total=projected_total,
         fair_edge=fair_edge,
         team_recent_total=team_recent_total,
+        h2h_total=h2h_total,
         history_total=history_total,
         h2h_over_pct=h2h_metrics.get("h2h_over_pct"),
         h2h_quality_score=h2h_quality_score,

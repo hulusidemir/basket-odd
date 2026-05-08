@@ -15,7 +15,7 @@ import logging
 import threading
 from datetime import datetime, timezone
 
-from flask import Blueprint, jsonify, render_template
+from flask import Blueprint, jsonify, render_template, request
 
 from config import Config
 from db import Database
@@ -181,6 +181,51 @@ def upcoming_api_match_action(match_id: str, action: str):
         )
 
     return jsonify({"error": "unknown action"}), 404
+
+
+@upcoming_bp.route("/api/saved-lists", methods=["GET"])
+def upcoming_api_list_saved_lists():
+    config = Config()
+    db = Database(config.DB_PATH)
+    db.init()
+    lists = db.list_saved_match_lists(limit=100)
+    return jsonify({"lists": lists, "count": len(lists)})
+
+
+@upcoming_bp.route("/api/saved-lists", methods=["POST"])
+def upcoming_api_save_list():
+    data = request.get_json(force=True, silent=True) or {}
+    name = str(data.get("name") or "").strip()[:200] or "Liste"
+    matches = data.get("matches")
+    if not isinstance(matches, list):
+        return jsonify({"error": "matches is required"}), 400
+    config = Config()
+    db = Database(config.DB_PATH)
+    db.init()
+    list_id = db.save_match_list(name, matches)
+    return jsonify({"id": list_id, "name": name, "match_count": len(matches)}), 201
+
+
+@upcoming_bp.route("/api/saved-lists/<int:list_id>", methods=["GET"])
+def upcoming_api_get_saved_list(list_id: int):
+    config = Config()
+    db = Database(config.DB_PATH)
+    db.init()
+    item = db.get_saved_match_list(list_id)
+    if not item:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(item)
+
+
+@upcoming_bp.route("/api/saved-lists/<int:list_id>", methods=["DELETE"])
+def upcoming_api_delete_saved_list(list_id: int):
+    config = Config()
+    db = Database(config.DB_PATH)
+    db.init()
+    ok = db.delete_saved_match_list(list_id)
+    if not ok:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"deleted": True, "id": list_id})
 
 
 def _run_fetch_job():

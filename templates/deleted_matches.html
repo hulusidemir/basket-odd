@@ -1243,6 +1243,11 @@
     .report-bar-fill.mid { background: linear-gradient(90deg, #fbbf24, #f59e0b); }
     .report-bar-fill.bad { background: linear-gradient(90deg, #ff6b63, #e14c44); }
     .report-bar-fill.faint { opacity: 0.55; }
+    .report-period-sub { margin-bottom: 6px; }
+    .report-bar-sub { margin-left: 20px; opacity: 0.88; }
+    .report-bar-sub .report-bar-label { font-size: 11px; font-weight: 700; }
+    .report-bar-sub .report-bar-text { font-size: 10px; }
+    .report-bar-sub .report-bar-meta { font-size: 10px; }
     .report-bar-text {
       position: absolute;
       inset: 0;
@@ -1351,9 +1356,10 @@
       h1 { font-size: 20px; }
       .topbar,
       .toolbar { align-items: flex-start; }
-      .actions,
+      .topbar-right, .actions,
       .toolbar > .actions,
       .search-box { width: 100%; }
+      .nav-sep { display: none; }
       .btn,
       .nav-tab { flex: 1 1 auto; text-align: center; }
       .stat-chip { flex: 1 1 120px; }
@@ -1361,6 +1367,48 @@
       .direction-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .signal-metrics-list { grid-template-columns: 1fr; }
     }
+
+    .brand-title {
+      font-size: 19px;
+      font-weight: 900;
+      letter-spacing: -0.3px;
+      background: linear-gradient(90deg, #a78bfa, #e879f9);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .brand-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-wrap: wrap;
+      background: rgba(8,7,14,0.75);
+      border: 1px solid rgba(120,100,220,0.15);
+      border-radius: 13px;
+      padding: 4px;
+    }
+    .nav-link {
+      padding: 7px 14px;
+      border-radius: 9px;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      color: rgba(180,170,240,0.55);
+      transition: color 0.15s, background 0.15s;
+      white-space: nowrap;
+      letter-spacing: 0.01em;
+    }
+    .nav-link:hover { color: rgba(220,215,255,0.9); background: rgba(124,92,246,0.12); }
+    .nav-link.active {
+      color: #fff;
+      background: linear-gradient(135deg, #5c30d0, #7c5cf6);
+      box-shadow: 0 2px 8px rgba(92,48,208,0.45), inset 0 1px 0 rgba(255,255,255,0.1);
+      cursor: default;
+      font-weight: 700;
+    }
+    .topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .nav-sep { color: rgba(120,100,220,0.28); font-size: 18px; line-height: 1; user-select: none; font-weight: 300; }
   </style>
 </head>
 <body>
@@ -1368,18 +1416,27 @@
     <header class="topbar">
       <div class="brand">
         <div class="status-pill"></div>
-        <span style="font-size:19px;font-weight:900;letter-spacing:-0.3px;background:linear-gradient(90deg,#a78bfa,#e879f9);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">🏀 Basket Sinyal</span>
+        <div>
+          <div class="brand-title">Basket Sinyal</div>
+          <div class="brand-sub">Biten Maçlar</div>
+        </div>
       </div>
-      <div class="actions">
-        <a href="/" class="btn">Canlı</a>
-        <span class="btn primary">Silinen</span>
-        <a href="/bankroll" class="btn">Bankroll</a>
-        <button class="btn report-btn" onclick="openReport()">Rapor</button>
-        <button class="btn report-btn" onclick="openInsights()">Çıkarım ve Tavsiye</button>
-        <button class="btn primary" onclick="loadDeletedMatches()">Yenile</button>
-        <button class="btn primary" id="checkResultsBtn" onclick="checkFinishedResults()">Bitmişleri Kontrol Et</button>
-        <a href="/api/deleted-matches/export.csv" class="btn" download>Bitenleri Dışa Aktar</a>
-        <button class="btn danger" onclick="clearDeletedMatches()">Veritabanını Temizle</button>
+      <div class="topbar-right">
+        <nav class="nav-links">
+          <a href="/" class="nav-link">Canlı</a>
+          <span class="nav-link active">Silinen</span>
+          <a href="/upcoming/" class="nav-link">Gelecek Maçlar</a>
+          <a href="/bankroll" class="nav-link">Bankroll</a>
+        </nav>
+        <span class="nav-sep">|</span>
+        <div class="page-actions">
+          <button class="btn report-btn" onclick="openReport()">Rapor</button>
+          <button class="btn report-btn" onclick="openInsights()">Çıkarım ve Tavsiye</button>
+          <button class="btn primary" onclick="loadDeletedMatches()">Yenile</button>
+          <button class="btn primary" id="checkResultsBtn" onclick="checkFinishedResults()">Bitmişleri Kontrol Et</button>
+          <a href="/api/deleted-matches/export.csv" class="btn" download>Bitenleri Dışa Aktar</a>
+          <button class="btn danger" onclick="clearDeletedMatches()">Veritabanını Temizle</button>
+        </div>
       </div>
     </header>
 
@@ -2458,6 +2515,35 @@
       `;
     }
 
+    function subBarRow(label, stats) {
+      const rate = Number(stats.rate || 0);
+      const fill = Math.min(100, Math.max(0, rate));
+      const cls = rateClass(rate);
+      const faint = stats.resolved < 3 ? ' faint' : '';
+      const color = label === 'ALT' ? '#6ee7b7' : '#93c5fd';
+      return `
+        <div class="report-bar-row report-bar-sub">
+          <div class="report-bar-label" style="color:${color}">${label}</div>
+          <div class="report-bar-track">
+            <div class="report-bar-fill ${cls}${faint}" style="width:${fill}%"></div>
+            <div class="report-bar-text">
+              <span class="l">%${rate.toFixed(1)}</span>
+              <span class="r">${stats.success}B / <span style="color:#ff8080">${stats.fail}B</span></span>
+            </div>
+          </div>
+          <div class="report-bar-meta">n=${stats.total} · çözümlenen ${stats.resolved}</div>
+        </div>
+      `;
+    }
+
+    function periodBarGroup(b) {
+      const mainBar = barRow(b.label, b);
+      const altRow = b.alt && b.alt.total > 0 ? subBarRow('ALT', b.alt) : '';
+      const ustRow = b.ust && b.ust.total > 0 ? subBarRow('ÜST', b.ust) : '';
+      const sub = (altRow || ustRow) ? `<div class="report-period-sub">${altRow}${ustRow}</div>` : '';
+      return mainBar + sub;
+    }
+
     function fadeCard(item) {
       const orig = Number(item.original_rate || 0);
       const fade = Number(item.fade_rate || 0);
@@ -2587,10 +2673,32 @@
 
       const periodBars = (data.period_buckets || [])
         .filter(b => b.label !== 'Bilinmiyor' || b.total >= 3)
-        .map(b => barRow(b.label, b)).join('');
+        .map(b => periodBarGroup(b)).join('');
       const periodSection = periodBars ? `
-        <div class="report-section-title">Periyoda Göre Başarı</div>
+        <div class="report-section-title">Periyoda Göre Başarı (ALT / ÜST kırılımı)</div>
         <div class="report-bar-list">${periodBars}</div>
+      ` : '';
+
+      const halfBars = (data.half_buckets || []).map(b => periodBarGroup(b)).join('');
+      const halfSection = halfBars ? `
+        <div class="report-section-title">Yarı Bazında Başarı</div>
+        <div class="report-bar-list">${halfBars}</div>
+      ` : '';
+
+      const bestComboBars = (data.best_dir_period || []).map(b => barRow(b.label, b)).join('');
+      const worstComboBars = (data.worst_dir_period || []).map(b => barRow(b.label, b)).join('');
+      const comboSection = (bestComboBars || worstComboBars) ? `
+        <div class="report-section-title">Yön × Periyot Matrisi (min 3 çözümlenen)</div>
+        <div class="report-two-col">
+          <div>
+            <div class="report-card-title" style="margin-bottom:6px;color:#9df0bd">En güçlü kombinasyonlar</div>
+            <div class="report-bar-list">${bestComboBars || '<div class="report-mixed-detail">Yeterli veri yok</div>'}</div>
+          </div>
+          <div>
+            <div class="report-card-title" style="margin-bottom:6px;color:#ffb2b2">En zayıf kombinasyonlar</div>
+            <div class="report-bar-list">${worstComboBars || '<div class="report-mixed-detail">Yeterli veri yok</div>'}</div>
+          </div>
+        </div>
       ` : '';
 
       const top = (data.tournament_top || []).map(tourRow).join('');
@@ -2617,7 +2725,9 @@
         <div class="report-cards">${cards}</div>
         ${fadeBlock}
         ${diffSection}
+        ${halfSection}
         ${periodSection}
+        ${comboSection}
         ${tourSection}
         ${highlights ? `<div class="report-section-title">Öne Çıkanlar</div>${highlights}` : ''}
         ${mixedSection}
