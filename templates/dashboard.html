@@ -879,41 +879,246 @@
     .row-action.note-action { background: rgba(100,100,140,0.1); border-color: rgba(100,100,160,0.25); color: #b0b0d0; }
     .row-action.note-action.has-note { background: rgba(96,165,250,0.1); border-color: rgba(96,165,250,0.32); color: #93c5fd; }
 
-    /* ── Cards ────────────────────────────────────────────────────────── */
-    .cards-wrap { display: none; gap: 10px; flex-direction: column; }
+    /* ── Mobil Sinyal Kartı (cards-wrap sadece mobilde görünür) ──────── */
+    .cards-wrap { display: none; gap: 12px; flex-direction: column; }
 
     .alert-card {
+      position: relative;
+      overflow: hidden;
       border: 1px solid var(--border);
-      border-radius: 14px;
-      background: rgba(10,10,18,0.95);
-      padding: 13px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(18,16,32,0.92), rgba(10,10,18,0.96));
+      padding: 14px 14px 12px 16px;
+    }
+
+    /* Sol kenarda yön rengini gösteren ince şerit */
+    .alert-card::before {
+      content: "";
+      position: absolute;
+      left: 0; top: 14px; bottom: 14px;
+      width: 3px;
+      border-radius: 0 3px 3px 0;
+      background: rgba(124,92,246,0.5);
+    }
+    .alert-card.dir-alt::before { background: linear-gradient(180deg, #f87171, #dc2626); }
+    .alert-card.dir-ust::before { background: linear-gradient(180deg, #34d399, #059669); }
+
+    .alert-card.is-selected {
+      border-color: rgba(124,92,246,0.5);
+      box-shadow: 0 0 0 1px rgba(124,92,246,0.35), 0 8px 24px rgba(124,92,246,0.18);
     }
 
     .alert-card.bet-placed {
-      opacity: 0.38;
-      filter: grayscale(0.5);
-      background: rgba(16, 64, 48, 0.62);
-      border-color: rgba(52, 211, 153, 0.28);
-      box-shadow: inset 3px 0 0 rgba(52, 211, 153, 0.55);
+      opacity: 0.55;
+      filter: grayscale(0.4);
+      background: linear-gradient(180deg, rgba(16,60,46,0.55), rgba(10,30,22,0.9));
+      border-color: rgba(52,211,153,0.3);
     }
 
-    .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
-    .card-title { font-weight: 850; line-height: 1.35; min-width: 0; }
+    /* Üst satır: maç adı + saat */
+    .card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .card-title {
+      font-weight: 800;
+      font-size: 14.5px;
+      line-height: 1.3;
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .card-title .match-link { font-size: 14.5px; }
+    .card-time {
+      flex: 0 0 auto;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-soft);
+      font-variant-numeric: tabular-nums;
+      padding-top: 2px;
+    }
+    .card-tournament {
+      color: var(--text-soft);
+      font-size: 11.5px;
+      font-weight: 600;
+      margin-bottom: 11px;
+      line-height: 1.35;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
-    .card-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; margin: 10px 0; }
+    /* Yön + maç durumu (çeyrek/skor) */
+    .card-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 11px;
+      padding: 10px 12px;
+      border-radius: 11px;
+      background: rgba(6,6,12,0.7);
+      border: 1px solid rgba(100,80,180,0.14);
+    }
+    .card-strip-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .card-strip-left .badge { font-size: 13px; padding: 6px 12px; font-weight: 850; }
+    .card-strip-right {
+      display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+      font-size: 12px; font-weight: 700; line-height: 1.2;
+    }
+    .card-status { color: #c4b5fd; font-weight: 800; }
+    .card-score { color: var(--text); font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 850; }
+    .card-signal-count {
+      padding: 3px 8px; border-radius: 999px;
+      background: rgba(124,92,246,0.16); border: 1px solid rgba(124,92,246,0.3);
+      color: #c4b5fd; font-size: 10.5px; font-weight: 800;
+    }
 
-    .card-metric {
-      border: 1px solid rgba(100,80,180,0.12);
+    /* Hero rakam bloğu: Açılış → Canlı + Fark */
+    .card-hero {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(124,92,246,0.06);
+      border: 1px solid rgba(124,92,246,0.16);
+      margin-bottom: 10px;
+    }
+    .card-hero-numbers {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+    .card-hero-numbers .num {
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      color: var(--text);
+      line-height: 1;
+    }
+    .card-hero-numbers .num.live { color: #c4b5fd; }
+    .card-hero-numbers .arrow { color: var(--text-soft); font-size: 16px; font-weight: 800; }
+    .card-hero-labels {
+      display: flex;
+      gap: 28px;
+      margin-top: 6px;
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--text-soft);
+    }
+    .card-diff {
+      display: grid;
+      justify-items: center;
+      align-content: center;
+      gap: 2px;
+      padding-left: 12px;
+      min-width: 70px;
+      border-left: 1px solid rgba(100,80,180,0.22);
+    }
+    .card-diff strong {
+      font-size: 20px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .card-diff span {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--text-soft);
+    }
+
+    /* Detay çipleri: Adil · Proj · SF · Puan */
+    .card-chips {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 7px;
+      margin-bottom: 12px;
+    }
+    .card-chip {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      padding: 9px 4px;
+      min-height: 50px;
       border-radius: 10px;
-      background: rgba(18,16,32,0.8);
-      padding: 9px;
+      background: rgba(8,8,16,0.7);
+      border: 1px solid rgba(100,80,180,0.12);
+      text-align: center;
     }
+    .card-chip-label {
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      color: var(--text-soft);
+      text-transform: uppercase;
+    }
+    .card-chip-value {
+      font-size: 13px;
+      font-weight: 850;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+    }
+    /* Çiplerde Adil/Proj/SF badge'leri sade metin gibi görünsün; Puan rozetinin renkleri korunur */
+    .card-chip-value > .badge:not(.quality-badge),
+    .card-chip-value .fair-cell > .badge:not(.quality-badge) {
+      background: transparent;
+      border: none;
+      padding: 0;
+      min-width: 0;
+      height: auto;
+      font-size: 13px;
+      font-weight: 850;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .card-chip-value .fair-cell { gap: 3px; }
+    .card-chip .quality-badge {
+      padding: 0 9px; min-width: 0; height: 22px;
+      border-radius: 999px; font-size: 12px; font-weight: 850;
+    }
+    .card-chip .fair-alert { font-size: 14px; margin-left: 2px; }
 
-    .card-metric span { display: block; color: var(--text-soft); font-size: 10px; font-weight: 800; text-transform: uppercase; margin-bottom: 3px; }
-    .card-metric strong { font-size: 15px; }
-
-    .card-actions { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 7px; }
-    .card-actions .row-action, .card-actions .icon-btn { width: 100%; border-radius: 10px; }
+    /* Aksiyon butonları satırı */
+    .card-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-actions > .icon-btn {
+      flex: 0 0 auto;
+      width: 40px; height: 40px;
+      border-radius: 11px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .card-actions > .row-actions {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 7px;
+    }
+    .card-actions .row-action {
+      width: 100%;
+      height: 40px;
+      border-radius: 11px;
+      font-size: 14px;
+    }
 
     .empty-state {
       display: none;
@@ -1142,9 +1347,35 @@
       .nav-sep { display: none; }
       .btn, .nav-tab { text-align: center; justify-content: center; }
       .help-btn { width: 100%; border-radius: 10px; }
-      .card-grid { grid-template-columns: 1fr; }
-      .card-actions { grid-template-columns: repeat(3, minmax(0,1fr)); }
       .brand-title { white-space: normal; }
+
+      /* Mobil sinyal kartı sıkı ekran ayarları */
+      .alert-card { padding: 13px 13px 11px 14px; }
+      .card-hero { grid-template-columns: 1fr; gap: 8px; padding: 12px; }
+      .card-hero-numbers .num { font-size: 20px; }
+      .card-diff {
+        border-left: none;
+        border-top: 1px solid rgba(100,80,180,0.22);
+        padding-left: 0;
+        padding-top: 8px;
+        flex-direction: row;
+        display: flex;
+        gap: 8px;
+        justify-content: space-between;
+        align-items: center;
+        min-width: 0;
+      }
+      .card-diff strong { font-size: 18px; }
+      .card-chips { grid-template-columns: repeat(2, 1fr); }
+      .card-actions > .row-actions { gap: 6px; }
+      .card-actions .row-action,
+      .card-actions > .icon-btn { height: 38px; }
+    }
+
+    @media (max-width: 380px) {
+      .card-actions > .row-actions { grid-template-columns: repeat(5, 1fr); gap: 5px; }
+      .card-actions > .icon-btn { width: 36px; height: 36px; }
+      .card-actions .row-action { height: 36px; font-size: 13px; }
     }
 
     .nav-links {
@@ -1875,25 +2106,76 @@
       $('cardsWrap').innerHTML = rows.map(a => {
         const matchId = normalizeId(a.match_id);
         const matchIdArg = jsString(matchId);
+        const isSelected = selectedMatchIds.has(matchId);
         const diffCls = Number(a.diff) >= 0 ? 'diff-pos' : 'diff-neg';
+        const dirCls = String(a.direction || '') === 'ALT' ? 'dir-alt' : 'dir-ust';
+        const status = String(a.status || '').trim() || '-';
+        const score = String(a.score || '').trim() || '-';
+        const signalCount = Number(a.signal_count || 1);
+        const cardClasses = [
+          'alert-card',
+          dirCls,
+          a.bet_placed ? 'bet-placed' : '',
+          isSelected ? 'is-selected' : '',
+        ].filter(Boolean).join(' ');
         return `
-          <article class="alert-card ${a.bet_placed ? 'bet-placed' : ''} ${selectedMatchIds.has(matchId) ? 'is-selected' : ''}">
+          <article class="${cardClasses}">
             <div class="card-head">
-              <div class="card-title"><span class="match-cell-wrap">${focusButton(a)}${matchLink(a)}${noteInfoButton(a)}</span><div class="subline" style="max-width:none;">${escapeHtml(a.tournament || '-')}</div></div>
-	              <div>${directionBadge(a)} ${qualityHtml(a)}</div>
+              <div class="card-title">${focusButton(a)}${matchLink(a)}${noteInfoButton(a)}</div>
+              <div class="card-time">${timeText(a.alerted_at)}</div>
             </div>
-            <div class="card-grid">
-              <div class="card-metric"><span>Zaman</span><strong>${timeText(a.alerted_at)}</strong></div>
-	              <div class="card-metric"><span>Durum</span><strong>${escapeHtml(a.status || '-')}</strong></div>
-	              <div class="card-metric"><span>Puan</span>${qualityHtml(a)}</div>
-	              <div class="card-metric"><span>Skor</span><strong>${escapeHtml(a.score || '-')}</strong></div>
-              <div class="card-metric"><span>Açılış / Canlı</span><strong>${fmt(a.opening)} → ${fmt(a.live)}</strong></div>
-              <div class="card-metric"><span>Adil / Proj.</span><strong>${fmt(a.fair_line)} / ${fmt(a.projected)}</strong></div>
-              <div class="card-metric"><span>SF</span>${last6Html(a)}</div>
-              <div class="card-metric"><span>Fark</span><strong class="${diffCls}">${signed(a.diff)}</strong></div>
+            <div class="card-tournament">${escapeHtml(a.tournament || '-')}</div>
+
+            <div class="card-strip">
+              <div class="card-strip-left">
+                ${directionBadge(a)}
+                ${signalCount > 1 ? `<span class="card-signal-count">${signalCount}. sinyal</span>` : ''}
+              </div>
+              <div class="card-strip-right">
+                <span class="card-status">${escapeHtml(status)}</span>
+                <span class="card-score">${escapeHtml(score)}</span>
+              </div>
             </div>
+
+            <div class="card-hero">
+              <div>
+                <div class="card-hero-numbers">
+                  <span class="num">${fmt(a.opening)}</span>
+                  <span class="arrow">→</span>
+                  <span class="num live">${fmt(a.live)}</span>
+                </div>
+                <div class="card-hero-labels">
+                  <span>Açılış</span>
+                  <span>Canlı</span>
+                </div>
+              </div>
+              <div class="card-diff">
+                <strong class="${diffCls}">${signed(a.diff)}</strong>
+                <span>Fark</span>
+              </div>
+            </div>
+
+            <div class="card-chips">
+              <div class="card-chip">
+                <span class="card-chip-label">Adil</span>
+                <span class="card-chip-value">${fairHtml(a)}</span>
+              </div>
+              <div class="card-chip">
+                <span class="card-chip-label">Proj.</span>
+                <span class="card-chip-value">${projectedHtml(a)}</span>
+              </div>
+              <div class="card-chip">
+                <span class="card-chip-label">SF</span>
+                <span class="card-chip-value">${last6Html(a)}</span>
+              </div>
+              <div class="card-chip is-quality">
+                <span class="card-chip-label">Puan</span>
+                <span class="card-chip-value">${qualityHtml(a)}</span>
+              </div>
+            </div>
+
             <div class="card-actions">
-              <button class="icon-btn ${selectedMatchIds.has(matchId) ? 'active' : ''}" onclick='toggleSelected(${matchIdArg}, !selectedMatchIds.has(${matchIdArg})); render()'>Seç</button>
+              <button class="icon-btn ${isSelected ? 'active' : ''}" onclick='toggleSelected(${matchIdArg}, !selectedMatchIds.has(${matchIdArg})); render()' aria-label="Seç">${isSelected ? '✓' : 'Seç'}</button>
               ${actionButtons(a)}
             </div>
           </article>
