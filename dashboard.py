@@ -223,10 +223,6 @@ def enrich_alerts_with_analysis(
         alert["final_direction"] = analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
         alert["signal_scores"] = analysis.get("signal_scores") or {}
         alert["signal_votes"] = analysis.get("signal_votes") if isinstance(analysis.get("signal_votes"), list) else []
-        alert["signal_quality_score"] = analysis.get("signal_quality_score")
-        alert["signal_quality_label"] = analysis.get("signal_quality_label") or ""
-        alert["signal_quality_advice"] = analysis.get("signal_quality_advice") or ""
-        alert["signal_quality_reasons"] = analysis.get("signal_quality_reasons") if isinstance(analysis.get("signal_quality_reasons"), list) else []
         alert["backtest"] = _trim_backtest_payload(analysis.get("backtest"))
         alert["telegram_eligible"] = bool(analysis.get("telegram_eligible"))
         alert["selection_reason"] = analysis.get("selection_reason") or ""
@@ -639,9 +635,6 @@ def _enrich_deleted_alert(alert: dict, backtest_profile: dict | None, *, full: b
     alert["projection_quality"] = analysis.get("projection_quality")
     alert["legacy_direction"] = analysis.get("legacy_direction") or alert.get("direction")
     alert["final_direction"] = analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
-    alert["signal_quality_score"] = analysis.get("signal_quality_score")
-    alert["signal_quality_label"] = analysis.get("signal_quality_label") or ""
-    alert["signal_quality_advice"] = analysis.get("signal_quality_advice") or ""
 
     if full:
         alert["analysis"] = analysis
@@ -652,7 +645,6 @@ def _enrich_deleted_alert(alert: dict, backtest_profile: dict | None, *, full: b
         alert["recommendation"] = analysis.get("recommendation") or ""
         alert["signal_scores"] = analysis.get("signal_scores") or {}
         alert["signal_votes"] = analysis.get("signal_votes") if isinstance(analysis.get("signal_votes"), list) else []
-        alert["signal_quality_reasons"] = analysis.get("signal_quality_reasons") if isinstance(analysis.get("signal_quality_reasons"), list) else []
         alert["backtest"] = _trim_backtest_payload(analysis.get("backtest"))
         alert["telegram_eligible"] = bool(analysis.get("telegram_eligible"))
         alert["selection_reason"] = analysis.get("selection_reason") or ""
@@ -702,7 +694,7 @@ def api_export_finished_deleted_matches_csv():
     output.write("\ufeff")
     writer = csv.writer(output)
     writer.writerow([
-        "Maç", "Sinyal Anı", "Sinyal Türü", "Skor",
+        "Maç", "Lig", "Sinyal Anı", "Sinyal Türü", "Skor",
         "Açılış", "Canlı", "Proj.", "Adil Barem", "Sonuç", "Not", "SF",
     ])
 
@@ -718,6 +710,7 @@ def api_export_finished_deleted_matches_csv():
         team_recent_cell = f"{float(team_recent_total):.1f}" if team_recent_total is not None else ""
         writer.writerow([
             match_name,
+            row.get("tournament") or "",
             row.get("alert_moment") or "",
             direction,
             row.get("score") or "",

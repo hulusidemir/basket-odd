@@ -1598,7 +1598,6 @@
                 <th class="select-cell"><input class="match-select" id="selectAll" type="checkbox" onchange="selectPage(this.checked)" aria-label="Sayfadaki maçları seç"></th>
 	                <th data-sort="alerted_at">Zaman</th>
 	                <th data-sort="direction">Sinyal</th>
-	                <th data-sort="signal_quality_score">Puan</th>
 	                <th data-sort="fair_line">Adil</th>
                 <th data-sort="projected">Proj.</th>
                 <th>SF</th>
@@ -1856,37 +1855,7 @@
 	      const dir = String(alert.direction || '-');
 	      const cls = dir === 'ALT' ? 'badge-alt' : 'badge-ust';
 	      const icon = dir === 'ALT' ? '▼' : '▲';
-	      const analysis = parseAnalysis(alert);
-	      const label = alert.signal_quality_label || analysis.signal_quality_label || '';
-	      let hint = '';
-	      if (dir === 'ÜST' && (label === 'Pas' || label === 'İzle' || label === '')) {
-	        hint = ` <span title="Veri ALT yönünü işaret ediyor; ÜST sinyali şüpheli." style="cursor:help;">❓</span>`;
-	      } else if (dir === 'ALT' && label === 'Güçlü') {
-	        hint = ` <span title="Güçlü ALT — backtest %61+ kazanma." style="cursor:help;">🔥</span>`;
-	      } else if (dir === 'ALT' && label === 'Oynanabilir') {
-	        hint = ` <span title="Oynanabilir ALT — backtest %60+ kazanma." style="cursor:help;">✅</span>`;
-	      } else if (dir === 'ALT' && label === 'Pas') {
-	        hint = ` <span title="Pas ALT — veri zayıf, oynamadan önce iki kez düşün." style="cursor:help;">⚠️</span>`;
-	      }
-	      return `<button class="badge ${cls}" onclick="openSignalModal(${Number(alert.id || 0)})">${icon} ${escapeHtml(dir)}</button>${hint}`;
-	    }
-
-	    function qualityClass(score) {
-	      if (score === null) return 'watch';
-	      if (score >= 75) return 'strong';
-	      if (score >= 60) return 'playable';
-	      if (score >= 45) return 'watch';
-	      return 'pass';
-	    }
-
-	    function qualityHtml(alert) {
-	      const analysis = parseAnalysis(alert);
-	      const score = num(alert.signal_quality_score ?? analysis.signal_quality_score);
-	      const label = alert.signal_quality_label || analysis.signal_quality_label || (score === null ? 'İzle' : (score >= 75 ? 'Güçlü' : score >= 60 ? 'Oynanabilir' : score >= 45 ? 'İzle' : 'Pas'));
-	      const advice = alert.signal_quality_advice || analysis.signal_quality_advice || '';
-	      const text = score === null ? '-' : Math.round(score);
-	      const title = `${label}${advice ? ' · ' + advice : ''}`;
-	      return `<button class="badge small-badge quality-badge ${qualityClass(score)}" type="button" title="${escapeHtml(title)}" onclick="openSignalModal(${Number(alert.id || 0)})">${escapeHtml(text)}</button>`;
+	      return `<button class="badge ${cls}" onclick="openSignalModal(${Number(alert.id || 0)})">${icon} ${escapeHtml(dir)}</button>`;
 	    }
 
     function normalizeDirection(value) {
@@ -2005,7 +1974,7 @@
     }
 
     function sortValue(alert, field) {
-	      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count', 'signal_quality_score'].includes(field)) {
+	      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count'].includes(field)) {
 	        return num(alert[field]) ?? Number.NEGATIVE_INFINITY;
 	      }
       if (field === 'alerted_at') return alert.alerted_at ? new Date(`${String(alert.alerted_at).replace(' ', 'T')}Z`).getTime() : 0;
@@ -2090,7 +2059,6 @@
             <td class="select-cell"><input class="match-select" type="checkbox" ${selectedMatchIds.has(matchId) ? 'checked' : ''} onchange='toggleSelected(${matchIdArg}, this.checked)' aria-label="Maç seç"></td>
 	            <td class="mono">${timeText(a.alerted_at)}</td>
 	            <td>${directionBadge(a)} ${Number(a.signal_count || 1) > 1 ? `<span class="badge small-badge">${Number(a.signal_count)}. sinyal</span>` : ''}</td>
-	            <td>${qualityHtml(a)}</td>
 	            <td>${fairHtml(a)}</td>
             <td>${projectedHtml(a)}</td>
             <td>${last6Html(a)}</td>
@@ -2179,10 +2147,6 @@
               <div class="card-chip">
                 <span class="card-chip-label">SF</span>
                 <span class="card-chip-value">${last6Html(a)}</span>
-              </div>
-              <div class="card-chip is-quality">
-                <span class="card-chip-label">Puan</span>
-                <span class="card-chip-value">${qualityHtml(a)}</span>
               </div>
             </div>
 
@@ -2555,12 +2519,6 @@
 	      const teamRecent = num(alert.team_recent_total ?? analysis.team_recent_total);
 	      const h2h = num(alert.h2h_total ?? analysis.h2h_total);
 	      const selectionReason = alert.selection_reason || analysis.selection_reason || '';
-	      const signalQualityScore = num(alert.signal_quality_score ?? analysis.signal_quality_score);
-	      const signalQualityLabel = alert.signal_quality_label || analysis.signal_quality_label || (signalQualityScore === null ? '-' : (signalQualityScore >= 75 ? 'Güçlü' : signalQualityScore >= 60 ? 'Oynanabilir' : signalQualityScore >= 45 ? 'İzle' : 'Pas'));
-	      const signalQualityAdvice = alert.signal_quality_advice || analysis.signal_quality_advice || '';
-	      const signalQualityReasons = Array.isArray(alert.signal_quality_reasons)
-	        ? alert.signal_quality_reasons
-	        : (Array.isArray(analysis.signal_quality_reasons) ? analysis.signal_quality_reasons : []);
 
       let edgeText = 'Adil barem hesaplanamadı. Bu sinyali sadece hat hareketi olarak izle.';
       let edgeClass = 'neutral';
@@ -2652,8 +2610,7 @@
 
       const fairEdgeStr = fairEdge === null ? '–' : (fairEdge >= 0 ? '+' : '') + fairEdge.toFixed(1);
       const fairEdgeCls = fairEdge === null ? '' : (fairEdge < 0 ? 'alt-tag' : (fairEdge > 0 ? 'ust-tag' : ''));
-      const qualityCls = `q-${qualityClass(signalQualityScore)}`;
-      const headlineText = signalQualityAdvice || verdictHeading;
+      const headlineText = verdictHeading;
 
       const fairCompTitle = `<div style="margin:10px 0 6px;font-size:10.5px;color:var(--text-soft);font-weight:800;letter-spacing:0.06em;text-transform:uppercase;">Hesapta kullanılan parçalar</div>`;
 
@@ -2670,7 +2627,6 @@
             <div class="sig-headline">
               <div class="verdict-line">${escapeHtml(headlineText)}</div>
               <div class="meta-row">
-                <span class="sig-score-chip ${qualityCls}">${signalQualityScore !== null ? Math.round(signalQualityScore) + '/100' : '–'} · ${escapeHtml(signalQualityLabel)}</span>
                 <span class="meta-chip">⏱ ${escapeHtml(alert.status || '-')}</span>
                 <span class="meta-chip">🏀 ${escapeHtml(alert.score || '-')}</span>
                 ${alert.signal_count > 1 ? `<span class="meta-chip muted">${alert.signal_count}. tekrar</span>` : ''}
@@ -2719,11 +2675,10 @@
           </div>
 
           <!-- WHY -->
-          ${(selectionReason || signalQualityReasons.length) ? `
+          ${selectionReason ? `
             <div class="sig-section-title">Neden Bu Sinyal?</div>
             <div class="sig-card">
-              ${selectionReason ? `<div class="sig-help" style="margin:0 0 ${signalQualityReasons.length ? '10px' : '0'};">${escapeHtml(selectionReason)}</div>` : ''}
-              ${signalQualityReasons.length ? `<ul class="sig-reasons">${signalQualityReasons.slice(0, 4).map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>` : ''}
+              <div class="sig-help">${escapeHtml(selectionReason)}</div>
             </div>
           ` : ''}
 

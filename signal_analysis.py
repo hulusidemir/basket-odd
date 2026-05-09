@@ -1182,233 +1182,6 @@ def _period_number_from_status(status: str = "", alert_moment: str = "") -> int 
     return None
 
 
-def _signal_quality_from_components(
-    *,
-    direction: str,
-    live: float,
-    opening: float,
-    diff: float,
-    status: str = "",
-    alert_moment: str = "",
-    tournament: str = "",
-    signal_count: int = 1,
-    fair_edge: float | None = None,
-    projected_gap: float | None = None,
-    team_recent_total: float | None = None,
-    h2h_total: float | None = None,
-    h2h_quality_score: float | None = None,
-    pace_anomaly_direction: str | None = None,
-) -> dict:
-    direction = _normalize_direction(direction)
-    period = _period_number_from_status(status, alert_moment)
-
-    fair_direction = None
-    if fair_edge is not None and abs(float(fair_edge)) >= 3:
-        fair_direction = "ÜST" if float(fair_edge) > 0 else "ALT"
-
-    projection_direction = None
-    if projected_gap is not None and abs(float(projected_gap)) >= 4:
-        projection_direction = "ÜST" if float(projected_gap) > 0 else "ALT"
-
-    sf_direction = None
-    sf_gap = None
-    if team_recent_total is not None:
-        sf_gap = float(team_recent_total) - float(opening)
-        # SF sadece açılıştan anlamlı uzaksa destek sayılır.
-        # 1-2 puanlık fark basketbolda gürültüdür, güven puanı şişirmemeli.
-        if sf_gap >= 5:
-            sf_direction = "ÜST"
-        elif sf_gap <= -5:
-            sf_direction = "ALT"
-        elif abs(sf_gap) < 3:
-            sf_direction = "NÖTR"
-        else:
-            sf_direction = "ZAYIF_ÜST" if sf_gap > 0 else "ZAYIF_ALT"
-
-    h2h_direction = None
-    h2h_gap = None
-    h2h_value = _safe_float(h2h_total)
-    if h2h_value is not None:
-        h2h_gap = float(h2h_value) - float(live)
-        if abs(h2h_gap) >= 4:
-            h2h_direction = "ÜST" if h2h_gap > 0 else "ALT"
-        elif abs(h2h_gap) < 3:
-            h2h_direction = "NÖTR"
-    h2h_quality_value = _safe_float(h2h_quality_score)
-    h2h_quality_ok = h2h_quality_value is None or h2h_quality_value >= 70
-    h2h_moderate_ust_support = (
-        direction == "ÜST"
-        and h2h_quality_ok
-        and h2h_direction == "ÜST"
-        and h2h_gap is not None
-        and 4 <= abs(float(h2h_gap)) < 8
-    )
-
-    # ─── Yeni 4-girdili sade puanlama ──────────────────────────────────────
-    # 907 sonuçlu geçmiş sinyalden (2026-05) çıkan dört en güçlü ayrımı
-    # taşıyor: yön (ALT %57.8 vs ÜST %43.9), periyot (Q1-3 %53+ vs Q4 %47),
-    # canlı-açılış mutlak farkı (sweet-spot 10-17), ve adil baremin yönle
-    # uyumu. Eski çok-faktörlü puan ÜST için ters-korelasyonlu (yüksek puan
-    # = daha kötü sonuç) çıktığı için sıfırdan yazıldı.
-    score = 0
-    cap = 100
-    reasons: list[str] = []
-    abs_diff = abs(float(diff or 0))
-    opening_val = float(opening or 0)
-
-    # 1) YÖN — en güçlü tek değişken (fark: %13.9 puan)
-    if direction == "ALT":
-        score += 30
-        reasons.append("ALT yönü tarihsel olarak %57.8 kazandırıyor (+30).")
-    else:
-        reasons.append("ÜST yönü tarihsel olarak %43.9; baseline puan yok.")
-
-    # 2) PERİYOT — Q4 hem ALT hem ÜST için en zayıf
-    if direction == "ALT":
-        if period in (1, 2, 3):
-            score += 25
-            reasons.append(f"Q{period} ALT için verimli (+25).")
-        elif period == 4:
-            score += 5
-            reasons.append("Q4 ALT için zayıf segment (+5).")
-    else:
-        if period == 4:
-            cap = min(cap, 45)
-            reasons.append("Q4 ÜST tarihsel olarak %40 — tavan kapatıldı.")
-        elif period in (1, 2):
-            cap = min(cap, 55)
-            reasons.append("Erken ÜST projeksiyon olmadan riskli (cap 55).")
-        else:
-            score += 8
-            reasons.append("Q3 ÜST için en sağlam çeyrek (+8).")
-
-    # 3) FARK SWEET-SPOT — diff 10-17 ALT %60-72; uçlar zayıf
-    if 10 <= abs_diff <= 17:
-        bonus = 25 if direction == "ALT" else 10
-        score += bonus
-        reasons.append(f"Hareket sweet-spot bandında ({abs_diff:.0f}) (+{bonus}).")
-    elif 7 <= abs_diff < 10:
-        score += 10
-        reasons.append(f"Düşük hareket ({abs_diff:.0f}); sınırlı destek (+10).")
-    elif 17 < abs_diff <= 21:
-        score += 5
-        reasons.append(f"Geç tepki bandı ({abs_diff:.0f}) (+5).")
-    else:
-        cap = min(cap, 60)
-        reasons.append(f"Aşırı/yetersiz hareket ({abs_diff:.0f}); tavan kapatıldı.")
-
-    # 4) ADİL FARK — yönle uyumlu mu, ne kadar net?
-    if fair_edge is not None:
-        fe = float(fair_edge)
-        if direction == "ALT":
-            if fe <= -6:
-                score += 25
-                reasons.append(f"Adil fark {fe:+.1f} ALT için güçlü destek (+25).")
-            elif fe <= -3:
-                score += 12
-                reasons.append(f"Adil fark {fe:+.1f} ALT için hafif destek (+12).")
-            elif fe >= 3:
-                cap = min(cap, 50)
-                reasons.append(f"Adil fark yönle ters ({fe:+.1f}); tavan 50.")
-        else:
-            if fe >= 8:
-                score += 25
-                reasons.append(f"Adil fark {fe:+.1f} ÜST için güçlü destek (+25).")
-            elif fe >= 4:
-                score += 12
-                reasons.append(f"Adil fark {fe:+.1f} ÜST için hafif destek (+12).")
-            elif fe <= -3:
-                cap = min(cap, 40)
-                reasons.append(f"Adil fark yönle ters ({fe:+.1f}); ÜST için tavan 40.")
-    else:
-        cap = min(cap, 70)
-        reasons.append("Adil barem hesaplanamadı; tavan 70.")
-
-    # ÜST için ek veri kapısı: düşük totalli liglerde ÜST tarihsel olarak %28
-    if direction == "ÜST" and 0 < opening_val < 155:
-        cap = min(cap, 35)
-        reasons.append("Düşük totalli lig (<155); ÜST geçmişte %28 (tavan 35).")
-
-    # ─── ALT için ek veri-temelli düzeltmeler (2026-05 backtest) ─────────
-    if direction == "ALT":
-        # 5) TOTAL FİLTRESİ — yüksek tempolu maçlarda ALT zayıflıyor
-        # Veri: <145 %69.1, 160-175 %61.5, 175-190 %47.2, >=190 %38.9
-        if opening_val >= 190:
-            score -= 30
-            cap = min(cap, 40)
-            reasons.append("Yüksek tempolu maç (≥190); ALT geçmişte %38.9 (tavan 40).")
-        elif opening_val >= 175:
-            score -= 15
-            cap = min(cap, 60)
-            reasons.append("Yüksek total (175-190); ALT geçmişte %47 (tavan 60).")
-        elif 0 < opening_val < 145:
-            score += 10
-            reasons.append("Düşük totalli lig (<145); ALT geçmişte %69 (+10).")
-
-        # 6) SKOR FARKI — yakın maç ALT için altın segment
-        # Veri: gap≤6 %65.1, gap 7-12 %52.3, gap≥13 %57.8
-        score_text = ""
-        if alert_moment and "|" in alert_moment:
-            score_text = alert_moment.split("|")[-1].strip()
-        home_score, away_score = parse_score(score_text)
-        if home_score is not None and away_score is not None:
-            gap = abs(home_score - away_score)
-            if gap <= 6:
-                score += 15
-                reasons.append(f"Yakın maç (skor farkı {gap}); ALT geçmişte %65 (+15).")
-            elif 7 <= gap <= 12:
-                cap = min(cap, 70)
-                reasons.append(f"Belirsiz skor farkı ({gap}); tavan 70.")
-
-        # 7) PACE ANOMALİSİ — yavaşlayan maç ALT'a destek
-        # Veri: anomaly=ALT %63.4, anomaly=ÜST %55.3, none %56.4
-        if pace_anomaly_direction == "ALT":
-            score += 10
-            reasons.append("Tempo yavaşlıyor (pace anomaly ALT); ALT desteği (+10).")
-        elif pace_anomaly_direction == "ÜST":
-            score -= 5
-            reasons.append("Tempo hızlanıyor (pace anomaly ÜST); ALT için ters (-5).")
-
-        # 8) TEKRAR SİNYAL CEZASI — 3+ tekrarda değer düşüyor
-        # Veri: count=1 %60.3, count>=2 %57.3, count>=3 %51.4
-        if int(signal_count or 1) >= 3:
-            score -= 10
-            cap = min(cap, 65)
-            reasons.append(f"{signal_count}. tekrar sinyal; ALT geçmişte %51 (-10).")
-
-    score = int(round(_clamp(score, 0, cap)))
-    if score >= 75:
-        label = "Güçlü"
-        advice = "Veri güçlü; seçici oynanabilir."
-    elif score >= 60:
-        label = "Oynanabilir"
-        advice = "Temkinli oynanabilir."
-    elif score >= 45:
-        label = "İzle"
-        advice = "Acele etme; daha net sinyali bekle."
-    else:
-        label = "Pas"
-        advice = "Bu sinyali oynama."
-
-    return {
-        "signal_quality_score": score,
-        "signal_quality_label": label,
-        "signal_quality_advice": advice,
-        "signal_quality_reasons": reasons[:5],
-        "quality_inputs": {
-            "period": period,
-            "fair_direction": fair_direction,
-            "projection_direction": projection_direction,
-            "sf_direction": sf_direction,
-            "sf_gap": round(float(sf_gap), 1) if sf_gap is not None else None,
-            "h2h_direction": h2h_direction,
-            "h2h_gap": round(float(h2h_gap), 1) if h2h_gap is not None else None,
-            "projected_gap": round(float(projected_gap), 1) if projected_gap is not None else None,
-            "score_cap": int(cap),
-        },
-    }
-
-
 def _classify_signal(decision: dict) -> dict:
     """
     Telegram gönderim filtresi + insan-okunur açıklama döndürür.
@@ -1694,22 +1467,6 @@ def _decision_from_components(
     fair_abs = abs(float(fair_edge)) if fair_edge is not None else 0.0
     projected_abs = abs(float(projected_gap)) if projected_gap is not None else 0.0
     flipped = final_direction != legacy_direction
-    quality = _signal_quality_from_components(
-        direction=final_direction,
-        live=live,
-        opening=opening,
-        diff=diff,
-        status=status,
-        alert_moment=alert_moment,
-        tournament=tournament,
-        signal_count=signal_count,
-        fair_edge=fair_edge,
-        projected_gap=projected_gap,
-        team_recent_total=team_recent_total,
-        h2h_total=h2h_total,
-        h2h_quality_score=h2h_quality_score,
-        pace_anomaly_direction=pace_anomaly_direction,
-    )
 
     flip_reason = ""
     if flipped:
@@ -1724,7 +1481,6 @@ def _decision_from_components(
         "signal_scores": {key: round(value, 1) for key, value in totals.items()},
         "signal_votes": sorted(votes, key=lambda item: item["score"], reverse=True),
         "projection_quality": projection_quality,
-        **quality,
         "fair_edge": fair_edge,
         "fair_edge_abs": round(fair_abs, 1),
         "projected_gap": projected_gap,
@@ -2031,11 +1787,6 @@ def build_signal_analysis(
         "pace_anomaly_note": pace_anomaly_note,
         "signal_scores": decision.get("signal_scores"),
         "signal_votes": decision.get("signal_votes"),
-        "signal_quality_score": decision.get("signal_quality_score"),
-        "signal_quality_label": decision.get("signal_quality_label"),
-        "signal_quality_advice": decision.get("signal_quality_advice"),
-        "signal_quality_reasons": decision.get("signal_quality_reasons") or [],
-        "quality_inputs": decision.get("quality_inputs") or {},
         "backtest": decision.get("backtest"),
         "flip_reason": decision.get("flip_reason"),
         "telegram_eligible": selection.get("telegram_eligible"),

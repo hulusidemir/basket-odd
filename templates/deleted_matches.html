@@ -1512,7 +1512,6 @@
               <th data-sort="match_name">Maç</th>
 	              <th data-sort="alert_moment">Sinyal Anı</th>
 	              <th data-sort="direction">Sinyal</th>
-	              <th data-sort="signal_quality_score">Puan</th>
 	              <th>SF</th>
               <th data-sort="status">Durum</th>
               <th data-sort="score">Skor</th>
@@ -1732,39 +1731,7 @@
 	    function signalBadge(alert) {
 	      const direction = alert.direction || '-';
 	      const cls = direction === 'ALT' ? 'badge-alt' : 'badge-ust';
-	      const analysis = alertAnalysis(alert);
-	      const label = alert.signal_quality_label || analysis.signal_quality_label || '';
-	      let hint = '';
-	      if (direction === 'ÜST' && (label === 'Pas' || label === 'İzle' || label === '')) {
-	        hint = ` <span title="Veri ALT yönünü işaret ediyor; ÜST sinyali şüpheli." style="cursor:help;">❓</span>`;
-	      } else if (direction === 'ALT' && label === 'Güçlü') {
-	        hint = ` <span title="Güçlü ALT — backtest %61+ kazanma." style="cursor:help;">🔥</span>`;
-	      } else if (direction === 'ALT' && label === 'Oynanabilir') {
-	        hint = ` <span title="Oynanabilir ALT — backtest %60+ kazanma." style="cursor:help;">✅</span>`;
-	      } else if (direction === 'ALT' && label === 'Pas') {
-	        hint = ` <span title="Pas ALT — veri zayıf, oynamadan önce iki kez düşün." style="cursor:help;">⚠️</span>`;
-	      }
-	      return `<button class="badge ${cls} signal-open-btn" type="button" title="Sinyal bilgilerini aç" onclick="openSignalInfo(${Number(alert.id || 0)})">${escapeHtml(direction)}</button>${hint}`;
-	    }
-
-	    function qualityClass(score) {
-	      if (score === null) return 'watch';
-	      if (score >= 75) return 'strong';
-	      if (score >= 60) return 'playable';
-	      if (score >= 45) return 'watch';
-	      return 'pass';
-	    }
-
-	    function qualityCell(alert) {
-	      const analysis = alertAnalysis(alert);
-	      const score = Number(alert.signal_quality_score ?? analysis.signal_quality_score);
-	      const value = Number.isFinite(score) ? Math.round(score) : null;
-	      const label = alert.signal_quality_label || analysis.signal_quality_label || (
-	        value === null ? 'İzle' : value >= 75 ? 'Güçlü' : value >= 60 ? 'Oynanabilir' : value >= 45 ? 'İzle' : 'Pas'
-	      );
-	      const advice = alert.signal_quality_advice || analysis.signal_quality_advice || '';
-	      const title = `${label}${advice ? ' · ' + advice : ''}`;
-	      return `<button class="badge quality-badge ${qualityClass(value)}" type="button" title="${escapeHtml(title)}" onclick="openSignalInfo(${Number(alert.id || 0)})">${value === null ? '-' : value}</button>`;
+	      return `<button class="badge ${cls} signal-open-btn" type="button" title="Sinyal bilgilerini aç" onclick="openSignalInfo(${Number(alert.id || 0)})">${escapeHtml(direction)}</button>`;
 	    }
 
     function normalizeDirection(value) {
@@ -1925,14 +1892,6 @@
       const legacyDir = analysis.legacy_direction || alert.legacy_direction || alert.direction || '-';
 	      const finalDir = analysis.final_direction || alert.final_direction || analysis.direction || alert.direction || '-';
 	      const signalScores = analysis.signal_scores || alert.signal_scores || {};
-	      const signalQualityScore = Number(alert.signal_quality_score ?? analysis.signal_quality_score);
-	      const signalQualityLabel = alert.signal_quality_label || analysis.signal_quality_label || (
-	        Number.isFinite(signalQualityScore) ? (signalQualityScore >= 75 ? 'Güçlü' : signalQualityScore >= 60 ? 'Oynanabilir' : signalQualityScore >= 45 ? 'İzle' : 'Pas') : '-'
-	      );
-	      const signalQualityAdvice = alert.signal_quality_advice || analysis.signal_quality_advice || '';
-	      const signalQualityReasons = Array.isArray(alert.signal_quality_reasons)
-	        ? alert.signal_quality_reasons
-	        : (Array.isArray(analysis.signal_quality_reasons) ? analysis.signal_quality_reasons : []);
 	      const voteRows = Array.isArray(analysis.signal_votes || alert.signal_votes) ? (analysis.signal_votes || alert.signal_votes).slice(0, 6) : [];
       const last6 = last6Profiles(alert);
       const warnings = Array.isArray(alert.warnings) && alert.warnings.length
@@ -1965,13 +1924,10 @@
             <div class="signal-info-section-title">Özet</div>
             <ul class="signal-metrics-list">
 	              ${modalListItem('Canlı veri', Number.isFinite(projectionQuality) ? `${projectionQuality.toFixed(0)}/100` : '-')}
-	              ${modalListItem('Sinyal puanı', Number.isFinite(signalQualityScore) ? `${Math.round(signalQualityScore)}/100 · ${signalQualityLabel}` : '-')}
-	              ${modalListItem('Puan kararı', signalQualityAdvice || '-')}
 	              ${modalListItem('Eski / Yeni Yön', `${legacyDir} → ${finalDir}`)}
 	              ${modalListItem('ALT / ÜST Puan', `${formatNumber(signalScores.ALT)} / ${formatNumber(signalScores['ÜST'])}`)}
 	              ${modalListItem('Karar', selectionReason || '-')}
 	            </ul>
-	            ${signalQualityReasons.length ? `<div class="signal-weights-line"><strong>Puan sebebi</strong>${escapeHtml(signalQualityReasons.slice(0, 3).join(' '))}</div>` : ''}
 	          </div>
           <div class="signal-info-section">
             <div class="signal-info-section-title">Hat ve Değer</div>
@@ -2107,7 +2063,7 @@
 
     function sortValue(alert, field) {
       if (field === 'deleted_at' || field === 'alerted_at') return parseDateValue(alert[field]);
-	      if (['opening', 'live', 'projected', 'diff', 'signal_count', 'fair_line', 'fair_edge', 'signal_quality_score'].includes(field)) {
+	      if (['opening', 'live', 'projected', 'diff', 'signal_count', 'fair_line', 'fair_edge'].includes(field)) {
         const num = Number(alert[field]);
         return Number.isFinite(num) ? num : -Infinity;
       }
@@ -2317,7 +2273,6 @@
 	              ${signalBadge(alert)}
 	              ${Number(alert.signal_count || 0) > 1 ? `<div class="subline">${Number(alert.signal_count)}. sinyal</div>` : ''}
 	            </td>
-	            <td>${qualityCell(alert)}</td>
 	            <td>${last6Cell(alert)}</td>
             <td>${escapeHtml(alert.status || '-')}</td>
             <td class="mono">${escapeHtml(alert.score || '-')}${(() => { const total = calculateScoreTotal(alert.score); return total !== null ? ` <span style="font-style: normal; font-size: 0.85em; color: var(--text-dim);">(${total})</span>` : ''; })()}</td>
