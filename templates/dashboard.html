@@ -1856,7 +1856,19 @@
 	      const dir = String(alert.direction || '-');
 	      const cls = dir === 'ALT' ? 'badge-alt' : 'badge-ust';
 	      const icon = dir === 'ALT' ? '▼' : '▲';
-	      return `<button class="badge ${cls}" onclick="openSignalModal(${Number(alert.id || 0)})">${icon} ${escapeHtml(dir)}</button>`;
+	      const analysis = parseAnalysis(alert);
+	      const label = alert.signal_quality_label || analysis.signal_quality_label || '';
+	      let hint = '';
+	      if (dir === 'ÜST' && (label === 'Pas' || label === 'İzle' || label === '')) {
+	        hint = ` <span title="Veri ALT yönünü işaret ediyor; ÜST sinyali şüpheli." style="cursor:help;">❓</span>`;
+	      } else if (dir === 'ALT' && label === 'Güçlü') {
+	        hint = ` <span title="Güçlü ALT — backtest %61+ kazanma." style="cursor:help;">🔥</span>`;
+	      } else if (dir === 'ALT' && label === 'Oynanabilir') {
+	        hint = ` <span title="Oynanabilir ALT — backtest %60+ kazanma." style="cursor:help;">✅</span>`;
+	      } else if (dir === 'ALT' && label === 'Pas') {
+	        hint = ` <span title="Pas ALT — veri zayıf, oynamadan önce iki kez düşün." style="cursor:help;">⚠️</span>`;
+	      }
+	      return `<button class="badge ${cls}" onclick="openSignalModal(${Number(alert.id || 0)})">${icon} ${escapeHtml(dir)}</button>${hint}`;
 	    }
 
 	    function qualityClass(score) {

@@ -1732,7 +1732,19 @@
 	    function signalBadge(alert) {
 	      const direction = alert.direction || '-';
 	      const cls = direction === 'ALT' ? 'badge-alt' : 'badge-ust';
-	      return `<button class="badge ${cls} signal-open-btn" type="button" title="Sinyal bilgilerini aç" onclick="openSignalInfo(${Number(alert.id || 0)})">${escapeHtml(direction)}</button>`;
+	      const analysis = alertAnalysis(alert);
+	      const label = alert.signal_quality_label || analysis.signal_quality_label || '';
+	      let hint = '';
+	      if (direction === 'ÜST' && (label === 'Pas' || label === 'İzle' || label === '')) {
+	        hint = ` <span title="Veri ALT yönünü işaret ediyor; ÜST sinyali şüpheli." style="cursor:help;">❓</span>`;
+	      } else if (direction === 'ALT' && label === 'Güçlü') {
+	        hint = ` <span title="Güçlü ALT — backtest %61+ kazanma." style="cursor:help;">🔥</span>`;
+	      } else if (direction === 'ALT' && label === 'Oynanabilir') {
+	        hint = ` <span title="Oynanabilir ALT — backtest %60+ kazanma." style="cursor:help;">✅</span>`;
+	      } else if (direction === 'ALT' && label === 'Pas') {
+	        hint = ` <span title="Pas ALT — veri zayıf, oynamadan önce iki kez düşün." style="cursor:help;">⚠️</span>`;
+	      }
+	      return `<button class="badge ${cls} signal-open-btn" type="button" title="Sinyal bilgilerini aç" onclick="openSignalInfo(${Number(alert.id || 0)})">${escapeHtml(direction)}</button>${hint}`;
 	    }
 
 	    function qualityClass(score) {

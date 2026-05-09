@@ -11,6 +11,173 @@ from telegram.error import TelegramError
 logger = logging.getLogger(__name__)
 
 
+_LABEL_ICON = {
+    "Güçlü": "🔥",
+    "Oynanabilir": "✅",
+    "İzle": "👀",
+    "Pas": "⚠️",
+}
+
+
+def _parse_score_gap(score: str) -> int | None:
+    if not score or "-" not in score:
+        return None
+    try:
+        a, b = score.split("-", 1)
+        return abs(int(a.strip()) - int(b.strip()))
+    except (ValueError, AttributeError):
+        return None
+
+
+def _build_warnings(
+    *,
+    direction: str,
+    diff: float,
+    opening: float,
+    period: int | None,
+    score: str,
+    signal_count: int,
+    analysis: dict,
+) -> list[str]:
+    """Bağlamsal uyarılar — sadece o sinyale özel olanlar, en fazla 4 madde."""
+    warnings: list[str] = []
+    abs_diff = abs(float(diff or 0))
+    opening_val = float(opening or 0)
+    gap = _parse_score_gap(score)
+    fair_edge = analysis.get("fair_edge")
+    pace_dir = analysis.get("pace_anomaly_direction")
+    flip_reason = analysis.get("flip_reason") or ""
+
+    if direction == "ÜST":
+        warnings.append("📉 ÜST sinyali geçmişte %44 kazandı; ters (ALT) %56 kazandı")
+        if 0 < opening_val < 155:
+            warnings.append("Düşük totalli lig (<155) — ÜST için en zayıf segment")
+        if period == 4:
+            warnings.append("Q4 ÜST tarihsel olarak %40 — risk yüksek")
+        return warnings[:4]
+
+    # ALT için
+    if gap is not None:
+        if gap <= 6:
+            warnings.append("Yakın maç → taktik faul / OT riski olabilir")
+        elif gap >= 18:
+            warnings.append("Kopuk maç → garbage time, ALT için avantaj")
+
+    if period == 4 and gap is not None and gap <= 4:
+        warnings.append("Q4 + çok yakın skor → OT/foul kaosu, ALT riskli")
+
+    if opening_val >= 190:
+        warnings.append("Yüksek tempolu maç (≥190) → ALT geçmişte %39")
+    elif opening_val >= 175:
+        warnings.append("Yüksek total (175-190) → ALT zorlaşır")
+    elif 0 < opening_val < 145:
+        warnings.append("Düşük totalli lig (<145) → ALT için avantaj")
+
+    if pace_dir == "ÜST":
+        warnings.append("⚡ Tempo hızlanıyor → ALT için risk")
+    elif pace_dir == "ALT":
+        warnings.append("✓ Tempo yavaşlıyor → ALT için destek")
+
+    if abs_diff >= 20:
+        warnings.append(f"Geç tepki (fark {abs_diff:.0f}); değer azalmış olabilir")
+    elif 13 <= abs_diff <= 17:
+        warnings.append(f"Sweet-spot fark ({abs_diff:.0f}) → ALT için verimli bant")
+
+    if int(signal_count or 1) >= 3:
+        warnings.append(f"{signal_count}. tekrar sinyal → değer azalıyor")
+
+    if fair_edge is not None:
+        fe = float(fair_edge)
+        if fe <= -8:
+            warnings.append(f"Adil barem net düşük ({fe:+.1f}) → ALT'ı güçlü destekliyor")
+        elif fe >= 3:
+            warnings.append(f"⚠️ Adil barem yönle ters ({fe:+.1f}) → güven düşük")
+
+    if flip_reason:
+        warnings.append(f"Yön çevrildi → {flip_reason}")
+
+    return warnings[:4]
+
+
+def _build_alert_text(
+    *,
+    match_name: str,
+    tournament: str,
+    opening: float,
+    live: float,
+    direction: str,
+    diff: float,
+    status: str,
+    score: str,
+    signal_count: int,
+    prematch: float | None,
+    analysis: dict,
+    period: int | None,
+) -> str:
+    label = analysis.get("signal_quality_label") or "İzle"
+    score_val = analysis.get("signal_quality_score")
+    icon = _LABEL_ICON.get(label, "")
+    fair_line = analysis.get("fair_line")
+    fair_edge = analysis.get("fair_edge")
+    projected = analysis.get("projected_total")
+    team_recent = analysis.get("team_recent_total")
+    h2h_total = analysis.get("h2h_total")
+
+    status_text = (status or "").strip()
+    if status_text and period and not status_text.upper().startswith(f"Q{period}"):
+        when = f"Q{period} {status_text}"
+    elif status_text:
+        when = status_text
+    elif period:
+        when = f"Q{period}"
+    else:
+        when = "-"
+
+    score_text = score or "-"
+    repeat = f" · {signal_count}. sinyal" if signal_count > 1 else ""
+    score_line = f"<b>Skor:</b> {score_text}"
+    if score_val is not None:
+        score_line += f" · Puan {int(score_val)}/100"
+
+    fair_text = "-"
+    if fair_line is not None:
+        fair_text = f"{float(fair_line):.1f}"
+        if fair_edge is not None:
+            fair_text += f" (canlıya göre {float(fair_edge):+.1f})"
+
+    proj_text = f"{float(projected):.1f}" if projected is not None else "-"
+    sf_text = f"{float(team_recent):.1f}" if team_recent is not None else "-"
+    h2h_text = f"{float(h2h_total):.1f}" if h2h_total is not None else "-"
+
+    warnings = _build_warnings(
+        direction=direction,
+        diff=diff,
+        opening=opening,
+        period=period,
+        score=score,
+        signal_count=signal_count,
+        analysis=analysis,
+    )
+    warnings_block = ""
+    if warnings:
+        items = "\n".join(f"• {w}" for w in warnings)
+        warnings_block = f"\n\n<b>UYARILAR:</b>\n{items}"
+
+    header = f"{icon} <b>{direction} Sinyali</b> ({label}){repeat}"
+    body = (
+        f"🏀 <b>{match_name}</b>\n"
+        f"🏆 {tournament}\n\n"
+        f"{score_line}\n"
+        f"<b>Sinyal Zamanı:</b> {when}\n"
+        f"<b>Barem:</b> {opening:.1f} → {live:.1f} ({diff:+.1f})\n"
+        f"<b>H2H:</b> {h2h_text}\n"
+        f"<b>SF:</b> {sf_text}\n"
+        f"<b>ADİL BAREM:</b> {fair_text}\n"
+        f"<b>PROJEKSİYON:</b> {proj_text}"
+    )
+    return f"{header}\n{body}{warnings_block}"
+
+
 class TelegramNotifier:
     def __init__(self, token: str, chat_id: str):
         self._bot = Bot(token=token)
@@ -45,205 +212,21 @@ class TelegramNotifier:
         analysis: dict | None = None,
         period: int | None = None,
     ) -> dict:
-        emoji = "🔻" if direction == "ALT" else "🔺"
-        tip = (
-            "Canlı barem açılışa göre yükseldi; eski tetik ALT tarafıydı."
-            if live >= opening
-            else "Canlı barem açılışa göre düştü; eski tetik ÜST tarafıydı."
-        )
-
-        _period_names = {1: "1. Çeyrek (Q1)", 2: "2. Çeyrek (Q2)", 3: "3. Çeyrek (Q3)", 4: "4. Çeyrek (Q4)"}
-        period_line = f"⏱ Periyot: <b>{_period_names.get(period, f'Q{period}')}</b>\n" if period else ""
-        score_line = f"📊 Skor: <b>{score}</b>\n" if score else ""
-        signal_line = f"🔁 <b>{signal_count}. sinyal</b>\n" if signal_count > 1 else ""
-        prematch_line = f"Maç Öncesi: <b>{prematch:.1f}</b>\n" if prematch is not None else ""
         analysis = analysis or {}
-        legacy_direction = analysis.get("legacy_direction") or direction
-        projection_quality = analysis.get("projection_quality")
-        signal_quality_score = analysis.get("signal_quality_score")
-        signal_quality_label = analysis.get("signal_quality_label") or ""
-        signal_quality_advice = analysis.get("signal_quality_advice") or ""
-        signal_scores = analysis.get("signal_scores") or {}
-        flip_reason = analysis.get("flip_reason") or ""
-        fair_line = analysis.get("fair_line")
-        fair_edge = analysis.get("fair_edge")
-        projected = analysis.get("projected_total")
-        market_total = analysis.get("market_total")
-        team_recent_total = analysis.get("team_recent_total")
-        home_last6 = analysis.get("home_last6") or {}
-        away_last6 = analysis.get("away_last6") or {}
-        h2h_total = analysis.get("h2h_total")
-        weights = analysis.get("weights") or {}
-        recommendation = analysis.get("recommendation") or ""
-        warnings = analysis.get("warnings") or []
-        pace_anomaly_note = analysis.get("pace_anomaly_note") or ""
-        quarter_paces = analysis.get("quarter_paces") or {}
-
-        projected_line = f"Projeksiyon: <b>{float(projected):.1f}</b>\n" if projected is not None else ""
-        market_line = f"Piyasa Bazı: <b>{float(market_total):.1f}</b>\n" if market_total is not None else ""
-        team_line = f"Son Form: <b>{float(team_recent_total):.1f}</b>\n" if team_recent_total is not None else ""
-        h2h_line = f"H2H: <b>{float(h2h_total):.1f}</b>\n" if h2h_total is not None else ""
-        fair_line_text = f"{float(fair_line):.1f}" if fair_line is not None else "Hesaplanamadı"
-        fair_edge_line = f"Canlıya Göre: <b>{float(fair_edge):+.1f}</b>\n" if fair_edge is not None else ""
-        weight_labels = {
-            "opening": "açılış",
-            "prematch": "maç öncesi",
-            "live_projection": "canlı projeksiyon",
-            # Eski şema uyumluluğu (geçmişten kalmış kayıtlar):
-            "projection": "projeksiyon",
-            "market": "piyasa",
-            "team_recent": "son form",
-            "h2h": "H2H",
-        }
-        weight_parts = [
-            f"%{int(value)} {weight_labels[key]}"
-            for key, value in weights.items()
-            if key in weight_labels and int(value or 0) > 0
-        ]
-        weights_line = f"Ağırlık: <b>{' / '.join(weight_parts)}</b>\n" if weight_parts else ""
-        fair_warning_line = ""
-        fair_alert_line = ""
-        if fair_edge is not None:
-            fair_edge_value = float(fair_edge)
-            fair_edge_abs = abs(fair_edge_value)
-            fair_icon = "🔴 ❔" if fair_edge_abs > 10 else "🟡 ❔"
-            fair_warning_line = f"{fair_icon} Adil barem canlı farkı: <b>{fair_edge_value:+.1f}</b>\n"
-            if 5 <= fair_edge_abs <= 20:
-                fair_alert_line = (
-                    f"⚠️ <b>UYARI!!!</b> Canlı ile Adil barem arasında "
-                    f"<b>{fair_edge_abs:.1f}</b> puan fark var.\n"
-                )
-        recommendation_line = f"💡 <b>Tavsiye:</b> {recommendation}\n" if recommendation else ""
-        decision_line = ""
-        side_scores = ""
-        if signal_scores:
-            side_scores = (
-                f" · ALT {float(signal_scores.get('ALT', 0)):.1f} / "
-                f"ÜST {float(signal_scores.get('ÜST', 0)):.1f}"
-            )
-        if projection_quality is not None or signal_scores:
-            quality_line = (
-                f"Canlı veri: <b>{float(projection_quality):.0f}/100</b>"
-                if projection_quality is not None else ""
-            )
-            separator = " · " if quality_line and side_scores else ""
-            decision_line = (
-                f"• {quality_line}{separator}{side_scores.lstrip(' · ')}\n"
-            )
-        signal_quality_line = ""
-        if signal_quality_score is not None:
-            signal_quality_line = (
-                f"• Sinyal Puanı: <b>{float(signal_quality_score):.0f}/100</b>"
-                f"{f' ({signal_quality_label})' if signal_quality_label else ''}"
-                f"{f' — {signal_quality_advice}' if signal_quality_advice else ''}\n"
-            )
-        flip_line = f"• Eski sinyal: <b>{legacy_direction}</b> → Yeni karar: <b>{direction}</b>\n" if legacy_direction != direction else ""
-
-        # Çeyrek hız anomali bloğu
-        pace_anomaly_line = ""
-        if pace_anomaly_note:
-            pace_anomaly_line = f"⚡ <b>Hız Anomalisi:</b> {pace_anomaly_note}\n"
-        quarter_pace_line = ""
-        if quarter_paces:
-            qp_parts = [f"Q{q}:{v:.0f}" for q, v in sorted(quarter_paces.items())]
-            quarter_pace_line = f"📈 Çeyrek hız (puan/10dk): <b>{' | '.join(qp_parts)}</b>\n"
-
-        def recent_form_line(profile: dict, fallback: str) -> str:
-            if not isinstance(profile, dict) or not profile.get("label"):
-                return ""
-            games = profile.get("games")
-            source = f"Son {int(games)}" if games else "Son form"
-            team = profile.get("team") or fallback
-            return f"• {source} {team}: <b>{profile.get('label')}</b>\n"
-
-        warning_line = "\n".join(f"❔ {item}" for item in warnings[:6])
-        if warning_line:
-            warning_line += "\n"
-
-        # ---- Bölümler ----------------------------------------------------------
-        header = (
-            f"{emoji} <b>Sinyal: {direction}</b>\n"
-            f"{signal_line}"
-            f"🏀 <b>{match_name}</b>\n"
-            f"🏆 {tournament} | {status}\n"
-            f"{period_line}"
-            f"{score_line}"
+        text = _build_alert_text(
+            match_name=match_name,
+            tournament=tournament,
+            opening=opening,
+            live=live,
+            direction=direction,
+            diff=diff,
+            status=status,
+            score=score,
+            signal_count=signal_count,
+            prematch=prematch,
+            analysis=analysis,
+            period=period,
         )
-
-        prematch_inline = f"• Maç Öncesi: <b>{prematch:.1f}</b>\n" if prematch is not None else ""
-        odds_section = (
-            f"\n<b>📐 Barem</b>\n"
-            f"• Açılış: <b>{opening:.1f}</b>\n"
-            f"{prematch_inline}"
-            f"• Canlı: <b>{live:.1f}</b>\n"
-            f"• Fark: <b>{diff:+.1f}</b> puan\n"
-        )
-
-        projection_lines = "".join([
-            f"• Projeksiyon: <b>{float(projected):.1f}</b>\n" if projected is not None else "",
-            f"• Piyasa: <b>{float(market_total):.1f}</b>\n" if market_total is not None else "",
-            f"• Son Form Beklenti: <b>{float(team_recent_total):.1f}</b>\n" if team_recent_total is not None else "",
-            recent_form_line(home_last6, "Ev"),
-            recent_form_line(away_last6, "Dep"),
-            f"• H2H: <b>{float(h2h_total):.1f}</b>\n" if h2h_total is not None else "",
-        ])
-        weight_inline = f"  <i>({' / '.join(weight_parts)})</i>\n" if weight_parts else ""
-        fair_edge_inline = f" (Canlıya göre <b>{float(fair_edge):+.1f}</b>)" if fair_edge is not None else ""
-        fair_block = f"• Adil Barem: <b>{fair_line_text}</b>{fair_edge_inline}\n"
-        projection_section = ""
-        if projection_lines or fair_line is not None:
-            projection_section = (
-                f"\n<b>🧮 Analiz</b>\n"
-                f"{signal_quality_line}"
-                f"{decision_line}"
-                f"{flip_line}"
-                f"{projection_lines}"
-                f"{weight_inline}"
-                f"{fair_block}"
-            )
-        elif decision_line or signal_quality_line:
-            projection_section = (
-                f"\n<b>🧮 Analiz</b>\n"
-                f"{signal_quality_line}"
-                f"{decision_line}"
-                f"{flip_line}"
-            )
-
-        pace_section = ""
-        if pace_anomaly_line or quarter_pace_line:
-            pace_section = (
-                f"\n<b>⚡ Tempo</b>\n"
-                f"{quarter_pace_line}"
-                f"{pace_anomaly_line}"
-            )
-
-        warnings_block = ""
-        flip_warning_line = f"❔ {flip_reason}\n" if flip_reason else ""
-        if fair_warning_line or fair_alert_line or warning_line or flip_warning_line:
-            warnings_block = (
-                f"\n<b>⚠️ Uyarılar</b>\n"
-                f"{fair_warning_line}"
-                f"{fair_alert_line}"
-                f"{flip_warning_line}"
-                f"{warning_line}"
-            )
-
-        footer = ""
-        if recommendation_line or tip:
-            footer = (
-                f"\n{recommendation_line}"
-                f"💡 <i>{tip} Nihai yön: {direction}.</i>\n"
-            )
-
-        text = (
-            f"{header}"
-            f"{odds_section}"
-            f"{projection_section}"
-            f"{pace_section}"
-            f"{warnings_block}"
-            f"{footer}"
-        )
-
         try:
             msg_ids = await self._send_to_all(text)
             logger.info(f"Alert sent: {match_name} [{direction}]")
