@@ -22,6 +22,7 @@ from finished_match_service import (
     run_single_deleted_match_result_check,
 )
 from signal_analysis import build_backtest_profile, build_signal_analysis, enrich_analysis_with_backtest
+from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
 
 config = Config()
 db = Database(config.DB_PATH)
@@ -140,6 +141,40 @@ def _sanitize_recent_form_analysis(analysis: dict) -> dict:
     return cleaned
 
 
+def _drop_recent_form_analysis(analysis: dict) -> dict:
+    if not isinstance(analysis, dict):
+        return analysis or {}
+    cleaned = {
+        **analysis,
+        "home_last6": {},
+        "away_last6": {},
+        "team_recent_total": None,
+    }
+    if isinstance(cleaned.get("team_context"), dict):
+        team_context = dict(cleaned["team_context"])
+        for key in (
+            "expected_total",
+            "regression_delta",
+            "regression_direction",
+            "regression_note",
+            "home_profile",
+            "away_profile",
+            "home_last6_profile",
+            "away_last6_profile",
+        ):
+            team_context.pop(key, None)
+        cleaned["team_context"] = team_context
+    if isinstance(cleaned.get("fair_components"), dict):
+        cleaned["fair_components"] = {**cleaned["fair_components"], "team_recent": None}
+    for key in ("warnings", "h2h_quality_notes", "projection_notes"):
+        if isinstance(cleaned.get(key), list):
+            cleaned[key] = [
+                note for note in cleaned[key]
+                if not re.search(r"\bSF\b|son[-\s]?form|son\s+3-4-5|son\s+6", str(note), re.I)
+            ]
+    return cleaned
+
+
 def _trim_backtest_payload(backtest: dict | None) -> dict:
     if not isinstance(backtest, dict):
         return {}
@@ -163,6 +198,7 @@ def enrich_alerts_with_analysis(
     alerts: list[dict],
     backtest_profile: dict | None = None,
     history_profile: dict | None = None,
+    list_profile: dict | None = None,
 ) -> list[dict]:
     for alert in alerts:
         alert["tournament"] = _sanitize_tournament_display(alert.get("tournament"))
@@ -182,7 +218,7 @@ def enrich_alerts_with_analysis(
             )
         elif backtest_profile is not None:
             analysis = enrich_analysis_with_backtest(alert, analysis, backtest_profile, config.THRESHOLD)
-        analysis = _sanitize_recent_form_analysis(analysis)
+        analysis = _drop_recent_form_analysis(_sanitize_recent_form_analysis(analysis))
         if analysis.get("projected_total") is None:
             analysis = {**analysis}
             analysis["fair_line"] = None
@@ -197,8 +233,6 @@ def enrich_alerts_with_analysis(
             inferred_notes = list(analysis.get("h2h_quality_notes") or [])
             if analysis.get("h2h_total") is None:
                 inferred_notes.append("Eski analiz kaydı: H2H ortalaması yok.")
-            elif analysis.get("team_recent_total") is None:
-                inferred_notes.append("Eski analiz kaydı: H2H var, takım son-form bileşeni yok.")
             analysis = {
                 **analysis,
                 "h2h_quality_score": inferred_quality,
@@ -213,9 +247,9 @@ def enrich_alerts_with_analysis(
         alert["fair_edge"] = analysis.get("fair_edge")
         alert["projected"] = analysis.get("projected_total")
         alert["market_total"] = analysis.get("market_total")
-        alert["team_recent_total"] = analysis.get("team_recent_total")
-        alert["home_last6"] = analysis.get("home_last6") or {}
-        alert["away_last6"] = analysis.get("away_last6") or {}
+        alert["team_recent_total"] = None
+        alert["home_last6"] = {}
+        alert["away_last6"] = {}
         alert["h2h_total"] = analysis.get("h2h_total")
         alert["history_total"] = analysis.get("history_total")
         alert["recommendation"] = analysis.get("recommendation") or ""
@@ -228,6 +262,12 @@ def enrich_alerts_with_analysis(
         alert["selection_reason"] = analysis.get("selection_reason") or ""
         alert["projection_quality"] = analysis.get("projection_quality")
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
+        quality = build_quality_tag(alert, list_profile)
+        alert["quality_label"] = quality["label"]
+        alert["quality_tone"] = quality["tone"]
+        alert["quality_title"] = quality["title"]
+        alert["quality_rank"] = quality["rank"]
+        alert["list_markers"] = build_signal_list_markers(alert, list_profile)
         if history_profile is not None:
             alert["history_guard"] = _build_alert_history_guard(alert, history_profile)
     return alerts
@@ -609,20 +649,57 @@ def api_alerts():
     deleted_rows = db.recent_deleted_alerts(limit=None)
     backtest_profile = build_backtest_profile(deleted_rows)
     history_profile = _build_history_profile(deleted_rows)
-    return jsonify(enrich_alerts_with_analysis(db.recent_alerts(limit=500), backtest_profile, history_profile))
+    list_profile = build_signal_list_profile(db.list_signal_list_entries())
+    return jsonify(enrich_alerts_with_analysis(
+        db.recent_alerts(limit=500),
+        backtest_profile,
+        history_profile,
+        list_profile,
+    ))
+
+
+@app.route("/api/signal-lists")
+def api_signal_lists():
+    return jsonify(db.list_signal_list_entries())
+
+
+@app.route("/api/signal-lists", methods=["POST"])
+def api_add_signal_list_entry():
+    payload = request.get_json(silent=True) or {}
+    entry = db.add_signal_list_entry(
+        payload.get("list_type") or "",
+        payload.get("scope") or "",
+        payload.get("value") or "",
+    )
+    if not entry:
+        return jsonify({"error": "invalid_list_entry"}), 400
+    return jsonify({"entry": entry, "created": True})
+
+
+@app.route("/api/signal-lists/<int:entry_id>", methods=["DELETE"])
+def api_delete_signal_list_entry(entry_id: int):
+    if not db.delete_signal_list_entry(entry_id):
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"id": entry_id, "deleted": True})
 
 
 _LIST_HEAVY_RAW_COLUMNS = ("ai_analysis", "team_context", "quality_reasons", "quality_summary", "quality_setup")
 
 
-def _enrich_deleted_alert(alert: dict, backtest_profile: dict | None, *, full: bool) -> dict:
+def _enrich_deleted_alert(
+    alert: dict,
+    backtest_profile: dict | None,
+    *,
+    full: bool,
+    list_profile: dict | None = None,
+) -> dict:
     """Populate flat fields from ai_analysis. When full=False, drop heavy modal-only fields."""
     analysis = _parse_analysis(alert.get("ai_analysis"))
     if not analysis:
         analysis = {}
     elif backtest_profile is not None:
         analysis = enrich_analysis_with_backtest(alert, analysis, backtest_profile, config.THRESHOLD)
-    analysis = _sanitize_recent_form_analysis(analysis)
+    analysis = _drop_recent_form_analysis(_sanitize_recent_form_analysis(analysis))
     if isinstance(analysis.get("backtest"), dict):
         analysis = {**analysis, "backtest": _trim_backtest_payload(analysis.get("backtest"))}
 
@@ -630,16 +707,28 @@ def _enrich_deleted_alert(alert: dict, backtest_profile: dict | None, *, full: b
     alert["fair_edge"] = analysis.get("fair_edge")
     alert["projected"] = analysis.get("projected_total")
     alert["market_total"] = analysis.get("market_total")
-    alert["team_recent_total"] = analysis.get("team_recent_total")
+    alert["team_recent_total"] = None
     alert["projected_gap"] = analysis.get("projected_gap")
     alert["projection_quality"] = analysis.get("projection_quality")
     alert["legacy_direction"] = analysis.get("legacy_direction") or alert.get("direction")
     alert["final_direction"] = analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
+    stored_quality_label = str(analysis.get("quality_label") or "").strip()
+    quality = {
+        "label": stored_quality_label or "-",
+        "tone": analysis.get("quality_tone") or ("empty" if not stored_quality_label else "neutral"),
+        "title": analysis.get("quality_title") or "Sinyal anında kaydedilmiş kalite etiketi.",
+        "rank": analysis.get("quality_rank") or 0,
+    }
+    alert["quality_label"] = quality["label"]
+    alert["quality_tone"] = quality["tone"]
+    alert["quality_title"] = quality["title"]
+    alert["quality_rank"] = quality["rank"]
+    alert["list_markers"] = build_signal_list_markers(alert, list_profile)
 
     if full:
         alert["analysis"] = analysis
-        alert["home_last6"] = analysis.get("home_last6") or {}
-        alert["away_last6"] = analysis.get("away_last6") or {}
+        alert["home_last6"] = {}
+        alert["away_last6"] = {}
         alert["h2h_total"] = analysis.get("h2h_total")
         alert["history_total"] = analysis.get("history_total")
         alert["recommendation"] = analysis.get("recommendation") or ""
@@ -656,9 +745,13 @@ def _enrich_deleted_alert(alert: dict, backtest_profile: dict | None, *, full: b
     return alert
 
 
-def _lightweight_enrich_deleted_alerts(alerts: list[dict], backtest_profile: dict | None = None) -> list[dict]:
+def _lightweight_enrich_deleted_alerts(
+    alerts: list[dict],
+    backtest_profile: dict | None = None,
+    list_profile: dict | None = None,
+) -> list[dict]:
     for alert in alerts:
-        _enrich_deleted_alert(alert, backtest_profile, full=False)
+        _enrich_deleted_alert(alert, backtest_profile, full=False, list_profile=list_profile)
     return alerts
 
 
@@ -667,8 +760,9 @@ def api_deleted_matches():
     raw_limit = request.args.get("limit", type=int)
     all_rows = db.recent_deleted_alerts(limit=None)
     backtest_profile = build_backtest_profile(all_rows)
+    list_profile = build_signal_list_profile(db.list_signal_list_entries())
     rows = all_rows if raw_limit is None or raw_limit <= 0 else all_rows[:raw_limit]
-    return jsonify(_lightweight_enrich_deleted_alerts(rows, backtest_profile))
+    return jsonify(_lightweight_enrich_deleted_alerts(rows, backtest_profile, list_profile))
 
 
 @app.route("/api/deleted-matches/<int:alert_id>/details")
@@ -678,15 +772,17 @@ def api_deleted_match_details(alert_id: int):
     if not target:
         return jsonify({"error": "not_found"}), 404
     backtest_profile = build_backtest_profile(all_rows)
-    return jsonify(_enrich_deleted_alert(target, backtest_profile, full=True))
+    list_profile = build_signal_list_profile(db.list_signal_list_entries())
+    return jsonify(_enrich_deleted_alert(target, backtest_profile, full=True, list_profile=list_profile))
 
 
 @app.route("/api/deleted-matches/export.csv")
 def api_export_finished_deleted_matches_csv():
     deleted_rows = db.recent_deleted_alerts(limit=None)
     backtest_profile = build_backtest_profile(deleted_rows)
+    list_profile = build_signal_list_profile(db.list_signal_list_entries())
     rows = [
-        row for row in _lightweight_enrich_deleted_alerts(deleted_rows, backtest_profile)
+        row for row in _lightweight_enrich_deleted_alerts(deleted_rows, backtest_profile, list_profile)
         if str(row.get("result") or "").strip()
     ]
 
@@ -695,7 +791,7 @@ def api_export_finished_deleted_matches_csv():
     writer = csv.writer(output)
     writer.writerow([
         "Maç", "Lig", "Sinyal Anı", "Sinyal Türü", "Skor",
-        "Açılış", "Canlı", "Proj.", "Adil Barem", "Sonuç", "Not", "SF",
+        "Açılış", "Canlı", "Proj.", "Adil Barem", "Kalite", "Liste", "Sonuç", "Not",
     ])
 
     for row in rows:
@@ -706,8 +802,8 @@ def api_export_finished_deleted_matches_csv():
         projected_cell = f"{float(projected):.1f}" if projected is not None else ""
         fair_line = row.get("fair_line")
         fair_line_cell = f"{float(fair_line):.1f}" if fair_line is not None else "Hesaplanamıyor"
-        team_recent_total = row.get("team_recent_total")
-        team_recent_cell = f"{float(team_recent_total):.1f}" if team_recent_total is not None else ""
+        markers = row.get("list_markers") if isinstance(row.get("list_markers"), list) else []
+        marker_cell = " | ".join(str(marker.get("title") or "").strip() for marker in markers if isinstance(marker, dict))
         writer.writerow([
             match_name,
             row.get("tournament") or "",
@@ -718,9 +814,10 @@ def api_export_finished_deleted_matches_csv():
             row.get("live") if row.get("live") is not None else "",
             projected_cell,
             fair_line_cell,
+            row.get("quality_label") or "",
+            marker_cell,
             row.get("result") or "",
             row.get("note") or "",
-            team_recent_cell,
         ])
 
     filename = f"silinen-biten-maclar-{datetime.now().strftime('%Y%m%d-%H%M')}.csv"

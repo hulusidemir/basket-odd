@@ -13,5 +13,5 @@ from bankroll import bankroll_bp
 app.register_blueprint(bankroll_bp)
 
 if __name__ == "__main__":
-    port = int(os.getenv("DASHBOARD_PORT", "5050"))
+    port = int(os.getenv("DASHBOARD_PORT", "5151"))
     app.run(host="0.0.0.0", port=port, debug=False)

@@ -150,6 +150,19 @@ class Database:
 
                 CREATE INDEX IF NOT EXISTS idx_saved_match_lists_created_at
                 ON saved_match_lists(created_at DESC, id DESC);
+
+                CREATE TABLE IF NOT EXISTS signal_lists (
+                    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                    list_type        TEXT NOT NULL,
+                    scope            TEXT NOT NULL,
+                    value            TEXT NOT NULL,
+                    normalized_value TEXT NOT NULL,
+                    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(list_type, scope, normalized_value)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_signal_lists_lookup
+                ON signal_lists(list_type, scope, normalized_value);
             """)
             # Backward-compatible migrations for older DB files. New installs
             # get the clean schema above; old installs keep their extra quality_*
@@ -184,6 +197,22 @@ class Database:
                 except Exception:
                     pass
             conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_deleted_at ON alerts(deleted_at)")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS signal_lists (
+                    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                    list_type        TEXT NOT NULL,
+                    scope            TEXT NOT NULL,
+                    value            TEXT NOT NULL,
+                    normalized_value TEXT NOT NULL,
+                    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(list_type, scope, normalized_value)
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_signal_lists_lookup ON signal_lists(list_type, scope, normalized_value)"
+            )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS upcoming_matches (
@@ -259,6 +288,74 @@ class Database:
     def delete_opening(self, match_id: str):
         with self._conn() as conn:
             conn.execute("DELETE FROM opening_lines WHERE match_id = ?", (match_id,))
+
+    # ---------- signal black/white lists ----------
+
+    @staticmethod
+    def normalize_signal_list_value(value: str) -> str:
+        return (
+            str(value or "").strip().lower()
+            .replace("ı", "i").replace("ş", "s")
+            .replace("ğ", "g").replace("ü", "u")
+            .replace("ö", "o").replace("ç", "c")
+        )
+
+    @staticmethod
+    def _clean_signal_list_type(value: str) -> str:
+        text = str(value or "").strip().lower()
+        return text if text in {"black", "white"} else ""
+
+    @staticmethod
+    def _clean_signal_list_scope(value: str) -> str:
+        text = str(value or "").strip().lower()
+        return text if text in {"team", "league"} else ""
+
+    def add_signal_list_entry(self, list_type: str, scope: str, value: str) -> dict | None:
+        clean_type = self._clean_signal_list_type(list_type)
+        clean_scope = self._clean_signal_list_scope(scope)
+        clean_value = str(value or "").strip()[:200]
+        normalized = self.normalize_signal_list_value(clean_value)
+        if not clean_type or not clean_scope or not normalized:
+            return None
+
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO signal_lists (list_type, scope, value, normalized_value)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(list_type, scope, normalized_value)
+                DO UPDATE SET value = excluded.value
+                """,
+                (clean_type, clean_scope, clean_value, normalized),
+            )
+            row = conn.execute(
+                """
+                SELECT id, list_type, scope, value, normalized_value, created_at
+                FROM signal_lists
+                WHERE list_type = ? AND scope = ? AND normalized_value = ?
+                """,
+                (clean_type, clean_scope, normalized),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_signal_list_entries(self) -> list[dict]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, list_type, scope, value, normalized_value, created_at
+                FROM signal_lists
+                ORDER BY list_type ASC, scope ASC, value COLLATE NOCASE ASC
+                """
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_signal_list_entry(self, entry_id: int) -> bool:
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "DELETE FROM signal_lists WHERE id = ?",
+                (int(entry_id),),
+            )
+        return cursor.rowcount > 0
 
     # ---------- alerts ----------
 

@@ -128,7 +128,12 @@ def game_clock(status: str, match_name: str = "", tournament: str = "") -> dict:
 
 def game_minutes(match_name: str = "", tournament: str = "") -> int:
     text_to_check = f"{match_name} {tournament}".upper()
-    if "NBA" in text_to_check:
+    is_women = any(token in text_to_check for token in ("WNBA", "WOMEN", "WOMEN'S", "WOMAN"))
+    is_nba = (
+        re.search(r"\bNBA\b", text_to_check)
+        or "NATIONAL BASKETBALL ASSOCIATION" in text_to_check
+    )
+    if is_nba and not is_women:
         return 48
     return 40
 

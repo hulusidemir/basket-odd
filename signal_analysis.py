@@ -124,7 +124,7 @@ _TEAM_SCORE_MIN = 20  # covers low-scoring women's/youth leagues (e.g. Senegal W
 _TEAM_SCORE_MAX = 180
 
 
-def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
+def _extract_h2h_metrics(body_text: str, match_name: str, *, include_team_form: bool = True) -> dict:
     text = re.sub(r"\s+", " ", body_text or "").strip()
     home_team, away_team = _split_match_name(match_name)
     text_lower = text.lower()
@@ -583,30 +583,35 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
     if h2h_games is None and h2h_row_totals:
         h2h_games = len(h2h_row_totals)
 
-    home_last6 = team_recent_form_with_fallbacks(home_team, away_team)
-    away_last6 = team_recent_form_with_fallbacks(away_team, home_team)
-    if (
-        home_last6 and away_last6
-        and home_last6.get("source") == "match_rows"
-        and away_last6.get("source") == "match_rows"
-        and home_last6.get("scores") == away_last6.get("scores")
-    ):
-        h2h_quality_notes.append("SF satırları iki takım için aynı okundu; H2H/SF karışmasını önlemek için son form kullanılmadı.")
-        home_last6 = {}
-        away_last6 = {}
-    home = home_last6
-    away = away_last6
     expected_total = None
-    if home and away:
-        # Cross-pair: home'un attığı + away'in yediği ≈ home skoru beklentisi (ve tersi).
-        # Ham mean([home_avg, away_avg]) yerine bu karşılıklı eşleştirme daha doğrudur.
-        home_expected = (home["ppg"] + away["oppg"]) / 2
-        away_expected = (away["ppg"] + home["oppg"]) / 2
-        expected_total = round(home_expected + away_expected, 1)
-    elif home and home.get("avg_total") is not None:
-        expected_total = round(float(home["avg_total"]), 1)
-    elif away and away.get("avg_total") is not None:
-        expected_total = round(float(away["avg_total"]), 1)
+    home_last6 = {}
+    away_last6 = {}
+    home = {}
+    away = {}
+    if include_team_form:
+        home_last6 = team_recent_form_with_fallbacks(home_team, away_team)
+        away_last6 = team_recent_form_with_fallbacks(away_team, home_team)
+        if (
+            home_last6 and away_last6
+            and home_last6.get("source") == "match_rows"
+            and away_last6.get("source") == "match_rows"
+            and home_last6.get("scores") == away_last6.get("scores")
+        ):
+            h2h_quality_notes.append("SF satırları iki takım için aynı okundu; H2H/SF karışmasını önlemek için son form kullanılmadı.")
+            home_last6 = {}
+            away_last6 = {}
+        home = home_last6
+        away = away_last6
+        if home and away:
+            # Cross-pair: home'un attığı + away'in yediği ≈ home skoru beklentisi (ve tersi).
+            # Ham mean([home_avg, away_avg]) yerine bu karşılıklı eşleştirme daha doğrudur.
+            home_expected = (home["ppg"] + away["oppg"]) / 2
+            away_expected = (away["ppg"] + home["oppg"]) / 2
+            expected_total = round(home_expected + away_expected, 1)
+        elif home and home.get("avg_total") is not None:
+            expected_total = round(float(home["avg_total"]), 1)
+        elif away and away.get("avg_total") is not None:
+            expected_total = round(float(away["avg_total"]), 1)
 
     def _games_count(profile: dict) -> int | None:
         games = profile.get("games") if profile else None
@@ -615,16 +620,17 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         except (TypeError, ValueError):
             return None
 
-    home_games = _games_count(home_last6)
-    away_games = _games_count(away_last6)
-    if not home_last6:
-        h2h_quality_notes.append(f"{home_team} için son 3-4-5 maç verisi alınamıyor; takım form ortalaması kullanılmadı.")
-    elif home_games is not None and home_games < 6:
-        h2h_quality_notes.append(f"{home_team} için son 6 yerine son {home_games} maç ortalaması kullanıldı.")
-    if not away_last6:
-        h2h_quality_notes.append(f"{away_team} için son 3-4-5 maç verisi alınamıyor; takım form ortalaması kullanılmadı.")
-    elif away_games is not None and away_games < 6:
-        h2h_quality_notes.append(f"{away_team} için son 6 yerine son {away_games} maç ortalaması kullanıldı.")
+    if include_team_form:
+        home_games = _games_count(home_last6)
+        away_games = _games_count(away_last6)
+        if not home_last6:
+            h2h_quality_notes.append(f"{home_team} için son 3-4-5 maç verisi alınamıyor; takım form ortalaması kullanılmadı.")
+        elif home_games is not None and home_games < 6:
+            h2h_quality_notes.append(f"{home_team} için son 6 yerine son {home_games} maç ortalaması kullanıldı.")
+        if not away_last6:
+            h2h_quality_notes.append(f"{away_team} için son 3-4-5 maç verisi alınamıyor; takım form ortalaması kullanılmadı.")
+        elif away_games is not None and away_games < 6:
+            h2h_quality_notes.append(f"{away_team} için son 6 yerine son {away_games} maç ortalaması kullanıldı.")
     if h2h_avg_total is None:
         h2h_quality_notes.append("H2H ortalama toplam çıkarılamadı.")
 
@@ -633,7 +639,7 @@ def _extract_h2h_metrics(body_text: str, match_name: str) -> dict:
         quality_score -= 60
     if h2h_avg_total is None:
         quality_score -= 35
-    if expected_total is None:
+    if include_team_form and expected_total is None:
         quality_score -= 20
     if h2h_games is not None and h2h_games < 3:
         quality_score -= 20
@@ -686,7 +692,7 @@ def build_team_context(h2h_metrics: dict, live: float, direction: str) -> dict |
     }, reverse=True)
     form_label = (
         f"Son {'/'.join(str(g) for g in game_counts)} maç ortalaması"
-        if game_counts else "Son form ortalaması"
+        if game_counts else "Takım form ortalaması"
     )
     regression_direction = None
     regression_note = None
@@ -752,13 +758,13 @@ def build_team_context(h2h_metrics: dict, live: float, direction: str) -> dict |
             against_points += 1
 
     if support_points == 0 and against_points == 0:
-        alignment, alignment_code = "Takım profili nötr", "neutral"
+        alignment, alignment_code = "H2H profili nötr", "neutral"
     elif support_points > against_points:
-        alignment, alignment_code = f"Takım profili {direction} sinyalini destekliyor", "support"
+        alignment, alignment_code = f"H2H profili {direction} sinyalini destekliyor", "support"
     elif against_points > support_points:
-        alignment, alignment_code = f"Takım profili {direction} sinyaline karşı", "against"
+        alignment, alignment_code = f"H2H profili {direction} sinyaline karşı", "against"
     else:
-        alignment, alignment_code = "Takım profili karışık sinyal veriyor", "mixed"
+        alignment, alignment_code = "H2H profili karışık sinyal veriyor", "mixed"
 
     return {
         "expected_total": expected,
@@ -849,13 +855,13 @@ def _pace_note(
         context_bits.append(f"maç scripti {float(script_adj):+.1f}")
     if history_gap is not None and abs(history_gap) >= 6:
         side = "daha yüksek toplam profili" if history_gap > 0 else "daha düşük toplam profili"
-        context_bits.append(f"takım/H2H {side} ({history_gap:+.1f})")
+        context_bits.append(f"H2H {side} ({history_gap:+.1f})")
     context = f" Destekleyen/dengeleyen unsur: {', '.join(context_bits)}." if context_bits else ""
 
     if gap >= 6:
         base = (
             f"Canlı projeksiyon {projected_total:.1f}; baremin {gap:.1f} üstünde. "
-            f"Bu otomatik ÜST demek değil; tempo sürdürülebilirliği, şut/faul trafiği ve takım profiliyle doğrulanmalı."
+            f"Bu otomatik ÜST demek değil; tempo sürdürülebilirliği, şut/faul trafiği ve H2H profiliyle doğrulanmalı."
         )
     elif gap <= -6:
         base = (
@@ -1401,7 +1407,7 @@ def _decision_from_components(
                 "ÜST",
                 _clamp((6 + history_gap * 0.55) * quality, 4, 16),
                 58 + quality * 20,
-                f"Tarihsel/son form toplamı canlıdan {history_gap:.1f} yüksek.",
+                f"Tarihsel/H2H toplamı canlıdan {history_gap:.1f} yüksek.",
             ))
         elif history_gap <= -4:
             votes.append(_vote(
@@ -1409,7 +1415,7 @@ def _decision_from_components(
                 "ALT",
                 _clamp((6 + abs(history_gap) * 0.55) * quality, 4, 16),
                 58 + quality * 20,
-                f"Tarihsel/son form toplamı canlıdan {abs(history_gap):.1f} düşük.",
+                f"Tarihsel/H2H toplamı canlıdan {abs(history_gap):.1f} düşük.",
             ))
 
     if h2h_over_pct is not None:
@@ -1568,7 +1574,7 @@ def build_signal_analysis(
     direction = legacy_direction
     line_delta_open = round(live - opening, 1)
     h2h_body = (context.get("h2h") or {}).get("body_text", "") if isinstance(context, dict) else ""
-    h2h_metrics = _extract_h2h_metrics(h2h_body, match_name)
+    h2h_metrics = _extract_h2h_metrics(h2h_body, match_name, include_team_form=False)
     clock = game_clock(status, match_name, tournament)
     market_total = _market_total(match, opening)
     live_projection = calculate_live_projection(
@@ -1598,24 +1604,22 @@ def build_signal_analysis(
     else:
         elapsed_minutes = None
 
-    # H2H ve son form verisini DB'de tutmaya devam ediyoruz (görünürlük için),
-    # ancak adil barem hesabında SIFIR ağırlığa sahipler — açılış çizgisi
-    # bu bilgileri zaten büyük ölçüde fiyatlamış (double-counting'i önler).
+    # H2H verisini görünürlük için tutuyoruz; son form/SF canlı sinyal
+    # taramasından çıkarıldı. H2H adil barem hesabına ağırlık vermez.
     team_recent_total = h2h_metrics.get("expected_total")
     h2h_total = h2h_metrics.get("h2h_avg_total")
     h2h_games = h2h_metrics.get("h2h_games")
     h2h_quality_score = h2h_metrics.get("h2h_quality_score")
     h2h_quality_notes = h2h_metrics.get("h2h_quality_notes") or []
-    history_values = [value for value in (team_recent_total, h2h_total) if value is not None]
+    history_values = [value for value in (h2h_total,) if value is not None]
     history_total = round(mean(history_values), 1) if history_values else None
 
-    # Şeffaflık için bileşenleri raporlamaya devam ediyoruz (H2H/form 0 weight).
+    # Şeffaflık için H2H bileşenini raporluyoruz (0 weight).
     components = {
         "opening": market_total,
         "market": market_total,
         "live_projection": pure_projected_total,
         "projection": pure_projected_total,
-        "team_recent": team_recent_total,
         "h2h": h2h_total,
     }
     fair_line, fair_meta = calculate_fair_line(
@@ -1628,7 +1632,6 @@ def build_signal_analysis(
     weights = {
         "opening": int(round(fair_meta.get("opening_weight", fair_meta.get("prematch_weight", 0)) * 100)),
         "live_projection": int(round(fair_meta.get("live_weight", 0) * 100)),
-        "team_recent": 0,
         "h2h": 0,
     }
     base_weights = weights  # Geriye uyumluluk için aynı yapıyı koru.
@@ -1638,21 +1641,10 @@ def build_signal_analysis(
     h2h_note = (team_context or {}).get("h2h_note") or "H2H verisi yok veya okunamadı."
     if h2h_quality_score is not None and h2h_quality_score < 70:
         h2h_note = f"{h2h_note} Veri kalitesi düşük ({h2h_quality_score}/100)."
-    form_games = sorted({
-        int(profile.get("games"))
-        for profile in (h2h_metrics.get("home_last6") or {}, h2h_metrics.get("away_last6") or {})
-        if profile.get("games") is not None and int(profile.get("games")) >= 3
-    }, reverse=True)
-    if form_games:
-        form_history_label = f"Son {'/'.join(str(g) for g in form_games)} maç"
-    elif h2h_total is not None:
-        form_history_label = "H2H"
-    else:
-        form_history_label = "Son form"
     history_note = (
-        f"{form_history_label}/H2H adil toplamı {history_total:.1f}."
+        f"H2H adil toplamı {history_total:.1f}."
         if history_total is not None
-        else "Son 3-4-5 maç ve H2H verilerinden adil toplam çıkarılamadı."
+        else "H2H verisinden adil toplam çıkarılamadı."
     )
     pace = _pace_note(
         projected_total,

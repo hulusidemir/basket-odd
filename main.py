@@ -20,6 +20,7 @@ from notifier import TelegramNotifier
 from pace_tracker import PaceTracker
 from projection import game_clock, parse_score
 from signal_analysis import build_backtest_profile, build_signal_analysis
+from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
 
 
 def setup_logging(level: str):
@@ -139,6 +140,28 @@ async def process_match(
         backtest_profile=backtest_profile,
     )
     direction = analysis.get("direction") or legacy_direction
+
+    alert_context = {
+        "match_name": match_name,
+        "tournament": tournament,
+        "status": status,
+        "score": score,
+        "opening": opening_total,
+        "live": inplay_total,
+        "direction": direction,
+        "fair_line": analysis.get("fair_line"),
+        "projected_total": analysis.get("projected_total"),
+    }
+    list_profile = build_signal_list_profile(db.list_signal_list_entries())
+    quality = build_quality_tag(alert_context, list_profile)
+    analysis = {
+        **analysis,
+        "quality_label": quality["label"],
+        "quality_tone": quality["tone"],
+        "quality_title": quality["title"],
+        "quality_rank": quality["rank"],
+        "list_markers": build_signal_list_markers(alert_context, list_profile),
+    }
 
     if period_has_any_alert:
         log.debug("Skipped (period %s already alerted): id=%s", period, match_id)

@@ -683,10 +683,54 @@
 	      cursor: pointer;
 	      font-variant-numeric: tabular-nums;
 	    }
+	    .quality-badge.fade,
+	    .quality-badge.red-check {
+	      color: #fecaca;
+	      background: rgba(239, 68, 68, 0.18);
+	      border-color: rgba(239, 68, 68, 0.48);
+	    }
+	    .quality-badge.red-check,
+	    .quality-badge.star {
+	      min-width: 34px;
+	      font-size: 15px;
+	      font-weight: 950;
+	    }
+	    .quality-badge.neutral {
+	      color: #d1d5db;
+	      background: rgba(156, 163, 175, 0.12);
+	      border-color: rgba(156, 163, 175, 0.34);
+	    }
+	    .quality-badge.star {
+	      color: #fde68a;
+	      background: rgba(245, 158, 11, 0.16);
+	      border-color: rgba(245, 158, 11, 0.55);
+	    }
+	    .quality-badge.empty {
+	      color: rgba(209, 213, 219, 0.55);
+	      background: rgba(156, 163, 175, 0.05);
+	      border-color: rgba(156, 163, 175, 0.16);
+	    }
 	    .quality-badge.strong { color: #9df0bd; background: rgba(34, 197, 94, 0.14); border-color: rgba(34, 197, 94, 0.34); }
 	    .quality-badge.playable { color: #b9dcff; background: rgba(96, 165, 250, 0.13); border-color: rgba(96, 165, 250, 0.34); }
 	    .quality-badge.watch { color: #fef08a; background: rgba(251, 191, 36, 0.12); border-color: rgba(251, 191, 36, 0.32); }
 	    .quality-badge.pass { color: #ffb2b2; background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.30); }
+	    .quality-cell {
+	      display: inline-flex;
+	      align-items: center;
+	      justify-content: center;
+	      gap: 6px;
+	      min-width: 54px;
+	    }
+	    .list-marker {
+	      display: inline-block;
+	      width: 12px;
+	      height: 12px;
+	      border-radius: 3px;
+	      box-shadow: 0 0 0 1px rgba(255,255,255,0.18) inset;
+	      vertical-align: middle;
+	    }
+	    .list-marker.blacklist { background: #ef4444; }
+	    .list-marker.whitelist { background: #22c55e; }
 
     .mono {
       font-family: "SFMono-Regular", Consolas, monospace;
@@ -1512,7 +1556,6 @@
               <th data-sort="match_name">Maç</th>
 	              <th data-sort="alert_moment">Sinyal Anı</th>
 	              <th data-sort="direction">Sinyal</th>
-	              <th>SF</th>
               <th data-sort="status">Durum</th>
               <th data-sort="score">Skor</th>
               <th data-sort="opening">Açılış</th>
@@ -1520,6 +1563,7 @@
               <th data-sort="projected">Proj.</th>
               <th data-sort="diff">Fark</th>
               <th data-sort="fair_line">Adil Barem</th>
+              <th data-sort="quality_rank">Kalite</th>
               <th data-sort="result">Sonuç</th>
               <th aria-label="Sil"></th>
             </tr>
@@ -1693,36 +1737,6 @@
 	      return null;
 	    }
 
-    function last6Profiles(alert) {
-      const analysis = alertAnalysis(alert);
-      const ctx = analysis.team_context || alert.team_context || {};
-      const home = analysis.home_last6 || alert.home_last6 || ctx.home_last6_profile || {};
-      const away = analysis.away_last6 || alert.away_last6 || ctx.away_last6_profile || {};
-      return { home, away };
-    }
-
-    function last6Label(profile) {
-      if (!profile || typeof profile !== 'object') return 'Son 3-4-5 alınamıyor';
-      if (profile.label) return String(profile.label);
-      const ppg = Number(profile.ppg);
-      const oppg = Number(profile.oppg);
-      const total = Number(profile.avg_total);
-      if (!Number.isFinite(ppg) || !Number.isFinite(oppg)) return 'Son 3-4-5 alınamıyor';
-      return `${Math.round(ppg)}+${Math.round(oppg)} = ${Math.round(Number.isFinite(total) ? total : ppg + oppg)}`;
-    }
-
-    function last6Title(profile) {
-      const games = Number(profile?.games);
-      return Number.isFinite(games) && games >= 3 ? `Son ${Math.round(games)}` : 'Son form';
-    }
-
-    function last6Cell(alert) {
-      const analysis = alertAnalysis(alert);
-      const total = Number(alert.team_recent_total ?? analysis.team_recent_total);
-      const label = Number.isFinite(total) ? total.toFixed(1) : '-';
-      return `<button class="badge sf-badge" type="button" title="Son form detayını aç" onclick="openSignalInfo(${Number(alert.id || 0)})">${escapeHtml(label)}</button>`;
-    }
-
     function fairInfoClass(alert) {
       const edge = Math.abs(Number(fairEdgeValue(alert)));
       return Number.isFinite(edge) && edge > 10 ? 'red' : 'yellow';
@@ -1792,6 +1806,21 @@
       return `<span class="fair-line-cell"><span class="mono">${fairLabel}</span>${fairEdgeAlertHtml(alert)}</span>`;
     }
 
+    function qualityHtml(alert) {
+      const label = String(alert.quality_label || '-');
+      const tone = String(alert.quality_tone || 'empty').replace(/[^a-z-]/gi, '') || 'empty';
+      const title = String(alert.quality_title || 'Kalite kuralı uygulanmadı.');
+      const markers = Array.isArray(alert.list_markers) ? alert.list_markers : [];
+      const markerHtml = markers.map(marker => {
+        const markerTone = String(marker.tone || '').replace(/[^a-z-]/gi, '');
+        return `<span class="list-marker ${escapeHtml(markerTone)}" title="${escapeHtml(marker.title || '')}" aria-label="${escapeHtml(marker.title || '')}"></span>`;
+      }).join('');
+      const badge = label && label !== '-'
+        ? `<span class="badge quality-badge ${escapeHtml(tone)}" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`
+        : (markerHtml ? '' : `<span class="badge quality-badge empty" title="${escapeHtml(title)}">-</span>`);
+      return `<span class="quality-cell">${badge}${markerHtml}</span>`;
+    }
+
     function modalListItem(key, value) {
       return `<li><span class="signal-info-key">${escapeHtml(key)}</span><span class="signal-info-value">${escapeHtml(value ?? '-')}</span></li>`;
     }
@@ -1802,7 +1831,6 @@
         live_projection: 'Canlı projeksiyon',
         projection: 'Projeksiyon',
         market: 'Piyasa',
-        team_recent: 'Son form',
         h2h: 'H2H',
       };
       const parts = Object.entries(weights || {})
@@ -1893,7 +1921,9 @@
 	      const finalDir = analysis.final_direction || alert.final_direction || analysis.direction || alert.direction || '-';
 	      const signalScores = analysis.signal_scores || alert.signal_scores || {};
 	      const voteRows = Array.isArray(analysis.signal_votes || alert.signal_votes) ? (analysis.signal_votes || alert.signal_votes).slice(0, 6) : [];
-      const last6 = last6Profiles(alert);
+      const listText = Array.isArray(alert.list_markers) && alert.list_markers.length
+        ? alert.list_markers.map(marker => marker.title || '').filter(Boolean).join(' | ')
+        : '-';
       const warnings = Array.isArray(alert.warnings) && alert.warnings.length
         ? alert.warnings
         : (Array.isArray(analysis.warnings) ? analysis.warnings : []);
@@ -1924,6 +1954,8 @@
             <div class="signal-info-section-title">Özet</div>
             <ul class="signal-metrics-list">
 	              ${modalListItem('Canlı veri', Number.isFinite(projectionQuality) ? `${projectionQuality.toFixed(0)}/100` : '-')}
+	              ${modalListItem('Kalite', alert.quality_label && alert.quality_label !== '-' ? `${alert.quality_label} - ${alert.quality_title || ''}` : '-')}
+	              ${modalListItem('Liste', listText)}
 	              ${modalListItem('Eski / Yeni Yön', `${legacyDir} → ${finalDir}`)}
 	              ${modalListItem('ALT / ÜST Puan', `${formatNumber(signalScores.ALT)} / ${formatNumber(signalScores['ÜST'])}`)}
 	              ${modalListItem('Karar', selectionReason || '-')}
@@ -1940,14 +1972,6 @@
             </ul>
             ${signalEdgeNoteHtml(fairEdge)}
             <div class="signal-weights-line"><strong>Ağırlık</strong>${escapeHtml(weightsText(analysis.weights))}</div>
-          </div>
-          <div class="signal-info-section">
-            <div class="signal-info-section-title">Son Form (SF)</div>
-            <ul class="signal-metrics-list">
-              ${modalListItem(`${last6Title(last6.home)} Ev`, last6Label(last6.home))}
-              ${modalListItem(`${last6Title(last6.away)} Dep.`, last6Label(last6.away))}
-              ${modalListItem('SF beklenti', formatNumber(alert.team_recent_total ?? analysis.team_recent_total))}
-            </ul>
           </div>
           <div class="signal-info-section">
             <div class="signal-info-section-title">H2H</div>
@@ -2049,6 +2073,8 @@
         alert.result,
         alert.note,
         recommendationText(alert),
+        alert.quality_label,
+        alert.quality_title,
         fairLineValue(alert),
         alert.projected,
       ].some(value => String(value || '').toLowerCase().includes(q)));
@@ -2063,7 +2089,7 @@
 
     function sortValue(alert, field) {
       if (field === 'deleted_at' || field === 'alerted_at') return parseDateValue(alert[field]);
-	      if (['opening', 'live', 'projected', 'diff', 'signal_count', 'fair_line', 'fair_edge'].includes(field)) {
+	      if (['opening', 'live', 'projected', 'diff', 'signal_count', 'fair_line', 'fair_edge', 'quality_rank'].includes(field)) {
         const num = Number(alert[field]);
         return Number.isFinite(num) ? num : -Infinity;
       }
@@ -2273,7 +2299,6 @@
 	              ${signalBadge(alert)}
 	              ${Number(alert.signal_count || 0) > 1 ? `<div class="subline">${Number(alert.signal_count)}. sinyal</div>` : ''}
 	            </td>
-	            <td>${last6Cell(alert)}</td>
             <td>${escapeHtml(alert.status || '-')}</td>
             <td class="mono">${escapeHtml(alert.score || '-')}${(() => { const total = calculateScoreTotal(alert.score); return total !== null ? ` <span style="font-style: normal; font-size: 0.85em; color: var(--text-dim);">(${total})</span>` : ''; })()}</td>
             <td class="mono">${formatNumber(alert.opening)}</td>
@@ -2281,6 +2306,7 @@
             <td class="mono">${formatNumber(alert.projected)}</td>
             <td class="mono">${formatNumber(alert.diff)}</td>
             <td>${fairLineCell(alert)}</td>
+            <td>${qualityHtml(alert)}</td>
             <td>${resultCell(alert)}</td>
             <td><button class="row-delete-btn" type="button" onclick="deleteDeletedAlert(${Number(alert.id)}, this)" title="Kaydı sil" aria-label="Kaydı sil">🗑</button></td>
           </tr>

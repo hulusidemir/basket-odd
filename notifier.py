@@ -3,12 +3,38 @@ notifier.py — Sends betting alerts via Telegram.
 """
 
 import logging
+from html import escape
 
 from telegram import Bot
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
 
 logger = logging.getLogger(__name__)
+
+
+def _quality_text(analysis: dict) -> str:
+    label = str(analysis.get("quality_label") or "").strip()
+    title = str(analysis.get("quality_title") or "").strip()
+    if not label or label == "-":
+        return "-"
+    if title and title != "Kalite kuralı uygulanmadı.":
+        return f"{label} — {title}"
+    return label
+
+
+def _list_text(analysis: dict) -> str:
+    markers = analysis.get("list_markers") if isinstance(analysis, dict) else []
+    if not isinstance(markers, list) or not markers:
+        return "-"
+    parts = []
+    for marker in markers:
+        if not isinstance(marker, dict):
+            continue
+        prefix = "🟥" if marker.get("type") == "black" else "🟩"
+        title = str(marker.get("title") or "").strip()
+        if title:
+            parts.append(f"{prefix} {title}")
+    return " | ".join(parts) if parts else "-"
 
 
 def _build_alert_text(
@@ -29,7 +55,6 @@ def _build_alert_text(
     fair_line = analysis.get("fair_line")
     fair_edge = analysis.get("fair_edge")
     projected = analysis.get("projected_total")
-    team_recent = analysis.get("team_recent_total")
     h2h_total = analysis.get("h2h_total")
 
     status_text = (status or "").strip()
@@ -51,18 +76,20 @@ def _build_alert_text(
             fair_text += f" (canlıya göre {float(fair_edge):+.1f})"
 
     proj_text = f"{float(projected):.1f}" if projected is not None else "-"
-    sf_text = f"{float(team_recent):.1f}" if team_recent is not None else "-"
     h2h_text = f"{float(h2h_total):.1f}" if h2h_total is not None else "-"
+    quality_text = _quality_text(analysis)
+    list_text = _list_text(analysis)
 
     return (
         f"<b>{direction} Sinyali</b>{repeat}\n"
-        f"🏀 <b>{match_name}</b>\n"
-        f"🏆 {tournament}\n\n"
-        f"<b>Skor:</b> {score or '-'}\n"
+        f"🏀 <b>{escape(match_name)}</b>\n"
+        f"🏆 {escape(tournament or '-')}\n\n"
+        f"<b>Skor:</b> {escape(score or '-')}\n"
         f"<b>Sinyal Zamanı:</b> {when}\n"
         f"<b>Barem:</b> {opening:.1f} → {live:.1f} ({diff:+.1f})\n"
+        f"<b>KALİTE:</b> {escape(quality_text)}\n"
+        f"<b>LİSTE:</b> {escape(list_text)}\n"
         f"<b>H2H:</b> {h2h_text}\n"
-        f"<b>SF:</b> {sf_text}\n"
         f"<b>ADİL BAREM:</b> {fair_text}\n"
         f"<b>PROJEKSİYON:</b> {proj_text}"
     )

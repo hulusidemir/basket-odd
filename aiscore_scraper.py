@@ -17,8 +17,8 @@ class AiscoreScraper:
         self.max_matches_per_cycle = max_matches_per_cycle
         self.page_timeout_ms = page_timeout_ms
         self.skip_h2h = skip_h2h
-        # Per-match H2H body cache. Last-6 / SF data does not change during a
-        # match, so re-scraping the H2H tab on every poll cycle is wasted work.
+        # Per-match H2H body cache. H2H data does not change during a match, so
+        # re-scraping the H2H tab on every poll cycle is wasted work.
         self._h2h_cache: dict[str, str] = {}
 
     def forget_h2h_cache(self, match_id: str) -> None:
@@ -1145,11 +1145,6 @@ class AiscoreScraper:
                 pass
             await page.wait_for_timeout(1000)
 
-            # Progressive scroll to trigger lazy-loaded last-5 / h2h tables
-            for _ in range(2):
-                await page.evaluate("window.scrollBy(0, document.body.scrollHeight / 3)")
-                await page.wait_for_timeout(700)
-
             body = await page.evaluate(r"""
                 () => {
                     const keyHits = (txt) => {
@@ -1160,7 +1155,6 @@ class AiscoreScraper:
                         if (/opponent points/.test(t)) score += 2;
                         if (/\bh2h\b/.test(t)) score += 1;
                         if (/total points over%/.test(t)) score += 2;
-                        if (/last\s*5/.test(t)) score += 1;
                         return score;
                     };
                     const fullBody = (document.body.innerText || '').replace(/\s+/g, ' ').trim();
@@ -1174,14 +1168,9 @@ class AiscoreScraper:
                         len: (el.innerText || '').trim().length,
                         hits: keyHits(el.innerText || '')
                     })).filter(c => c.len > 200);
-                    // Prefer blocks with H2H keywords, fall back to largest.
+                    // Prefer narrow blocks with H2H keywords. We no longer need
+                    // last-match/SF sections for live signal analysis.
                     candidates.sort((a, b) => (b.hits - a.hits) || (b.len - a.len));
-                    // Return the full page text when it has the relevant H2H/Last
-                    // markers. A narrow H2H block often excludes each team's own
-                    // latest-match sections, which causes SF to be confused with H2H.
-                    if (fullBody.length > 200 && keyHits(fullBody) > 0) {
-                        return fullBody;
-                    }
                     if (candidates.length > 0 && candidates[0].hits > 0) {
                         return candidates[0].el.innerText.replace(/\s+/g, ' ').trim();
                     }
