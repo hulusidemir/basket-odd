@@ -37,6 +37,79 @@ def _list_text(analysis: dict) -> str:
     return " | ".join(parts) if parts else "-"
 
 
+def _float_text(value, digits: int = 2) -> str:
+    try:
+        return f"{float(value):.{digits}f}"
+    except (TypeError, ValueError):
+        return "-"
+
+
+def _quarter_score_text(analysis: dict) -> str:
+    scores = analysis.get("quarter_scores") if isinstance(analysis, dict) else {}
+    if not isinstance(scores, dict):
+        return "-"
+    home = scores.get("home") if isinstance(scores.get("home"), list) else []
+    away = scores.get("away") if isinstance(scores.get("away"), list) else []
+    rows = []
+    for index, (h, a) in enumerate(zip(home, away), start=1):
+        try:
+            rows.append(f"Q{index} {int(h)}-{int(a)}")
+        except (TypeError, ValueError):
+            continue
+        if len(rows) >= 4:
+            break
+    return " | ".join(rows) if rows else "-"
+
+
+def _quarter_ppm_text(analysis: dict) -> str:
+    ppm_values = analysis.get("quarter_ppm") if isinstance(analysis, dict) else []
+    if not isinstance(ppm_values, list) or not ppm_values:
+        return "-"
+    rows = []
+    for index, value in enumerate(ppm_values[:4], start=1):
+        text = _float_text(value)
+        if text != "-":
+            rows.append(f"Q{index} {text}")
+    return " | ".join(rows) if rows else "-"
+
+
+def _match_ppm_text(analysis: dict) -> str:
+    components = analysis.get("projection_components") if isinstance(analysis, dict) else {}
+    if not isinstance(components, dict):
+        components = {}
+    value = analysis.get("match_ppm") if isinstance(analysis, dict) else None
+    if value is None:
+        value = components.get("current_pace_per_min")
+    return _float_text(value)
+
+
+def _is_hundred_profile(analysis: dict) -> bool:
+    value = analysis.get("hundred_profile") if isinstance(analysis, dict) else False
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "evet"}
+    return bool(value)
+
+
+_CA_LABELS = {
+    "TRUE_UNDER": ("Güçlü Alt", "ALT"),
+    "TRUE_OVER":  ("Güçlü Üst", "ÜST"),
+    "FADE_OVER":  ("Tersine Alt", "ALT"),
+    "FADE_UNDER": ("Tersine Üst", "ÜST"),
+}
+
+
+def _claude_ai_meta(analysis: dict) -> tuple[str, str, str, str] | None:
+    """Returns (code, label, play, rule) or None."""
+    if not isinstance(analysis, dict):
+        return None
+    code = str(analysis.get("claude_ai") or "").strip()
+    if not code or code not in _CA_LABELS:
+        return None
+    label, play = _CA_LABELS[code]
+    rule = str(analysis.get("claude_ai_rule") or "").strip()
+    return code, label, play, rule
+
+
 def _build_alert_text(
     *,
     match_name: str,
@@ -79,19 +152,40 @@ def _build_alert_text(
     h2h_text = f"{float(h2h_total):.1f}" if h2h_total is not None else "-"
     quality_text = _quality_text(analysis)
     list_text = _list_text(analysis)
+    quarter_score_text = _quarter_score_text(analysis)
+    match_ppm_text = _match_ppm_text(analysis)
+    quarter_ppm_text = _quarter_ppm_text(analysis)
+    hundred_profile_warning = "⚠️ <b>100 PROFİLİ</b>\n" if _is_hundred_profile(analysis) else ""
+
+    ca_meta = _claude_ai_meta(analysis)
+    if ca_meta:
+        _ca_code, ca_label, ca_play, ca_rule = ca_meta
+        ca_banner = f"⭐ <b>C_A: {ca_label} → {ca_play} oyna</b>\n"
+        ca_line = f"\n<b>C_A ⭐:</b> {escape(ca_label)} → <b>{ca_play}</b>"
+        if ca_rule:
+            ca_line += f"\n<i>{escape(ca_rule)}</i>"
+    else:
+        ca_banner = ""
+        ca_line = ""
 
     return (
+        f"{ca_banner}"
+        f"{hundred_profile_warning}"
         f"<b>{direction} Sinyali</b>{repeat}\n"
         f"🏀 <b>{escape(match_name)}</b>\n"
         f"🏆 {escape(tournament or '-')}\n\n"
         f"<b>Skor:</b> {escape(score or '-')}\n"
         f"<b>Sinyal Zamanı:</b> {when}\n"
+        f"<b>Çeyrek Skorları:</b> {escape(quarter_score_text)}\n"
+        f"<b>Maç PPM:</b> {escape(match_ppm_text)}\n"
+        f"<b>Çeyrek PPM:</b> {escape(quarter_ppm_text)}\n"
         f"<b>Barem:</b> {opening:.1f} → {live:.1f} ({diff:+.1f})\n"
         f"<b>KALİTE:</b> {escape(quality_text)}\n"
         f"<b>LİSTE:</b> {escape(list_text)}\n"
         f"<b>H2H:</b> {h2h_text}\n"
         f"<b>ADİL BAREM:</b> {fair_text}\n"
         f"<b>PROJEKSİYON:</b> {proj_text}"
+        f"{ca_line}"
     )
 
 

@@ -23,6 +23,8 @@ from finished_match_service import (
 )
 from signal_analysis import build_backtest_profile, build_signal_analysis, enrich_analysis_with_backtest
 from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
+from signal_profiles import evaluate_hundred_profile
+from claude_ai_filter import evaluate_claude_ai, scenario_meta
 
 config = Config()
 db = Database(config.DB_PATH)
@@ -268,6 +270,39 @@ def enrich_alerts_with_analysis(
         alert["quality_title"] = quality["title"]
         alert["quality_rank"] = quality["rank"]
         alert["list_markers"] = build_signal_list_markers(alert, list_profile)
+        stored_hundred_profile = int(alert.get("hundred_profile") or 0)
+        stored_hundred_profile_rule = str(alert.get("hundred_profile_rule") or "")
+        hundred_profile = evaluate_hundred_profile(alert, analysis)
+        alert["hundred_profile"] = 1 if hundred_profile["hundred_profile"] else 0
+        alert["hundred_profile_rule"] = hundred_profile["hundred_profile_rule"]
+        if int(alert.get("id") or 0) and (
+            stored_hundred_profile != int(alert["hundred_profile"])
+            or stored_hundred_profile_rule != alert["hundred_profile_rule"]
+        ):
+            db.update_alert_hundred_profile(
+                int(alert["id"]),
+                bool(alert["hundred_profile"]),
+                alert["hundred_profile_rule"],
+            )
+
+        stored_claude_ai = str(alert.get("claude_ai") or "")
+        stored_claude_ai_rule = str(alert.get("claude_ai_rule") or "")
+        cai = evaluate_claude_ai(alert, analysis)
+        alert["claude_ai"] = cai["claude_ai"]
+        alert["claude_ai_rule"] = cai["claude_ai_rule"]
+        meta = scenario_meta(cai["claude_ai"])
+        alert["claude_ai_label"] = meta.get("label", "")
+        alert["claude_ai_play"] = meta.get("play", "")
+        alert["claude_ai_tooltip"] = meta.get("tooltip", "")
+        if int(alert.get("id") or 0) and (
+            stored_claude_ai != alert["claude_ai"]
+            or stored_claude_ai_rule != alert["claude_ai_rule"]
+        ):
+            db.update_alert_claude_ai(
+                int(alert["id"]),
+                alert["claude_ai"],
+                alert["claude_ai_rule"],
+            )
         if history_profile is not None:
             alert["history_guard"] = _build_alert_history_guard(alert, history_profile)
     return alerts
@@ -724,6 +759,25 @@ def _enrich_deleted_alert(
     alert["quality_title"] = quality["title"]
     alert["quality_rank"] = quality["rank"]
     alert["list_markers"] = build_signal_list_markers(alert, list_profile)
+
+    stored_claude_ai = str(alert.get("claude_ai") or "")
+    stored_claude_ai_rule = str(alert.get("claude_ai_rule") or "")
+    cai = evaluate_claude_ai(alert, analysis)
+    alert["claude_ai"] = cai["claude_ai"]
+    alert["claude_ai_rule"] = cai["claude_ai_rule"]
+    meta = scenario_meta(cai["claude_ai"])
+    alert["claude_ai_label"] = meta.get("label", "")
+    alert["claude_ai_play"] = meta.get("play", "")
+    alert["claude_ai_tooltip"] = meta.get("tooltip", "")
+    if int(alert.get("id") or 0) and (
+        stored_claude_ai != alert["claude_ai"]
+        or stored_claude_ai_rule != alert["claude_ai_rule"]
+    ):
+        db.update_alert_claude_ai(
+            int(alert["id"]),
+            alert["claude_ai"],
+            alert["claude_ai_rule"],
+        )
 
     if full:
         alert["analysis"] = analysis

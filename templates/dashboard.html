@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <title>Basket Sinyal Dashboard</title>
   <style>
     :root {
@@ -475,6 +476,97 @@
       font-size: 15px;
       font-weight: 950;
     }
+    .hundred-profile-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 19px;
+      min-width: 27px;
+      padding: 0 5px;
+      border-radius: 5px;
+      color: #111827;
+      background: #facc15;
+      border: 1px solid rgba(254, 240, 138, 0.88);
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.24), 0 0 12px rgba(250, 204, 21, 0.35);
+      font-size: 11px;
+      font-weight: 950;
+      line-height: 1;
+    }
+    .ca-cell { width: 28px; text-align: center; padding: 4px 2px !important; }
+    .ca-star {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; border-radius: 6px;
+      font-size: 15px; line-height: 1; cursor: pointer;
+      background: rgba(250, 204, 21, 0.14);
+      border: 1px solid rgba(250, 204, 21, 0.45);
+      color: #fde68a;
+      text-shadow: 0 0 6px rgba(250, 204, 21, 0.55);
+      padding: 0;
+    }
+    .ca-star:hover { background: rgba(250, 204, 21, 0.28); transform: scale(1.08); }
+    .ca-star.fade { background: rgba(244, 114, 182, 0.14); border-color: rgba(244, 114, 182, 0.45); color: #fbcfe8; text-shadow: 0 0 6px rgba(244, 114, 182, 0.55); }
+    .ca-star.fade:hover { background: rgba(244, 114, 182, 0.28); }
+    .ca-empty { color: rgba(156,163,175,0.30); font-size: 13px; }
+    .hundred-profile-badge { cursor: pointer; }
+    .hundred-profile-badge:hover { filter: brightness(1.15); }
+    .big-verdict {
+      display: flex; align-items: center; gap: 14px;
+      padding: 18px 18px; border-radius: 14px; margin: 4px 0 14px;
+    }
+    .big-verdict.gold { background: rgba(250,204,21,0.18); border: 2px solid rgba(250,204,21,0.65); }
+    .big-verdict.true-yellow { background: rgba(250,204,21,0.12); border: 2px solid rgba(250,204,21,0.50); }
+    .big-verdict.fade-pink { background: rgba(244,114,182,0.14); border: 2px solid rgba(244,114,182,0.55); }
+    .big-verdict.gray { background: rgba(156,163,175,0.08); border: 1px solid rgba(156,163,175,0.28); }
+    .big-verdict-icon { font-size: 38px; flex-shrink: 0; line-height: 1; }
+    .big-verdict-text { flex: 1; min-width: 0; }
+    .big-verdict-play {
+      font-size: 22px; font-weight: 900; line-height: 1.15;
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    .big-verdict-play .arrow { font-size: 18px; }
+    .big-verdict-desc { font-size: 13.5px; color: var(--text-soft); margin-top: 5px; line-height: 1.5; }
+    .big-verdict-rule { font-size: 12px; color: var(--text-soft); margin-top: 6px; font-style: italic; opacity: 0.85; }
+    .simple-stats {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 10px; margin: 14px 0;
+    }
+    .simple-stats > div {
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px; padding: 12px 10px; text-align: center;
+    }
+    .simple-stats .stat-num { font-size: 22px; font-weight: 900; line-height: 1.1; }
+    .simple-stats .stat-num.live { color: #fde68a; }
+    .simple-stats .stat-label { font-size: 10.5px; color: var(--text-soft); margin-top: 5px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+    .simple-stats .stat-sub { font-size: 12px; font-weight: 800; margin-top: 4px; }
+    .simple-warn {
+      background: rgba(239,68,68,0.10); border: 1px solid rgba(239,68,68,0.34);
+      border-radius: 10px; padding: 10px 14px; margin: 12px 0;
+    }
+    .simple-warn-title { font-weight: 800; font-size: 13px; margin-bottom: 4px; color: #fca5a5; }
+    .simple-warn ul { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.5; }
+    .simple-warn li { margin: 3px 0; }
+    .modal-detail-toggle {
+      cursor: pointer; color: var(--text-soft); font-size: 12.5px;
+      padding: 10px 0; user-select: none; font-weight: 700;
+    }
+    .modal-detail-toggle:hover { color: var(--text); }
+    .signal-tag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .signal-tag-card {
+      border-radius: 10px; padding: 12px 14px; line-height: 1.45;
+      background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+    }
+    .signal-tag-card.ca-true   { background: rgba(250,204,21,0.10); border-color: rgba(250,204,21,0.45); }
+    .signal-tag-card.ca-fade   { background: rgba(244,114,182,0.10); border-color: rgba(244,114,182,0.45); }
+    .signal-tag-card.hundred   { background: rgba(250,204,21,0.18); border-color: rgba(254,240,138,0.65); }
+    .signal-tag-card.empty     { background: rgba(156,163,175,0.05); border-color: rgba(156,163,175,0.18); color: rgba(209,213,219,0.55); }
+    .signal-tag-head { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14px; margin-bottom: 6px; }
+    .signal-tag-head .icon { font-size: 17px; }
+    .signal-tag-play { display: inline-block; padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 12px; margin-left: 6px; }
+    .signal-tag-play.alt { background: rgba(96,165,250,0.18); color: #93c5fd; }
+    .signal-tag-play.ust { background: rgba(248,113,113,0.18); color: #fca5a5; }
+    .signal-tag-rule { font-size: 12.5px; color: var(--text-soft); }
+    .signal-tag-card.empty .signal-tag-head { color: rgba(209,213,219,0.55); }
+    @media (max-width: 720px) { .signal-tag-grid { grid-template-columns: 1fr; } }
     .quality-badge.empty {
       color: rgba(209,213,219,0.55);
       border-color: rgba(156,163,175,0.16);
@@ -836,6 +928,43 @@
     .sig-card .row strong { font-weight: 850; text-align: right; overflow-wrap: anywhere; }
     .sig-card .row strong.alt-tag { color: #6ee7b7; }
     .sig-card .row strong.ust-tag { color: #fca5a5; }
+    .sig-quarters-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 8px;
+    }
+    .sig-quarter-chip {
+      min-height: 58px;
+      padding: 8px 9px;
+      border-radius: 10px;
+      background: rgba(8,10,18,0.58);
+      border: 1px solid rgba(148,163,184,0.12);
+      font-variant-numeric: tabular-nums;
+    }
+    .sig-quarter-chip .q {
+      display: block;
+      color: var(--text-soft);
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    .sig-quarter-chip .score {
+      display: block;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 900;
+      line-height: 1.15;
+    }
+    .sig-quarter-chip .ppm {
+      display: block;
+      color: #93c5fd;
+      font-size: 11px;
+      font-weight: 800;
+      margin-top: 3px;
+    }
 
     .sig-reasons { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
     .sig-reasons li {
@@ -963,6 +1092,7 @@
       .sig-edge-display { align-items: flex-start; }
       .sig-metrics-row { grid-template-columns: repeat(2, 1fr); }
       .sig-grid { grid-template-columns: 1fr; }
+      .sig-quarters-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .history-guard-grid { grid-template-columns: 1fr; }
       .history-direction-grid { grid-template-columns: 1fr; }
       .sig-actions { grid-template-columns: repeat(2, 1fr); }
@@ -1382,44 +1512,237 @@
 
     .modal-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; margin-top: 12px; flex-wrap: wrap; }
 
-    .bet-toolbar { display: grid; grid-template-columns: 130px minmax(180px,1fr) auto auto; gap: 9px; margin-bottom: 12px; align-items: stretch; }
-    .bet-table { min-width: 900px; }
-
-    .saved-list { display: grid; gap: 7px; margin-top: 12px; }
-    .saved-list-title { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: rgba(200,190,255,.45); text-transform: uppercase; margin: 14px 0 4px; }
+    #betModal .modal-box.wide { width: min(96vw, 1120px); }
+    #betModal .modal-header {
+      background:
+        linear-gradient(135deg, rgba(124,92,246,0.16), rgba(52,211,153,0.07)),
+        rgba(12,12,20,0.98);
+    }
+    #betModal .modal-body {
+      display: grid;
+      gap: 12px;
+      background:
+        linear-gradient(180deg, rgba(124,92,246,0.045), transparent 180px),
+        rgba(8,8,14,0.98);
+    }
+    .bet-toolbar {
+      display: grid;
+      grid-template-columns: 124px minmax(220px,1fr) auto auto;
+      gap: 10px;
+      align-items: stretch;
+      padding: 10px;
+      border: 1px solid rgba(124,92,246,0.18);
+      border-radius: 14px;
+      background: rgba(15,15,25,0.82);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.035);
+    }
+    .bet-toolbar .btn,
+    .bet-toolbar .bet-name-input,
+    .bet-toolbar .bet-count-select { min-height: 42px; }
+    .bet-count-select, .bet-name-input {
+      border-radius: 11px;
+      background: rgba(5,5,10,0.88);
+    }
+    #betResult {
+      display: block;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      text-align: left;
+    }
+    #betResult.empty-state {
+      color: var(--text-soft);
+      border: 1px dashed rgba(120,100,220,0.2);
+      border-radius: 14px;
+      background: rgba(10,10,18,0.45);
+      padding: 24px 16px;
+      text-align: center;
+    }
+    .bet-summary-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      padding: 13px 14px;
+      border: 1px solid rgba(124,92,246,0.18);
+      border-radius: 14px;
+      background:
+        linear-gradient(135deg, rgba(124,92,246,0.12), rgba(52,211,153,0.055)),
+        rgba(12,12,20,0.94);
+    }
+    .bet-summary-main { min-width: 0; }
+    .bet-summary-main strong {
+      display: block;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    .bet-summary-stats { display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
+    .bet-stat {
+      min-width: 86px;
+      padding: 7px 9px;
+      border-radius: 10px;
+      border: 1px solid rgba(148,163,184,0.14);
+      background: rgba(5,5,10,0.55);
+      color: var(--text-soft);
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      text-align: center;
+    }
+    .bet-stat b {
+      display: block;
+      color: var(--text);
+      font-size: 16px;
+      letter-spacing: 0;
+      margin-top: 1px;
+    }
+    .bet-result-panel {
+      border: 1px solid rgba(124,92,246,0.15);
+      border-radius: 14px;
+      overflow: hidden;
+      background: rgba(10,10,18,0.74);
+    }
+    .bet-result-panel .table-wrap {
+      border-radius: 0;
+      border: 0;
+      background: transparent;
+      max-height: 440px;
+    }
+    .bet-table { min-width: 880px; }
+    .bet-table th {
+      background: rgba(14,14,24,0.98);
+      color: rgba(237,233,255,0.64);
+      font-size: 10px;
+    }
+    .bet-table td {
+      padding: 12px 13px;
+      border-color: rgba(100,80,180,0.075);
+      vertical-align: middle;
+    }
+    .bet-table tbody tr:hover { background: rgba(124,92,246,0.055); }
+    .bet-match-link, .saved-match-link {
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 850;
+      overflow-wrap: anywhere;
+    }
+    .bet-match-link:hover, .saved-match-link:hover { color: #c4b5fd; text-decoration: underline; text-underline-offset: 3px; }
+    .bet-play-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 92px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      border: 1px solid rgba(148,163,184,0.16);
+    }
+    .bet-play-pill.ust { color: #bbf7d0; background: rgba(34,197,94,0.14); border-color: rgba(34,197,94,0.34); }
+    .bet-play-pill.alt { color: #fecaca; background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.34); }
+    .saved-list { display: grid; gap: 9px; margin-top: 0; }
+    .saved-list-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 850;
+      letter-spacing: .06em;
+      color: rgba(200,190,255,.58);
+      text-transform: uppercase;
+      margin: 2px 0 -2px;
+    }
+    .saved-list-title::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #34d399;
+      box-shadow: 0 0 12px rgba(52,211,153,0.65);
+    }
 
     .saved-row {
-      border: 1px solid rgba(100,80,180,0.12);
-      border-radius: 10px;
-      background: rgba(10,10,18,0.7);
+      border: 1px solid rgba(124,92,246,0.14);
+      border-radius: 14px;
+      background:
+        linear-gradient(135deg, rgba(124,92,246,0.06), rgba(52,211,153,0.025)),
+        rgba(10,10,18,0.76);
       overflow: hidden;
     }
     .saved-row-header {
       display: flex; align-items: center; justify-content: space-between; gap: 9px;
-      padding: 9px 12px;
+      padding: 11px 13px;
       cursor: pointer;
       user-select: none;
     }
     .saved-row-header:hover { background: rgba(100,80,180,0.07); }
     .saved-row-toggle { font-size: 11px; color: rgba(200,190,255,.5); transition: transform .2s; flex-shrink: 0; }
     .saved-row.open .saved-row-toggle { transform: rotate(90deg); }
+    .saved-title-line { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+    .saved-status-tag {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-height: 22px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.22);
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+    }
+    .saved-status-tag.failed {
+      color: #fecaca;
+      background: rgba(239,68,68,0.16);
+      border-color: rgba(239,68,68,0.42);
+    }
+    .saved-status-tag.success {
+      color: #bbf7d0;
+      background: rgba(34,197,94,0.13);
+      border-color: rgba(34,197,94,0.34);
+    }
     .saved-row-body {
       display: none;
-      padding: 0 12px 10px;
-      border-top: 1px solid rgba(100,80,180,0.08);
+      padding: 2px 13px 12px;
+      border-top: 1px solid rgba(100,80,180,0.09);
+      background: rgba(4,4,9,0.2);
     }
     .saved-row.open .saved-row-body { display: block; }
     .saved-slip-match {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 5px 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      padding: 7px 0;
       border-bottom: 1px solid rgba(100,80,180,0.06);
       font-size: 12px;
-      gap: 8px;
+      gap: 10px;
     }
+    .saved-slip-match-name { min-width: 0; overflow-wrap: anywhere; }
+    .saved-slip-actions { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
     .saved-slip-match:last-child { border-bottom: none; }
     .saved-slip-dir { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
     .saved-slip-dir.ust { background: rgba(52,211,153,0.15); color: #a7f3d0; }
     .saved-slip-dir.alt { background: rgba(248,113,113,0.15); color: #fecaca; }
+    .saved-result-btn {
+      min-width: 72px;
+      height: 28px;
+      border-radius: 8px;
+      padding: 0 9px;
+      border: 1px solid rgba(148,163,184,0.22);
+      background: rgba(30,28,48,0.8);
+      color: #cbd5e1;
+      font-size: 11px;
+      font-weight: 850;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .saved-result-btn:hover { border-color: rgba(124,92,246,0.48); background: rgba(40,36,68,0.96); }
+    .saved-result-btn.success.active { background: rgba(34,197,94,0.18); border-color: rgba(34,197,94,0.45); color: #bbf7d0; }
+    .saved-result-btn.failed.active { background: rgba(239,68,68,0.18); border-color: rgba(239,68,68,0.48); color: #fecaca; }
 
     .ai-guide-box { width: min(96vw, 920px); }
 
@@ -1491,11 +1814,16 @@
 
     @media (max-width: 900px) {
       .table-wrap { display: none; }
+      .bet-result-panel .table-wrap { display: block; }
       .cards-wrap { display: flex; }
       .toolbar-side { justify-content: flex-start; }
       .bet-toolbar { grid-template-columns: 1fr; }
       .detail-grid { grid-template-columns: 1fr; }
       .ai-guide-grid { grid-template-columns: 1fr; }
+      .bet-summary-card { align-items: flex-start; flex-direction: column; }
+      .bet-summary-stats { justify-content: flex-start; }
+      .saved-slip-match { grid-template-columns: 1fr; align-items: flex-start; }
+      .saved-slip-actions { justify-content: flex-start; }
     }
 
     @media (max-width: 720px) {
@@ -1729,6 +2057,8 @@
           <button class="btn" data-filter="ignored">Pas Geçilen</button>
           <button class="btn" data-filter="alt">ALT</button>
           <button class="btn" data-filter="ust">ÜST</button>
+          <button class="btn warning" data-filter="hundred_profile" title="Kalite sütununda 100 etiketi olan sinyaller">100 Profil</button>
+          <button class="btn warning" data-filter="claude_ai" title="C_A filtresinden geçen yıldızlı sinyaller">C_A ⭐</button>
         </div>
       </section>
 
@@ -1757,6 +2087,7 @@
                 <th class="select-cell"><input class="match-select" id="selectAll" type="checkbox" onchange="selectPage(this.checked)" aria-label="Sayfadaki maçları seç"></th>
 	                <th data-sort="alerted_at">Zaman</th>
 	                <th data-sort="direction">Sinyal</th>
+	                <th class="ca-cell" data-sort="claude_ai" title="Claude AI filtresi">C_A</th>
 	                <th data-sort="fair_line">Adil</th>
                 <th data-sort="projected">Proj.</th>
                 <th data-sort="quality_rank">Kalite</th>
@@ -2028,6 +2359,51 @@
       target.style.display = message ? 'block' : 'none';
     }
 
+    function savedResultKey(value) {
+      const normalized = String(value || '').trim().toLocaleLowerCase('tr-TR')
+        .replaceAll('ı', 'i')
+        .replaceAll('ş', 's');
+      if (normalized === 'basarili' || normalized === 'success') return 'success';
+      if (normalized === 'basarisiz' || normalized === 'fail' || normalized === 'failed') return 'failed';
+      return '';
+    }
+
+    function savedSlipStatus(slip) {
+      if (!Array.isArray(slip) || !slip.length) return null;
+      const results = slip.map(item => savedResultKey(item?.result));
+      if (results.includes('failed')) return { key: 'failed', label: 'Başarısız' };
+      if (results.every(result => result === 'success')) return { key: 'success', label: 'Başarılı' };
+      return null;
+    }
+
+    function savedSlipStatusBadge(slip) {
+      const status = savedSlipStatus(slip);
+      return status ? `<span class="saved-status-tag ${status.key}">${escapeHtml(status.label)}</span>` : '';
+    }
+
+    function savedResultButton(slipId, matchId, result, label, cls) {
+      const active = savedResultKey(result) === cls ? ' active' : '';
+      return `<button class="saved-result-btn ${cls}${active}" data-slip-id="${Number(slipId)}" data-match-id="${escapeHtml(matchId)}" onclick='setSavedSlipResultFromButton(this, ${jsString(label)})'>${escapeHtml(label)}</button>`;
+    }
+
+    function safeExternalUrl(value) {
+      const raw = String(value || '').trim();
+      if (!raw) return '';
+      try {
+        const parsed = new URL(raw, window.location.origin);
+        return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : '';
+      } catch {
+        return '';
+      }
+    }
+
+    function betMatchNameHtml(item, className = 'bet-match-link') {
+      const name = cleanMatchName(item?.match_name || '-');
+      const url = safeExternalUrl(item?.url);
+      if (!url) return `<span class="${className}">${escapeHtml(name)}</span>`;
+      return `<a class="${className}" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(name)}</a>`;
+    }
+
     function timeText(value) {
       if (!value) return '-';
       const date = new Date(`${String(value).replace(' ', 'T')}Z`);
@@ -2089,11 +2465,141 @@
       return `<span class="badge small-badge">${fmt(alert.projected)}</span>`;
     }
 
+    const CA_DETAILS = {
+      TRUE_UNDER: { label: 'Güçlü Alt',    play: 'ALT', desc: 'Sistem ALT sinyali verdi ve geçmiş veri bunu destekliyor — kuralla eşleşen maçlar geçmişte ~%96 ALT bitmiş.' },
+      TRUE_OVER:  { label: 'Güçlü Üst',    play: 'ÜST', desc: 'Sistem ÜST sinyali verdi ve geçmiş veri bunu destekliyor — 100 Profili eşleşen maçlar geçmişte %100 ÜST bitmiş.' },
+      FADE_OVER:  { label: 'Tersine Alt',  play: 'ALT', desc: 'Sistem ÜST sinyali verdi ama bu profildeki maçlar geçmişte ~%87 oranla ALT bitmiş — tuzak sinyal. Ters yönde (ALT) oynaması önerilir.' },
+      FADE_UNDER: { label: 'Tersine Üst',  play: 'ÜST', desc: 'Sistem ALT sinyali verdi ama bu profildeki maçlar geçmişte tersine ÜST bitme eğiliminde — ters yönde (ÜST) oynaması önerilir.' },
+    };
+
+    function bigVerdictHtml(alert) {
+      const dir = String(alert.direction || '');
+      const dirArrow = dir === 'ALT' ? '▼' : (dir === 'ÜST' ? '▲' : '·');
+      const hundred = Number(alert.hundred_profile || 0) === 1;
+      const code = String(alert.claude_ai || '').trim();
+      const rule = String(alert.claude_ai_rule || '').trim();
+
+      // En yüksek güven: 100 Profili
+      if (hundred) {
+        return `
+          <div class="big-verdict gold">
+            <div class="big-verdict-icon">💯</div>
+            <div class="big-verdict-text">
+              <div class="big-verdict-play"><span class="arrow">${dirArrow}</span> ${escapeHtml(dir)} oyna!</div>
+              <div class="big-verdict-desc">Çok güçlü sinyal. Aynı tip maçlar geçmişte 124/124 (%100) tutmuş.</div>
+              ${rule ? `<div class="big-verdict-rule">Kural: ${escapeHtml(rule)}</div>` : ''}
+            </div>
+          </div>`;
+      }
+
+      // C_A güçlü
+      if (code === 'TRUE_UNDER' || code === 'TRUE_OVER') {
+        const play = code === 'TRUE_UNDER' ? 'ALT' : 'ÜST';
+        const playArrow = play === 'ALT' ? '▼' : '▲';
+        const rate = code === 'TRUE_UNDER' ? '~%96' : '%100';
+        return `
+          <div class="big-verdict true-yellow">
+            <div class="big-verdict-icon">⭐</div>
+            <div class="big-verdict-text">
+              <div class="big-verdict-play"><span class="arrow">${playArrow}</span> ${play} oyna</div>
+              <div class="big-verdict-desc">Sistem <b>${escapeHtml(dir)}</b> dedi, geçmiş veri de aynı yönü doğruluyor. Bu tip maçlar geçmişte ${rate} ${play} bitmiş.</div>
+              ${rule ? `<div class="big-verdict-rule">Kural: ${escapeHtml(rule)}</div>` : ''}
+            </div>
+          </div>`;
+      }
+
+      // C_A tersine
+      if (code === 'FADE_OVER' || code === 'FADE_UNDER') {
+        const play = code === 'FADE_OVER' ? 'ALT' : 'ÜST';
+        const playArrow = play === 'ALT' ? '▼' : '▲';
+        return `
+          <div class="big-verdict fade-pink">
+            <div class="big-verdict-icon">🔄</div>
+            <div class="big-verdict-text">
+              <div class="big-verdict-play"><span class="arrow">${playArrow}</span> ${play} oyna <small style="font-size:13px;font-weight:700;opacity:0.85;">(sistemin tersine)</small></div>
+              <div class="big-verdict-desc">Sistem <b>${escapeHtml(dir)}</b> dedi <b>ama tuzak</b>. Bu profildeki maçlar geçmişte ~%87 tersine ${play} bitmiş.</div>
+              ${rule ? `<div class="big-verdict-rule">Kural: ${escapeHtml(rule)}</div>` : ''}
+            </div>
+          </div>`;
+      }
+
+      // Sıradan sinyal
+      return `
+        <div class="big-verdict gray">
+          <div class="big-verdict-icon">📍</div>
+          <div class="big-verdict-text">
+            <div class="big-verdict-play"><span class="arrow">${dirArrow}</span> Sistem önerisi: ${escapeHtml(dir)}</div>
+            <div class="big-verdict-desc">Yüksek-güven kuralına girmedi. İstersen oyna, istersen pas geç — karar sende.</div>
+          </div>
+        </div>`;
+    }
+
+    function signalTagsHtml(alert) {
+      const code = String(alert.claude_ai || '').trim();
+      const isHundred = Number(alert.hundred_profile || 0) === 1;
+      const caCard = (() => {
+        if (!code || !CA_DETAILS[code]) {
+          return `
+            <div class="signal-tag-card empty">
+              <div class="signal-tag-head"><span class="icon">☆</span> C_A Filtresi</div>
+              <div class="signal-tag-rule">Bu sinyal yüksek-güven kovalarına girmedi. Standart riskte değerlendir.</div>
+            </div>`;
+        }
+        const d = CA_DETAILS[code];
+        const isFade = code === 'FADE_OVER' || code === 'FADE_UNDER';
+        const cls = isFade ? 'ca-fade' : 'ca-true';
+        const playCls = d.play === 'ALT' ? 'alt' : 'ust';
+        const rule = String(alert.claude_ai_rule || '').trim();
+        return `
+          <div class="signal-tag-card ${cls}">
+            <div class="signal-tag-head">
+              <span class="icon">⭐</span> C_A: ${escapeHtml(d.label)}
+              <span class="signal-tag-play ${playCls}">${d.play} oyna</span>
+            </div>
+            <div class="signal-tag-rule" style="margin-bottom:6px;">${escapeHtml(d.desc)}</div>
+            ${rule ? `<div class="signal-tag-rule"><b>Kural:</b> ${escapeHtml(rule)}</div>` : ''}
+          </div>`;
+      })();
+      const hundredCard = (() => {
+        if (!isHundred) {
+          return `
+            <div class="signal-tag-card empty">
+              <div class="signal-tag-head"><span class="icon">○</span> 100 Profili</div>
+              <div class="signal-tag-rule">Bu sinyal 100 Profili kuralına girmedi.</div>
+            </div>`;
+        }
+        const rule = String(alert.hundred_profile_rule || '').trim();
+        return `
+          <div class="signal-tag-card hundred">
+            <div class="signal-tag-head">
+              <span class="icon">💯</span> 100 Profili
+              <span class="signal-tag-play ${alert.direction === 'ALT' ? 'alt' : 'ust'}">${escapeHtml(alert.direction || '')} oyna</span>
+            </div>
+            <div class="signal-tag-rule" style="margin-bottom:6px;">Geçmişte 124/124 (%100) tutmuş yüksek-kalite örüntü.</div>
+            ${rule ? `<div class="signal-tag-rule"><b>Kural:</b> ${escapeHtml(rule)}</div>` : ''}
+          </div>`;
+      })();
+      return `<div class="signal-tag-grid">${caCard}${hundredCard}</div>`;
+    }
+
+    function caHtml(alert) {
+      const code = String(alert.claude_ai || '').trim();
+      if (!code) return '<span class="ca-empty" aria-hidden="true">·</span>';
+      const label = String(alert.claude_ai_label || code);
+      const isFade = code === 'FADE_OVER' || code === 'FADE_UNDER';
+      const cls = `ca-star ${isFade ? 'fade' : ''}`.trim();
+      const id = Number(alert.id || 0);
+      return `<button type="button" class="${cls}" onclick="openSignalModal(${id})" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)} — ayrıntı için tıkla">⭐</button>`;
+    }
+
     function qualityHtml(alert) {
       const label = String(alert.quality_label || '-');
       const tone = String(alert.quality_tone || 'empty').replace(/[^a-z-]/gi, '') || 'empty';
       const title = String(alert.quality_title || 'Kalite kuralı uygulanmadı.');
       const markers = Array.isArray(alert.list_markers) ? alert.list_markers : [];
+      const hundred = Number(alert.hundred_profile || 0) === 1
+        ? `<button type="button" class="hundred-profile-badge" onclick="event.stopPropagation();openSignalModal(${Number(alert.id || 0)})" title="100 Profili — ayrıntı için tıkla">100</button>`
+        : '';
       const markerHtml = markers.map(marker => {
         const markerTone = String(marker.tone || '').replace(/[^a-z-]/gi, '');
         return `<span class="list-marker ${escapeHtml(markerTone)}" title="${escapeHtml(marker.title || '')}" aria-label="${escapeHtml(marker.title || '')}"></span>`;
@@ -2101,7 +2607,7 @@
       const badge = label && label !== '-'
         ? `<span class="badge small-badge quality-badge ${escapeHtml(tone)}" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`
         : (markerHtml ? '' : `<span class="badge small-badge quality-badge empty" title="${escapeHtml(title)}">-</span>`);
-      return `<span class="quality-cell">${badge}${markerHtml}</span>`;
+      return `<span class="quality-cell">${badge}${hundred}${markerHtml}</span>`;
     }
 
     function splitMatchTeams(name) {
@@ -2171,8 +2677,38 @@
 	      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count', 'quality_rank'].includes(field)) {
 	        return num(alert[field]) ?? Number.NEGATIVE_INFINITY;
 	      }
+      if (field === 'claude_ai') return String(alert.claude_ai || '').trim() ? 1 : 0;
       if (field === 'alerted_at') return alert.alerted_at ? new Date(`${String(alert.alerted_at).replace(' ', 'T')}Z`).getTime() : 0;
       return String(alert[field] || '').toLocaleLowerCase('tr-TR');
+    }
+
+    function scoreTotalValue(score) {
+      const match = String(score || '').match(/(\d{1,3})\s*[-–]\s*(\d{1,3})/);
+      return match ? Number(match[1]) + Number(match[2]) : null;
+    }
+
+    function scoreMarginValue(score) {
+      const match = String(score || '').match(/(\d{1,3})\s*[-–]\s*(\d{1,3})/);
+      return match ? Math.abs(Number(match[1]) - Number(match[2])) : null;
+    }
+
+    function matchPpmValue(alert) {
+      const analysis = parseAnalysis(alert);
+      const components = analysis.projection_components && typeof analysis.projection_components === 'object'
+        ? analysis.projection_components
+        : {};
+      return num(analysis.match_ppm) ?? num(components.current_pace_per_min);
+    }
+
+    function projectedGapValue(alert) {
+      const analysis = parseAnalysis(alert);
+      const projected = num(alert.projected ?? analysis.projected_total);
+      const live = num(alert.live);
+      return projected !== null && live !== null ? projected - live : null;
+    }
+
+    function isHundredProfileCandidate(alert) {
+      return Number(alert.hundred_profile || 0) === 1;
     }
 
     function filteredAlerts() {
@@ -2184,6 +2720,8 @@
       if (currentFilter === 'ignored') list = list.filter(a => a.ignored);
       if (currentFilter === 'alt') list = list.filter(a => a.direction === 'ALT');
       if (currentFilter === 'ust') list = list.filter(a => a.direction === 'ÜST');
+      if (currentFilter === 'hundred_profile') list = list.filter(isHundredProfileCandidate);
+      if (currentFilter === 'claude_ai') list = list.filter(a => String(a.claude_ai || '').trim() !== '');
       if (activePeriods.size) {
         list = list.filter(a => activePeriods.has(`${a.direction}-${a.alert_period}`));
       }
@@ -2253,6 +2791,7 @@
             <td class="select-cell"><input class="match-select" type="checkbox" ${selectedMatchIds.has(matchId) ? 'checked' : ''} onchange='toggleSelected(${matchIdArg}, this.checked)' aria-label="Maç seç"></td>
 	            <td class="mono">${timeText(a.alerted_at)}</td>
 	            <td>${directionBadge(a)} ${Number(a.signal_count || 1) > 1 ? `<span class="badge small-badge">${Number(a.signal_count)}. sinyal</span>` : ''}</td>
+	            <td class="ca-cell">${caHtml(a)}</td>
 	            <td>${fairHtml(a)}</td>
             <td>${projectedHtml(a)}</td>
             <td>${qualityHtml(a)}</td>
@@ -2341,6 +2880,10 @@
               <div class="card-chip">
                 <span class="card-chip-label">Kalite</span>
                 <span class="card-chip-value">${qualityHtml(a)}</span>
+              </div>
+              <div class="card-chip">
+                <span class="card-chip-label">C_A</span>
+                <span class="card-chip-value">${caHtml(a)}</span>
               </div>
             </div>
 
@@ -2713,6 +3256,82 @@
         </div>`;
     }
 
+    function quarterRowsFromAnalysis(analysis) {
+      const qs = analysis?.quarter_scores && typeof analysis.quarter_scores === 'object' ? analysis.quarter_scores : {};
+      const home = Array.isArray(qs.home) ? qs.home : [];
+      const away = Array.isArray(qs.away) ? qs.away : [];
+      const ppm = Array.isArray(analysis?.quarter_ppm) ? analysis.quarter_ppm : [];
+      const quarterLength = num(analysis?.quarter_length) || 10;
+      const count = Math.min(4, Math.max(home.length, away.length, ppm.length));
+      const rows = [];
+      for (let i = 0; i < count; i++) {
+        const h = num(home[i]);
+        const a = num(away[i]);
+        const total = h !== null && a !== null ? h + a : null;
+        const qPpm = num(ppm[i]) ?? (total !== null && quarterLength ? total / quarterLength : null);
+        rows.push({
+          label: `Q${i + 1}`,
+          score: h !== null && a !== null ? `${h}-${a}` : '-',
+          ppm: qPpm,
+        });
+      }
+      return rows;
+    }
+
+    function quarterScoreHtml(analysis) {
+      const rows = quarterRowsFromAnalysis(analysis);
+      if (!rows.length) return '<div class="sig-help">Çeyrek skoru okunamadı.</div>';
+      return `
+        <div class="sig-quarters-grid">
+          ${rows.map(row => `
+            <div class="sig-quarter-chip">
+              <span class="q">${escapeHtml(row.label)}</span>
+              <span class="score">${escapeHtml(row.score)}</span>
+              <span class="ppm">${row.ppm !== null ? `${row.ppm.toFixed(2)} ppm` : '-'}</span>
+            </div>
+          `).join('')}
+        </div>`;
+    }
+
+    function matchPaceText(analysis) {
+      const components = analysis?.projection_components && typeof analysis.projection_components === 'object'
+        ? analysis.projection_components
+        : {};
+      const matchPpm = num(analysis?.match_ppm) ?? num(components.current_pace_per_min);
+      return matchPpm !== null ? `${matchPpm.toFixed(2)} sayı/dk` : '-';
+    }
+
+    function sustainablePaceText(analysis) {
+      const components = analysis?.projection_components && typeof analysis.projection_components === 'object'
+        ? analysis.projection_components
+        : {};
+      const sustainable = num(analysis?.sustainable_ppm) ?? num(components.sustainable_pace_per_min);
+      return sustainable !== null ? `${sustainable.toFixed(2)} sayı/dk` : '-';
+    }
+
+    function quarterPaceSummaryText(analysis) {
+      const rows = quarterRowsFromAnalysis(analysis).filter(row => row.ppm !== null);
+      return rows.length ? rows.map(row => `${row.label} ${row.ppm.toFixed(2)}`).join(' / ') : '-';
+    }
+
+    function quarterScoreSummaryText(analysis) {
+      const rows = quarterRowsFromAnalysis(analysis).filter(row => row.score !== '-');
+      return rows.length ? rows.map(row => `${row.label} ${row.score}`).join(' / ') : '-';
+    }
+
+    function pacePanelHtml(analysis) {
+      return `
+        <div class="sig-section-title">Çeyrek Skorları ve Pace</div>
+        <div class="sig-card">
+          <div class="sig-help">PPM = iki takım toplam sayı / dakika. Maç PPM o ana kadarki canlı tempoyu gösterir.</div>
+          <div class="row"><span>Çeyrek skorları</span><strong>${escapeHtml(quarterScoreSummaryText(analysis))}</strong></div>
+          <div class="row"><span>Maç PPM</span><strong>${escapeHtml(matchPaceText(analysis))}</strong></div>
+          <div class="row"><span>Çeyrek ort. PPM</span><strong>${escapeHtml(sustainablePaceText(analysis))}</strong></div>
+          <div class="row"><span>Çeyrek PPM</span><strong>${escapeHtml(quarterPaceSummaryText(analysis))}</strong></div>
+          ${quarterScoreHtml(analysis)}
+        </div>`;
+    }
+
     function historyGuardStatHtml(title, stat) {
       const s = stat && typeof stat === 'object' ? stat : {};
       const resolved = Number(s.resolved || 0);
@@ -2914,108 +3533,93 @@
 
       $('signalModalTitle').textContent = matchName;
       $('signalModalBody').innerHTML = `
-        <div style="padding:14px;line-height:1.5;">
+        <div style="padding:16px 18px;line-height:1.5;">
 
-          <!-- HERO: pick + verdict line + edge -->
-          <div class="sig-hero ${edgeClass}">
-            <div class="sig-pick ${sigCls}">
-              <span class="arrow">${sigEmoji}</span>
-              <span class="label">${escapeHtml(sigDir)}</span>
+          <!-- ÜST BİLGİ: lig + zaman + skor -->
+          <div style="font-size:12.5px;color:var(--text-soft);margin-bottom:12px;">
+            🏆 ${escapeHtml(alert.tournament || '-')} &nbsp;·&nbsp;
+            ⏱ ${escapeHtml(alert.status || '-')} &nbsp;·&nbsp;
+            🏀 <b style="color:var(--text);">${escapeHtml(alert.score || '-')}</b>
+            ${alert.signal_count > 1 ? `&nbsp;·&nbsp; ${alert.signal_count}. tekrar` : ''}
+          </div>
+
+          <!-- ANA CEVAP: ne oynayacağım? -->
+          ${bigVerdictHtml(alert)}
+
+          <!-- 3 BASIT SAYI -->
+          <div class="simple-stats">
+            <div>
+              <div class="stat-num">${fmt(alert.opening)}</div>
+              <div class="stat-label">Açılış</div>
             </div>
-            <div class="sig-headline">
-              <div class="verdict-line">${escapeHtml(headlineText)}</div>
-              <div class="meta-row">
-                <span class="meta-chip">⏱ ${escapeHtml(alert.status || '-')}</span>
-                <span class="meta-chip">🏀 ${escapeHtml(alert.score || '-')}</span>
-                ${alert.signal_count > 1 ? `<span class="meta-chip muted">${alert.signal_count}. tekrar</span>` : ''}
-              </div>
-              <div class="meta-row">
-                <span class="meta-chip muted">🏆 ${escapeHtml(alert.tournament || '-')}</span>
-              </div>
+            <div>
+              <div class="stat-num live">${fmt(alert.live)}</div>
+              <div class="stat-label">Şu an</div>
+              ${lineMove !== null ? `<div class="stat-sub ${moveColor}">${lineMoveStr}</div>` : ''}
             </div>
-            <div class="sig-edge-display">
-              <span class="value ${fairEdgeCls}">${fairEdgeStr}</span>
-              <span class="label">Adil − Canlı</span>
+            <div>
+              <div class="stat-num">${fairNum !== null ? fairNum.toFixed(1) : '–'}</div>
+              <div class="stat-label">Sistem Hesabı</div>
+              ${fairEdge !== null ? `<div class="stat-sub ${fairEdgeCls}">${fairEdgeStr} fark</div>` : ''}
             </div>
           </div>
 
-          <!-- KEY METRICS: 4-column -->
-          <div class="sig-metrics-row">
-            <div class="sig-metric-card">
-              <div class="num">${fmt(alert.opening)}</div>
-              <div class="label">Açılış</div>
-            </div>
-            <div class="sig-metric-card live">
-              <div class="num">${fmt(alert.live)}</div>
-              <div class="label">Canlı</div>
-              ${lineMove !== null ? `<div class="sub ${moveColor}">${lineMoveStr} ${escapeHtml(moveText)}</div>` : '<div class="sub">—</div>'}
-            </div>
-            <div class="sig-metric-card fair">
-              <div class="num">${fairNum !== null ? fairNum.toFixed(1) : '–'}</div>
-              <div class="label">Adil Barem</div>
-              ${fairEdge !== null ? `<div class="sub ${fairEdgeCls}">${fairEdgeStr} fark</div>` : '<div class="sub">—</div>'}
-            </div>
-            <div class="sig-metric-card">
-              <div class="num">${projected !== null ? projected.toFixed(1) : '–'}</div>
-              <div class="label">Projeksiyon</div>
-              ${projectionQuality !== null ? `<div class="sub">${Math.round(projectionQuality)}/100 · ${escapeHtml(dataLabel)}</div>` : '<div class="sub">—</div>'}
-            </div>
-          </div>
-
-          <!-- VERDICT: what the system thinks -->
-          <div class="sig-section-title">Sistem Değerlendirmesi</div>
-          <div class="sig-verdict ${edgeClass}">
-            <span class="icon">${edgeArrow}</span>
-            <div class="body">
-              <div class="heading">${escapeHtml(verdictHeading)}</div>
-              <p>${edgeText}</p>
-            </div>
-          </div>
-
-          <!-- WHY -->
-          ${selectionReason ? `
-            <div class="sig-section-title">Neden Bu Sinyal?</div>
-            <div class="sig-card">
-              <div class="sig-help">${escapeHtml(selectionReason)}</div>
-            </div>
-          ` : ''}
-
-          <!-- DETAILS: breakdown + context -->
-          <div class="sig-section-title">Detaylar</div>
-          <div class="sig-grid">
-            <div class="sig-card">
-              <h4>Adil Barem Hesabı</h4>
-              <div class="sig-help">Hangi parçalardan oluşuyor?</div>
-              <div class="row"><span>Adil barem</span><strong style="color:#c4b5fd;font-size:15px;">${fairNum !== null ? fairNum.toFixed(1) : '–'}</strong></div>
-              <div class="row"><span>Canlı barem</span><strong>${fmt(alert.live)}</strong></div>
-              <div class="row"><span>Adil − canlı</span><strong class="${fairEdgeCls}">${fairEdgeStr}</strong></div>
-              ${fairCompTitle}
-              ${fairBreakdownRows}
-            </div>
-            <div class="sig-card">
-              <h4>Maç Bağlamı</h4>
-              <div class="sig-help">Ana karar değil, arka plan kontrolü.</div>
-              <div class="row"><span>Hat hareketi</span><strong class="${moveColor}">${lineMoveStr}${moveText ? ` <span style="color:var(--text-soft);font-weight:600;">${escapeHtml(moveText)}</span>` : ''}</strong></div>
-              ${h2h !== null ? `<div class="row"><span>H2H ortalaması</span><strong>${h2h.toFixed(1)}</strong></div>` : ''}
-              ${alert.signal_count > 1 ? `<div class="row"><span>Sinyal tekrarı</span><strong>${alert.signal_count}. kez</strong></div>` : ''}
-              <div class="row"><span>Veri kalitesi</span><strong>${escapeHtml(dataLabel)}${projectionQuality !== null ? ` <span style="color:var(--text-soft);font-weight:600;">(${projectionQuality.toFixed(0)}/100)</span>` : ''}</strong></div>
-            </div>
-            ${listQuickActionsHtml(alert)}
-          </div>
-
-          <!-- WARNINGS -->
+          <!-- DİKKAT (varsa, max 2) -->
           ${warnings.length ? `
-            <div class="sig-section-title">Risk Notları</div>
-            <div class="sig-card">
-              ${warningsHtml}
+            <div class="simple-warn">
+              <div class="simple-warn-title">⚠️ Dikkat</div>
+              <ul>${warnings.slice(0,2).map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul>
             </div>
           ` : ''}
 
-          <!-- HISTORY GUARD -->
-          ${historyGuardHtml(alert)}
-
-          <!-- ACTIONS -->
+          <!-- BUTONLAR -->
           ${actionsHtml}
+
+          <!-- TÜM TEKNİK DETAY (kapalı) -->
+          <details style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.06);">
+            <summary class="modal-detail-toggle">🔬 Tüm teknik detayları göster</summary>
+            <div style="margin-top:12px;">
+              ${signalTagsHtml(alert)}
+              ${pacePanelHtml(analysis)}
+              <div class="sig-section-title">Sistem Değerlendirmesi</div>
+              <div class="sig-verdict ${edgeClass}">
+                <span class="icon">${edgeArrow}</span>
+                <div class="body">
+                  <div class="heading">${escapeHtml(verdictHeading)}</div>
+                  <p>${edgeText}</p>
+                </div>
+              </div>
+              ${selectionReason ? `
+                <div class="sig-section-title">Neden Bu Sinyal?</div>
+                <div class="sig-card"><div class="sig-help">${escapeHtml(selectionReason)}</div></div>
+              ` : ''}
+              <div class="sig-section-title">Hesaplama Detayı</div>
+              <div class="sig-grid">
+                <div class="sig-card">
+                  <h4>Adil Barem Hesabı</h4>
+                  <div class="sig-help">Hangi parçalardan oluşuyor?</div>
+                  <div class="row"><span>Adil barem</span><strong style="color:#c4b5fd;font-size:15px;">${fairNum !== null ? fairNum.toFixed(1) : '–'}</strong></div>
+                  <div class="row"><span>Canlı barem</span><strong>${fmt(alert.live)}</strong></div>
+                  <div class="row"><span>Adil − canlı</span><strong class="${fairEdgeCls}">${fairEdgeStr}</strong></div>
+                  ${fairCompTitle}
+                  ${fairBreakdownRows}
+                </div>
+                <div class="sig-card">
+                  <h4>Maç Bağlamı</h4>
+                  <div class="row"><span>Hat hareketi</span><strong class="${moveColor}">${lineMoveStr}${moveText ? ` <span style="color:var(--text-soft);font-weight:600;">${escapeHtml(moveText)}</span>` : ''}</strong></div>
+                  ${h2h !== null ? `<div class="row"><span>H2H ortalaması</span><strong>${h2h.toFixed(1)}</strong></div>` : ''}
+                  ${alert.signal_count > 1 ? `<div class="row"><span>Sinyal tekrarı</span><strong>${alert.signal_count}. kez</strong></div>` : ''}
+                  <div class="row"><span>Veri kalitesi</span><strong>${escapeHtml(dataLabel)}${projectionQuality !== null ? ` <span style="color:var(--text-soft);font-weight:600;">(${projectionQuality.toFixed(0)}/100)</span>` : ''}</strong></div>
+                </div>
+                ${listQuickActionsHtml(alert)}
+              </div>
+              ${warnings.length > 2 ? `
+                <div class="sig-section-title">Diğer Risk Notları</div>
+                <div class="sig-card"><ul class="sig-warnings">${warnings.slice(2).map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>
+              ` : ''}
+              ${historyGuardHtml(alert)}
+            </div>
+          </details>
         </div>
       `;
       $('signalModal').classList.add('active');
@@ -3095,30 +3699,45 @@
     }
 
     function renderSlip(payload) {
+      $('betResult').className = 'bet-result-slot';
       latestSlip = payload && Array.isArray(payload.slip) && payload.slip.length ? payload : null;
-      const summary = `<div class="detail-box" style="margin-bottom:10px;"><strong>${escapeHtml(payload?.message || '')}</strong><div class="subline" style="max-width:none;">Uygun: ${Number(payload?.eligible_count || 0)} | Seçilen: ${Number(payload?.selected_count || 0)}</div></div>`;
+      const summary = `
+        <div class="bet-summary-card">
+          <div class="bet-summary-main">
+            <strong>${escapeHtml(payload?.message || '')}</strong>
+          </div>
+          <div class="bet-summary-stats">
+            <span class="bet-stat">Uygun <b>${Number(payload?.eligible_count || 0)}</b></span>
+            <span class="bet-stat">Seçilen <b>${Number(payload?.selected_count || 0)}</b></span>
+          </div>
+        </div>`;
       if (!latestSlip) {
         $('betResult').style.display = 'block';
-        $('betResult').innerHTML = `${summary}<div>Kupona uygun maç yok.</div>`;
+        $('betResult').innerHTML = `${summary}<div class="empty-state" style="display:block;">Kupona uygun maç yok.</div>`;
         return;
       }
-      const rows = latestSlip.slip.map(item => `
-        <tr>
-          <td>${escapeHtml(cleanMatchName(item.match_name))}<div class="subline">${escapeHtml(item.tournament || '-')}</div></td>
-          <td>${escapeHtml(`${fmt(item.live)}-${item.direction || '-'}`)}</td>
-          <td>${fmt(item.opening)}</td>
-          <td class="mono">${signed(item.diff || item.opening_gap || 0)}</td>
-          <td>${escapeHtml(item.score || '-')}</td>
-          <td>${escapeHtml(item.status || '-')}</td>
-          <td><button class="row-action danger" onclick='removeSlipMatch(${jsString(normalizeId(item.match_id))})'>⌫</button></td>
-        </tr>
-      `).join('');
+      const rows = latestSlip.slip.map(item => {
+        const direction = String(item.direction || '').toUpperCase();
+        const dirCls = direction === 'ÜST' ? 'ust' : 'alt';
+        return `
+          <tr>
+            <td>${betMatchNameHtml(item)}<div class="subline">${escapeHtml(item.tournament || '-')}</div></td>
+            <td><span class="bet-play-pill ${dirCls}">${escapeHtml(`${fmt(item.live)}-${item.direction || '-'}`)}</span></td>
+            <td class="mono">${fmt(item.opening)}</td>
+            <td class="mono">${signed(item.diff || item.opening_gap || 0)}</td>
+            <td><strong>${escapeHtml(item.score || '-')}</strong></td>
+            <td>${escapeHtml(item.status || '-')}</td>
+            <td><button class="row-action danger" onclick='removeSlipMatch(${jsString(normalizeId(item.match_id))})'>⌫</button></td>
+          </tr>
+        `;
+      }).join('');
       $('betResult').style.display = 'block';
-      $('betResult').innerHTML = `${summary}<div class="table-wrap"><table class="bet-table"><thead><tr><th>Maç</th><th>Oynanacak</th><th>Açılış</th><th>Fark</th><th>Skor</th><th>Durum</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      $('betResult').innerHTML = `${summary}<div class="bet-result-panel"><div class="table-wrap"><table class="bet-table"><thead><tr><th>Maç</th><th>Oynanacak</th><th>Açılış</th><th>Fark</th><th>Skor</th><th>Durum</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
     }
 
     async function generateBetSlip() {
       setBetStatus('');
+      $('betResult').className = 'empty-state';
       $('betResult').style.display = 'block';
       $('betResult').textContent = 'Kupon hazırlanıyor...';
       try {
@@ -3129,6 +3748,7 @@
         renderSlip(payload);
       } catch (error) {
         latestSlip = null;
+        $('betResult').className = 'empty-state';
         $('betResult').textContent = error.message || 'Kupon oluşturulamadı.';
       }
     }
@@ -3157,6 +3777,7 @@
 
     async function loadSavedSlips() {
       try {
+        const openIds = new Set(Array.from(document.querySelectorAll('.saved-row.open')).map(row => String(row.dataset.id || '')));
         const res = await fetch('/api/bet-builder/saved?limit=30');
         const payload = await res.json();
         const items = Array.isArray(payload) ? payload : [];
@@ -3165,15 +3786,28 @@
           const matchRows = slip.map(m => {
             const dir = (m.direction || '').toUpperCase();
             const dirCls = dir === 'ÜST' ? 'ust' : 'alt';
+            const matchId = normalizeId(m.match_id);
             return `<div class="saved-slip-match">
-              <span>${escapeHtml(cleanMatchName(m.match_name || '-'))}<span class="subline" style="display:inline;margin-left:6px;opacity:.55;">${escapeHtml(m.tournament || '')}</span></span>
-              <span class="saved-slip-dir ${dirCls}">${escapeHtml(dir)}</span>
+              <div class="saved-slip-match-name">
+                ${betMatchNameHtml(m, 'saved-match-link')}
+                <span class="subline" style="display:inline;margin-left:6px;opacity:.55;">${escapeHtml(m.tournament || '')}</span>
+              </div>
+              <div class="saved-slip-actions">
+                <span class="saved-slip-dir ${dirCls}">${escapeHtml(dir)}</span>
+                ${savedResultButton(item.id, matchId, m.result, 'Başarılı', 'success')}
+                ${savedResultButton(item.id, matchId, m.result, 'Başarısız', 'failed')}
+              </div>
             </div>`;
           }).join('');
-          return `<div class="saved-row" id="savedRow_${Number(item.id)}">
+          const rowId = String(Number(item.id));
+          const openClass = openIds.has(rowId) ? ' open' : '';
+          return `<div class="saved-row${openClass}" id="savedRow_${Number(item.id)}" data-id="${Number(item.id)}">
             <div class="saved-row-header" onclick="toggleSavedRow(${Number(item.id)})">
               <div>
-                <strong>${escapeHtml(item.name || '-')}</strong>
+                <div class="saved-title-line">
+                  <strong>${escapeHtml(item.name || '-')}</strong>
+                  ${savedSlipStatusBadge(slip)}
+                </div>
                 <div class="subline">${escapeHtml(item.created_at || '')} &middot; ${Number(item.selected_count || 0)} maç</div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;">
@@ -3186,6 +3820,27 @@
         }).join('') : '<div class="subline" style="padding:6px 0 0;">Kayıtlı kupon yok.</div>';
       } catch {
         $('savedList').innerHTML = '';
+      }
+    }
+
+    async function setSavedSlipResultFromButton(button, result) {
+      const slipId = Number(button?.dataset?.slipId || 0);
+      const matchId = normalizeId(button?.dataset?.matchId || '');
+      if (!slipId || !matchId) return;
+      button.disabled = true;
+      try {
+        const res = await fetch(`/api/bet-builder/saved/${slipId}/result`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ match_id: matchId, result }),
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.error || 'Sonuç kaydedilemedi.');
+        setBetStatus('Maç sonucu kaydedildi.');
+        loadSavedSlips();
+      } catch (error) {
+        button.disabled = false;
+        setBetStatus(error.message || 'Sonuç kaydedilemedi.', 'error');
       }
     }
 

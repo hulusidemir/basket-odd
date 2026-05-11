@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <title>Silinen Maçlar</title>
   <style>
     :root {
@@ -269,6 +270,7 @@
     .stat-chip.success strong { color: var(--accent-green); }
     .stat-chip.fail strong { color: var(--accent-red); }
     .stat-chip.rate strong { color: var(--accent-yellow); }
+    .stat-chip.hundred strong { color: #fef08a; }
 
     .stat-chip.clickable {
       cursor: pointer;
@@ -285,6 +287,7 @@
     }
     .stat-chip.clickable.active.success { border-color: rgba(52, 211, 153, 0.6); background: rgba(52, 211, 153, 0.12); }
     .stat-chip.clickable.active.fail { border-color: rgba(255, 107, 99, 0.6); background: rgba(255, 107, 99, 0.12); }
+    .stat-chip.clickable.active.hundred { border-color: rgba(251, 191, 36, 0.66); background: rgba(251, 191, 36, 0.12); }
 
     .signal-breakdown {
       display: grid;
@@ -705,6 +708,145 @@
 	      background: rgba(245, 158, 11, 0.16);
 	      border-color: rgba(245, 158, 11, 0.55);
 	    }
+	    .hundred-profile-badge {
+	      display: inline-flex;
+	      align-items: center;
+	      justify-content: center;
+	      height: 19px;
+	      min-width: 27px;
+	      padding: 0 5px;
+	      border-radius: 5px;
+	      color: #111827;
+	      background: #facc15;
+	      border: 1px solid rgba(254, 240, 138, 0.88);
+	      box-shadow: 0 0 0 1px rgba(0,0,0,0.24), 0 0 12px rgba(250, 204, 21, 0.35);
+	      font-size: 11px;
+	      font-weight: 950;
+	      line-height: 1;
+	    }
+	    .ca-cell { width: 30px; text-align: center; padding: 4px 2px !important; }
+	    .ca-star {
+	      display: inline-flex; align-items: center; justify-content: center;
+	      width: 22px; height: 22px; border-radius: 6px;
+	      font-size: 15px; line-height: 1; cursor: pointer;
+	      background: rgba(250, 204, 21, 0.14);
+	      border: 1px solid rgba(250, 204, 21, 0.45);
+	      color: #fde68a;
+	      text-shadow: 0 0 6px rgba(250, 204, 21, 0.55);
+	      padding: 0;
+	    }
+	    .ca-star:hover { background: rgba(250, 204, 21, 0.28); transform: scale(1.08); }
+	    .ca-star.fade { background: rgba(244, 114, 182, 0.14); border-color: rgba(244, 114, 182, 0.45); color: #fbcfe8; text-shadow: 0 0 6px rgba(244, 114, 182, 0.55); }
+	    .ca-star.fade:hover { background: rgba(244, 114, 182, 0.28); }
+	    .ca-star.win { box-shadow: 0 0 0 1px rgba(34,197,94,0.55); }
+	    .ca-star.loss { box-shadow: 0 0 0 1px rgba(239,68,68,0.55); }
+	    .ca-empty { color: rgba(156,163,175,0.30); font-size: 13px; }
+	    .hundred-profile-badge { cursor: pointer; }
+	    .hundred-profile-badge:hover { filter: brightness(1.15); }
+	    .big-verdict {
+	      display: flex; align-items: center; gap: 14px;
+	      padding: 18px 18px; border-radius: 14px; margin: 4px 0 14px;
+	    }
+	    .big-verdict.gold { background: rgba(250,204,21,0.18); border: 2px solid rgba(250,204,21,0.65); }
+	    .big-verdict.true-yellow { background: rgba(250,204,21,0.12); border: 2px solid rgba(250,204,21,0.50); }
+	    .big-verdict.fade-pink { background: rgba(244,114,182,0.14); border: 2px solid rgba(244,114,182,0.55); }
+	    .big-verdict.gray { background: rgba(156,163,175,0.08); border: 1px solid rgba(156,163,175,0.28); }
+	    .big-verdict-icon { font-size: 38px; flex-shrink: 0; line-height: 1; }
+	    .big-verdict-text { flex: 1; min-width: 0; }
+	    .big-verdict-play {
+	      font-size: 22px; font-weight: 900; line-height: 1.15;
+	      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+	    }
+	    .big-verdict-desc { font-size: 13.5px; color: var(--text-soft); margin-top: 5px; line-height: 1.5; }
+	    .big-verdict-rule { font-size: 12px; color: var(--text-soft); margin-top: 6px; font-style: italic; opacity: 0.85; }
+	    .big-verdict-result {
+	      display: inline-block; padding: 4px 10px; border-radius: 8px;
+	      font-weight: 800; font-size: 12.5px; margin-left: 8px;
+	    }
+	    .big-verdict-result.win { background: rgba(34,197,94,0.22); color: #86efac; }
+	    .big-verdict-result.loss { background: rgba(239,68,68,0.22); color: #fca5a5; }
+	    .simple-stats {
+	      display: grid; grid-template-columns: repeat(4, 1fr);
+	      gap: 10px; margin: 14px 0 8px;
+	    }
+	    .simple-stats > div {
+	      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+	      border-radius: 10px; padding: 12px 10px; text-align: center;
+	    }
+	    .simple-stats .stat-num { font-size: 20px; font-weight: 900; line-height: 1.1; }
+	    .simple-stats .stat-num.live { color: #fde68a; }
+	    .simple-stats .stat-label { font-size: 10px; color: var(--text-soft); margin-top: 5px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+	    .simple-stats .stat-sub { font-size: 11.5px; font-weight: 800; margin-top: 4px; }
+	    .simple-stats .stat-sub.alt { color: #93c5fd; }
+	    .simple-stats .stat-sub.ust { color: #fca5a5; }
+	    @media (max-width: 720px) {
+	      .simple-stats { grid-template-columns: repeat(2, 1fr); }
+	    }
+	    .ppm-row {
+	      display: grid;
+	      grid-template-columns: minmax(120px, 1fr) 2.2fr;
+	      gap: 8px;
+	      margin: 4px 0 14px;
+	    }
+	    .ppm-row > div {
+	      background: rgba(255,255,255,0.025);
+	      border: 1px solid rgba(255,255,255,0.06);
+	      border-radius: 9px;
+	      padding: 7px 9px;
+	    }
+	    .ppm-row .ppm-label {
+	      font-size: 9.5px; color: var(--text-soft);
+	      text-transform: uppercase; letter-spacing: 0.05em;
+	      font-weight: 700; margin-bottom: 3px;
+	    }
+	    .ppm-avg .ppm-avg-value { font-size: 15px; font-weight: 900; }
+	    .ppm-quarters-grid { display: flex; gap: 5px; flex-wrap: wrap; }
+	    .ppm-q-chip {
+	      flex: 1; min-width: 42px;
+	      background: rgba(255,255,255,0.04);
+	      border: 1px solid rgba(255,255,255,0.07);
+	      border-radius: 7px;
+	      padding: 3px 5px 4px;
+	      text-align: center;
+	      line-height: 1.15;
+	    }
+	    .ppm-q-chip .q-name { display: block; color: var(--text-soft); font-weight: 700; font-size: 9.5px; letter-spacing: 0.04em; }
+	    .ppm-q-chip .q-val { display: block; font-weight: 900; font-size: 12px; }
+	    .ppm-q-chip.empty .q-val { color: var(--text-soft); opacity: 0.55; }
+	    @media (max-width: 720px) {
+	      .ppm-row { grid-template-columns: 1fr; }
+	    }
+	    .simple-warn {
+	      background: rgba(239,68,68,0.10); border: 1px solid rgba(239,68,68,0.34);
+	      border-radius: 10px; padding: 10px 14px; margin: 12px 0;
+	    }
+	    .simple-warn-title { font-weight: 800; font-size: 13px; margin-bottom: 4px; color: #fca5a5; }
+	    .simple-warn ul { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.5; }
+	    .simple-warn li { margin: 3px 0; }
+	    .modal-detail-toggle {
+	      cursor: pointer; color: var(--text-soft); font-size: 12.5px;
+	      padding: 10px 0; user-select: none; font-weight: 700;
+	    }
+	    .modal-detail-toggle:hover { color: var(--text); }
+	    .signal-tag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+	    .signal-tag-card {
+	      border-radius: 10px; padding: 12px 14px; line-height: 1.45;
+	      background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+	    }
+	    .signal-tag-card.ca-true { background: rgba(250,204,21,0.10); border-color: rgba(250,204,21,0.45); }
+	    .signal-tag-card.ca-fade { background: rgba(244,114,182,0.10); border-color: rgba(244,114,182,0.45); }
+	    .signal-tag-card.hundred { background: rgba(250,204,21,0.18); border-color: rgba(254,240,138,0.65); }
+	    .signal-tag-card.empty { background: rgba(156,163,175,0.05); border-color: rgba(156,163,175,0.18); color: rgba(209,213,219,0.55); }
+	    .signal-tag-head { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14px; margin-bottom: 6px; flex-wrap: wrap; }
+	    .signal-tag-head .icon { font-size: 17px; }
+	    .signal-tag-play { display: inline-block; padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 12px; }
+	    .signal-tag-play.alt { background: rgba(96,165,250,0.18); color: #93c5fd; }
+	    .signal-tag-play.ust { background: rgba(248,113,113,0.18); color: #fca5a5; }
+	    .signal-tag-rule { font-size: 12.5px; color: var(--text-soft); margin-top: 4px; }
+	    .signal-tag-outcome { display: inline-block; padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 11px; margin-left: auto; }
+	    .signal-tag-outcome.win { background: rgba(34,197,94,0.18); color: #86efac; }
+	    .signal-tag-outcome.loss { background: rgba(239,68,68,0.18); color: #fca5a5; }
+	    @media (max-width: 720px) { .signal-tag-grid { grid-template-columns: 1fr; } }
 	    .quality-badge.empty {
 	      color: rgba(209, 213, 219, 0.55);
 	      background: rgba(156, 163, 175, 0.05);
@@ -916,7 +1058,7 @@
 
     .signal-info-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: 1fr;
       gap: 10px;
     }
 
@@ -1519,6 +1661,16 @@
           <span>Başarı %</span>
           <strong id="statRate">-</strong>
 	        </div>
+        <div class="stat-chip hundred clickable" id="chipHundredProfile" onclick="toggleHundredProfileFilter()" title="Kalite sütununda 100 etiketi olan silinen sinyalleri göster">
+          <span>100 Profil</span>
+          <strong id="statHundredProfile">0</strong>
+          <div class="muted" id="statHundredProfileRate" style="font-size:11px;margin-top:2px;">Başarı: -</div>
+        </div>
+        <div class="stat-chip hundred clickable" id="chipClaudeAi" onclick="toggleClaudeAiFilter()" title="C_A filtresinden geçen yıldızlı sinyaller">
+          <span>C_A ⭐</span>
+          <strong id="statClaudeAi">0</strong>
+          <div class="muted" id="statClaudeAiRate" style="font-size:11px;margin-top:2px;">Başarı: -</div>
+        </div>
 	      </section>
 
 	      <section class="panel">
@@ -1556,6 +1708,7 @@
               <th data-sort="match_name">Maç</th>
 	              <th data-sort="alert_moment">Sinyal Anı</th>
 	              <th data-sort="direction">Sinyal</th>
+              <th class="ca-cell" data-sort="claude_ai" title="Claude AI filtresi">C_A</th>
               <th data-sort="status">Durum</th>
               <th data-sort="score">Skor</th>
               <th data-sort="opening">Açılış</th>
@@ -1694,6 +1847,15 @@
       return null;
     }
 
+    function calculateScoreMargin(score) {
+      if (!score || typeof score !== 'string') return null;
+      const parts = score.split('-').map(s => Number(s.trim()));
+      if (parts.length === 2 && parts.every(p => Number.isFinite(p))) {
+        return Math.abs(parts[0] - parts[1]);
+      }
+      return null;
+    }
+
     function alertAnalysis(alert) {
       if (alert?.analysis && typeof alert.analysis === 'object') return alert.analysis;
       return {};
@@ -1709,6 +1871,229 @@
       const analysis = alertAnalysis(alert);
       const num = Number(analysis.fair_edge ?? alert.fair_edge);
       return Number.isFinite(num) ? num : null;
+    }
+
+    function matchPpmValue(alert) {
+      const analysis = alertAnalysis(alert);
+      const components = analysis.projection_components && typeof analysis.projection_components === 'object'
+        ? analysis.projection_components
+        : {};
+      const value = Number(analysis.match_ppm ?? components.current_pace_per_min);
+      return Number.isFinite(value) ? value : null;
+    }
+
+    function projectedGapValue(alert) {
+      const analysis = alertAnalysis(alert);
+      const projected = Number(alert.projected ?? analysis.projected_total);
+      const live = Number(alert.live);
+      return Number.isFinite(projected) && Number.isFinite(live) ? projected - live : null;
+    }
+
+    function isHundredProfileCandidate(alert) {
+      return Number(alert.hundred_profile || 0) === 1;
+    }
+
+    function hundredProfileStats() {
+      const rows = deletedAlerts.filter(isHundredProfileCandidate);
+      const successRows = rows.filter(item => item.result === 'Başarılı');
+      const resolved = rows.filter(item => item.result === 'Başarılı' || item.result === 'Başarısız').length;
+      const rate = resolved > 0 ? Math.round((successRows.length / resolved) * 1000) / 10 : null;
+      return { total: rows.length, success: successRows.length, resolved, rate };
+    }
+
+    function isClaudeAiCandidate(alert) {
+      return String(alert.claude_ai || '').trim() !== '';
+    }
+
+    function claudeAiStats() {
+      // C_A tavsiyesinin başarısı: TRUE_* → sistemle aynı; FADE_* → sistemin tersi.
+      const rows = deletedAlerts.filter(isClaudeAiCandidate);
+      const resolvedRows = rows.filter(item => item.result === 'Başarılı' || item.result === 'Başarısız');
+      const successRows = resolvedRows.filter(item => {
+        const code = String(item.claude_ai || '');
+        const isFade = code === 'FADE_OVER' || code === 'FADE_UNDER';
+        const systemWon = item.result === 'Başarılı';
+        return isFade ? !systemWon : systemWon;
+      });
+      const rate = resolvedRows.length > 0 ? Math.round((successRows.length / resolvedRows.length) * 1000) / 10 : null;
+      return { total: rows.length, success: successRows.length, resolved: resolvedRows.length, rate };
+    }
+
+    function caOutcome(alert) {
+      const play = String(alert.claude_ai_play || '');
+      const result = String(alert.result || '');
+      if (!play || (result !== 'Başarılı' && result !== 'Başarısız')) return null;
+      const systemWon = result === 'Başarılı';
+      const playMatchesSystem = play === String(alert.direction || '');
+      return (playMatchesSystem ? systemWon : !systemWon);
+    }
+
+    const CA_DETAILS = {
+      TRUE_UNDER: { label: 'Güçlü Alt',   play: 'ALT', desc: 'Sistem ALT sinyali verdi ve geçmiş veri bunu destekliyor — kuralla eşleşen maçlar geçmişte ~%96 ALT bitmiş.' },
+      TRUE_OVER:  { label: 'Güçlü Üst',   play: 'ÜST', desc: 'Sistem ÜST sinyali verdi ve geçmiş veri bunu destekliyor — 100 Profili eşleşen maçlar geçmişte %100 ÜST bitmiş.' },
+      FADE_OVER:  { label: 'Tersine Alt', play: 'ALT', desc: 'Sistem ÜST sinyali verdi ama bu profildeki maçlar geçmişte ~%87 oranla ALT bitmiş — tuzak sinyal. Ters yönde (ALT) oynaması önerilir.' },
+      FADE_UNDER: { label: 'Tersine Üst', play: 'ÜST', desc: 'Sistem ALT sinyali verdi ama bu profildeki maçlar geçmişte tersine ÜST bitme eğiliminde — ters yönde (ÜST) oynaması önerilir.' },
+    };
+
+    function bigVerdictHtml(alert) {
+      const dir = String(alert.direction || '');
+      const dirArrow = dir === 'ALT' ? '▼' : (dir === 'ÜST' ? '▲' : '·');
+      const hundred = Number(alert.hundred_profile || 0) === 1;
+      const code = String(alert.claude_ai || '').trim();
+      const rule = String(alert.claude_ai_rule || '').trim();
+      const result = String(alert.result || '');
+      const resolved = (result === 'Başarılı' || result === 'Başarısız');
+
+      // Sonuç rozeti üretici (C_A bahsinin kazanıp kaybetmediğine göre)
+      const outcomeBadge = (play) => {
+        if (!resolved || !play) return '';
+        const systemWon = result === 'Başarılı';
+        const playMatchesSystem = play === dir;
+        const ok = playMatchesSystem ? systemWon : !systemWon;
+        return `<span class="big-verdict-result ${ok ? 'win' : 'loss'}">${ok ? '✓ Kazandı' : '✗ Kaybetti'}</span>`;
+      };
+
+      if (hundred) {
+        return `
+          <div class="big-verdict gold">
+            <div class="big-verdict-icon">💯</div>
+            <div class="big-verdict-text">
+              <div class="big-verdict-play">
+                <span>${dirArrow}</span> ${escapeHtml(dir)} oyna!
+                ${outcomeBadge(dir)}
+              </div>
+              <div class="big-verdict-desc">Çok güçlü sinyal. Aynı tip maçlar geçmişte 124/124 (%100) tutmuş.</div>
+              ${rule ? `<div class="big-verdict-rule">Kural: ${escapeHtml(rule)}</div>` : ''}
+            </div>
+          </div>`;
+      }
+
+      if (code === 'TRUE_UNDER' || code === 'TRUE_OVER') {
+        const play = code === 'TRUE_UNDER' ? 'ALT' : 'ÜST';
+        const playArrow = play === 'ALT' ? '▼' : '▲';
+        const rate = code === 'TRUE_UNDER' ? '~%96' : '%100';
+        return `
+          <div class="big-verdict true-yellow">
+            <div class="big-verdict-icon">⭐</div>
+            <div class="big-verdict-text">
+              <div class="big-verdict-play">
+                <span>${playArrow}</span> ${play} oyna
+                ${outcomeBadge(play)}
+              </div>
+              <div class="big-verdict-desc">Sistem <b>${escapeHtml(dir)}</b> dedi, geçmiş veri de aynı yönü doğruluyor. Bu tip maçlar geçmişte ${rate} ${play} bitmiş.</div>
+              ${rule ? `<div class="big-verdict-rule">Kural: ${escapeHtml(rule)}</div>` : ''}
+            </div>
+          </div>`;
+      }
+
+      if (code === 'FADE_OVER' || code === 'FADE_UNDER') {
+        const play = code === 'FADE_OVER' ? 'ALT' : 'ÜST';
+        const playArrow = play === 'ALT' ? '▼' : '▲';
+        return `
+          <div class="big-verdict fade-pink">
+            <div class="big-verdict-icon">🔄</div>
+            <div class="big-verdict-text">
+              <div class="big-verdict-play">
+                <span>${playArrow}</span> ${play} oyna <small style="font-size:13px;font-weight:700;opacity:0.85;">(sistemin tersine)</small>
+                ${outcomeBadge(play)}
+              </div>
+              <div class="big-verdict-desc">Sistem <b>${escapeHtml(dir)}</b> dedi <b>ama tuzak</b>. Bu profildeki maçlar geçmişte ~%87 tersine ${play} bitmiş.</div>
+              ${rule ? `<div class="big-verdict-rule">Kural: ${escapeHtml(rule)}</div>` : ''}
+            </div>
+          </div>`;
+      }
+
+      // Net sinyal yok
+      const sysOutcome = resolved
+        ? `<span class="big-verdict-result ${result === 'Başarılı' ? 'win' : 'loss'}">${result === 'Başarılı' ? '✓ Sistem kazandı' : '✗ Sistem kaybetti'}</span>`
+        : '';
+      return `
+        <div class="big-verdict gray">
+          <div class="big-verdict-icon">📍</div>
+          <div class="big-verdict-text">
+            <div class="big-verdict-play">
+              <span>${dirArrow}</span> Sistem önerisi: ${escapeHtml(dir)}
+              ${sysOutcome}
+            </div>
+            <div class="big-verdict-desc">Yüksek-güven kuralına girmedi. Standart riskte bir sinyaldi.</div>
+          </div>
+        </div>`;
+    }
+
+    function signalTagsHtml(alert) {
+      const code = String(alert.claude_ai || '').trim();
+      const isHundred = Number(alert.hundred_profile || 0) === 1;
+      const result = String(alert.result || '');
+      const resolved = (result === 'Başarılı' || result === 'Başarısız');
+
+      const caCard = (() => {
+        if (!code || !CA_DETAILS[code]) {
+          return `
+            <div class="signal-tag-card empty">
+              <div class="signal-tag-head"><span class="icon">☆</span> C_A Filtresi</div>
+              <div class="signal-tag-rule">Bu sinyal yüksek-güven kovalarına girmedi. Standart riskte değerlendir.</div>
+            </div>`;
+        }
+        const d = CA_DETAILS[code];
+        const isFade = code === 'FADE_OVER' || code === 'FADE_UNDER';
+        const cls = isFade ? 'ca-fade' : 'ca-true';
+        const playCls = d.play === 'ALT' ? 'alt' : 'ust';
+        const rule = String(alert.claude_ai_rule || '').trim();
+        const outcome = caOutcome(alert);
+        const outcomeBadge = (resolved && outcome !== null)
+          ? `<span class="signal-tag-outcome ${outcome ? 'win' : 'loss'}">${outcome ? '✓ Kazandı' : '✗ Kaybetti'}</span>`
+          : '';
+        return `
+          <div class="signal-tag-card ${cls}">
+            <div class="signal-tag-head">
+              <span class="icon">⭐</span> C_A: ${escapeHtml(d.label)}
+              <span class="signal-tag-play ${playCls}">${d.play} oyna</span>
+              ${outcomeBadge}
+            </div>
+            <div class="signal-tag-rule" style="color:var(--text);">${escapeHtml(d.desc)}</div>
+            ${rule ? `<div class="signal-tag-rule"><b>Kural:</b> ${escapeHtml(rule)}</div>` : ''}
+          </div>`;
+      })();
+
+      const hundredCard = (() => {
+        if (!isHundred) {
+          return `
+            <div class="signal-tag-card empty">
+              <div class="signal-tag-head"><span class="icon">○</span> 100 Profili</div>
+              <div class="signal-tag-rule">Bu sinyal 100 Profili kuralına girmedi.</div>
+            </div>`;
+        }
+        const rule = String(alert.hundred_profile_rule || '').trim();
+        const dirBadge = String(alert.direction || '');
+        const playCls = dirBadge === 'ALT' ? 'alt' : 'ust';
+        const outcomeBadge = (resolved)
+          ? `<span class="signal-tag-outcome ${result === 'Başarılı' ? 'win' : 'loss'}">${result === 'Başarılı' ? '✓ Kazandı' : '✗ Kaybetti'}</span>`
+          : '';
+        return `
+          <div class="signal-tag-card hundred">
+            <div class="signal-tag-head">
+              <span class="icon">💯</span> 100 Profili
+              <span class="signal-tag-play ${playCls}">${escapeHtml(dirBadge)} oyna</span>
+              ${outcomeBadge}
+            </div>
+            <div class="signal-tag-rule" style="color:var(--text);">Geçmişte 124/124 (%100) tutmuş yüksek-kalite örüntü.</div>
+            ${rule ? `<div class="signal-tag-rule"><b>Kural:</b> ${escapeHtml(rule)}</div>` : ''}
+          </div>`;
+      })();
+
+      return `<div class="signal-tag-grid">${caCard}${hundredCard}</div>`;
+    }
+
+    function caHtml(alert) {
+      const code = String(alert.claude_ai || '').trim();
+      if (!code) return '<span class="ca-empty" aria-hidden="true">·</span>';
+      const label = String(alert.claude_ai_label || code);
+      const isFade = code === 'FADE_OVER' || code === 'FADE_UNDER';
+      const outcome = caOutcome(alert);
+      const outcomeCls = outcome === null ? '' : (outcome ? 'win' : 'loss');
+      const cls = `ca-star ${isFade ? 'fade' : ''} ${outcomeCls}`.trim();
+      const id = Number(alert.id || 0);
+      return `<button type="button" class="${cls}" onclick="openSignalInfo(${id})" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)} — ayrıntı için tıkla">⭐</button>`;
     }
 
     function recommendationText(alert) {
@@ -1811,6 +2196,9 @@
       const tone = String(alert.quality_tone || 'empty').replace(/[^a-z-]/gi, '') || 'empty';
       const title = String(alert.quality_title || 'Kalite kuralı uygulanmadı.');
       const markers = Array.isArray(alert.list_markers) ? alert.list_markers : [];
+      const hundred = Number(alert.hundred_profile || 0) === 1
+        ? `<button type="button" class="hundred-profile-badge" onclick="event.stopPropagation();openSignalInfo(${Number(alert.id || 0)})" title="100 Profili — ayrıntı için tıkla" style="border:none;font-family:inherit;">100</button>`
+        : '';
       const markerHtml = markers.map(marker => {
         const markerTone = String(marker.tone || '').replace(/[^a-z-]/gi, '');
         return `<span class="list-marker ${escapeHtml(markerTone)}" title="${escapeHtml(marker.title || '')}" aria-label="${escapeHtml(marker.title || '')}"></span>`;
@@ -1818,7 +2206,7 @@
       const badge = label && label !== '-'
         ? `<span class="badge quality-badge ${escapeHtml(tone)}" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`
         : (markerHtml ? '' : `<span class="badge quality-badge empty" title="${escapeHtml(title)}">-</span>`);
-      return `<span class="quality-cell">${badge}${markerHtml}</span>`;
+      return `<span class="quality-cell">${badge}${hundred}${markerHtml}</span>`;
     }
 
     function modalListItem(key, value) {
@@ -1943,48 +2331,138 @@
             </ul>
           </div>`
         : '';
+      const fairLineNum = Number(analysis.fair_line ?? alert.fair_line);
+      const fairLineStr = Number.isFinite(fairLineNum) ? fairLineNum.toFixed(1) : '–';
+      const fairEdgeStr = Number.isFinite(fairEdge) ? `${fairEdge >= 0 ? '+' : ''}${fairEdge.toFixed(1)}` : '';
+      const fairEdgeCls = !Number.isFinite(fairEdge) ? '' : (fairEdge < 0 ? 'alt' : (fairEdge > 0 ? 'ust' : ''));
+      const lineMoveStr = lineMove === null ? '' : (lineMove >= 0 ? '+' : '') + lineMove.toFixed(1);
+      const lineMoveCls = lineMove === null ? '' : (lineMove > 0 ? 'alt' : 'ust');
+      const shortNotes = notes.slice(0, 2);
+      const projectedNum = Number(alert.projected ?? analysis.projected_total);
+      const projectedStr = Number.isFinite(projectedNum) ? projectedNum.toFixed(1) : '–';
+      const projectedGap = (Number.isFinite(projectedNum) && Number.isFinite(live)) ? (projectedNum - live) : null;
+      const projectedGapStr = projectedGap === null ? '' : (projectedGap >= 0 ? '+' : '') + projectedGap.toFixed(1);
+      const projectedGapCls = projectedGap === null ? '' : (projectedGap < 0 ? 'alt' : (projectedGap > 0 ? 'ust' : ''));
+      const matchPpmNum = Number(analysis.match_ppm);
+      const matchPpmStr = Number.isFinite(matchPpmNum) ? matchPpmNum.toFixed(2) : '–';
+      const quarterPpmArr = Array.isArray(analysis.quarter_ppm) ? analysis.quarter_ppm : [];
+      const quarterChipsHtml = (() => {
+        const slots = [1, 2, 3, 4];
+        return slots.map(q => {
+          const val = Number(quarterPpmArr[q - 1]);
+          const hasVal = Number.isFinite(val);
+          return `<div class="ppm-q-chip${hasVal ? '' : ' empty'}">
+            <span class="q-name">Ç${q}</span>
+            <span class="q-val">${hasVal ? val.toFixed(2) : '–'}</span>
+          </div>`;
+        }).join('');
+      })();
+
       content.innerHTML = `
         <div class="signal-info-headline">
           <div class="signal-info-match">${escapeHtml(matchName)}</div>
-          <div class="signal-info-meta">${escapeHtml(alert.tournament || '-')} | ${escapeHtml(alert.status || '-')} | Skor: ${escapeHtml(alert.score || '-')} | Sonuç: ${escapeHtml(alert.result || '-')}</div>
+          <div class="signal-info-meta">
+            🏆 ${escapeHtml(alert.tournament || '-')} &nbsp;·&nbsp;
+            ⏱ ${escapeHtml(alert.status || '-')} &nbsp;·&nbsp;
+            🏀 <b>${escapeHtml(alert.score || '-')}</b> &nbsp;·&nbsp;
+            Sonuç: <b>${escapeHtml(alert.result || '-')}</b>
+          </div>
         </div>
-        <div class="signal-info-grid">
-          ${teamContextHtml(analysis.team_context || alert.team_context)}
-          <div class="signal-info-section">
-            <div class="signal-info-section-title">Özet</div>
-            <ul class="signal-metrics-list">
-	              ${modalListItem('Canlı veri', Number.isFinite(projectionQuality) ? `${projectionQuality.toFixed(0)}/100` : '-')}
-	              ${modalListItem('Kalite', alert.quality_label && alert.quality_label !== '-' ? `${alert.quality_label} - ${alert.quality_title || ''}` : '-')}
-	              ${modalListItem('Liste', listText)}
-	              ${modalListItem('Eski / Yeni Yön', `${legacyDir} → ${finalDir}`)}
-	              ${modalListItem('ALT / ÜST Puan', `${formatNumber(signalScores.ALT)} / ${formatNumber(signalScores['ÜST'])}`)}
-	              ${modalListItem('Karar', selectionReason || '-')}
-	            </ul>
-	          </div>
-          <div class="signal-info-section">
-            <div class="signal-info-section-title">Hat ve Değer</div>
-            <ul class="signal-metrics-list">
-              ${modalListItem('Açılış', formatNumber(alert.opening))}
-              ${modalListItem('Canlı', formatNumber(alert.live))}
-              ${modalListItem('Projeksiyon', formatNumber(alert.projected ?? analysis.projected_total))}
-              ${modalListItem('Adil hat', formatFairLine(alert.fair_line ?? analysis.fair_line))}
-              ${modalListItem('Hat hareketi', lineMove === null ? '-' : formatSignedNumber(lineMove))}
-            </ul>
-            ${signalEdgeNoteHtml(fairEdge)}
-            <div class="signal-weights-line"><strong>Ağırlık</strong>${escapeHtml(weightsText(analysis.weights))}</div>
+
+        <div style="padding:14px 18px;">
+          <!-- ANA CEVAP -->
+          ${bigVerdictHtml(alert)}
+
+          <!-- ANA SAYILAR -->
+          <div class="simple-stats">
+            <div>
+              <div class="stat-num">${formatNumber(alert.opening)}</div>
+              <div class="stat-label">Açılış</div>
+            </div>
+            <div>
+              <div class="stat-num live">${formatNumber(alert.live)}</div>
+              <div class="stat-label">Canlı</div>
+              ${lineMoveStr ? `<div class="stat-sub ${lineMoveCls}">${lineMoveStr}</div>` : ''}
+            </div>
+            <div>
+              <div class="stat-num">${fairLineStr}</div>
+              <div class="stat-label">Adil Barem</div>
+              ${fairEdgeStr ? `<div class="stat-sub ${fairEdgeCls}">${fairEdgeStr} fark</div>` : ''}
+            </div>
+            <div>
+              <div class="stat-num">${projectedStr}</div>
+              <div class="stat-label">Projeksiyon</div>
+              ${projectedGapStr ? `<div class="stat-sub ${projectedGapCls}">${projectedGapStr} fark</div>` : ''}
+            </div>
           </div>
-          <div class="signal-info-section">
-            <div class="signal-info-section-title">H2H</div>
-            <ul class="signal-metrics-list">
-              ${modalListItem('H2H ort.', formatNumber(alert.h2h_total ?? analysis.h2h_total))}
-              ${modalListItem('H2H kalite', analysis.h2h_quality_score != null ? `${analysis.h2h_quality_score}/100` : '-')}
-            </ul>
+
+          <!-- PPM SATIRI -->
+          <div class="ppm-row">
+            <div class="ppm-avg">
+              <div class="ppm-label">Maçın ortalama PPM</div>
+              <div class="ppm-avg-value">${matchPpmStr}</div>
+            </div>
+            <div class="ppm-quarters">
+              <div class="ppm-label">Çeyrek bazlı PPM</div>
+              <div class="ppm-quarters-grid">${quarterChipsHtml}</div>
+            </div>
           </div>
-          ${voteSection}
-          <div class="signal-info-section wide">
-            <div class="signal-info-section-title">Riskler ve Notlar</div>
-            ${modalNoteList(notes)}
-          </div>
+
+          <!-- DİKKAT -->
+          ${shortNotes.length ? `
+            <div class="simple-warn">
+              <div class="simple-warn-title">⚠️ Dikkat</div>
+              <ul>${shortNotes.map(n => `<li>${escapeHtml(n)}</li>`).join('')}</ul>
+            </div>
+          ` : ''}
+
+          <!-- TÜM TEKNİK DETAY -->
+          <details style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.06);">
+            <summary class="modal-detail-toggle">🔬 Tüm teknik detayları göster</summary>
+            <div style="margin-top:12px;">
+              ${signalTagsHtml(alert)}
+              <div class="signal-info-grid">
+                ${teamContextHtml(analysis.team_context || alert.team_context)}
+                <div class="signal-info-section">
+                  <div class="signal-info-section-title">Özet</div>
+                  <ul class="signal-metrics-list">
+                    ${modalListItem('Canlı veri', Number.isFinite(projectionQuality) ? `${projectionQuality.toFixed(0)}/100` : '-')}
+                    ${modalListItem('Kalite', alert.quality_label && alert.quality_label !== '-' ? `${alert.quality_label} - ${alert.quality_title || ''}` : '-')}
+                    ${modalListItem('Liste', listText)}
+                    ${modalListItem('Eski / Yeni Yön', `${legacyDir} → ${finalDir}`)}
+                    ${modalListItem('ALT / ÜST Puan', `${formatNumber(signalScores.ALT)} / ${formatNumber(signalScores['ÜST'])}`)}
+                    ${modalListItem('Karar', selectionReason || '-')}
+                  </ul>
+                </div>
+                <div class="signal-info-section">
+                  <div class="signal-info-section-title">Hat ve Değer</div>
+                  <ul class="signal-metrics-list">
+                    ${modalListItem('Açılış', formatNumber(alert.opening))}
+                    ${modalListItem('Canlı', formatNumber(alert.live))}
+                    ${modalListItem('Projeksiyon', formatNumber(alert.projected ?? analysis.projected_total))}
+                    ${modalListItem('Adil hat', formatFairLine(alert.fair_line ?? analysis.fair_line))}
+                    ${modalListItem('Hat hareketi', lineMove === null ? '-' : formatSignedNumber(lineMove))}
+                  </ul>
+                  ${signalEdgeNoteHtml(fairEdge)}
+                  <div class="signal-weights-line"><strong>Ağırlık</strong>${escapeHtml(weightsText(analysis.weights))}</div>
+                </div>
+                <div class="signal-info-section">
+                  <div class="signal-info-section-title">H2H</div>
+                  <ul class="signal-metrics-list">
+                    ${modalListItem('H2H ort.', formatNumber(alert.h2h_total ?? analysis.h2h_total))}
+                    ${modalListItem('H2H kalite', analysis.h2h_quality_score != null ? `${analysis.h2h_quality_score}/100` : '-')}
+                  </ul>
+                </div>
+                ${voteSection}
+                ${notes.length > 2 ? `
+                  <div class="signal-info-section wide">
+                    <div class="signal-info-section-title">Diğer Riskler ve Notlar</div>
+                    ${modalNoteList(notes.slice(2))}
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          </details>
         </div>
       `;
     }
@@ -2054,6 +2532,8 @@
       let rows = [...deletedAlerts];
 	      if (activeFilter) {
 	        rows = rows.filter(alert => {
+	          if (activeFilter.hundredProfile && !isHundredProfileCandidate(alert)) return false;
+	          if (activeFilter.claudeAi && !isClaudeAiCandidate(alert)) return false;
 	          if (activeFilter.direction && alert.direction !== activeFilter.direction) return false;
 	          if (activeFilter.result && alert.result !== activeFilter.result) return false;
 	          if (activeFilter.matchKey && matchKey(alert) !== activeFilter.matchKey) return false;
@@ -2093,6 +2573,7 @@
         const num = Number(alert[field]);
         return Number.isFinite(num) ? num : -Infinity;
       }
+      if (field === 'claude_ai') return isClaudeAiCandidate(alert) ? 1 : 0;
       if (field === 'match_name') return cleanMatchName(alert.match_name || '').toLocaleLowerCase('tr-TR');
       return String(alert[field] || '').toLocaleLowerCase('tr-TR');
     }
@@ -2131,6 +2612,24 @@
       document.getElementById('statSuccess').textContent = successList.length;
       document.getElementById('statFail').textContent = failList.length;
       document.getElementById('statRate').textContent = rate !== null ? `%${rate.toFixed(1)}` : '-';
+      const profileStats = hundredProfileStats();
+      const profileCount = document.getElementById('statHundredProfile');
+      const profileRate = document.getElementById('statHundredProfileRate');
+      if (profileCount) profileCount.textContent = profileStats.total;
+      if (profileRate) {
+        profileRate.textContent = profileStats.rate !== null
+          ? `Başarı: %${profileStats.rate.toFixed(1)} (${profileStats.success}/${profileStats.resolved})`
+          : 'Başarı: -';
+      }
+      const caStats = claudeAiStats();
+      const caCount = document.getElementById('statClaudeAi');
+      const caRate = document.getElementById('statClaudeAiRate');
+      if (caCount) caCount.textContent = caStats.total;
+      if (caRate) {
+        caRate.textContent = caStats.rate !== null
+          ? `Başarı: %${caStats.rate.toFixed(1)} (${caStats.success}/${caStats.resolved})`
+          : 'Başarı: -';
+      }
       renderSignalBreakdown();
     }
 
@@ -2207,17 +2706,37 @@
       render();
     }
 
+    function toggleHundredProfileFilter() {
+      const isSame = activeFilter && activeFilter.hundredProfile && Object.keys(activeFilter).length === 1;
+      activeFilter = isSame ? null : { hundredProfile: true };
+      currentPage = 1;
+      render();
+    }
+
+    function toggleClaudeAiFilter() {
+      const isSame = activeFilter && activeFilter.claudeAi && Object.keys(activeFilter).length === 1;
+      activeFilter = isSame ? null : { claudeAi: true };
+      currentPage = 1;
+      render();
+    }
+
 	    function updateStatChips() {
 	      const chipAlt = document.getElementById('chipAlt');
-	      const chipUst = document.getElementById('chipUst');
+      const chipUst = document.getElementById('chipUst');
       const chipSuccess = document.getElementById('chipSuccess');
       const chipFail = document.getElementById('chipFail');
-      const isDir = activeFilter && !activeFilter.result && !activeFilter.matchKey;
-      const isRes = activeFilter && !activeFilter.direction && !activeFilter.matchKey;
+      const chipProfile = document.getElementById('chipHundredProfile');
+      const chipCa = document.getElementById('chipClaudeAi');
+      const isProfile = activeFilter && activeFilter.hundredProfile;
+      const isCa = activeFilter && activeFilter.claudeAi;
+      const isDir = activeFilter && !activeFilter.result && !activeFilter.matchKey && !activeFilter.hundredProfile && !activeFilter.claudeAi;
+      const isRes = activeFilter && !activeFilter.direction && !activeFilter.matchKey && !activeFilter.hundredProfile && !activeFilter.claudeAi;
       if (chipAlt) chipAlt.classList.toggle('active', isDir && activeFilter.direction === 'ALT');
       if (chipUst) chipUst.classList.toggle('active', isDir && activeFilter.direction === 'ÜST');
 	      if (chipSuccess) chipSuccess.classList.toggle('active', isRes && activeFilter.result === 'Başarılı');
 	      if (chipFail) chipFail.classList.toggle('active', isRes && activeFilter.result === 'Başarısız');
+      if (chipProfile) chipProfile.classList.toggle('active', Boolean(isProfile));
+      if (chipCa) chipCa.classList.toggle('active', Boolean(isCa));
 	    }
 
 	    function updatePeriodButtons() {
@@ -2299,6 +2818,7 @@
 	              ${signalBadge(alert)}
 	              ${Number(alert.signal_count || 0) > 1 ? `<div class="subline">${Number(alert.signal_count)}. sinyal</div>` : ''}
 	            </td>
+            <td class="ca-cell">${caHtml(alert)}</td>
             <td>${escapeHtml(alert.status || '-')}</td>
             <td class="mono">${escapeHtml(alert.score || '-')}${(() => { const total = calculateScoreTotal(alert.score); return total !== null ? ` <span style="font-style: normal; font-size: 0.85em; color: var(--text-dim);">(${total})</span>` : ''; })()}</td>
             <td class="mono">${formatNumber(alert.opening)}</td>

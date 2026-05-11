@@ -1653,6 +1653,15 @@ def build_signal_analysis(
         projection_components=live_projection.get("components") or {},
         h2h_metrics=h2h_metrics,
     )
+    projection_components = live_projection.get("components") or {}
+    quarter_totals = live_projection.get("quarter_totals") or []
+    quarter_ppm = [
+        _safe_round(total / quarter_length, 2)
+        for total in quarter_totals
+        if _safe_round(total) is not None and quarter_length
+    ]
+    match_ppm = _safe_round(projection_components.get("current_pace_per_min"), 2)
+    sustainable_ppm = _safe_round(projection_components.get("sustainable_pace_per_min"), 2)
     script = _script_warning(score, status, match_name, tournament)
 
     # Çeyrek hız anomalisi uyarısı
@@ -1758,10 +1767,15 @@ def build_signal_analysis(
         "pure_projected_total": _safe_round(pure_projected_total),
         "elapsed_minutes": _safe_round(elapsed_minutes) if elapsed_minutes is not None else None,
         "projection_quality": projection_quality,
-        "projection_components": live_projection.get("components") or {},
+        "projection_components": projection_components,
         "projection_notes": live_projection.get("notes") or [],
         "raw_projected_total": live_projection.get("raw_projected_total"),
         "quarter_scores": quarter_scores,
+        "quarter_totals": quarter_totals,
+        "quarter_ppm": quarter_ppm,
+        "quarter_length": quarter_length,
+        "match_ppm": match_ppm,
+        "sustainable_ppm": sustainable_ppm,
         "odds_snapshot": odds_snapshot,
         "opening_delta": line_delta_open,
         "recommendation": recommendation,

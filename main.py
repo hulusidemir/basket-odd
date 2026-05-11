@@ -21,6 +21,8 @@ from pace_tracker import PaceTracker
 from projection import game_clock, parse_score
 from signal_analysis import build_backtest_profile, build_signal_analysis
 from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
+from signal_profiles import evaluate_hundred_profile
+from claude_ai_filter import evaluate_claude_ai
 
 
 def setup_logging(level: str):
@@ -162,6 +164,34 @@ async def process_match(
         "quality_rank": quality["rank"],
         "list_markers": build_signal_list_markers(alert_context, list_profile),
     }
+    hundred_profile = evaluate_hundred_profile(
+        {
+            **alert_context,
+            "diff": abs_diff,
+            "projected": analysis.get("projected_total"),
+            "projected_gap": analysis.get("projected_gap"),
+            "quality_label": quality["label"],
+        },
+        analysis,
+    )
+    analysis = {**analysis, **hundred_profile}
+
+    claude_ai = evaluate_claude_ai(
+        {
+            "direction": direction,
+            "opening": opening_total,
+            "live": inplay_total,
+            "diff": abs_diff,
+            "alert_period": period,
+            "hundred_profile": 1 if hundred_profile.get("hundred_profile") else 0,
+        },
+        analysis,
+    )
+    analysis = {
+        **analysis,
+        "claude_ai": claude_ai["claude_ai"],
+        "claude_ai_rule": claude_ai["claude_ai_rule"],
+    }
 
     if period_has_any_alert:
         log.debug("Skipped (period %s already alerted): id=%s", period, match_id)
@@ -174,6 +204,10 @@ async def process_match(
         ai_analysis=json.dumps(analysis, ensure_ascii=False),
         alert_period=period,
         alert_moment=" | ".join(p for p in (status, score) if p),
+        hundred_profile=hundred_profile["hundred_profile"],
+        hundred_profile_rule=hundred_profile["hundred_profile_rule"],
+        claude_ai=claude_ai["claude_ai"],
+        claude_ai_rule=claude_ai["claude_ai_rule"],
     )
 
     await notifier.send_alert(
