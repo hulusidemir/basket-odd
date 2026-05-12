@@ -33,6 +33,16 @@ def setup_logging(level: str):
     )
 
 
+def should_send_telegram(analysis: dict, config: Config) -> bool:
+    """Gate noisy threshold alerts before they become betting instructions."""
+    policy = str(getattr(config, "TELEGRAM_SIGNAL_POLICY", "claude_ai") or "claude_ai").lower()
+    if policy == "all":
+        return True
+    if policy == "eligible":
+        return bool(analysis.get("telegram_eligible"))
+    return bool(str(analysis.get("claude_ai") or "").strip()) or bool(analysis.get("hundred_profile"))
+
+
 async def process_match(
     match: dict,
     db: Database,
@@ -123,6 +133,13 @@ async def process_match(
     legacy_direction = "ALT" if diff > 0 else "ÜST"
 
     total_alerts = db.count_match_alerts(match_id)
+    if total_alerts >= config.MAX_SIGNALS_PER_MATCH:
+        log.debug(
+            "Skipped (max signals reached): id=%s match=%s total_alerts=%s max=%s",
+            match_id, match_name, total_alerts, config.MAX_SIGNALS_PER_MATCH,
+        )
+        return
+
     period_has_any_alert = period is not None and db.was_alerted_in_period(match_id, period)
 
     signal_count = total_alerts + 1
@@ -209,6 +226,13 @@ async def process_match(
         claude_ai=claude_ai["claude_ai"],
         claude_ai_rule=claude_ai["claude_ai_rule"],
     )
+
+    if not should_send_telegram(analysis, config):
+        log.info(
+            "Signal saved (dashboard only): alert_id=%s match_id=%s | %s | %s | diff=%.2f | policy=%s",
+            alert_id, match_id, match_name, direction, abs_diff, config.TELEGRAM_SIGNAL_POLICY,
+        )
+        return
 
     await notifier.send_alert(
         match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,

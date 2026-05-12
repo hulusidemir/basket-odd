@@ -1207,6 +1207,13 @@
     .row-action.note-action { background: rgba(100,100,140,0.1); border-color: rgba(100,100,160,0.25); color: #b0b0d0; }
     .row-action.note-action.has-note { background: rgba(96,165,250,0.1); border-color: rgba(96,165,250,0.32); color: #93c5fd; }
 
+    .row-action.history-action {
+      background: rgba(167,139,250,0.10);
+      border-color: rgba(167,139,250,0.30);
+      color: #c4b5fd;
+    }
+    .row-action.history-action svg { display: block; }
+
     /* ── Mobil Sinyal Kartı (cards-wrap sadece mobilde görünür) ──────── */
     .cards-wrap { display: none; gap: 12px; flex-direction: column; }
 
@@ -1438,7 +1445,7 @@
     .card-actions > .row-actions {
       flex: 1;
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(6, 1fr);
       gap: 7px;
     }
     .card-actions .row-action {
@@ -1553,6 +1560,124 @@
     .note-area { min-height: 120px; resize: vertical; }
 
     .modal-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; margin-top: 12px; flex-wrap: wrap; }
+
+    .th-loading { padding: 22px; text-align: center; color: var(--text-soft); font-weight: 700; }
+    .th-error { padding: 18px; text-align: center; color: #fca5a5; font-weight: 700; }
+    .th-empty { padding: 18px; text-align: center; color: var(--text-soft); font-weight: 700; border: 1px dashed rgba(120,100,220,0.22); border-radius: 12px; background: rgba(10,10,18,0.5); }
+    .th-current-match {
+      padding: 10px 12px; border-radius: 11px;
+      background: rgba(124,92,246,0.08);
+      border: 1px solid rgba(124,92,246,0.22);
+      color: var(--text); font-weight: 800; margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .th-current-match span { color: var(--text-soft); font-weight: 700; }
+    .th-teams { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    @media (min-width: 880px) {
+      .th-teams { grid-template-columns: 1fr 1fr; }
+    }
+    .th-team-card {
+      border: 1px solid rgba(120,100,220,0.22);
+      border-radius: 14px;
+      background: rgba(10,10,18,0.7);
+      padding: 12px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .th-team-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      flex-wrap: wrap;
+    }
+    .th-team-name {
+      font-size: 15px; font-weight: 900; color: var(--text);
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .th-team-role {
+      font-size: 10px; font-weight: 900; letter-spacing: 0.08em;
+      padding: 3px 8px; border-radius: 999px;
+      background: rgba(124,92,246,0.18); color: #c4b5fd; text-transform: uppercase;
+    }
+    .th-team-summary {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+    }
+    .th-stat {
+      padding: 7px 8px; border-radius: 9px;
+      background: rgba(8,8,14,0.85);
+      border: 1px solid rgba(120,100,220,0.16);
+      display: flex; flex-direction: column; gap: 2px; align-items: center;
+    }
+    .th-stat-label { font-size: 10px; font-weight: 900; color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.05em; }
+    .th-stat-value { font-size: 15px; font-weight: 900; color: var(--text); font-variant-numeric: tabular-nums; }
+    .th-stat.success .th-stat-value { color: #6ee7b7; }
+    .th-stat.fail .th-stat-value { color: #fca5a5; }
+    .th-stat.rate .th-stat-value { color: #fde68a; }
+    .th-match-list {
+      display: flex; flex-direction: column; gap: 6px;
+      max-height: 380px; overflow-y: auto;
+      padding-right: 2px;
+    }
+    .th-match-row {
+      display: flex; flex-direction: column; gap: 6px;
+      padding: 9px 11px; border-radius: 10px;
+      background: rgba(15,15,25,0.7);
+      border: 1px solid rgba(100,80,180,0.14);
+      font-size: 12px;
+    }
+    .th-match-top {
+      display: grid;
+      grid-template-columns: 64px 1fr auto auto;
+      gap: 8px; align-items: center;
+    }
+    .th-match-date { color: var(--text-soft); font-weight: 800; font-variant-numeric: tabular-nums; }
+    .th-match-name {
+      color: var(--text); font-weight: 800;
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-size: 12.5px;
+    }
+    .th-match-name .vs { color: var(--text-soft); margin: 0 4px; font-weight: 700; }
+    .th-match-name .team-self {
+      color: #c4b5fd;
+      border-bottom: 1px dashed rgba(167,139,250,0.45);
+    }
+    .th-match-meta {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      padding-left: 72px;
+      color: var(--text-soft);
+      font-size: 11px; font-weight: 700;
+    }
+    .th-match-meta-item {
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .th-match-meta-item strong {
+      color: var(--text); font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+    .th-match-meta-item .diff-up { color: #6ee7b7; }
+    .th-match-meta-item .diff-down { color: #fca5a5; }
+    .th-match-meta-league {
+      color: var(--text-soft);
+      max-width: 100%;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .th-match-dir {
+      font-size: 10px; font-weight: 900; letter-spacing: 0.05em;
+      padding: 3px 7px; border-radius: 999px; text-transform: uppercase;
+    }
+    .th-match-dir.alt { background: rgba(255,107,99,0.16); color: #ffc0bc; }
+    .th-match-dir.ust { background: rgba(52,211,153,0.16); color: #9df0bd; }
+    .th-match-dir.other { background: rgba(148,163,184,0.16); color: #cbd5e1; }
+    .th-match-result {
+      font-size: 10px; font-weight: 900;
+      padding: 3px 7px; border-radius: 999px; text-transform: uppercase;
+      background: rgba(148,163,184,0.16); color: #cbd5e1;
+    }
+    .th-match-result.success { background: rgba(52,211,153,0.18); color: #9df0bd; }
+    .th-match-result.fail { background: rgba(255,107,99,0.18); color: #ffc0bc; }
+    .th-match-result.push { background: rgba(251,191,36,0.16); color: #fde68a; }
+    @media (max-width: 640px) {
+      .th-match-top { grid-template-columns: 60px 1fr auto; }
+      .th-match-top .th-match-result { grid-column: 2 / 4; justify-self: end; }
+      .th-match-meta { padding-left: 0; }
+    }
 
     #betModal .modal-box.wide { width: min(96vw, 1120px); }
     #betModal .modal-header {
@@ -1901,7 +2026,7 @@
     }
 
     @media (max-width: 380px) {
-      .card-actions > .row-actions { grid-template-columns: repeat(5, 1fr); gap: 5px; }
+      .card-actions > .row-actions { grid-template-columns: repeat(6, 1fr); gap: 5px; }
       .card-actions > .icon-btn { width: 36px; height: 36px; }
       .card-actions .row-action { height: 36px; font-size: 13px; }
     }
@@ -2223,6 +2348,18 @@
       </div>
       <div class="modal-body">
         <div class="note-view-text" id="noteInfoText"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="teamHistoryModal" onclick="if(event.target===this)closeTeamHistoryModal()">
+    <div class="modal-box wide">
+      <div class="modal-header">
+        <h3 id="teamHistoryTitle">Takım Geçmişi</h3>
+        <button class="modal-close" onclick="closeTeamHistoryModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="teamHistoryBody">
+        <div class="th-loading">Geçmiş yükleniyor…</div>
       </div>
     </div>
   </div>
@@ -2743,6 +2880,7 @@
           <button class="row-action follow-action ${alert.followed ? 'active-follow' : ''}" onclick="runAction('follow', ${id}, this)" aria-label="Takip et" title="Takip et">👁</button>
           <button class="row-action ignore-action ${alert.ignored ? 'active-ignore' : ''}" onclick="runAction('ignore', ${id}, this)" aria-label="Pas geç" title="Pas geç">⊘</button>
           <button class="row-action note-action ${hasNote ? 'has-note' : ''}" onclick="openNoteModal(${id})" aria-label="Not" title="${hasNote ? 'Notu düzenle' : 'Not ekle'}"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 1.5H3a1.5 1.5 0 0 0-1.5 1.5v8A1.5 1.5 0 0 0 3 12.5h8a1.5 1.5 0 0 0 1.5-1.5V4.5"/><path d="M8.5 1.5v3h3"/><line x1="4.5" y1="7" x2="9.5" y2="7"/><line x1="4.5" y1="9.5" x2="8" y2="9.5"/></svg></button>
+          <button class="row-action history-action" onclick="openTeamHistoryModal(${id})" aria-label="Takım geçmişi" title="Takım geçmişi (silinen sinyaller)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 7a5.5 5.5 0 1 0 1.7-3.95"/><polyline points="1.5,1.8 1.5,4.5 4.2,4.5"/><polyline points="7,3.7 7,7 9.4,8.5"/></svg></button>
           <button class="row-action danger" onclick="runAction('delete', ${id}, this)" aria-label="Sil" title="Sil">🗑</button>
         </div>
       `;
@@ -3730,6 +3868,170 @@
 
     function closeNoteInfo() {
       $('noteInfoModal').classList.remove('active');
+    }
+
+    function teamHistoryDirCls(direction) {
+      const d = String(direction || '').toUpperCase();
+      if (d === 'ALT') return 'alt';
+      if (d === 'ÜST' || d === 'UST') return 'ust';
+      return 'other';
+    }
+
+    function teamHistoryResultCls(result) {
+      const r = String(result || '').trim();
+      if (r === 'Başarılı') return 'success';
+      if (r === 'Başarısız') return 'fail';
+      if (r === 'İade') return 'push';
+      return '';
+    }
+
+    function teamHistoryFormatDate(value) {
+      if (!value) return '-';
+      const date = new Date(String(value).replace(' ', 'T') + 'Z');
+      if (Number.isNaN(date.getTime())) return '-';
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = String(date.getFullYear()).slice(-2);
+      return `${day}.${month}.${year}`;
+    }
+
+    function teamHistoryFmtNum(value, decimals = 1) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return '-';
+      return n.toFixed(decimals);
+    }
+
+    function teamHistorySigned(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return '-';
+      const sign = n > 0 ? '+' : '';
+      return `${sign}${n.toFixed(1)}`;
+    }
+
+    function teamHistoryMatchRow(team, match) {
+      const parts = splitMatchTeams(match.match_name || '');
+      let nameHtml;
+      if (parts.length === 2) {
+        const [home, away] = parts;
+        const teamLc = (team || '').toLocaleLowerCase('tr-TR');
+        const homeIsSelf = home.toLocaleLowerCase('tr-TR') === teamLc;
+        const awayIsSelf = away.toLocaleLowerCase('tr-TR') === teamLc;
+        const homeHtml = homeIsSelf
+          ? `<span class="team-self">${escapeHtml(home)}</span>`
+          : escapeHtml(home);
+        const awayHtml = awayIsSelf
+          ? `<span class="team-self">${escapeHtml(away)}</span>`
+          : escapeHtml(away);
+        nameHtml = `${homeHtml}<span class="vs">vs</span>${awayHtml}`;
+      } else {
+        nameHtml = escapeHtml(match.match_name || '-');
+      }
+      const dirCls = teamHistoryDirCls(match.direction);
+      const dirLabel = String(match.direction || '-').toUpperCase();
+      const resultCls = teamHistoryResultCls(match.result);
+      const resultLabel = String(match.result || '').trim() || 'Beklemede';
+      const score = String(match.score || '').trim();
+      const scoreMatch = score.match(/(\d{1,3})\s*[-–]\s*(\d{1,3})/);
+      const scoreTotal = scoreMatch ? Number(scoreMatch[1]) + Number(scoreMatch[2]) : null;
+      const scoreDisplay = score
+        ? (scoreTotal !== null ? `${score} (${scoreTotal})` : score)
+        : '';
+      const opening = teamHistoryFmtNum(match.opening);
+      const live = teamHistoryFmtNum(match.live);
+      const diffNum = Number(match.diff);
+      const diffCls = Number.isFinite(diffNum)
+        ? (diffNum > 0 ? 'diff-up' : (diffNum < 0 ? 'diff-down' : ''))
+        : '';
+      const diff = teamHistorySigned(match.diff);
+      const meta = [];
+      if (scoreDisplay) meta.push(`<span class="th-match-meta-item">Skor: <strong>${escapeHtml(scoreDisplay)}</strong></span>`);
+      if (opening !== '-' || live !== '-') {
+        meta.push(`<span class="th-match-meta-item">Barem: <strong>${opening}</strong> → <strong>${live}</strong></span>`);
+      }
+      if (diff !== '-') {
+        meta.push(`<span class="th-match-meta-item">Fark: <strong class="${diffCls}">${diff}</strong></span>`);
+      }
+      return `
+        <div class="th-match-row">
+          <div class="th-match-top">
+            <div class="th-match-date">${escapeHtml(teamHistoryFormatDate(match.alerted_at || match.deleted_at))}</div>
+            <div class="th-match-name">${nameHtml}</div>
+            <span class="th-match-dir ${dirCls}">${escapeHtml(dirLabel)}</span>
+            <span class="th-match-result ${resultCls}">${escapeHtml(resultLabel)}</span>
+          </div>
+          ${meta.length ? `<div class="th-match-meta">${meta.join('')}</div>` : ''}
+        </div>
+      `;
+    }
+
+    function teamHistoryTeamCard(team) {
+      const name = String(team.name || '').trim();
+      const matches = Array.isArray(team.matches) ? team.matches : [];
+      const summary = team.summary || {};
+      const winRate = (summary.win_rate === null || summary.win_rate === undefined)
+        ? '-'
+        : `${summary.win_rate}%`;
+      const headerName = name || '(Takım yok)';
+      const listHtml = matches.length
+        ? matches.map(m => teamHistoryMatchRow(name, m)).join('')
+        : '<div class="th-empty">Bu takım için silinen sinyal bulunamadı.</div>';
+      return `
+        <div class="th-team-card">
+          <div class="th-team-head">
+            <div class="th-team-name">
+              <span class="th-team-role">${escapeHtml(team.role || '')}</span>
+              ${escapeHtml(headerName)}
+            </div>
+          </div>
+          <div class="th-team-summary">
+            <div class="th-stat"><span class="th-stat-label">Toplam</span><span class="th-stat-value">${Number(summary.total || 0)}</span></div>
+            <div class="th-stat success"><span class="th-stat-label">Başarı</span><span class="th-stat-value">${Number(summary.success || 0)}</span></div>
+            <div class="th-stat fail"><span class="th-stat-label">Hata</span><span class="th-stat-value">${Number(summary.fail || 0)}</span></div>
+            <div class="th-stat rate"><span class="th-stat-label">Oran</span><span class="th-stat-value">${escapeHtml(winRate)}</span></div>
+          </div>
+          <div class="th-match-list">${listHtml}</div>
+        </div>
+      `;
+    }
+
+    async function openTeamHistoryModal(alertId) {
+      const alertObj = allAlerts.find(a => Number(a.id) === Number(alertId));
+      const title = alertObj ? cleanMatchName(alertObj.match_name || '') : 'Takım Geçmişi';
+      $('teamHistoryTitle').textContent = title ? `Takım Geçmişi — ${title}` : 'Takım Geçmişi';
+      $('teamHistoryBody').innerHTML = '<div class="th-loading">Geçmiş yükleniyor…</div>';
+      $('teamHistoryModal').classList.add('active');
+      try {
+        const res = await fetch(`/api/alerts/${Number(alertId)}/team-history`, { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Geçmiş alınamadı.');
+        renderTeamHistory(data);
+      } catch (error) {
+        $('teamHistoryBody').innerHTML = `<div class="th-error">${escapeHtml(error.message || 'Geçmiş alınamadı.')}</div>`;
+      }
+    }
+
+    function closeTeamHistoryModal() {
+      $('teamHistoryModal').classList.remove('active');
+    }
+
+    function renderTeamHistory(data) {
+      const teams = Array.isArray(data?.teams) ? data.teams : [];
+      const currentName = cleanMatchName(data?.match_name || '') || '-';
+      const totalCount = teams.reduce((sum, t) => sum + (t.matches?.length || 0), 0);
+      const header = `
+        <div class="th-current-match">
+          ${escapeHtml(currentName)}
+          <span> — silinen sinyallerden toplam ${totalCount} kayıt</span>
+        </div>
+      `;
+      if (!teams.length || teams.every(t => !t.name)) {
+        $('teamHistoryBody').innerHTML = `${header}<div class="th-empty">Takım adı ayrıştırılamadı.</div>`;
+        return;
+      }
+      const cardsHtml = teams
+        .map(team => teamHistoryTeamCard(team))
+        .join('');
+      $('teamHistoryBody').innerHTML = `${header}<div class="th-teams">${cardsHtml}</div>`;
     }
 
     function clearNote() {

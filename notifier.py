@@ -164,14 +164,19 @@ def _build_alert_text(
         ca_line = f"\n<b>C_A ⭐:</b> {escape(ca_label)} → <b>{ca_play}</b>"
         if ca_rule:
             ca_line += f"\n<i>{escape(ca_rule)}</i>"
+        if ca_play and ca_play != direction:
+            signal_headline = f"<b>{ca_play} Oyna</b> · ters sinyal: {direction}{repeat}"
+        else:
+            signal_headline = f"<b>{direction} Sinyali</b>{repeat}"
     else:
         ca_banner = ""
         ca_line = ""
+        signal_headline = f"<b>{direction} Sinyali</b>{repeat}"
 
     return (
         f"{ca_banner}"
         f"{hundred_profile_warning}"
-        f"<b>{direction} Sinyali</b>{repeat}\n"
+        f"{signal_headline}\n"
         f"🏀 <b>{escape(match_name)}</b>\n"
         f"🏆 {escape(tournament or '-')}\n\n"
         f"<b>Skor:</b> {escape(score or '-')}\n"

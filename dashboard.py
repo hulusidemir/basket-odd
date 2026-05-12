@@ -352,6 +352,13 @@ def _normalize_direction(value) -> str:
     return text or "-"
 
 
+def _claude_ai_play_direction(alert: dict) -> str:
+    if not str(alert.get("claude_ai") or "").strip():
+        return ""
+    play = _normalize_direction(alert.get("claude_ai_play"))
+    return play if play in {"ALT", "ÜST"} else ""
+
+
 def _split_match_teams(match_name: str) -> tuple[str, str]:
     parts = re.split(r"\s+-\s+", str(match_name or ""), maxsplit=1)
     if len(parts) == 2:
@@ -506,10 +513,9 @@ def build_bet_builder(max_count: int) -> dict:
             excluded_saved += 1
             continue
 
-        direction = str(alert.get("direction") or "").strip().upper().replace("UST", "ÜST")
+        original_direction = _normalize_direction(alert.get("direction"))
+        direction = _claude_ai_play_direction(alert)
         if direction not in {"ALT", "ÜST"}:
-            continue
-        if not bool(alert.get("telegram_eligible")):
             continue
 
         opening = _safe_float(alert.get("opening"))
@@ -529,8 +535,9 @@ def build_bet_builder(max_count: int) -> dict:
             "tournament": alert.get("tournament", ""),
             "url": alert.get("url", ""),
             "direction": direction,
-            "signal_tier": "Gelen Sinyal",
-            "signal_code": f"{direction}-SİNYAL",
+            "original_direction": original_direction,
+            "signal_tier": alert.get("claude_ai_label") or "C_A",
+            "signal_code": alert.get("claude_ai") or f"{direction}-C_A",
             "opening": round(opening, 1),
             "live": round(live, 1),
             "projected": round(float(projected), 1) if projected is not None else None,
@@ -2156,6 +2163,124 @@ def api_delete_alert(alert_id: int):
         "match_id": alert["match_id"],
         "deleted": True,
         "affected": deleted_count,
+    })
+
+
+def _team_history_summary(matches: list[dict]) -> dict:
+    resolved = 0
+    success = 0
+    fail = 0
+    push = 0
+    alt = 0
+    ust = 0
+    for match in matches:
+        direction = _normalize_direction(match.get("direction"))
+        if direction == "ALT":
+            alt += 1
+        elif direction == "ÜST":
+            ust += 1
+        result = str(match.get("result") or "").strip()
+        if result == "Başarılı":
+            resolved += 1
+            success += 1
+        elif result == "Başarısız":
+            resolved += 1
+            fail += 1
+        elif result == "İade":
+            resolved += 1
+            push += 1
+    rate = round((success / resolved) * 100, 1) if resolved else None
+    return {
+        "total": len(matches),
+        "resolved": resolved,
+        "success": success,
+        "fail": fail,
+        "push": push,
+        "alt": alt,
+        "ust": ust,
+        "win_rate": rate,
+    }
+
+
+def _serialize_team_history_entry(row: dict) -> dict:
+    return {
+        "id": int(row.get("id") or 0),
+        "match_id": str(row.get("match_id") or ""),
+        "match_name": str(row.get("match_name") or ""),
+        "tournament": str(row.get("tournament") or ""),
+        "direction": _normalize_direction(row.get("direction")),
+        "opening": row.get("opening"),
+        "live": row.get("live"),
+        "diff": row.get("diff"),
+        "status": str(row.get("status") or ""),
+        "score": str(row.get("score") or ""),
+        "result": str(row.get("result") or ""),
+        "alerted_at": row.get("alerted_at") or "",
+        "deleted_at": row.get("deleted_at") or "",
+    }
+
+
+@app.route("/api/alerts/<int:alert_id>/team-history")
+def api_alert_team_history(alert_id: int):
+    alert = db.get_alert(alert_id)
+    if not alert:
+        for row in db.recent_deleted_alerts(limit=None):
+            if int(row.get("id") or 0) == alert_id:
+                alert = row
+                break
+    if not alert:
+        return jsonify({"error": "not found"}), 404
+
+    home_team, away_team = _split_match_teams(alert.get("match_name") or "")
+    current_match_id = str(alert.get("match_id") or "").strip()
+    deleted_rows = db.recent_deleted_alerts(limit=None)
+
+    def matches_team(row: dict, team: str) -> bool:
+        if not team:
+            return False
+        row_home, row_away = _split_match_teams(row.get("match_name") or "")
+        team_key = team.casefold()
+        return row_home.casefold() == team_key or row_away.casefold() == team_key
+
+    def collect(team: str) -> list[dict]:
+        if not team:
+            return []
+        seen_match_ids: set[str] = set()
+        out: list[dict] = []
+        for row in deleted_rows:
+            row_match_id = str(row.get("match_id") or "").strip()
+            if row_match_id and row_match_id == current_match_id:
+                continue
+            if row_match_id and row_match_id in seen_match_ids:
+                continue
+            if not matches_team(row, team):
+                continue
+            if row_match_id:
+                seen_match_ids.add(row_match_id)
+            out.append(_serialize_team_history_entry(row))
+        return out
+
+    home_matches = collect(home_team)
+    away_matches = collect(away_team)
+
+    return jsonify({
+        "alert_id": alert_id,
+        "match_id": current_match_id,
+        "match_name": str(alert.get("match_name") or ""),
+        "teams": [
+            {
+                "role": "Ev",
+                "name": home_team,
+                "matches": home_matches,
+                "summary": _team_history_summary(home_matches),
+            },
+            {
+                "role": "Dep",
+                "name": away_team,
+                "matches": away_matches,
+                "summary": _team_history_summary(away_matches),
+            },
+        ],
     })
 
 

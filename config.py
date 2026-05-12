@@ -20,6 +20,7 @@ class Config:
     PAGE_TIMEOUT_MS: int = int(os.getenv("PAGE_TIMEOUT_MS", "30000"))
     FINISHED_MATCH_POLL_SECONDS: int = int(os.getenv("FINISHED_MATCH_POLL_SECONDS", "120"))
     FINISHED_MATCH_BATCH_SIZE: int = int(os.getenv("FINISHED_MATCH_BATCH_SIZE", "40"))
+    TELEGRAM_SIGNAL_POLICY: str = os.getenv("TELEGRAM_SIGNAL_POLICY", "claude_ai").strip().lower()
     BLACKLIST: list = [b.strip().lower() for b in os.getenv("BLACKLIST", "").split(",") if b.strip()]
 
     def validate(self):
@@ -31,3 +32,5 @@ class Config:
             raise ValueError("POLL_INTERVAL_MIN/MAX 0'dan büyük olmalı.")
         if self.POLL_INTERVAL_MIN > self.POLL_INTERVAL_MAX:
             raise ValueError("POLL_INTERVAL_MIN, POLL_INTERVAL_MAX'ten büyük olamaz.")
+        if self.TELEGRAM_SIGNAL_POLICY not in {"claude_ai", "eligible", "all"}:
+            raise ValueError("TELEGRAM_SIGNAL_POLICY claude_ai, eligible veya all olmalı.")
