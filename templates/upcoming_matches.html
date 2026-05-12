@@ -307,6 +307,17 @@
       white-space: nowrap;
     }
     .match-name a { color: inherit; text-decoration: none; }
+    .list-marker {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-left: 6px;
+      vertical-align: middle;
+      cursor: help;
+    }
+    .list-marker.blacklist { background: #ef4444; box-shadow: 0 0 0 1px rgba(0,0,0,0.45), 0 0 4px rgba(239,68,68,0.7); }
+    .list-marker.whitelist { background: #22c55e; box-shadow: 0 0 0 1px rgba(0,0,0,0.45), 0 0 4px rgba(34,197,94,0.7); }
     .match-name a:hover { color: #c4b5fd; }
     .subline {
       font-size: 11px;
@@ -787,10 +798,19 @@
         </div>
       `;
     }
+    function listMarkersHtml(row, scope) {
+      const markers = Array.isArray(row.list_markers) ? row.list_markers : [];
+      const filtered = markers.filter(m => String(m.scope || '') === scope);
+      if (!filtered.length) return '';
+      return filtered.map(m => {
+        const tone = String(m.tone || '').replace(/[^a-z-]/gi, '');
+        return `<span class="list-marker ${escapeHtml(tone)}" title="${escapeHtml(m.title || '')}" aria-label="${escapeHtml(m.title || '')}"></span>`;
+      }).join('');
+    }
     function fmtMatch(row) {
       const name = escapeHtml(row.match_name || '');
       const link = row.url ? `<a href="${escapeHtml(row.url)}" target="_blank" rel="noopener">${name}</a>` : name;
-      return `<div class="match-name">${link}</div>`;
+      return `<div class="match-name">${link}${listMarkersHtml(row,'team')}</div>`;
     }
     function offenseTotal(row) {
       const home = num(row.home_last6 && row.home_last6.ppg);
@@ -878,7 +898,7 @@
         <tr class="${m.bet_placed ? 'bet-placed' : ''} ${m.followed ? 'is-followed' : ''} ${m.ignored ? 'is-ignored' : ''}">
           <td>${escapeHtml(m.kickoff || '-')}</td>
           <td>${fmtMatch(m)}</td>
-          <td class="league-cell" title="${escapeHtml(m.tournament || '')}">${escapeHtml(m.tournament || '-')}</td>
+          <td class="league-cell" title="${escapeHtml(m.tournament || '')}">${escapeHtml(m.tournament || '-')}${listMarkersHtml(m,'league')}</td>
           <td class="num">${fmtNum(m.opening_total)}</td>
           <td class="sf-cell">${fmtSf(m.home_last6 || {})}</td>
           <td class="sf-cell">${fmtSf(m.away_last6 || {})}</td>

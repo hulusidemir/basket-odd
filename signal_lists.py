@@ -195,12 +195,11 @@ def build_signal_list_markers(alert: dict, list_profile: dict | None) -> list[di
         "team": [team for team in (home, away) if team],
         "league": [str(alert.get("tournament") or "").strip()],
     }
-    markers = []
+    markers: list[dict] = []
     for list_type, marker_label, tone in (
         ("black", "Kara liste", "blacklist"),
         ("white", "Beyaz liste", "whitelist"),
     ):
-        hits = []
         for scope, values in candidates.items():
             for value in values:
                 normalized = Database.normalize_signal_list_value(value)
@@ -210,12 +209,12 @@ def build_signal_list_markers(alert: dict, list_profile: dict | None) -> list[di
                         or value
                     )
                     scope_label = "Takım" if scope == "team" else "Lig"
-                    hits.append(f"{scope_label}: {display}")
-        if hits:
-            markers.append({
-                "type": list_type,
-                "tone": tone,
-                "symbol": "■",
-                "title": f"{marker_label}: {', '.join(hits)}",
-            })
+                    markers.append({
+                        "type": list_type,
+                        "tone": tone,
+                        "scope": scope,
+                        "value": display,
+                        "symbol": "●",
+                        "title": f"{marker_label} — {scope_label}: {display}",
+                    })
     return markers

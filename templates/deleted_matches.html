@@ -685,7 +685,9 @@
 	      border: 1px solid rgba(148, 163, 184, 0.22);
 	      cursor: pointer;
 	      font-variant-numeric: tabular-nums;
+	      transition: background 120ms, transform 120ms;
 	    }
+	    .quality-badge:hover { transform: scale(1.06); filter: brightness(1.15); }
 	    .quality-badge.fade,
 	    .quality-badge.red-check {
 	      color: #fecaca;
@@ -704,10 +706,47 @@
 	      border-color: rgba(156, 163, 175, 0.34);
 	    }
 	    .quality-badge.star {
-	      color: #fde68a;
-	      background: rgba(245, 158, 11, 0.16);
-	      border-color: rgba(245, 158, 11, 0.55);
+	      color: #67e8f9;
+	      background: rgba(6, 182, 212, 0.16);
+	      border-color: rgba(6, 182, 212, 0.55);
+	      cursor: pointer;
+	      transition: background 120ms, transform 120ms;
 	    }
+	    .quality-badge.star:hover {
+	      background: rgba(6, 182, 212, 0.28);
+	      transform: scale(1.06);
+	    }
+	    .quality-info-overlay {
+	      position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+	      display: flex; align-items: center; justify-content: center;
+	      z-index: 1100; padding: 20px;
+	    }
+	    .quality-info-box {
+	      background: #1f2937;
+	      border: 1px solid rgba(6,182,212,0.45);
+	      border-radius: 14px;
+	      padding: 20px 22px;
+	      max-width: 380px; width: 100%;
+	      box-shadow: 0 10px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(6,182,212,0.15);
+	    }
+	    .quality-info-head {
+	      display: flex; align-items: center; gap: 10px;
+	      font-size: 17px; font-weight: 800; color: #67e8f9;
+	      margin-bottom: 10px;
+	    }
+	    .quality-info-head .icon { font-size: 22px; }
+	    .quality-info-body {
+	      font-size: 13.5px; color: #cbd5e1; line-height: 1.55;
+	    }
+	    .quality-info-close {
+	      margin-top: 14px; width: 100%;
+	      background: rgba(6,182,212,0.18);
+	      border: 1px solid rgba(6,182,212,0.45);
+	      color: #67e8f9;
+	      padding: 8px 14px; border-radius: 8px;
+	      cursor: pointer; font-weight: 700;
+	    }
+	    .quality-info-close:hover { background: rgba(6,182,212,0.32); }
 	    .hundred-profile-badge {
 	      display: inline-flex;
 	      align-items: center;
@@ -865,14 +904,15 @@
 	    }
 	    .list-marker {
 	      display: inline-block;
-	      width: 12px;
-	      height: 12px;
-	      border-radius: 3px;
-	      box-shadow: 0 0 0 1px rgba(255,255,255,0.18) inset;
+	      width: 10px;
+	      height: 10px;
+	      border-radius: 50%;
+	      margin-left: 6px;
 	      vertical-align: middle;
+	      cursor: help;
 	    }
-	    .list-marker.blacklist { background: #ef4444; }
-	    .list-marker.whitelist { background: #22c55e; }
+	    .list-marker.blacklist { background: #ef4444; box-shadow: 0 0 0 1px rgba(0,0,0,0.45), 0 0 4px rgba(239,68,68,0.7); }
+	    .list-marker.whitelist { background: #22c55e; box-shadow: 0 0 0 1px rgba(0,0,0,0.45), 0 0 4px rgba(34,197,94,0.7); }
 
     .mono {
       font-family: "SFMono-Regular", Consolas, monospace;
@@ -2191,23 +2231,56 @@
       return `<span class="fair-line-cell"><span class="mono">${fairLabel}</span>${fairEdgeAlertHtml(alert)}</span>`;
     }
 
+    function listMarkersHtml(alert, scope) {
+      const markers = Array.isArray(alert.list_markers) ? alert.list_markers : [];
+      const filtered = markers.filter(m => String(m.scope || '') === scope);
+      if (!filtered.length) return '';
+      return filtered.map(m => {
+        const tone = String(m.tone || '').replace(/[^a-z-]/gi, '');
+        return `<span class="list-marker ${escapeHtml(tone)}" title="${escapeHtml(m.title || '')}" aria-label="${escapeHtml(m.title || '')}"></span>`;
+      }).join('');
+    }
+
     function qualityHtml(alert) {
       const label = String(alert.quality_label || '-');
       const tone = String(alert.quality_tone || 'empty').replace(/[^a-z-]/gi, '') || 'empty';
       const title = String(alert.quality_title || 'Kalite kuralı uygulanmadı.');
-      const markers = Array.isArray(alert.list_markers) ? alert.list_markers : [];
       const hundred = Number(alert.hundred_profile || 0) === 1
         ? `<button type="button" class="hundred-profile-badge" onclick="event.stopPropagation();openSignalInfo(${Number(alert.id || 0)})" title="100 Profili — ayrıntı için tıkla" style="border:none;font-family:inherit;">100</button>`
         : '';
-      const markerHtml = markers.map(marker => {
-        const markerTone = String(marker.tone || '').replace(/[^a-z-]/gi, '');
-        return `<span class="list-marker ${escapeHtml(markerTone)}" title="${escapeHtml(marker.title || '')}" aria-label="${escapeHtml(marker.title || '')}"></span>`;
-      }).join('');
-      const badge = label && label !== '-'
-        ? `<span class="badge quality-badge ${escapeHtml(tone)}" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`
-        : (markerHtml ? '' : `<span class="badge quality-badge empty" title="${escapeHtml(title)}">-</span>`);
-      return `<span class="quality-cell">${badge}${hundred}${markerHtml}</span>`;
+      const safeTitle = escapeHtml(title).replace(/'/g, "&#39;");
+      let badge;
+      if (label && label !== '-') {
+        const displayLabel = escapeHtml(label);
+        badge = `<button type="button" class="badge quality-badge ${escapeHtml(tone)}" title="Ayrıntı için tıkla" onclick="event.stopPropagation();openQualityInfo('${displayLabel}','${safeTitle}')" style="border:1px solid rgba(148,163,184,0.22);font-family:inherit;">${displayLabel}</button>`;
+      } else {
+        badge = `<button type="button" class="badge quality-badge empty" title="Ayrıntı için tıkla" onclick="event.stopPropagation();openQualityInfo('-','${safeTitle}')" style="border:1px solid rgba(148,163,184,0.22);font-family:inherit;">-</button>`;
+      }
+      return `<span class="quality-cell">${badge}${hundred}</span>`;
     }
+
+    function openQualityInfo(label, body) {
+      const existing = document.getElementById('qualityInfoOverlay');
+      if (existing) existing.remove();
+      const overlay = document.createElement('div');
+      overlay.id = 'qualityInfoOverlay';
+      overlay.className = 'quality-info-overlay';
+      overlay.innerHTML = `
+        <div class="quality-info-box" onclick="event.stopPropagation();">
+          <div class="quality-info-head"><span class="icon">${label}</span><span>Kalite Yıldızı</span></div>
+          <div class="quality-info-body">${body}</div>
+          <button type="button" class="quality-info-close" onclick="closeQualityInfo()">Kapat</button>
+        </div>`;
+      overlay.addEventListener('click', closeQualityInfo);
+      document.body.appendChild(overlay);
+      document.addEventListener('keydown', _qualityInfoEsc);
+    }
+    function closeQualityInfo() {
+      const o = document.getElementById('qualityInfoOverlay');
+      if (o) o.remove();
+      document.removeEventListener('keydown', _qualityInfoEsc);
+    }
+    function _qualityInfoEsc(e) { if (e.key === 'Escape') closeQualityInfo(); }
 
     function modalListItem(key, value) {
       return `<li><span class="signal-info-key">${escapeHtml(key)}</span><span class="signal-info-value">${escapeHtml(value ?? '-')}</span></li>`;
@@ -2809,9 +2882,10 @@
               <div class="match-cell-wrap">
                 ${matchFocusButtonHtml(alert)}
                 ${matchHtml}
+                ${listMarkersHtml(alert,'team')}
                 ${noteInfoButton(alert)}
               </div>
-              <div class="subline">${escapeHtml(alert.tournament || '-')}</div>
+              <div class="subline">${escapeHtml(alert.tournament || '-')}${listMarkersHtml(alert,'league')}</div>
             </td>
             <td class="mono">${escapeHtml(alert.alert_moment || '-')}</td>
 	            <td>
