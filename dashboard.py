@@ -692,12 +692,16 @@ def api_alerts():
     backtest_profile = build_backtest_profile(deleted_rows)
     history_profile = _build_history_profile(deleted_rows)
     list_profile = build_signal_list_profile(db.list_signal_list_entries())
-    return jsonify(enrich_alerts_with_analysis(
+    alerts = enrich_alerts_with_analysis(
         db.recent_alerts(limit=500),
         backtest_profile,
         history_profile,
         list_profile,
-    ))
+    )
+    followed_ids = db.upcoming_followed_match_ids([a.get("match_id") for a in alerts])
+    for alert in alerts:
+        alert["upcoming_followed"] = 1 if str(alert.get("match_id") or "") in followed_ids else 0
+    return jsonify(alerts)
 
 
 @app.route("/api/signal-lists")
@@ -2217,6 +2221,7 @@ def _serialize_team_history_entry(row: dict) -> dict:
         "result": str(row.get("result") or ""),
         "alerted_at": row.get("alerted_at") or "",
         "deleted_at": row.get("deleted_at") or "",
+        "url": str(row.get("url") or ""),
     }
 
 

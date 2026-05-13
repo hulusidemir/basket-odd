@@ -1086,6 +1086,35 @@ class Database:
             "followed": int(action.get("followed") or 0),
         }
 
+    def is_upcoming_followed(self, match_id: str) -> bool:
+        key = str(match_id or "").strip()
+        if not key:
+            return False
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT followed FROM upcoming_match_actions WHERE match_id = ?",
+                (key,),
+            ).fetchone()
+        return bool(row and int(row["followed"] or 0))
+
+    def upcoming_followed_match_ids(self, match_ids: list[str] | None = None) -> set[str]:
+        with self._conn() as conn:
+            if match_ids:
+                keys = [str(mid) for mid in match_ids if str(mid).strip()]
+                if not keys:
+                    return set()
+                placeholders = ", ".join("?" for _ in keys)
+                rows = conn.execute(
+                    f"SELECT match_id FROM upcoming_match_actions "
+                    f"WHERE followed = 1 AND match_id IN ({placeholders})",
+                    tuple(keys),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT match_id FROM upcoming_match_actions WHERE followed = 1"
+                ).fetchall()
+        return {str(row["match_id"]) for row in rows}
+
     def set_upcoming_match_statuses(
         self,
         match_id: str,

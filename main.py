@@ -227,7 +227,9 @@ async def process_match(
         claude_ai_rule=claude_ai["claude_ai_rule"],
     )
 
-    if not should_send_telegram(analysis, config):
+    followed_upcoming = db.is_upcoming_followed(match_id)
+
+    if not followed_upcoming and not should_send_telegram(analysis, config):
         log.info(
             "Signal saved (dashboard only): alert_id=%s match_id=%s | %s | %s | diff=%.2f | policy=%s",
             alert_id, match_id, match_name, direction, abs_diff, config.TELEGRAM_SIGNAL_POLICY,
@@ -238,10 +240,12 @@ async def process_match(
         match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
         score=score, signal_count=signal_count, prematch=prematch_total, analysis=analysis,
         period=period,
+        followed_upcoming=followed_upcoming,
     )
 
     log.info(
-        "Signal saved (telegram): alert_id=%s match_id=%s | %s | %s | diff=%.2f | fair_line=%s",
+        "Signal saved (telegram%s): alert_id=%s match_id=%s | %s | %s | diff=%.2f | fair_line=%s",
+        " · followed" if followed_upcoming else "",
         alert_id, match_id, match_name, direction, abs_diff, analysis.get("fair_line"),
     )
 

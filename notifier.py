@@ -227,6 +227,7 @@ class TelegramNotifier:
         prematch: float | None = None,
         analysis: dict | None = None,
         period: int | None = None,
+        followed_upcoming: bool = False,
     ) -> dict:
         analysis = analysis or {}
         text = _build_alert_text(
@@ -243,6 +244,8 @@ class TelegramNotifier:
             analysis=analysis,
             period=period,
         )
+        if followed_upcoming:
+            text = "⭐ <b>TAKİP EDİLEN MAÇA AİT SİNYAL GELDİ</b>\n" + text
         try:
             msg_ids = await self._send_to_all(text)
             logger.info(f"Alert sent: {match_name} [{direction}]")
@@ -250,6 +253,37 @@ class TelegramNotifier:
         except TelegramError as e:
             logger.error(f"Telegram error: {e}")
             return {}
+
+    async def send_followed_match_alert(
+        self,
+        match_name: str,
+        tournament: str,
+        opening: float,
+        live: float,
+        direction: str,
+        diff: float,
+        status: str,
+        score: str = "",
+        signal_count: int = 1,
+        prematch: float | None = None,
+        analysis: dict | None = None,
+        period: int | None = None,
+    ) -> dict:
+        return await self.send_alert(
+            match_name=match_name,
+            tournament=tournament,
+            opening=opening,
+            live=live,
+            direction=direction,
+            diff=diff,
+            status=status,
+            score=score,
+            signal_count=signal_count,
+            prematch=prematch,
+            analysis=analysis,
+            period=period,
+            followed_upcoming=True,
+        )
 
     async def send_startup(self):
         try:
