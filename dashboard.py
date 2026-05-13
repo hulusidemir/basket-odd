@@ -2229,20 +2229,10 @@ def _serialize_team_history_entry(row: dict) -> dict:
     }
 
 
-@app.route("/api/alerts/<int:alert_id>/team-history")
-def api_alert_team_history(alert_id: int):
-    alert = db.get_alert(alert_id)
-    if not alert:
-        for row in db.recent_deleted_alerts(limit=None):
-            if int(row.get("id") or 0) == alert_id:
-                alert = row
-                break
-    if not alert:
-        return jsonify({"error": "not found"}), 404
-
-    home_team, away_team = _split_match_teams(alert.get("match_name") or "")
-    current_match_id = str(alert.get("match_id") or "").strip()
+def _build_team_history(match_name: str, current_match_id: str) -> dict:
+    home_team, away_team = _split_match_teams(match_name or "")
     deleted_rows = db.recent_deleted_alerts(limit=None)
+    current_match_id = str(current_match_id or "").strip()
 
     def matches_team(row: dict, team: str) -> bool:
         if not team:
@@ -2272,10 +2262,9 @@ def api_alert_team_history(alert_id: int):
     home_matches = collect(home_team)
     away_matches = collect(away_team)
 
-    return jsonify({
-        "alert_id": alert_id,
+    return {
         "match_id": current_match_id,
-        "match_name": str(alert.get("match_name") or ""),
+        "match_name": str(match_name or ""),
         "teams": [
             {
                 "role": "Ev",
@@ -2290,7 +2279,34 @@ def api_alert_team_history(alert_id: int):
                 "summary": _team_history_summary(away_matches),
             },
         ],
-    })
+    }
+
+
+@app.route("/api/alerts/<int:alert_id>/team-history")
+def api_alert_team_history(alert_id: int):
+    alert = db.get_alert(alert_id)
+    if not alert:
+        for row in db.recent_deleted_alerts(limit=None):
+            if int(row.get("id") or 0) == alert_id:
+                alert = row
+                break
+    if not alert:
+        return jsonify({"error": "not found"}), 404
+    payload = _build_team_history(
+        alert.get("match_name") or "",
+        alert.get("match_id") or "",
+    )
+    payload["alert_id"] = alert_id
+    return jsonify(payload)
+
+
+@app.route("/api/team-history")
+def api_team_history_lookup():
+    match_name = (request.args.get("match_name") or "").strip()
+    match_id = (request.args.get("match_id") or "").strip()
+    if not match_name:
+        return jsonify({"error": "match_name required"}), 400
+    return jsonify(_build_team_history(match_name, match_id))
 
 
 @app.route("/api/clear", methods=["POST"])
