@@ -855,7 +855,7 @@ def api_export_finished_deleted_matches_csv():
     output.write("\ufeff")
     writer = csv.writer(output)
     writer.writerow([
-        "Maç", "Lig", "Sinyal Anı", "Sinyal Türü", "Skor",
+        "Maç", "Lig", "Sinyal Tarihi (TR)", "Sinyal Saati (TR)", "Sinyal Anı", "Sinyal Türü", "Skor",
         "Açılış", "Canlı", "Proj.", "Adil Barem", "Kalite", "Liste", "Sonuç", "Not",
     ])
 
@@ -869,9 +869,13 @@ def api_export_finished_deleted_matches_csv():
         fair_line_cell = f"{float(fair_line):.1f}" if fair_line is not None else "Hesaplanamıyor"
         markers = row.get("list_markers") if isinstance(row.get("list_markers"), list) else []
         marker_cell = " | ".join(str(marker.get("title") or "").strip() for marker in markers if isinstance(marker, dict))
+        alerted_at = str(row.get("alerted_at") or "").strip()
+        alerted_date, _, alerted_time = alerted_at.partition(" ")
         writer.writerow([
             match_name,
             row.get("tournament") or "",
+            alerted_date,
+            alerted_time,
             row.get("alert_moment") or "",
             direction,
             row.get("score") or "",

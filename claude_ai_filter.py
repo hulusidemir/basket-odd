@@ -217,36 +217,8 @@ def evaluate_claude_ai(alert: dict, analysis: dict | None) -> dict:
             return {"claude_ai": "TRUE_UNDER",
                     "claude_ai_rule": "B3: küçük fark + Q2 + ılımlı regresyon (%86)"}
 
-    # ---- KADEME C: FADE_OVER pure-h0 yüksek güven ----
-    if direction == "ÜST":
-        # C1 — %88.9
-        if open_b == "o140-149" and fair_b == "fair_neut" and proj_b == "proj_neut":
-            return {"claude_ai": "FADE_OVER",
-                    "claude_ai_rule": "C1: düşük total + fair/proj nötr → ÜST tuzak (%89)"}
-        # C2 — %88.2
-        if open_b == "o140-149" and alignment == "support" and fair_b == "fair_neut":
-            return {"claude_ai": "FADE_OVER",
-                    "claude_ai_rule": "C2: düşük total + takım ÜST destek + fair nötr → tuzak (%88)"}
-        # C3 — %86.7
-        if open_b == "o150-159" and alignment == "neutral" and reg_b == "reg<5":
-            return {"claude_ai": "FADE_OVER",
-                    "claude_ai_rule": "C3: orta-düşük total + nötr profil + zayıf regresyon (%87)"}
-        # C4 — %85.7
-        if open_b == "o150-159" and alignment == "neutral" and fair_b == "fair_supp":
-            return {"claude_ai": "FADE_OVER",
-                    "claude_ai_rule": "C4: orta-düşük total + nötr profil + fair ÜST (tuzak %86)"}
-        # C5 — %85.7
-        if open_b == "o150-159" and alignment == "support" and h2h_b == "h2h_neut":
-            return {"claude_ai": "FADE_OVER",
-                    "claude_ai_rule": "C5: orta-düşük total + takım ÜST + h2h nötr (tuzak %86)"}
-        # C6 — %85.0
-        if open_b == "o<140" and alignment == "support" and h2h_b == "h2h_supp_strong":
-            return {"claude_ai": "FADE_OVER",
-                    "claude_ai_rule": "C6: çok düşük total + tüm destekler ÜST → klasik tuzak (%85)"}
-        # C7 — %85.0
-        if open_b == "o150-159" and fair_b == "fair_neut" and reg_b == "reg10-20":
-            return {"claude_ai": "FADE_OVER",
-                    "claude_ai_rule": "C7: orta-düşük total + fair nötr + güçlü regresyon (%85)"}
+    # KADEME C (FADE_OVER C1-C7) devre dışı — canlıda %19.6 tuttu, overfit kurallardı.
+    # ÜST sinyalleri için sadece Kademe A (100 Profili) yıldız verir.
 
     return {"claude_ai": "", "claude_ai_rule": ""}
 
