@@ -552,7 +552,21 @@
       font-weight: 950;
       line-height: 1;
     }
-    .ca-cell { width: 28px; text-align: center; padding: 4px 2px !important; }
+    .ca-cell { width: 78px; text-align: center; padding: 4px 4px !important; }
+    .ca-stack { display: inline-flex; align-items: center; gap: 5px; }
+    .sig-score-pill {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 28px; height: 20px; padding: 0 6px; border-radius: 5px;
+      font-size: 11px; font-weight: 900; line-height: 1;
+      font-variant-numeric: tabular-nums;
+      background: rgba(148,163,184,0.10); border: 1px solid rgba(148,163,184,0.30);
+      color: #cbd5e1;
+    }
+    .sig-score-pill.s-strong { color: #6ee7b7; border-color: rgba(52,211,153,0.50); background: rgba(52,211,153,0.12); }
+    .sig-score-pill.s-good   { color: #93c5fd; border-color: rgba(96,165,250,0.50); background: rgba(96,165,250,0.12); }
+    .sig-score-pill.s-mid    { color: #fde68a; border-color: rgba(251,191,36,0.45); background: rgba(251,191,36,0.10); }
+    .sig-score-pill.s-weak   { color: #fca5a5; border-color: rgba(248,113,113,0.45); background: rgba(248,113,113,0.10); }
+    .sig-score-pill.s-pass   { color: #f87171; border-color: rgba(220,38,38,0.55); background: rgba(220,38,38,0.14); }
     .ca-star {
       display: inline-flex; align-items: center; justify-content: center;
       width: 22px; height: 22px; border-radius: 6px;
@@ -2799,14 +2813,32 @@
       return `<div class="signal-tag-grid">${caCard}${hundredCard}</div>`;
     }
 
+    function signalScorePillHtml(alert) {
+      const raw = alert.signal_score;
+      if (raw === null || raw === undefined || raw === '') return '';
+      const n = Number(raw);
+      let cls = 's-weak';
+      if (n >= 80) cls = 's-strong';
+      else if (n >= 65) cls = 's-good';
+      else if (n >= 50) cls = 's-mid';
+      else if (n >= 35) cls = 's-weak';
+      else cls = 's-pass';
+      const lbl = String(alert.signal_score_label || '');
+      return `<span class="sig-score-pill ${cls}" title="Sinyal skoru: ${n}${lbl ? ' (' + escapeHtml(lbl) + ')' : ''}">${n}</span>`;
+    }
+
     function caHtml(alert) {
       const code = String(alert.claude_ai || '').trim();
-      if (!code) return '<span class="ca-empty" aria-hidden="true">·</span>';
+      const pill = signalScorePillHtml(alert);
+      if (!code) {
+        return pill ? `<span class="ca-stack">${pill}</span>` : '<span class="ca-empty" aria-hidden="true">·</span>';
+      }
       const label = String(alert.claude_ai_label || code);
       const isFade = code === 'FADE_OVER' || code === 'FADE_UNDER';
       const cls = `ca-star ${isFade ? 'fade' : ''}`.trim();
       const id = Number(alert.id || 0);
-      return `<button type="button" class="${cls}" onclick="openSignalModal(${id})" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)} — ayrıntı için tıkla">⭐</button>`;
+      const star = `<button type="button" class="${cls}" onclick="openSignalModal(${id})" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)} — ayrıntı için tıkla">⭐</button>`;
+      return `<span class="ca-stack">${star}${pill}</span>`;
     }
 
     function listMarkersHtml(alert, scope) {

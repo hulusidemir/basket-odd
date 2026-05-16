@@ -25,6 +25,7 @@ from signal_analysis import build_backtest_profile, build_signal_analysis, enric
 from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
 from signal_profiles import evaluate_hundred_profile
 from claude_ai_filter import evaluate_claude_ai, scenario_meta
+from signal_score import compute_signal_score
 
 config = Config()
 db = Database(config.DB_PATH)
@@ -305,6 +306,9 @@ def enrich_alerts_with_analysis(
             )
         if history_profile is not None:
             alert["history_guard"] = _build_alert_history_guard(alert, history_profile)
+        sig_score = compute_signal_score(alert, analysis)
+        alert["signal_score"] = sig_score.get("score")
+        alert["signal_score_label"] = sig_score.get("label")
     return alerts
 
 
@@ -789,6 +793,10 @@ def _enrich_deleted_alert(
             alert["claude_ai"],
             alert["claude_ai_rule"],
         )
+
+    sig_score = compute_signal_score(alert, analysis)
+    alert["signal_score"] = sig_score.get("score")
+    alert["signal_score_label"] = sig_score.get("label")
 
     if full:
         alert["analysis"] = analysis
