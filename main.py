@@ -199,6 +199,7 @@ async def process_match(
             "opening": opening_total,
             "live": inplay_total,
             "diff": abs_diff,
+            "score": score,
             "alert_period": period,
             "hundred_profile": 1 if hundred_profile.get("hundred_profile") else 0,
         },
