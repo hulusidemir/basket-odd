@@ -567,6 +567,16 @@
     .sig-score-pill.s-mid    { color: #fde68a; border-color: rgba(251,191,36,0.45); background: rgba(251,191,36,0.10); }
     .sig-score-pill.s-weak   { color: #fca5a5; border-color: rgba(248,113,113,0.45); background: rgba(248,113,113,0.10); }
     .sig-score-pill.s-pass   { color: #f87171; border-color: rgba(220,38,38,0.55); background: rgba(220,38,38,0.14); }
+    .league-q-pill {
+      display: inline-flex; align-items: center;
+      height: 18px; padding: 0 6px; border-radius: 5px;
+      font-size: 10px; font-weight: 700; line-height: 1; white-space: nowrap;
+      background: rgba(148,163,184,0.10); border: 1px solid rgba(148,163,184,0.30); color: #cbd5e1;
+    }
+    .league-q-pill.lq-success  { color: #6ee7b7; border-color: rgba(52,211,153,0.55); background: rgba(52,211,153,0.14); }
+    .league-q-pill.lq-positive { color: #a7f3d0; border-color: rgba(110,231,183,0.40); background: rgba(110,231,183,0.10); }
+    .league-q-pill.lq-warning  { color: #fde68a; border-color: rgba(251,191,36,0.45); background: rgba(251,191,36,0.10); }
+    .league-q-pill.lq-danger   { color: #fca5a5; border-color: rgba(220,38,38,0.55); background: rgba(220,38,38,0.14); }
     .ca-star {
       display: inline-flex; align-items: center; justify-content: center;
       width: 22px; height: 22px; border-radius: 6px;
@@ -2827,18 +2837,29 @@
       return `<span class="sig-score-pill ${cls}" title="Sinyal skoru: ${n}${lbl ? ' (' + escapeHtml(lbl) + ')' : ''}">${n}</span>`;
     }
 
+    function leagueQualityHtml(alert) {
+      const q = String(alert.league_quality || 'unknown');
+      const label = String(alert.league_quality_label || '');
+      const tip = String(alert.league_quality_tooltip || '');
+      if (!label || q === 'unknown' || q === 'neutral') return '';
+      const tone = String(alert.league_quality_tone || 'neutral').replace(/[^a-z]/gi, '');
+      return `<span class="league-q-pill lq-${escapeHtml(tone)}" title="${escapeHtml(tip)}">${escapeHtml(label)}</span>`;
+    }
+
     function caHtml(alert) {
       const code = String(alert.claude_ai || '').trim();
       const pill = signalScorePillHtml(alert);
+      const lq = leagueQualityHtml(alert);
       if (!code) {
-        return pill ? `<span class="ca-stack">${pill}</span>` : '<span class="ca-empty" aria-hidden="true">·</span>';
+        const inner = `${pill}${lq}`;
+        return inner ? `<span class="ca-stack">${inner}</span>` : '<span class="ca-empty" aria-hidden="true">·</span>';
       }
       const label = String(alert.claude_ai_label || code);
       const isFade = code === 'FADE_OVER' || code === 'FADE_UNDER';
       const cls = `ca-star ${isFade ? 'fade' : ''}`.trim();
       const id = Number(alert.id || 0);
       const star = `<button type="button" class="${cls}" onclick="openSignalModal(${id})" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)} — ayrıntı için tıkla">⭐</button>`;
-      return `<span class="ca-stack">${star}${pill}</span>`;
+      return `<span class="ca-stack">${star}${pill}${lq}</span>`;
     }
 
     function listMarkersHtml(alert, scope) {

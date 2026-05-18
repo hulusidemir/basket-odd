@@ -25,6 +25,7 @@ from signal_analysis import build_backtest_profile, build_signal_analysis, enric
 from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
 from signal_profiles import evaluate_hundred_profile
 from claude_ai_filter import evaluate_claude_ai, scenario_meta
+from league_quality import evaluate_league_quality
 from signal_score import compute_signal_score
 
 config = Config()
@@ -295,6 +296,15 @@ def enrich_alerts_with_analysis(
         alert["claude_ai_label"] = meta.get("label", "")
         alert["claude_ai_play"] = meta.get("play", "")
         alert["claude_ai_tooltip"] = meta.get("tooltip", "")
+        # Lig kalitesi (final oyun yönüne göre)
+        final_dir = alert.get("direction") or ""
+        if cai["claude_ai"] == "FADE_UNDER": final_dir = "ALT"
+        elif cai["claude_ai"] == "FADE_OVER": final_dir = "ÜST"
+        lq = evaluate_league_quality(alert.get("tournament"), final_dir)
+        alert["league_quality"] = lq["league_quality"]
+        alert["league_quality_label"] = lq["league_quality_label"]
+        alert["league_quality_tone"] = lq["league_quality_tone"]
+        alert["league_quality_tooltip"] = lq["league_quality_tooltip"]
         if int(alert.get("id") or 0) and (
             stored_claude_ai != alert["claude_ai"]
             or stored_claude_ai_rule != alert["claude_ai_rule"]
@@ -784,6 +794,15 @@ def _enrich_deleted_alert(
     alert["claude_ai_label"] = meta.get("label", "")
     alert["claude_ai_play"] = meta.get("play", "")
     alert["claude_ai_tooltip"] = meta.get("tooltip", "")
+    # Lig kalitesi
+    final_dir = alert.get("direction") or ""
+    if cai["claude_ai"] == "FADE_UNDER": final_dir = "ALT"
+    elif cai["claude_ai"] == "FADE_OVER": final_dir = "ÜST"
+    lq = evaluate_league_quality(alert.get("tournament"), final_dir)
+    alert["league_quality"] = lq["league_quality"]
+    alert["league_quality_label"] = lq["league_quality_label"]
+    alert["league_quality_tone"] = lq["league_quality_tone"]
+    alert["league_quality_tooltip"] = lq["league_quality_tooltip"]
     if int(alert.get("id") or 0) and (
         stored_claude_ai != alert["claude_ai"]
         or stored_claude_ai_rule != alert["claude_ai_rule"]

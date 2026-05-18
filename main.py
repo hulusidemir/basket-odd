@@ -23,6 +23,7 @@ from signal_analysis import build_backtest_profile, build_signal_analysis
 from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
 from signal_profiles import evaluate_hundred_profile
 from claude_ai_filter import evaluate_claude_ai
+from league_quality import evaluate_league_quality
 
 
 def setup_logging(level: str):
@@ -205,10 +206,19 @@ async def process_match(
         },
         analysis,
     )
+    # Sinyalin geldiği yön + lig kalitesi (FADE_UNDER için final oyun yönü ALT)
+    final_play_dir = direction
+    if claude_ai["claude_ai"] == "FADE_UNDER":
+        final_play_dir = "ALT"
+    elif claude_ai["claude_ai"] == "FADE_OVER":
+        final_play_dir = "ÜST"
+    league_q = evaluate_league_quality(tournament, final_play_dir)
+
     analysis = {
         **analysis,
         "claude_ai": claude_ai["claude_ai"],
         "claude_ai_rule": claude_ai["claude_ai_rule"],
+        **league_q,
     }
 
     if period_has_any_alert:

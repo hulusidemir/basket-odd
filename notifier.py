@@ -173,6 +173,17 @@ def _build_alert_text(
         ca_line = ""
         signal_headline = f"<b>{direction} Sinyali</b>{repeat}"
 
+    # Lig kalite uyarısı
+    lq = str(analysis.get("league_quality") or "")
+    lq_label = str(analysis.get("league_quality_label") or "")
+    lq_tooltip = str(analysis.get("league_quality_tooltip") or "")
+    if lq in ("good", "mid_good"):
+        league_line = f"\n<b>LİG:</b> {escape(lq_label)} ✅"
+    elif lq in ("bad", "mid_bad"):
+        league_line = f"\n<b>LİG:</b> {escape(lq_label)} ⚠️ {escape(lq_tooltip)}"
+    else:
+        league_line = ""
+
     return (
         f"{ca_banner}"
         f"{hundred_profile_warning}"
@@ -191,6 +202,7 @@ def _build_alert_text(
         f"<b>ADİL BAREM:</b> {fair_text}\n"
         f"<b>PROJEKSİYON:</b> {proj_text}"
         f"{ca_line}"
+        f"{league_line}"
     )
 
 
