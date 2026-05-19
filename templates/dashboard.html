@@ -2709,8 +2709,8 @@
     const CA_DETAILS = {
       TRUE_UNDER: { label: 'Güçlü Alt',    play: 'ALT', desc: 'Sistem ALT sinyali verdi ve geçmiş veri bunu destekliyor — kuralla eşleşen maçlar geçmişte ~%96 ALT bitmiş.' },
       TRUE_OVER:  { label: 'Güçlü Üst',    play: 'ÜST', desc: 'Sistem ÜST sinyali verdi ve geçmiş veri bunu destekliyor — 100 Profili eşleşen maçlar geçmişte %100 ÜST bitmiş.' },
-      FADE_OVER:  { label: 'Tersine Alt',  play: 'ALT', desc: 'Sistem ÜST sinyali verdi ama bu profildeki maçlar geçmişte ~%87 oranla ALT bitmiş — tuzak sinyal. Ters yönde (ALT) oynaması önerilir.' },
-      FADE_UNDER: { label: 'Tersine Üst',  play: 'ÜST', desc: 'Sistem ALT sinyali verdi ama bu profildeki maçlar geçmişte tersine ÜST bitme eğiliminde — ters yönde (ÜST) oynaması önerilir.' },
+      FADE_OVER:  { label: 'Tersine Üst',  play: 'ÜST', desc: 'C_A sistemin ALT sinyalini tuzak olarak işaretledi. Öneri: sistemin tersine ÜST oyna.' },
+      FADE_UNDER: { label: 'Tersine Alt',  play: 'ALT', desc: 'C_A sistemin ÜST sinyalini tuzak olarak işaretledi. Öneri: sistemin tersine ALT oyna.' },
     };
 
     function bigVerdictHtml(alert) {
@@ -2751,14 +2751,15 @@
 
       // C_A tersine
       if (code === 'FADE_OVER' || code === 'FADE_UNDER') {
-        const play = code === 'FADE_OVER' ? 'ALT' : 'ÜST';
+        const details = CA_DETAILS[code] || {};
+        const play = details.play || '';
         const playArrow = play === 'ALT' ? '▼' : '▲';
         return `
           <div class="big-verdict fade-pink">
             <div class="big-verdict-icon">🔄</div>
             <div class="big-verdict-text">
-              <div class="big-verdict-play"><span class="arrow">${playArrow}</span> ${play} oyna <small style="font-size:13px;font-weight:700;opacity:0.85;">(sistemin tersine)</small></div>
-              <div class="big-verdict-desc">Sistem <b>${escapeHtml(dir)}</b> dedi <b>ama tuzak</b>. Bu profildeki maçlar geçmişte ~%87 tersine ${play} bitmiş.</div>
+              <div class="big-verdict-play"><span class="arrow">${playArrow}</span> ${play} oyna <small style="font-size:13px;font-weight:700;opacity:0.85;">(sistem ${escapeHtml(dir)} dedi)</small></div>
+              <div class="big-verdict-desc">${escapeHtml(details.desc || '')}</div>
               ${rule ? `<div class="big-verdict-rule">Kural: ${escapeHtml(rule)}</div>` : ''}
             </div>
           </div>`;

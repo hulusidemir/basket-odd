@@ -35,12 +35,7 @@ def setup_logging(level: str):
 
 
 def should_send_telegram(analysis: dict, config: Config) -> bool:
-    """Gate noisy threshold alerts before they become betting instructions."""
-    policy = str(getattr(config, "TELEGRAM_SIGNAL_POLICY", "claude_ai") or "claude_ai").lower()
-    if policy == "all":
-        return True
-    if policy == "eligible":
-        return bool(analysis.get("telegram_eligible"))
+    """Send Telegram only for C_A or 100 Profile signals."""
     return bool(str(analysis.get("claude_ai") or "").strip()) or bool(analysis.get("hundred_profile"))
 
 
@@ -240,7 +235,7 @@ async def process_match(
 
     followed_upcoming = db.is_upcoming_followed(match_id)
 
-    if not followed_upcoming and not should_send_telegram(analysis, config):
+    if not should_send_telegram(analysis, config):
         log.info(
             "Signal saved (dashboard only): alert_id=%s match_id=%s | %s | %s | diff=%.2f | policy=%s",
             alert_id, match_id, match_name, direction, abs_diff, config.TELEGRAM_SIGNAL_POLICY,

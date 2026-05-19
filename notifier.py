@@ -93,8 +93,8 @@ def _is_hundred_profile(analysis: dict) -> bool:
 _CA_LABELS = {
     "TRUE_UNDER": ("Güçlü Alt", "ALT"),
     "TRUE_OVER":  ("Güçlü Üst", "ÜST"),
-    "FADE_OVER":  ("Tersine Alt", "ALT"),
-    "FADE_UNDER": ("Tersine Üst", "ÜST"),
+    "FADE_OVER":  ("Tersine Üst", "ÜST"),
+    "FADE_UNDER": ("Tersine Alt", "ALT"),
 }
 
 
