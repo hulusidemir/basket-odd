@@ -93,8 +93,8 @@ def _is_hundred_profile(analysis: dict) -> bool:
 _CA_LABELS = {
     "TRUE_UNDER": ("Güçlü Alt", "ALT"),
     "TRUE_OVER":  ("Güçlü Üst", "ÜST"),
-    "FADE_OVER":  ("Tersine Üst", "ÜST"),
-    "FADE_UNDER": ("Tersine Alt", "ALT"),
+    "FADE_OVER":  ("Güçlü Üst", "ÜST"),
+    "FADE_UNDER": ("Güçlü Alt", "ALT"),
 }
 
 
@@ -119,9 +119,6 @@ def _simple_ai_reason(rule: str) -> str:
         simple_parts.append("maç sonu tahmini")
     if "h2h" in folded:
         simple_parts.append("takımların geçmiş maçları")
-    if "tersle" in folded:
-        return "İlk sinyal tuzak gibi duruyor. Yapay zeka ters tarafı daha mantıklı görüyor."
-
     if simple_parts:
         return f"Yapay zeka {', '.join(simple_parts)} bilgilerine baktı ve bu tarafı daha güçlü gördü."
     return "Yapay zeka bu maçtaki sayılara baktı ve bu tarafı daha güçlü gördü."
@@ -185,20 +182,32 @@ def _build_alert_text(
     hundred_profile_warning = "⚠️ <b>Güçlü geçmiş profili bulundu.</b>\n" if _is_hundred_profile(analysis) else ""
 
     ca_meta = _claude_ai_meta(analysis)
+    final_direction = str(
+        (ca_meta[2] if ca_meta else "")
+        or analysis.get("final_direction")
+        or analysis.get("direction")
+        or direction
+    ).strip().upper().replace("UST", "ÜST")
+    if final_direction not in {"ALT", "ÜST"}:
+        final_direction = direction
+
     if ca_meta:
-        _ca_code, ca_label, ca_play, ca_rule = ca_meta
+        _ca_code, ca_label, _ca_play, ca_rule = ca_meta
         ai_reason = _simple_ai_reason(ca_rule)
         ca_banner = (
-            f"🤖 <b>Yapay Zeka Önerisi: {ca_play} oyna</b>\n"
+            f"🤖 <b>Yapay Zeka Onayı: {final_direction} oyna</b>\n"
             f"<i>{escape(ai_reason)}</i>\n"
         )
-        if ca_play and ca_play != direction:
-            signal_headline = f"✅ <b>{ca_play} oyna</b>{repeat}\nNormal sinyal {direction} dedi ama yapay zeka ters tarafı seçti."
-        else:
-            signal_headline = f"✅ <b>{direction} oyna</b>{repeat}"
+        signal_headline = f"✅ <b>{final_direction} oyna</b>{repeat}"
     else:
         ca_banner = ""
-        signal_headline = f"✅ <b>{direction} oyna</b>{repeat}"
+        signal_headline = f"✅ <b>{final_direction} oyna</b>{repeat}"
+
+    reason_text = str(analysis.get("selection_reason") or "").strip()
+    if ca_meta and ca_meta[3]:
+        reason_text = _simple_ai_reason(ca_meta[3])
+    elif not reason_text:
+        reason_text = "Nihai sinyal yönü, canlı barem hareketi ve adil barem/projeksiyon kontrolüyle seçildi."
 
     league_line = ""
 
@@ -208,6 +217,7 @@ def _build_alert_text(
         f"{signal_headline}\n"
         f"🏀 <b>{escape(match_name)}</b>\n"
         f"🏆 {escape(tournament or '-')}\n\n"
+        f"<b>Gerekçe:</b> {escape(reason_text)}\n"
         f"<b>Skor:</b> {escape(score or '-')}\n"
         f"<b>Ne zaman geldi:</b> {when}\n"
         f"<b>Çeyrek Skorları:</b> {escape(quarter_score_text)}\n"

@@ -26,6 +26,7 @@ from signal_lists import build_quality_tag, build_signal_list_markers, build_sig
 from signal_profiles import evaluate_hundred_profile
 from claude_ai_filter import evaluate_claude_ai, scenario_meta
 from signal_score import compute_signal_score
+from league_quality import evaluate_league_quality
 
 config = Config()
 db = Database(config.DB_PATH)
@@ -295,10 +296,8 @@ def enrich_alerts_with_analysis(
         alert["claude_ai_label"] = meta.get("label", "")
         alert["claude_ai_play"] = meta.get("play", "")
         alert["claude_ai_tooltip"] = meta.get("tooltip", "")
-        alert["league_quality"] = "unknown"
-        alert["league_quality_label"] = ""
-        alert["league_quality_tone"] = "unknown"
-        alert["league_quality_tooltip"] = ""
+        _apply_canonical_signal_direction(alert, analysis)
+        alert.update(evaluate_league_quality(alert.get("tournament"), alert.get("direction")))
         if int(alert.get("id") or 0) and (
             stored_claude_ai != alert["claude_ai"]
             or stored_claude_ai_rule != alert["claude_ai_rule"]
@@ -313,6 +312,8 @@ def enrich_alerts_with_analysis(
         sig_score = compute_signal_score(alert, analysis)
         alert["signal_score"] = sig_score.get("score")
         alert["signal_score_label"] = sig_score.get("label")
+        if alert["signal_score"] is not None:
+            alert["quality_rank"] = alert["signal_score"]
     return alerts
 
 
@@ -365,6 +366,40 @@ def _claude_ai_play_direction(alert: dict) -> str:
         return ""
     play = _normalize_direction(alert.get("claude_ai_play"))
     return play if play in {"ALT", "ÜST"} else ""
+
+
+def _apply_canonical_signal_direction(alert: dict, analysis: dict) -> None:
+    """Expose one playable ALT/ÜST direction to the UI."""
+    play = _claude_ai_play_direction(alert)
+    final_direction = play or _normalize_direction(
+        alert.get("final_direction") or analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
+    )
+    if final_direction in {"ALT", "ÜST"}:
+        alert["direction"] = final_direction
+        alert["final_direction"] = final_direction
+        analysis["direction"] = final_direction
+        analysis["final_direction"] = final_direction
+        if play and alert.get("claude_ai_rule"):
+            analysis["selection_reason"] = alert.get("claude_ai_rule")
+            alert["selection_reason"] = alert.get("claude_ai_rule")
+
+
+def _apply_canonical_deleted_result(alert: dict, stored_direction: str) -> None:
+    """Read old deleted-match results against the final playable direction."""
+    result = str(alert.get("result") or "").strip()
+    if result not in {"Başarılı", "Başarısız"}:
+        return
+    final_direction = _normalize_direction(alert.get("final_direction") or alert.get("direction"))
+    stored_direction = _normalize_direction(stored_direction)
+    alert["raw_result"] = result
+    alert["result_direction"] = final_direction
+    if (
+        stored_direction in {"ALT", "ÜST"}
+        and final_direction in {"ALT", "ÜST"}
+        and stored_direction != final_direction
+    ):
+        alert["result"] = "Başarısız" if result == "Başarılı" else "Başarılı"
+        alert["result_adjusted"] = True
 
 
 def _split_match_teams(match_name: str) -> tuple[str, str]:
@@ -749,6 +784,7 @@ def _enrich_deleted_alert(
 ) -> dict:
     """Populate flat fields from ai_analysis. When full=False, drop heavy modal-only fields."""
     analysis = _parse_analysis(alert.get("ai_analysis"))
+    stored_direction = _normalize_direction(alert.get("direction"))
     if not analysis:
         analysis = {}
     elif backtest_profile is not None:
@@ -788,10 +824,9 @@ def _enrich_deleted_alert(
     alert["claude_ai_label"] = meta.get("label", "")
     alert["claude_ai_play"] = meta.get("play", "")
     alert["claude_ai_tooltip"] = meta.get("tooltip", "")
-    alert["league_quality"] = "unknown"
-    alert["league_quality_label"] = ""
-    alert["league_quality_tone"] = "unknown"
-    alert["league_quality_tooltip"] = ""
+    _apply_canonical_signal_direction(alert, analysis)
+    _apply_canonical_deleted_result(alert, stored_direction)
+    alert.update(evaluate_league_quality(alert.get("tournament"), alert.get("direction")))
     if int(alert.get("id") or 0) and (
         stored_claude_ai != alert["claude_ai"]
         or stored_claude_ai_rule != alert["claude_ai_rule"]
@@ -805,6 +840,8 @@ def _enrich_deleted_alert(
     sig_score = compute_signal_score(alert, analysis)
     alert["signal_score"] = sig_score.get("score")
     alert["signal_score_label"] = sig_score.get("label")
+    if alert["signal_score"] is not None:
+        alert["quality_rank"] = alert["signal_score"]
 
     if full:
         alert["analysis"] = analysis
@@ -1001,12 +1038,13 @@ def _bucket_stats(rows: list) -> dict:
         "success": success,
         "fail": fail,
         "rate": _pct(success, resolved),
-        "fade_rate": _pct(fail, resolved),
+        "fail_rate": _pct(fail, resolved),
     }
 
 
 def _dir_stats(signals: list, direction: str) -> dict:
-    scoped = [s for s in signals if _fold(s.get("direction")) == direction]
+    target = _normalize_direction(direction)
+    scoped = [s for s in signals if _normalize_direction(s.get("direction")) == target]
     stats = _bucket_stats(scoped)
     return {
         "total": stats["total"],
@@ -1067,17 +1105,6 @@ def _parse_ts(value):
         return None
 
 
-def _fade_verdict(original_rate: float, fade_rate: float, resolved: int) -> str:
-    if resolved < 5:
-        return "Örneklem yetersiz, fade yorumu için daha çok sonuç gerekli."
-    delta = fade_rate - original_rate
-    if abs(delta) < 3:
-        return "Fade ile aynı sonuç — ters çevirmek anlamlı değil."
-    if delta > 0:
-        return f"Ters sinyal %{delta:.1f} puan daha iyi: stratejiyi fade etmeyi ciddi değerlendir."
-    return f"Orijinal yön %{-delta:.1f} puan önde: mevcut mantığa sadık kal."
-
-
 def build_deleted_matches_report(signals: list) -> dict:
     if not signals:
         return {
@@ -1092,7 +1119,6 @@ def build_deleted_matches_report(signals: list) -> dict:
             "half_buckets": [],
             "best_dir_period": [],
             "worst_dir_period": [],
-            "fade_analysis": None,
             "tournament_top": [],
             "tournament_bottom": [],
             "trend_7d": None,
@@ -1105,8 +1131,8 @@ def build_deleted_matches_report(signals: list) -> dict:
     pending_count = total - success_count - fail_count
     resolved = success_count + fail_count
 
-    alt_stats = _dir_stats(signals, "alt")
-    ust_stats = _dir_stats(signals, "üst")
+    alt_stats = _dir_stats(signals, "ALT")
+    ust_stats = _dir_stats(signals, "ÜST")
 
     match_ids = {}
     for s in signals:
@@ -1131,7 +1157,6 @@ def build_deleted_matches_report(signals: list) -> dict:
     repeat_resolved = sum(1 for s in repeat_signals if _fold(s.get("result")) in {"basarili", "basarisiz"})
 
     overall_rate = _pct(success_count, resolved)
-    overall_fade_rate = _pct(fail_count, resolved)
     dir_diff = abs(alt_stats["success_rate"] - ust_stats["success_rate"])
 
     diff_groups: dict[str, list] = {label: [] for label in _DIFF_BUCKET_ORDER}
@@ -1156,8 +1181,8 @@ def build_deleted_matches_report(signals: list) -> dict:
             continue
         stats = _bucket_stats(rows)
         stats["label"] = label
-        alt_rows_p = [r for r in rows if _fold(r.get("direction")) == "alt"]
-        ust_rows_p = [r for r in rows if _fold(r.get("direction")) == "üst"]
+        alt_rows_p = [r for r in rows if _normalize_direction(r.get("direction")) == "ALT"]
+        ust_rows_p = [r for r in rows if _normalize_direction(r.get("direction")) == "ÜST"]
         if alt_rows_p:
             stats["alt"] = _bucket_stats(alt_rows_p)
         if ust_rows_p:
@@ -1173,8 +1198,8 @@ def build_deleted_matches_report(signals: list) -> dict:
             continue
         st = _bucket_stats(h_rows)
         st["label"] = half_label
-        h_alt = [r for r in h_rows if _fold(r.get("direction")) == "alt"]
-        h_ust = [r for r in h_rows if _fold(r.get("direction")) == "üst"]
+        h_alt = [r for r in h_rows if _normalize_direction(r.get("direction")) == "ALT"]
+        h_ust = [r for r in h_rows if _normalize_direction(r.get("direction")) == "ÜST"]
         if h_alt:
             st["alt"] = _bucket_stats(h_alt)
         if h_ust:
@@ -1183,11 +1208,14 @@ def build_deleted_matches_report(signals: list) -> dict:
 
     # Yön × Periyot kombinasyon matrisi
     dir_period_combos: list[dict] = []
-    for direction, dir_label in [("alt", "ALT"), ("üst", "ÜST")]:
+    for direction, dir_label in [("ALT", "ALT"), ("ÜST", "ÜST")]:
         for period_label in _PERIOD_BUCKET_ORDER:
             if period_label == "Bilinmiyor":
                 continue
-            combo_rows = [r for r in period_groups.get(period_label, []) if _fold(r.get("direction")) == direction]
+            combo_rows = [
+                r for r in period_groups.get(period_label, [])
+                if _normalize_direction(r.get("direction")) == direction
+            ]
             if not combo_rows:
                 continue
             st = _bucket_stats(combo_rows)
@@ -1197,40 +1225,6 @@ def build_deleted_matches_report(signals: list) -> dict:
     dir_period_combos.sort(key=lambda x: -x["rate"])
     best_dir_period = dir_period_combos[:3]
     worst_dir_period = sorted(dir_period_combos, key=lambda x: x["rate"])[:3]
-
-    fade_analysis = {
-        "overall": {
-            "original_rate": overall_rate,
-            "fade_rate": overall_fade_rate,
-            "resolved": resolved,
-            "success": success_count,
-            "fail": fail_count,
-            "verdict": _fade_verdict(overall_rate, overall_fade_rate, resolved),
-        },
-        "by_direction": [
-            {
-                "label": "ALT",
-                "resolved": alt_stats["success"] + alt_stats["fail"],
-                "original_rate": alt_stats["success_rate"],
-                "fade_rate": _pct(alt_stats["fail"], alt_stats["success"] + alt_stats["fail"]),
-            },
-            {
-                "label": "ÜST",
-                "resolved": ust_stats["success"] + ust_stats["fail"],
-                "original_rate": ust_stats["success_rate"],
-                "fade_rate": _pct(ust_stats["fail"], ust_stats["success"] + ust_stats["fail"]),
-            },
-        ],
-        "by_diff": [
-            {
-                "label": b["label"],
-                "resolved": b["resolved"],
-                "original_rate": b["rate"],
-                "fade_rate": b["fade_rate"],
-            }
-            for b in diff_buckets if b["resolved"] > 0
-        ],
-    }
 
     tour_groups: dict[str, list] = {}
     for s in signals:
@@ -1280,22 +1274,14 @@ def build_deleted_matches_report(signals: list) -> dict:
     actions: list[str] = []
 
     if resolved >= 5:
-        if overall_fade_rate - overall_rate >= 6:
-            actions.append(
-                f"Genel tablo fade önerisi: ters sinyal %{overall_fade_rate:.1f} vs orijinal %{overall_rate:.1f}. "
-                f"Mevcut mantık sistematik yanlış yönde çalışıyor olabilir."
-            )
-        elif abs(overall_fade_rate - overall_rate) < 3:
+        if abs(overall_rate - 50) < 3:
             actions.append(
                 "Genel başarı %50 civarında — sistem neredeyse yazı-tura. "
                 "Fark bandı ve periyotla örneklem daraltılmalı."
             )
-
-    for d in fade_analysis["by_direction"]:
-        if d["resolved"] >= 5 and d["fade_rate"] - d["original_rate"] >= 8:
+        elif overall_rate < 44:
             actions.append(
-                f"{d['label']} sinyallerini fade et: ters %{d['fade_rate']:.1f} vs orijinal %{d['original_rate']:.1f} "
-                f"({d['resolved']} sonuçlanan)."
+                f"Genel başarı %{overall_rate:.1f} — C_A/100 ve yüksek skor dışında kalan normal sinyaller filtrelenmeli."
             )
 
     worst_diff = None
@@ -1381,11 +1367,6 @@ def build_deleted_matches_report(signals: list) -> dict:
 
     if resolved == 0:
         headline = "Sonuçlar işaretlenmemiş. Sinyal başarılarını işaretleyerek raporu oluşturun."
-    elif overall_fade_rate - overall_rate >= 6:
-        headline = (
-            f"Ters sinyal orijinalden %{overall_fade_rate - overall_rate:.1f} puan önde — "
-            f"sistem mantığı tersine çalışıyor olabilir."
-        )
     elif overall_rate >= 60:
         headline = f"Genel başarı %{overall_rate:.1f} — sinyaller çalışıyor."
     elif overall_rate >= 50:
@@ -1402,8 +1383,8 @@ def build_deleted_matches_report(signals: list) -> dict:
 
     summary = (
         f"Toplam {total} sinyal, {unique_matches} benzersiz maçtan. "
-        f"Genel başarı %{overall_rate:.1f} — ters oynansaydı %{overall_fade_rate:.1f} olurdu "
-        f"({resolved} sonuçlanan). {dir_summary} Karışık maç {len(mixed_matches)}, "
+        f"Genel başarı %{overall_rate:.1f} ({resolved} sonuçlanan). "
+        f"{dir_summary} Karışık maç {len(mixed_matches)}, "
         f"sonuç bekleyen {pending_count}."
     )
 
@@ -1417,11 +1398,6 @@ def build_deleted_matches_report(signals: list) -> dict:
             "title": "Genel Başarı",
             "value": f"%{overall_rate:.1f}",
             "detail": f"{success_count} başarılı, {fail_count} başarısız.",
-        },
-        {
-            "title": "Fade Etseydik",
-            "value": f"%{overall_fade_rate:.1f}",
-            "detail": f"Her sinyalin tersi oynansa {fail_count} başarılı olurdu.",
         },
         {
             "title": "ALT / ÜST",
@@ -1452,7 +1428,7 @@ def build_deleted_matches_report(signals: list) -> dict:
         f"İlk sinyal (#1) başarı oranı %{_pct(first_success, first_resolved):.1f}, "
         f"tekrar sinyaller (#2+) başarı oranı %{_pct(repeat_success, repeat_resolved):.1f}.",
 
-        fade_analysis["overall"]["verdict"],
+        f"Sonuçlanan sinyallerde {success_count} başarılı, {fail_count} başarısız kayıt var.",
     ]
 
     mixed_examples = []
@@ -1485,7 +1461,6 @@ def build_deleted_matches_report(signals: list) -> dict:
         "half_buckets": half_buckets,
         "best_dir_period": best_dir_period,
         "worst_dir_period": worst_dir_period,
-        "fade_analysis": fade_analysis,
         "tournament_top": tournament_top,
         "tournament_bottom": tournament_bottom,
         "trend_7d": trend_7d,
@@ -1496,6 +1471,9 @@ def build_deleted_matches_report(signals: list) -> dict:
 @app.route("/api/deleted-matches/report")
 def api_deleted_matches_report():
     signals = db.recent_deleted_alerts(limit=None)
+    backtest_profile = build_backtest_profile(signals)
+    list_profile = build_signal_list_profile(db.list_signal_list_entries())
+    signals = _lightweight_enrich_deleted_alerts(signals, backtest_profile, list_profile)
     return jsonify(build_deleted_matches_report(signals))
 
 
@@ -1517,7 +1495,7 @@ def _segment_stats(scope: str, label: str, rows: list, baseline_rate: float, *,
         "success": success,
         "fail": fail,
         "rate": rate,
-        "fade_rate": _pct(fail, resolved),
+        "fail_rate": _pct(fail, resolved),
         "delta": round(rate - baseline_rate, 1),
         "weight": round((abs(rate - baseline_rate)) * (resolved ** 0.5), 2),
         "min_resolved_met": resolved >= min_resolved,
@@ -1539,7 +1517,6 @@ def build_deleted_matches_insights(signals: list) -> dict:
     overall_success = sum(1 for s in resolved_signals if _fold(s.get("result")) == "basarili")
     overall_rate = _pct(overall_success, total_resolved)
     overall_fail = total_resolved - overall_success
-    overall_fade_rate = _pct(overall_fail, total_resolved)
 
     if total_resolved == 0:
         return {
@@ -1551,9 +1528,8 @@ def build_deleted_matches_insights(signals: list) -> dict:
                 "success": 0,
                 "fail": 0,
                 "rate": 0.0,
-                "fade_rate": 0.0,
             },
-            "play": [], "fade": [], "avoid": [], "neutral": [],
+            "play": [], "avoid": [], "neutral": [],
             "watchlist": [],
             "advice": [],
             "neutral_count": 0,
@@ -1639,7 +1615,6 @@ def build_deleted_matches_insights(signals: list) -> dict:
             segments.append(seg)
 
     play: list[dict] = []
-    fade: list[dict] = []
     avoid: list[dict] = []
     neutral: list[dict] = []
     insufficient: list[dict] = []
@@ -1650,7 +1625,6 @@ def build_deleted_matches_insights(signals: list) -> dict:
             continue
         rate = seg["rate"]
         delta = seg["delta"]
-        fade_rate = seg["fade_rate"]
         if rate >= 58 and delta >= 6:
             play.append({
                 **seg,
@@ -1659,15 +1633,6 @@ def build_deleted_matches_insights(signals: list) -> dict:
                     f"{seg['scope']} → {seg['label']}: %{rate:.1f} başarı "
                     f"({seg['success']}/{seg['resolved']}), genelden +{delta:.1f}p önde. "
                     f"Bu segmentteki sinyallere güvenle gir."
-                ),
-            })
-        elif fade_rate >= 58 and -delta >= 6:
-            fade.append({
-                **seg,
-                "verdict": "FADE",
-                "advice": (
-                    f"{seg['scope']} → {seg['label']}: orijinal %{rate:.1f}, tersi %{fade_rate:.1f} "
-                    f"({seg['fail']}/{seg['resolved']}). Sinyalin tersini oyna."
                 ),
             })
         elif rate <= 42 and delta <= -6:
@@ -1684,7 +1649,6 @@ def build_deleted_matches_insights(signals: list) -> dict:
             neutral.append(seg)
 
     play.sort(key=lambda s: -s["weight"])
-    fade.sort(key=lambda s: -s["weight"])
     avoid.sort(key=lambda s: -s["weight"])
 
     # Watchlist: yeterli örneklem yok ama eğilim güçlü
@@ -1701,10 +1665,9 @@ def build_deleted_matches_insights(signals: list) -> dict:
             f"Ham sinyallerin başarısı %{overall_rate:.1f} — istatistiksel olarak yazı-tura. "
             f"Tek başına 'tüm sinyalleri oyna' stratejisi kâr getirmez; mutlaka aşağıdaki segment filtreleriyle daralt."
         )
-    elif overall_fade_rate - overall_rate >= 6 and total_resolved >= 30:
+    elif overall_rate <= 44 and total_resolved >= 30:
         advice.append(
-            f"Genel tersine çevirme avantajı: %{overall_fade_rate:.1f} vs %{overall_rate:.1f} "
-            f"({overall_fail}/{total_resolved}). Sistem mantığı çoğunlukla yanlış yönde — fade stratejisini değerlendir."
+            f"Ham sinyal başarısı %{overall_rate:.1f}; negatif segmentleri elemeden tüm sinyalleri oynamak zayıf görünüyor."
         )
 
     if play:
@@ -1719,13 +1682,7 @@ def build_deleted_matches_insights(signals: list) -> dict:
             f"En zayıf segment: {top_bad['scope']} → {top_bad['label']} "
             f"(%{top_bad['rate']:.1f}, n={top_bad['resolved']}). Bu kombinasyonda sinyal alma."
         )
-    if fade:
-        top_fade = fade[0]
-        advice.append(
-            f"Net fade fırsatı: {top_fade['scope']} → {top_fade['label']} "
-            f"(tersi %{top_fade['fade_rate']:.1f}, n={top_fade['resolved']}). Sinyalin tersini oyna."
-        )
-    if not (play or fade or avoid):
+    if not (play or avoid):
         advice.append(
             "Belirgin pozitif veya negatif segment yok — örneklemi büyütmek ya da yeni filtre boyutları "
             "(saat, takım, oran açılışı) eklemek faydalı olabilir."
@@ -1755,7 +1712,7 @@ def build_deleted_matches_insights(signals: list) -> dict:
             f"Otomatik kurallar uygulanırsa: {sim['n']} sinyal oynanır, "
             f"%{sim['rate']:.1f} başarı (baseline'dan "
             f"{'+' if sim['delta_vs_baseline'] >= 0 else ''}{sim['delta_vs_baseline']:.1f}p). "
-            f"{sim['skipped']} sinyal elenir, {sim['fade_count']} sinyal ters oynanır."
+            f"{sim['skipped']} sinyal elenir, {sim['special_count']} sinyal ters oyun kuralına alınır."
         )
 
     return {
@@ -1767,10 +1724,8 @@ def build_deleted_matches_insights(signals: list) -> dict:
             "success": overall_success,
             "fail": overall_fail,
             "rate": overall_rate,
-            "fade_rate": overall_fade_rate,
         },
         "play": play[:8],
-        "fade": fade[:6],
         "avoid": avoid[:8],
         "watchlist": watchlist,
         "neutral_count": len(neutral),
@@ -1786,7 +1741,7 @@ _RULE_LABELS = {
     "tournament_blacklist": "Turnuva kara listesi",
     "tournament_direction_skip": "Turnuva + yön yasağı",
     "period_direction_skip": "Periyot + yön yasağı",
-    "fade": "Fade (sinyalin tersi)",
+    "special": "Ters oyun kuralı",
     "tournament_whitelist": "Turnuva beyaz liste",
     "default": "Kural yok (varsayılan oyna)",
 }
@@ -1797,8 +1752,8 @@ def _derive_rules_and_simulate(resolved_signals: list, baseline_rate: float) -> 
         return {
             "rules": {
                 "tournament_whitelist": [], "tournament_blacklist": [],
-                "tournament_fade": [], "tournament_direction_skip": [],
-                "period_direction_skip": [], "team_blacklist": [], "team_fade": [],
+                "tournament_special": [], "tournament_direction_skip": [],
+                "period_direction_skip": [], "team_blacklist": [], "team_special": [],
             },
             "simulation": {},
         }
@@ -1832,26 +1787,26 @@ def _derive_rules_and_simulate(resolved_signals: list, baseline_rate: float) -> 
     rules = {
         "tournament_whitelist": [],
         "tournament_blacklist": [],
-        "tournament_fade": [],
+        "tournament_special": [],
         "tournament_direction_skip": [],
         "period_direction_skip": [],
         "team_blacklist": [],
-        "team_fade": [],
+        "team_special": [],
     }
 
     for name, rows in by_tour.items():
         if len(rows) < 8:
             continue
-        success, fail, rate, fade_rate = _stats(rows)
+        success, fail, rate, fail_rate = _stats(rows)
         if rate >= 60 and rate - baseline_rate >= 8:
             rules["tournament_whitelist"].append({
                 "label": name, "n": len(rows), "rate": rate,
                 "reason": f"%{rate:.1f} başarı ({success}/{len(rows)})",
             })
-        elif fade_rate >= 70 and rate <= 30:
-            rules["tournament_fade"].append({
-                "label": name, "n": len(rows), "rate": rate, "fade_rate": fade_rate,
-                "reason": f"orijinal %{rate:.1f}, tersi %{fade_rate:.1f}",
+        elif fail_rate >= 70 and rate <= 30:
+            rules["tournament_special"].append({
+                "label": name, "n": len(rows), "rate": rate, "fail_rate": fail_rate,
+                "reason": f"ham başarı %{rate:.1f}; bu turnuva özel kural gerektiriyor",
             })
         elif rate <= 30:
             rules["tournament_blacklist"].append({
@@ -1860,10 +1815,10 @@ def _derive_rules_and_simulate(resolved_signals: list, baseline_rate: float) -> 
             })
 
     bl_tour_set = {r["label"] for r in rules["tournament_blacklist"]}
-    fade_tour_set = {r["label"] for r in rules["tournament_fade"]}
+    special_tour_set = {r["label"] for r in rules["tournament_special"]}
 
     for (name, direction), rows in by_tour_dir.items():
-        if len(rows) < 5 or name in bl_tour_set or name in fade_tour_set:
+        if len(rows) < 5 or name in bl_tour_set or name in special_tour_set:
             continue
         success, _, rate, _ = _stats(rows)
         if rate <= 25:
@@ -1889,11 +1844,11 @@ def _derive_rules_and_simulate(resolved_signals: list, baseline_rate: float) -> 
     for team, rows in team_rows.items():
         if len(rows) < 6:
             continue
-        success, fail, rate, fade_rate = _stats(rows)
-        if fade_rate >= 80 and len(rows) >= 8:
-            rules["team_fade"].append({
-                "label": team, "n": len(rows), "rate": rate, "fade_rate": fade_rate,
-                "reason": f"orijinal %{rate:.1f}, tersi %{fade_rate:.1f}",
+        success, fail, rate, fail_rate = _stats(rows)
+        if fail_rate >= 80 and len(rows) >= 8:
+            rules["team_special"].append({
+                "label": team, "n": len(rows), "rate": rate, "fail_rate": fail_rate,
+                "reason": f"ham başarı %{rate:.1f}; bu takım özel kural gerektiriyor",
             })
         elif rate <= 22:
             rules["team_blacklist"].append({
@@ -1902,26 +1857,26 @@ def _derive_rules_and_simulate(resolved_signals: list, baseline_rate: float) -> 
             })
 
     rules["tournament_whitelist"].sort(key=lambda r: (-r["rate"], -r["n"]))
-    for key in ("tournament_blacklist", "tournament_fade",
+    for key in ("tournament_blacklist", "tournament_special",
                 "tournament_direction_skip", "period_direction_skip",
-                "team_blacklist", "team_fade"):
+                "team_blacklist", "team_special"):
         rules[key].sort(key=lambda r: (r["rate"], -r["n"]))
 
     rules["team_blacklist"] = rules["team_blacklist"][:30]
-    rules["team_fade"] = rules["team_fade"][:15]
+    rules["team_special"] = rules["team_special"][:15]
 
     bl_tour = {r["label"] for r in rules["tournament_blacklist"]}
-    fade_tour = {r["label"] for r in rules["tournament_fade"]}
+    special_tour = {r["label"] for r in rules["tournament_special"]}
     wl_tour = {r["label"] for r in rules["tournament_whitelist"]}
     dir_skip = {(r["tournament"], r["direction"]) for r in rules["tournament_direction_skip"]}
     period_skip = {(r["period"], r["direction"]) for r in rules["period_direction_skip"]}
     bl_team = {r["label"] for r in rules["team_blacklist"]}
-    fade_team = {r["label"] for r in rules["team_fade"]}
+    special_team = {r["label"] for r in rules["team_special"]}
 
     decisions: list[dict] = []
     for s in resolved_signals:
         tour = (s.get("tournament") or "").strip()
-        direction = (s.get("direction") or "").strip().upper()
+        direction = _normalize_direction(s.get("direction"))
         period = _period_bucket(s.get("alert_moment") or s.get("status"))
         home, away = _split_match_teams(s.get("match_name") or "")
         success = _fold(s.get("result")) == "basarili"
@@ -1934,8 +1889,8 @@ def _derive_rules_and_simulate(resolved_signals: list, baseline_rate: float) -> 
             action, rule = "SKIP", "tournament_direction_skip"
         elif (period, direction) in period_skip:
             action, rule = "SKIP", "period_direction_skip"
-        elif tour in fade_tour or home in fade_team or away in fade_team:
-            action, rule = "FADE", "fade"
+        elif tour in special_tour or home in special_team or away in special_team:
+            action, rule = "REVERSE", "special"
         elif tour in wl_tour:
             action, rule = "PLAY", "tournament_whitelist"
         else:
@@ -1945,11 +1900,11 @@ def _derive_rules_and_simulate(resolved_signals: list, baseline_rate: float) -> 
 
     skipped = [d for d in decisions if d["action"] == "SKIP"]
     played = [d for d in decisions if d["action"] == "PLAY"]
-    faded = [d for d in decisions if d["action"] == "FADE"]
+    special = [d for d in decisions if d["action"] == "REVERSE"]
     play_succ = sum(1 for d in played if d["success"])
-    fade_succ = sum(1 for d in faded if not d["success"])
-    total_played = len(played) + len(faded)
-    total_succ = play_succ + fade_succ
+    special_succ = sum(1 for d in special if not d["success"])
+    total_played = len(played) + len(special)
+    total_succ = play_succ + special_succ
     filtered_rate = _pct(total_succ, total_played) if total_played else 0.0
     skipped_lost_wins = sum(1 for d in skipped if d["success"])
 
@@ -1991,8 +1946,8 @@ def _derive_rules_and_simulate(resolved_signals: list, baseline_rate: float) -> 
                 "skipped_lost_wins": skipped_lost_wins,
                 "play_count": len(played),
                 "play_success": play_succ,
-                "fade_count": len(faded),
-                "fade_success": fade_succ,
+                "special_count": len(special),
+                "special_success": special_succ,
             },
             "rule_impact": rule_impact,
         },
@@ -2002,6 +1957,9 @@ def _derive_rules_and_simulate(resolved_signals: list, baseline_rate: float) -> 
 @app.route("/api/deleted-matches/insights")
 def api_deleted_matches_insights():
     signals = db.recent_deleted_alerts(limit=None)
+    backtest_profile = build_backtest_profile(signals)
+    list_profile = build_signal_list_profile(db.list_signal_list_entries())
+    signals = _lightweight_enrich_deleted_alerts(signals, backtest_profile, list_profile)
     return jsonify(build_deleted_matches_insights(signals))
 
 

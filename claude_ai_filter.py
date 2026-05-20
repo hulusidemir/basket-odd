@@ -49,14 +49,14 @@ SCENARIOS: Dict[str, Dict[str, str]] = {
         "tooltip": "Güçlü Üst — geçmişte %100 tutan örüntü",
     },
     "FADE_OVER": {
-        "label": "Tersine Üst",
+        "label": "Güçlü Üst",
         "play": "ÜST",
-        "tooltip": "Tersine Üst — ALT sinyalini tersle, ÜST oyna",
+        "tooltip": "Güçlü Üst — geçmişte bu yönde çalışan örüntü",
     },
     "FADE_UNDER": {
-        "label": "Tersine Alt",
+        "label": "Güçlü Alt",
         "play": "ALT",
-        "tooltip": "Tersine Alt — ÜST sinyalini tersle, ALT oyna",
+        "tooltip": "Güçlü Alt — geçmişte bu yönde çalışan örüntü",
     },
 }
 
@@ -192,40 +192,40 @@ def evaluate_claude_ai(alert: dict, analysis: dict | None) -> dict:
             return {"claude_ai": "TRUE_OVER",
                     "claude_ai_rule": "C5: açılış 170-180 + canlı ≥170 + projeksiyon nötr"}
 
-        # ---- KADEME F: FADE_UNDER (ÜST sinyali → ALT oyna) ----
-        # Düşük tempolu/düşük totalli maçlarda gelen ÜST sinyalleri tuzak.
+        # ---- KADEME F: GÜÇLÜ ALT ----
+        # Düşük tempolu/düşük totalli maçlarda nihai karar ALT tarafıdır.
         # F1 — train 49/51=96%, test 12/12=100%
         if (opening is not None and live_total is not None
                 and 160 <= opening < 170 and 120 <= live_total < 150
                 and 12 <= abs(_f(alert.get("diff")) or 0) < 16):
-            return {"claude_ai": "FADE_UNDER",
-                    "claude_ai_rule": "F1: açılış 160-170 + canlı 120-150 + fark 12-16 → ÜST sinyalini tersle, ALT oyna"}
+            return {"claude_ai": "TRUE_UNDER",
+                    "claude_ai_rule": "F1: açılış 160-170 + canlı 120-150 + fark 12-16 → ALT tarafı güçlü"}
         # F2 — train 45/47=96%, test 14/14=100%
         if (opening is not None and live_total is not None and ppm is not None
                 and 160 <= opening < 170 and 120 <= live_total < 150
                 and 3.5 <= ppm < 4.0):
-            return {"claude_ai": "FADE_UNDER",
-                    "claude_ai_rule": "F2: açılış 160-170 + canlı 120-150 + tempo 3.5-4.0 → ÜST sinyalini tersle, ALT oyna"}
+            return {"claude_ai": "TRUE_UNDER",
+                    "claude_ai_rule": "F2: açılış 160-170 + canlı 120-150 + tempo 3.5-4.0 → ALT tarafı güçlü"}
         # F3 — train 37/39=95%, test 10/10=100%
         if (live_total is not None and ppm is not None
                 and 120 <= live_total < 150
                 and 12 <= abs(_f(alert.get("diff")) or 0) < 16
                 and 3.5 <= ppm < 4.0):
-            return {"claude_ai": "FADE_UNDER",
-                    "claude_ai_rule": "F3: canlı 120-150 + fark 12-16 + tempo 3.5-4.0 → ÜST sinyalini tersle, ALT oyna"}
+            return {"claude_ai": "TRUE_UNDER",
+                    "claude_ai_rule": "F3: canlı 120-150 + fark 12-16 + tempo 3.5-4.0 → ALT tarafı güçlü"}
         # F4 — train 33/36=92%, test 10/10=100%
         if (live_total is not None and ppm is not None and h2h_gap is not None
                 and live_total < 120
                 and h2h_gap >= 15
                 and ppm < 3.5):
-            return {"claude_ai": "FADE_UNDER",
-                    "claude_ai_rule": "F4: canlı <120 + H2H çok yüksek + tempo <3.5 → ÜST sinyalini tersle, ALT oyna"}
+            return {"claude_ai": "TRUE_UNDER",
+                    "claude_ai_rule": "F4: canlı <120 + H2H çok yüksek + tempo <3.5 → ALT tarafı güçlü"}
         # F5 — train 31/34=91%, test 10/10=100%
         if (live_total is not None and ppm is not None
                 and 120 <= live_total < 150 and period == 3
                 and 3.5 <= ppm < 4.0):
-            return {"claude_ai": "FADE_UNDER",
-                    "claude_ai_rule": "F5: canlı 120-150 + P3 + tempo 3.5-4.0 → ÜST sinyalini tersle, ALT oyna"}
+            return {"claude_ai": "TRUE_UNDER",
+                    "claude_ai_rule": "F5: canlı 120-150 + P3 + tempo 3.5-4.0 → ALT tarafı güçlü"}
 
     return {"claude_ai": "", "claude_ai_rule": ""}
 

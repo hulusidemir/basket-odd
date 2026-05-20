@@ -22,7 +22,7 @@ from projection import game_clock, parse_score
 from signal_analysis import build_backtest_profile, build_signal_analysis
 from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
 from signal_profiles import evaluate_hundred_profile
-from claude_ai_filter import evaluate_claude_ai
+from claude_ai_filter import evaluate_claude_ai, scenario_meta
 
 
 def setup_logging(level: str):
@@ -31,11 +31,6 @@ def setup_logging(level: str):
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-
-
-def should_send_telegram(analysis: dict, config: Config) -> bool:
-    """Send every saved signal to Telegram."""
-    return True
 
 
 async def process_match(
@@ -205,6 +200,15 @@ async def process_match(
         "claude_ai": claude_ai["claude_ai"],
         "claude_ai_rule": claude_ai["claude_ai_rule"],
     }
+    claude_play = scenario_meta(claude_ai["claude_ai"]).get("play", "")
+    if claude_play in {"ALT", "ÜST"}:
+        direction = claude_play
+        analysis = {
+            **analysis,
+            "direction": direction,
+            "final_direction": direction,
+            "selection_reason": claude_ai["claude_ai_rule"] or analysis.get("selection_reason") or "",
+        }
 
     if period_has_any_alert:
         log.debug("Skipped (period %s already alerted): id=%s", period, match_id)
@@ -224,13 +228,6 @@ async def process_match(
     )
 
     followed_upcoming = db.is_upcoming_followed(match_id)
-
-    if not should_send_telegram(analysis, config):
-        log.info(
-            "Signal saved (dashboard only): alert_id=%s match_id=%s | %s | %s | diff=%.2f | policy=%s",
-            alert_id, match_id, match_name, direction, abs_diff, config.TELEGRAM_SIGNAL_POLICY,
-        )
-        return
 
     await notifier.send_alert(
         match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,

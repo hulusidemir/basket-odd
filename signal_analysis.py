@@ -1069,8 +1069,8 @@ def _backtest_keys_from_values(
 
 def build_backtest_profile(rows: list[dict] | None) -> dict:
     """
-    Silinen ve sonucu belli sinyallerden fade edilebilir bir profil çıkarır.
-    Her bucket için iki aday yön de skorlanır: aynı yöndeki başarılar + ters yöndeki
+    Silinen ve sonucu belli sinyallerden yön bazlı bir profil çıkarır.
+    Her bucket için iki aday yön de skorlanır: aynı yöndeki başarılar + karşı yöndeki
     başarısızlıklar, aday yönün kazanımı sayılır.
     """
     buckets: dict[str, dict[str, dict[str, int]]] = {}
@@ -1214,7 +1214,6 @@ def _classify_signal(decision: dict) -> dict:
     fair_edge_abs = abs(fair_edge) if fair_edge is not None else 0.0
     fair_aligned = fair_direction == final_direction
     projection_aligned = projection_direction == final_direction
-    flipped = final_direction != legacy_direction
 
     # Yön-bazlı eşik: ÜST sistematik zayıf (~%45 vs ALT ~%56), daha sıkı kapı.
     fair_edge_threshold = 6.0 if final_direction == "ÜST" else 4.5
@@ -1239,8 +1238,6 @@ def _classify_signal(decision: dict) -> dict:
             f"Adil barem canlıdan {fair_edge_abs:.1f} puan {'yüksek' if fair_edge > 0 else 'düşük'}; "
             f"yön {final_direction} ile uyumlu."
         )
-        if flipped:
-            reason += f" Karar eski yönü çevirdi ({legacy_direction}→{final_direction})."
     else:
         if fair_edge is None:
             reason = "Adil barem hesaplanamadı; gönderim için yeterli güven yok."
@@ -1312,8 +1309,8 @@ def _decision_from_components(
     votes: list[dict] = []
 
     abs_diff = abs(float(diff or 0))
-    # Piyasa-zekası ayarı: küçük-orta hareket fade edilebilir (sweet spot 11-16),
-    # ama büyük hareket (>=22) genelde gerçek bilgi taşır — fade etmek tehlikeli.
+    # Piyasa-zekası ayarı: küçük-orta hareket sinyal için daha anlamlıdır (sweet spot 11-16),
+    # ama büyük hareket (>=22) genelde gerçek bilgi taşır.
     # Backtest verisi: diff 12-15 → %67 başarı; diff 25+ → %27 başarı.
     if abs_diff <= 16:
         legacy_strength = _clamp(8 + (abs_diff - float(threshold or 0)) * 0.6, 7, 13)
@@ -1344,7 +1341,7 @@ def _decision_from_components(
             _clamp(5 + (abs_diff - 25) * 0.3, 5, 10),
             45,
             f"Çizgi {abs_diff:.0f} puan kaydı; piyasa bu kadar net hareket ettiğinde "
-            f"genelde haklı — fade güveni düşük tutuldu.",
+            f"genelde haklı — karşı yön güveni düşük tutuldu.",
         ))
 
     # Adil barem oyu — çok büyük edge'leri sınırla (genelde H2H/team_recent
@@ -1472,15 +1469,6 @@ def _decision_from_components(
     best_rate = backtest_scores.get(final_direction, {}).get("rate")
     fair_abs = abs(float(fair_edge)) if fair_edge is not None else 0.0
     projected_abs = abs(float(projected_gap)) if projected_gap is not None else 0.0
-    flipped = final_direction != legacy_direction
-
-    flip_reason = ""
-    if flipped:
-        flip_reason = (
-            f"Eski sinyal {legacy_direction}, yeni karar {final_direction}: "
-            f"tempo/adil barem/piyasa oyları yönü çevirdi."
-        )
-
     return {
         "direction": final_direction,
         "legacy_direction": legacy_direction,
@@ -1502,7 +1490,7 @@ def _decision_from_components(
             "chosen_rate": best_rate,
             "chosen_samples": backtest_scores.get(final_direction, {}).get("samples", 0),
         },
-        "flip_reason": flip_reason,
+        "flip_reason": "",
     }
 
 

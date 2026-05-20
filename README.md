@@ -7,8 +7,8 @@ This project monitors live basketball matches on AIScore and detects Total Point
 - Live AIScore scraping for basketball totals
 - Pre-match vs live total anomaly detection, with opening-line fallback
 - Telegram alerts (single or multiple chat IDs)
-- Per-match cooldown to avoid spam
-- Signal quality scoring and projection-based review
+- Per-match signal cap to avoid spam
+- Signal score, C_A profile, 100 profile and projection-based review
 - Flask dashboard for reviewing alerts and actions
 - Country/league visibility in tournament field (for example `Japan : Japan League B3`)
 - Repeated-signal indicator (for example `2nd signal`, `3rd signal`)
@@ -18,17 +18,19 @@ This project monitors live basketball matches on AIScore and detects Total Point
 
 | Condition | Direction |
 |---|---|
-| Live - Reference >= THRESHOLD | `ALT` (line moved up) |
-| Reference - Live >= THRESHOLD | `UST` (line moved down) |
+| Live - Reference >= THRESHOLD | `ALT` candidate |
+| Reference - Live >= THRESHOLD | `UST` candidate |
 
-Reference means pre-match total first, opening total if no pre-match line is available. The bot checks cooldown per match and direction before sending a new alert.
+Reference means pre-match total first, opening total if no pre-match line is available. After the raw candidate is found, C_A and 100 profile logic can promote the final single direction shown in the dashboard and Telegram message. The app stores one final `ALT` or `ÜST` signal with its reason.
 
 ## Architecture
 
 - `main.py`: Bot loop, anomaly evaluation, alert orchestration
 - `aiscore_scraper.py`: AIScore scraping and odds extraction
 - `notifier.py`: Telegram messaging
-- `signal_quality.py`: Signal scoring and counter-signal logic
+- `signal_score.py`: Signal score and trust band logic
+- `claude_ai_filter.py`: C_A profile classification
+- `signal_profiles.py`: 100 profile classification
 - `projection.py`: Current-pace final total projection
 - `db.py`: SQLite schema and data access
 - `dashboard.py`: Flask API + UI backend
@@ -109,7 +111,9 @@ Dashboard capabilities:
 | `THRESHOLD` | Trigger threshold in points |
 | `POLL_INTERVAL_MIN` | Minimum loop delay (seconds) |
 | `POLL_INTERVAL_MAX` | Maximum loop delay (seconds) |
-| `ALERT_COOLDOWN_MINUTES` | Cooldown for same match + direction |
+| `MAX_SIGNALS_PER_MATCH` | Maximum stored signals per match |
+| `FINISHED_MATCH_POLL_SECONDS` | Finished match result polling interval |
+| `FINISHED_MATCH_BATCH_SIZE` | Finished match result batch size |
 | `DB_PATH` | SQLite file path |
 | `LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING` |
 | `AISCORE_URL` | AIScore basketball page |

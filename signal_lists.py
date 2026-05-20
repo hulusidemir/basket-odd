@@ -125,9 +125,9 @@ def build_quality_tag(alert: dict, list_profile: dict | None = None) -> dict:
     if opening < 170 and direction == "ÜST":
         if fair < live:
             return {
-                "label": "FADE",
-                "tone": "fade",
-                "title": "Açılış < 170 ve ÜST: adil barem canlı baremin altında.",
+                "label": "RİSK",
+                "tone": "neutral",
+                "title": "Açılış < 170 ve ÜST: adil barem canlı baremin altında; C_A/100 teyidi yoksa pas.",
                 "rank": 3,
             }
         return {
@@ -141,9 +141,9 @@ def build_quality_tag(alert: dict, list_profile: dict | None = None) -> dict:
         gap = live - fair
         if live > fair + 8:
             return {
-                "label": "FADE",
-                "tone": "fade",
-                "title": "Açılış > 180 ve ALT: canlı barem adil baremin 8+ üstünde.",
+                "label": "RİSK",
+                "tone": "neutral",
+                "title": "Açılış > 180 ve ALT: canlı barem adil baremin 8+ üstünde; C_A/100 teyidi yoksa pas.",
                 "rank": 3,
             }
         if 0 <= gap <= 8:

@@ -771,7 +771,6 @@
 	      transition: background 120ms, transform 120ms;
 	    }
 	    .quality-badge:hover { transform: scale(1.06); filter: brightness(1.15); }
-	    .quality-badge.fade,
 	    .quality-badge.red-check {
 	      color: #fecaca;
 	      background: rgba(239, 68, 68, 0.18);
@@ -858,8 +857,6 @@
 	      padding: 0;
 	    }
 	    .ca-star:hover { background: rgba(250, 204, 21, 0.28); transform: scale(1.08); }
-	    .ca-star.fade { background: rgba(244, 114, 182, 0.14); border-color: rgba(244, 114, 182, 0.45); color: #fbcfe8; text-shadow: 0 0 6px rgba(244, 114, 182, 0.55); }
-	    .ca-star.fade:hover { background: rgba(244, 114, 182, 0.28); }
 	    .ca-star.win { box-shadow: 0 0 0 1px rgba(34,197,94,0.55); }
 	    .ca-star.loss { box-shadow: 0 0 0 1px rgba(239,68,68,0.55); }
 	    .ca-empty { color: rgba(156,163,175,0.30); font-size: 13px; }
@@ -871,7 +868,6 @@
 	    }
 	    .big-verdict.gold { background: rgba(250,204,21,0.18); border: 2px solid rgba(250,204,21,0.65); }
 	    .big-verdict.true-yellow { background: rgba(250,204,21,0.12); border: 2px solid rgba(250,204,21,0.50); }
-	    .big-verdict.fade-pink { background: rgba(244,114,182,0.14); border: 2px solid rgba(244,114,182,0.55); }
 	    .big-verdict.gray { background: rgba(156,163,175,0.08); border: 1px solid rgba(156,163,175,0.28); }
 	    .big-verdict-icon { font-size: 38px; flex-shrink: 0; line-height: 1; }
 	    .big-verdict-text { flex: 1; min-width: 0; }
@@ -956,7 +952,6 @@
 	      background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
 	    }
 	    .signal-tag-card.ca-true { background: rgba(250,204,21,0.10); border-color: rgba(250,204,21,0.45); }
-	    .signal-tag-card.ca-fade { background: rgba(244,114,182,0.10); border-color: rgba(244,114,182,0.45); }
 	    .signal-tag-card.hundred { background: rgba(250,204,21,0.18); border-color: rgba(254,240,138,0.65); }
 	    .signal-tag-card.empty { background: rgba(156,163,175,0.05); border-color: rgba(156,163,175,0.18); color: rgba(209,213,219,0.55); }
 	    .signal-tag-head { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14px; margin-bottom: 6px; flex-wrap: wrap; }
@@ -1582,46 +1577,6 @@
       font-variant-numeric: tabular-nums;
     }
 
-    .report-fade-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-    .report-fade-card {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 10px 12px;
-      background: rgba(12, 10, 22, 0.86);
-    }
-    .report-fade-card.fade-better { border-color: rgba(52, 211, 153, 0.36); }
-    .report-fade-card.orig-better { border-color: rgba(124, 92, 246, 0.36); }
-    .report-fade-card-label {
-      font-size: 11px;
-      font-weight: 800;
-      color: var(--text-soft);
-      text-transform: uppercase;
-      margin-bottom: 4px;
-    }
-    .report-fade-card-nums {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 8px;
-      margin-bottom: 4px;
-    }
-    .report-fade-num {
-      font-size: 15px;
-      font-weight: 900;
-    }
-    .report-fade-num.orig { color: #b9dcff; }
-    .report-fade-num.fade { color: #9df0bd; }
-    .report-fade-card-detail {
-      font-size: 11px;
-      color: var(--text-soft);
-      line-height: 1.5;
-    }
-
     .report-two-col {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -1739,8 +1694,7 @@
         </nav>
         <span class="nav-sep">|</span>
         <div class="page-actions">
-          <button class="btn report-btn" onclick="openReport()">Rapor</button>
-          <button class="btn report-btn" onclick="openInsights()">Çıkarım ve Tavsiye</button>
+          <button class="btn report-btn" onclick="openReport()">Rapor ve Tavsiye</button>
           <button class="btn primary" onclick="loadDeletedMatches()">Yenile</button>
           <button class="btn primary" id="checkResultsBtn" onclick="checkFinishedResults()">Bitmişleri Kontrol Et</button>
           <a href="/api/deleted-matches/export.csv" class="btn" download>Bitenleri Dışa Aktar</a>
@@ -1784,7 +1738,7 @@
           <span>Başarı %</span>
           <strong id="statRate">-</strong>
 	        </div>
-        <div class="stat-chip hundred clickable" id="chipHundredProfile" onclick="toggleHundredProfileFilter()" title="Kalite sütununda 100 etiketi olan silinen sinyalleri göster">
+        <div class="stat-chip hundred clickable" id="chipHundredProfile" onclick="toggleHundredProfileFilter()" title="100 Profil rozeti olan silinen sinyalleri göster">
           <span>100 Profil</span>
           <strong id="statHundredProfile">0</strong>
           <div class="muted" id="statHundredProfileRate" style="font-size:11px;margin-top:2px;">Başarı: -</div>
@@ -1869,24 +1823,11 @@
   <div class="modal-overlay" id="reportModal" onclick="handleModalClick(event)">
     <div class="modal-box">
       <div class="modal-header">
-        <h2>Sinyal Raporu</h2>
+        <h2>Sinyal Raporu ve Tavsiye</h2>
         <button class="modal-close" onclick="closeReport()">Kapat</button>
       </div>
       <div id="reportContent">
         <div class="report-loading">Rapor yükleniyor…</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Insights Modal -->
-  <div class="modal-overlay" id="insightsModal" onclick="if(event.target===this)closeInsights()">
-    <div class="modal-box">
-      <div class="modal-header">
-        <h2>Çıkarım ve Tavsiye</h2>
-        <button class="modal-close" onclick="closeInsights()">Kapat</button>
-      </div>
-      <div id="insightsContent">
-        <div class="report-loading">Çıkarımlar hazırlanıyor…</div>
       </div>
     </div>
   </div>
@@ -1931,6 +1872,10 @@
         '"': '&quot;',
         "'": '&#039;',
       }[ch]));
+    }
+
+    function jsString(value) {
+      return JSON.stringify(String(value ?? ''));
     }
 
     function cleanMatchName(name) {
@@ -2030,15 +1975,9 @@
     }
 
     function claudeAiStats() {
-      // C_A tavsiyesinin başarısı: TRUE_* → sistemle aynı; FADE_* → sistemin tersi.
       const rows = deletedAlerts.filter(isClaudeAiCandidate);
       const resolvedRows = rows.filter(item => item.result === 'Başarılı' || item.result === 'Başarısız');
-      const successRows = resolvedRows.filter(item => {
-        const code = String(item.claude_ai || '');
-        const isFade = code === 'FADE_OVER' || code === 'FADE_UNDER';
-        const systemWon = item.result === 'Başarılı';
-        return isFade ? !systemWon : systemWon;
-      });
+      const successRows = resolvedRows.filter(item => item.result === 'Başarılı');
       const rate = resolvedRows.length > 0 ? Math.round((successRows.length / resolvedRows.length) * 1000) / 10 : null;
       return { total: rows.length, success: successRows.length, resolved: resolvedRows.length, rate };
     }
@@ -2047,16 +1986,14 @@
       const play = String(alert.claude_ai_play || '');
       const result = String(alert.result || '');
       if (!play || (result !== 'Başarılı' && result !== 'Başarısız')) return null;
-      const systemWon = result === 'Başarılı';
-      const playMatchesSystem = play === String(alert.direction || '');
-      return (playMatchesSystem ? systemWon : !systemWon);
+      return result === 'Başarılı';
     }
 
     const CA_DETAILS = {
-      TRUE_UNDER: { label: 'Güçlü Alt',   play: 'ALT', desc: 'Sistem ALT sinyali verdi ve geçmiş veri bunu destekliyor — kuralla eşleşen maçlar geçmişte ~%96 ALT bitmiş.' },
-      TRUE_OVER:  { label: 'Güçlü Üst',   play: 'ÜST', desc: 'Sistem ÜST sinyali verdi ve geçmiş veri bunu destekliyor — 100 Profili eşleşen maçlar geçmişte %100 ÜST bitmiş.' },
-      FADE_OVER:  { label: 'Tersine Üst', play: 'ÜST', desc: 'C_A sistemin ALT sinyalini tuzak olarak işaretledi. Öneri: sistemin tersine ÜST oyna.' },
-      FADE_UNDER: { label: 'Tersine Alt', play: 'ALT', desc: 'C_A sistemin ÜST sinyalini tuzak olarak işaretledi. Öneri: sistemin tersine ALT oyna.' },
+      TRUE_UNDER: { label: 'Güçlü Alt', play: 'ALT', desc: 'C_A geçmişte güçlü çalışan örüntüleri yakaladı. Nihai seçim ALT.' },
+      TRUE_OVER:  { label: 'Güçlü Üst', play: 'ÜST', desc: 'C_A geçmişte güçlü çalışan örüntüleri yakaladı. Nihai seçim ÜST.' },
+      FADE_OVER:  { label: 'Güçlü Üst', play: 'ÜST', desc: 'C_A geçmişte güçlü çalışan örüntüleri yakaladı. Nihai seçim ÜST.' },
+      FADE_UNDER: { label: 'Güçlü Alt', play: 'ALT', desc: 'C_A geçmişte güçlü çalışan örüntüleri yakaladı. Nihai seçim ALT.' },
     };
 
     function bigVerdictHtml(alert) {
@@ -2071,9 +2008,7 @@
       // Sonuç rozeti üretici (C_A bahsinin kazanıp kaybetmediğine göre)
       const outcomeBadge = (play) => {
         if (!resolved || !play) return '';
-        const systemWon = result === 'Başarılı';
-        const playMatchesSystem = play === dir;
-        const ok = playMatchesSystem ? systemWon : !systemWon;
+        const ok = caOutcome({ ...alert, claude_ai_play: play });
         return `<span class="big-verdict-result ${ok ? 'win' : 'loss'}">${ok ? '✓ Kazandı' : '✗ Kaybetti'}</span>`;
       };
 
@@ -2092,10 +2027,9 @@
           </div>`;
       }
 
-      if (code === 'TRUE_UNDER' || code === 'TRUE_OVER') {
-        const play = code === 'TRUE_UNDER' ? 'ALT' : 'ÜST';
+      if (CA_DETAILS[code]) {
+        const play = CA_DETAILS[code].play || dir;
         const playArrow = play === 'ALT' ? '▼' : '▲';
-        const rate = code === 'TRUE_UNDER' ? '~%96' : '%100';
         return `
           <div class="big-verdict true-yellow">
             <div class="big-verdict-icon">⭐</div>
@@ -2104,25 +2038,7 @@
                 <span>${playArrow}</span> ${play} oyna
                 ${outcomeBadge(play)}
               </div>
-              <div class="big-verdict-desc">Sistem <b>${escapeHtml(dir)}</b> dedi, geçmiş veri de aynı yönü doğruluyor. Bu tip maçlar geçmişte ${rate} ${play} bitmiş.</div>
-              ${rule ? `<div class="big-verdict-rule">Kural: ${escapeHtml(rule)}</div>` : ''}
-            </div>
-          </div>`;
-      }
-
-      if (code === 'FADE_OVER' || code === 'FADE_UNDER') {
-        const details = CA_DETAILS[code] || {};
-        const play = details.play || '';
-        const playArrow = play === 'ALT' ? '▼' : '▲';
-        return `
-          <div class="big-verdict fade-pink">
-            <div class="big-verdict-icon">🔄</div>
-            <div class="big-verdict-text">
-              <div class="big-verdict-play">
-                <span>${playArrow}</span> ${play} oyna <small style="font-size:13px;font-weight:700;opacity:0.85;">(sistem ${escapeHtml(dir)} dedi)</small>
-                ${outcomeBadge(play)}
-              </div>
-              <div class="big-verdict-desc">${escapeHtml(details.desc || '')}</div>
+              <div class="big-verdict-desc">${escapeHtml(CA_DETAILS[code].desc || 'Geçmiş veri bu yönü destekliyor.')}</div>
               ${rule ? `<div class="big-verdict-rule">Kural: ${escapeHtml(rule)}</div>` : ''}
             </div>
           </div>`;
@@ -2137,10 +2053,10 @@
           <div class="big-verdict-icon">📍</div>
           <div class="big-verdict-text">
             <div class="big-verdict-play">
-              <span>${dirArrow}</span> Sistem önerisi: ${escapeHtml(dir)}
+              <span>${dirArrow}</span> ${escapeHtml(dir)} oyna
               ${sysOutcome}
             </div>
-            <div class="big-verdict-desc">Yüksek-güven kuralına girmedi. Standart riskte bir sinyaldi.</div>
+            <div class="big-verdict-desc">Standart sinyal. Net seçim yönü yukarıda gösterilen taraftı.</div>
           </div>
         </div>`;
     }
@@ -2160,8 +2076,7 @@
             </div>`;
         }
         const d = CA_DETAILS[code];
-        const isFade = code === 'FADE_OVER' || code === 'FADE_UNDER';
-        const cls = isFade ? 'ca-fade' : 'ca-true';
+        const cls = 'ca-true';
         const playCls = d.play === 'ALT' ? 'alt' : 'ust';
         const rule = String(alert.claude_ai_rule || '').trim();
         const outcome = caOutcome(alert);
@@ -2213,10 +2128,9 @@
       const code = String(alert.claude_ai || '').trim();
       if (!code) return '<span class="ca-empty" aria-hidden="true">·</span>';
       const label = String(alert.claude_ai_label || code);
-      const isFade = code === 'FADE_OVER' || code === 'FADE_UNDER';
       const outcome = caOutcome(alert);
       const outcomeCls = outcome === null ? '' : (outcome ? 'win' : 'loss');
-      const cls = `ca-star ${isFade ? 'fade' : ''} ${outcomeCls}`.trim();
+      const cls = `ca-star ${outcomeCls}`.trim();
       const id = Number(alert.id || 0);
       return `<button type="button" class="${cls}" onclick="openSignalInfo(${id})" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)} — ayrıntı için tıkla">⭐</button>`;
     }
@@ -2327,19 +2241,45 @@
     }
 
     function qualityHtml(alert) {
-      const label = String(alert.quality_label || '-');
-      const tone = String(alert.quality_tone || 'empty').replace(/[^a-z-]/gi, '') || 'empty';
-      const title = String(alert.quality_title || 'Kalite kuralı uygulanmadı.');
+      const rawScore = alert.signal_score;
+      const score = rawScore === null || rawScore === undefined || rawScore === '' ? null : Number(rawScore);
+      const scoreText = Number.isFinite(score) ? String(score) : '-';
+      const band = String(alert.signal_score_label || (Number.isFinite(score) ? 'Skor' : '-'));
+      let tone = 'empty';
+      if (Number.isFinite(score)) {
+        if (score >= 85) tone = 'strong';
+        else if (score >= 70) tone = 'playable';
+        else if (score >= 50) tone = 'watch';
+        else tone = 'pass';
+      }
+      const direction = String(alert.final_direction || alert.direction || '-');
+      const ca = String(alert.claude_ai_label || '').trim();
+      const hundredActive = Number(alert.hundred_profile || 0) === 1;
+      const baseNote = String(alert.quality_title || '').trim();
+      const scoreNote = Number.isFinite(score)
+        ? (score >= 85 ? 'Ana güven bölgesi. C_A veya 100 profil desteği varsa en güçlü oyun adayıdır.'
+          : score >= 70 ? 'Güvenilir bölge. Sinyal yönü oynanabilir, stake kontrollü ilerlenir.'
+          : score >= 60 ? 'Oynanabilir bölge. Ek gerekçe varsa değerlendir, agresif stake kullanma.'
+          : score >= 50 ? 'İzleme bölgesi. Tek başına güçlü bahis sebebi değildir.'
+          : 'Pas bölgesi. Sinyal yönü net gösterilir ama güven düşük.')
+        : 'Sinyal skoru hesaplanamadı.';
+      const details = [
+        `<b>Nihai sinyal:</b> ${escapeHtml(direction)}`,
+        `<b>Sinyal skoru:</b> ${escapeHtml(scoreText)}${band && band !== '-' ? ` / ${escapeHtml(band)}` : ''}`,
+        escapeHtml(scoreNote),
+        ca ? `<b>C_A:</b> ${escapeHtml(ca)}` : '',
+        hundredActive ? '<b>100 Profil:</b> aktif, geçmiş profil desteği var.' : '',
+        baseNote && baseNote !== 'Kalite kuralı uygulanmadı.' ? `<b>Ek kalite notu:</b> ${escapeHtml(baseNote)}` : '',
+      ].filter(Boolean).join('<br>');
       const hundred = Number(alert.hundred_profile || 0) === 1
         ? `<button type="button" class="hundred-profile-badge" onclick="event.stopPropagation();openSignalInfo(${Number(alert.id || 0)})" title="100 Profili — ayrıntı için tıkla" style="border:none;font-family:inherit;">100</button>`
         : '';
-      const safeTitle = escapeHtml(title).replace(/'/g, "&#39;");
+      const displayLabel = Number.isFinite(score) ? `${scoreText} ${band}` : '-';
       let badge;
-      if (label && label !== '-') {
-        const displayLabel = escapeHtml(label);
-        badge = `<button type="button" class="badge quality-badge ${escapeHtml(tone)}" title="Ayrıntı için tıkla" onclick="event.stopPropagation();openQualityInfo('${displayLabel}','${safeTitle}')" style="border:1px solid rgba(148,163,184,0.22);font-family:inherit;">${displayLabel}</button>`;
+      if (Number.isFinite(score)) {
+        badge = `<button type="button" class="badge quality-badge ${escapeHtml(tone)}" title="Sinyal kalitesi için tıkla" onclick='event.stopPropagation();openQualityInfo(${jsString(displayLabel)}, ${jsString(details)})' style="border:1px solid rgba(148,163,184,0.22);font-family:inherit;">${escapeHtml(displayLabel)}</button>`;
       } else {
-        badge = `<button type="button" class="badge quality-badge empty" title="Ayrıntı için tıkla" onclick="event.stopPropagation();openQualityInfo('-','${safeTitle}')" style="border:1px solid rgba(148,163,184,0.22);font-family:inherit;">-</button>`;
+        badge = `<button type="button" class="badge quality-badge empty" title="Sinyal kalitesi için tıkla" onclick='event.stopPropagation();openQualityInfo("-", ${jsString(details)})' style="border:1px solid rgba(148,163,184,0.22);font-family:inherit;">-</button>`;
       }
       return `<span class="quality-cell">${badge}${hundred}</span>`;
     }
@@ -2352,7 +2292,7 @@
       overlay.className = 'quality-info-overlay';
       overlay.innerHTML = `
         <div class="quality-info-box" onclick="event.stopPropagation();">
-          <div class="quality-info-head"><span class="icon">${label}</span><span>Kalite Yıldızı</span></div>
+          <div class="quality-info-head"><span class="icon">${escapeHtml(label)}</span><span>Sinyal Kalitesi</span></div>
           <div class="quality-info-body">${body}</div>
           <button type="button" class="quality-info-close" onclick="closeQualityInfo()">Kapat</button>
         </div>`;
@@ -2463,7 +2403,6 @@
       const fairEdge = Number(analysis.fair_edge ?? alert.fair_edge);
       const selectionReason = alert.selection_reason || analysis.selection_reason || '';
       const projectionQuality = Number(alert.projection_quality ?? analysis.projection_quality);
-      const legacyDir = analysis.legacy_direction || alert.legacy_direction || alert.direction || '-';
 	      const finalDir = analysis.final_direction || alert.final_direction || analysis.direction || alert.direction || '-';
 	      const signalScores = analysis.signal_scores || alert.signal_scores || {};
 	      const voteRows = Array.isArray(analysis.signal_votes || alert.signal_votes) ? (analysis.signal_votes || alert.signal_votes).slice(0, 6) : [];
@@ -2585,9 +2524,9 @@
                   <div class="signal-info-section-title">Özet</div>
                   <ul class="signal-metrics-list">
                     ${modalListItem('Canlı veri', Number.isFinite(projectionQuality) ? `${projectionQuality.toFixed(0)}/100` : '-')}
-                    ${modalListItem('Kalite', alert.quality_label && alert.quality_label !== '-' ? `${alert.quality_label} - ${alert.quality_title || ''}` : '-')}
+                    ${modalListItem('Sinyal Kalitesi', alert.signal_score ? `${alert.signal_score} / ${alert.signal_score_label || '-'}` : '-')}
                     ${modalListItem('Liste', listText)}
-                    ${modalListItem('Eski / Yeni Yön', `${legacyDir} → ${finalDir}`)}
+                    ${modalListItem('Nihai Yön', finalDir)}
                     ${modalListItem('ALT / ÜST Puan', `${formatNumber(signalScores.ALT)} / ${formatNumber(signalScores['ÜST'])}`)}
                     ${modalListItem('Karar', selectionReason || '-')}
                   </ul>
@@ -2930,8 +2869,9 @@
     function periodQualityBreakdown(rows) {
       const map = new Map();
       rows.forEach(alert => {
-        const raw = String(alert.quality_label || '').trim();
-        const label = raw && raw !== '-' ? raw : 'Etiketsiz';
+        const raw = String(alert.signal_score_label || '').trim();
+        const score = Number(alert.signal_score || 0);
+        const label = raw && raw !== '-' ? `${raw} (${score || '-'})` : 'Skorsuz';
         const bucket = map.get(label) || { label, total: 0, success: 0, fail: 0, push: 0 };
         bucket.total += 1;
         const result = String(alert.result || '').trim();
@@ -2994,12 +2934,7 @@
       const hundred = periodSubsetStats(rows, isHundredProfileCandidate);
       const caRows = rows.filter(isClaudeAiCandidate);
       const caResolved = caRows.filter(r => r.result === 'Başarılı' || r.result === 'Başarısız');
-      const caSuccess = caResolved.filter(item => {
-        const code = String(item.claude_ai || '');
-        const isFade = code === 'FADE_OVER' || code === 'FADE_UNDER';
-        const systemWon = item.result === 'Başarılı';
-        return isFade ? !systemWon : systemWon;
-      });
+      const caSuccess = caResolved.filter(item => item.result === 'Başarılı');
       const caRate = caResolved.length ? Math.round((caSuccess.length / caResolved.length) * 1000) / 10 : null;
 
       const quality = periodQualityBreakdown(rows);
@@ -3274,12 +3209,24 @@
     }
 
     async function fetchReport() {
-      document.getElementById('reportContent').innerHTML = '<div class="report-loading">Rapor yükleniyor…</div>';
+      document.getElementById('reportContent').innerHTML = '<div class="report-loading">Rapor ve tavsiyeler yükleniyor…</div>';
       try {
-        const response = await fetch('/api/deleted-matches/report');
-        if (!response.ok) throw new Error('Rapor alınamadı.');
-        const data = await response.json();
-        renderReport(data);
+        const [reportResult, insightsResult] = await Promise.allSettled([
+          fetch('/api/deleted-matches/report').then(response => {
+            if (!response.ok) throw new Error('Rapor alınamadı.');
+            return response.json();
+          }),
+          fetch('/api/deleted-matches/insights').then(response => {
+            if (!response.ok) throw new Error('Çıkarım alınamadı.');
+            return response.json();
+          }),
+        ]);
+        if (reportResult.status === 'rejected') throw reportResult.reason;
+        renderReport(
+          reportResult.value,
+          insightsResult.status === 'fulfilled' ? insightsResult.value : null,
+          insightsResult.status === 'rejected' ? insightsResult.reason : null
+        );
       } catch (error) {
         document.getElementById('reportContent').innerHTML =
           `<div class="report-loading" style="color:var(--accent-red)">Rapor yüklenemedi: ${escapeHtml(error.message)}</div>`;
@@ -3343,31 +3290,6 @@
       return mainBar + sub;
     }
 
-    function fadeCard(item) {
-      const orig = Number(item.original_rate || 0);
-      const fade = Number(item.fade_rate || 0);
-      const delta = fade - orig;
-      const resolved = Number(item.resolved || 0);
-      const klass = resolved < 5 ? '' : (delta >= 3 ? 'fade-better' : (delta <= -3 ? 'orig-better' : ''));
-      const deltaText = resolved < 5
-        ? `<span style="color:var(--text-soft)">yetersiz örneklem</span>`
-        : (Math.abs(delta) < 3
-            ? `<span style="color:#fef08a">≈ eşit</span>`
-            : (delta > 0
-                ? `<span style="color:#9df0bd">fade +${delta.toFixed(1)}p</span>`
-                : `<span style="color:#b9dcff">orijinal +${(-delta).toFixed(1)}p</span>`));
-      return `
-        <div class="report-fade-card ${klass}">
-          <div class="report-fade-card-label">${escapeHtml(item.label)}</div>
-          <div class="report-fade-card-nums">
-            <div><div class="report-fade-num orig">%${orig.toFixed(1)}</div><div class="report-card-detail">orijinal</div></div>
-            <div style="text-align:right"><div class="report-fade-num fade">%${fade.toFixed(1)}</div><div class="report-card-detail">fade</div></div>
-          </div>
-          <div class="report-fade-card-detail">n=${resolved} sonuçlanan · ${deltaText}</div>
-        </div>
-      `;
-    }
-
     function tourRow(item) {
       const rate = Number(item.rate || 0);
       const cls = rateClass(rate);
@@ -3407,7 +3329,7 @@
       `;
     }
 
-    function renderReport(data) {
+    function renderReport(data, insightsData = null, insightsError = null) {
       const cards = (data.cards || []).map(card => `
         <div class="report-card">
           <div class="report-card-title">${escapeHtml(card.title)}</div>
@@ -3443,25 +3365,6 @@
           ${actionItems}
         </div>
       ` : '';
-
-      const fade = data.fade_analysis;
-      let fadeBlock = '';
-      if (fade && fade.overall) {
-        const orig = Number(fade.overall.original_rate || 0);
-        const fadeRate = Number(fade.overall.fade_rate || 0);
-        const delta = fadeRate - orig;
-        const byDirection = (fade.by_direction || []).filter(d => d.resolved > 0).map(fadeCard).join('');
-        const byDiff = (fade.by_diff || []).filter(d => d.resolved > 0).map(fadeCard).join('');
-        fadeBlock = `
-          <div class="report-section-title">Ters Sinyal (Fade) Analizi</div>
-          <div class="report-headline" style="font-size:13px;margin-bottom:10px">
-            Bütün sinyallerin tersi oynansaydı başarı <strong style="color:${delta >= 0 ? '#9df0bd' : '#b9dcff'}">%${fadeRate.toFixed(1)}</strong>
-            olurdu (orijinal %${orig.toFixed(1)}). ${escapeHtml(fade.overall.verdict || '')}
-          </div>
-          ${byDirection ? `<div class="report-card-title" style="margin:10px 0 6px">Yöne Göre</div><div class="report-fade-grid">${byDirection}</div>` : ''}
-          ${byDiff ? `<div class="report-card-title" style="margin:10px 0 6px">Fark Aralığına Göre</div><div class="report-fade-grid">${byDiff}</div>` : ''}
-        `;
-      }
 
       const diffBars = (data.diff_buckets || [])
         .map(b => barRow(b.label, b)).join('');
@@ -3516,13 +3419,22 @@
         </div>
       ` : '';
 
+      const insightsSection = insightsData
+        ? renderInsightsBlock(insightsData)
+        : `
+          <div class="report-section-title">Çıkarım ve Tavsiye</div>
+          <div class="report-loading" style="color:var(--accent-red);padding:16px 0;text-align:left">
+            Çıkarım yüklenemedi: ${escapeHtml((insightsError && insightsError.message) || 'Bilinmeyen hata')}
+          </div>
+        `;
+
       document.getElementById('reportContent').innerHTML = `
         <div class="report-headline">${escapeHtml(data.headline || '')}</div>
         <div class="report-summary">${escapeHtml(data.summary || '')}</div>
         ${actionsBlock}
+        ${insightsSection}
         ${trendBlock(data.trend_7d)}
         <div class="report-cards">${cards}</div>
-        ${fadeBlock}
         ${diffSection}
         ${halfSection}
         ${periodSection}
@@ -3534,35 +3446,8 @@
       `;
     }
 
-    function openInsights() {
-      const modal = document.getElementById('insightsModal');
-      modal.classList.add('open');
-      document.body.style.overflow = 'hidden';
-      fetchInsights();
-    }
-
-    function closeInsights() {
-      document.getElementById('insightsModal').classList.remove('open');
-      document.body.style.overflow = '';
-    }
-
-    async function fetchInsights() {
-      document.getElementById('insightsContent').innerHTML =
-        '<div class="report-loading">Çıkarımlar hazırlanıyor…</div>';
-      try {
-        const response = await fetch('/api/deleted-matches/insights');
-        if (!response.ok) throw new Error('Çıkarım alınamadı.');
-        const data = await response.json();
-        renderInsights(data);
-      } catch (error) {
-        document.getElementById('insightsContent').innerHTML =
-          `<div class="report-loading" style="color:var(--accent-red)">Çıkarım yüklenemedi: ${escapeHtml(error.message)}</div>`;
-      }
-    }
-
     function insightItem(seg, color) {
       const rate = Number(seg.rate || 0);
-      const fadeRate = Number(seg.fade_rate || 0);
       const delta = Number(seg.delta || 0);
       const sign = delta > 0 ? '+' : '';
       return `
@@ -3574,7 +3459,7 @@
             <span style="float:right;color:${color};font-weight:600">${escapeHtml(seg.verdict || '')}</span>
           </div>
           <div class="report-mixed-detail" style="margin-top:4px">
-            Başarı %${rate.toFixed(1)} · Tersi %${fadeRate.toFixed(1)} · n=${seg.resolved}
+            Başarı %${rate.toFixed(1)} · n=${seg.resolved}
             (${seg.success}/${seg.resolved}) · Genelden ${sign}${delta.toFixed(1)}p
           </div>
           <div class="report-mixed-detail" style="margin-top:4px;color:var(--text-soft)">
@@ -3604,22 +3489,18 @@
       `;
     }
 
-    function renderInsights(data) {
+    function renderInsightsBlock(data) {
       const overall = data.overall || {};
       const rate = Number(overall.rate || 0);
-      const fadeRate = Number(overall.fade_rate || 0);
-
       const cards = [
         { title: 'Sonuçlanan Sinyal', value: overall.resolved || 0,
           detail: `Toplam ${overall.total_signals || 0} silinen kayıttan.` },
         { title: 'Genel Başarı', value: `%${rate.toFixed(1)}`,
           detail: `${overall.success || 0} başarılı, ${overall.fail || 0} başarısız.` },
-        { title: 'Fade Etseydik', value: `%${fadeRate.toFixed(1)}`,
-          detail: 'Tüm sinyallerin tersi oynansaydı.' },
         { title: 'Pozitif Segment', value: (data.play || []).length,
           detail: 'OYNA önerisi alan kombinasyon sayısı.' },
-        { title: 'Negatif/Fade', value: ((data.fade || []).length + (data.avoid || []).length),
-          detail: 'UZAK DUR veya FADE önerilen segment.' },
+        { title: 'Riskli Segment', value: (data.avoid || []).length,
+          detail: 'Uzak dur önerilen kombinasyon sayısı.' },
         { title: 'Nötr / Yetersiz', value: `${data.neutral_count || 0} / ${data.insufficient_count || 0}`,
           detail: 'Net çıkarım üretmeyen segmentler.' },
       ].map(card => `
@@ -3642,11 +3523,6 @@
         ${(data.play || []).map(s => insightItem(s, '#9df0bd')).join('')}
       ` : '';
 
-      const fadeBlock = (data.fade || []).length ? `
-        <div class="report-section-title" style="color:#b9dcff">Fade — Sinyalin Tersi Çalışıyor</div>
-        ${(data.fade || []).map(s => insightItem(s, '#b9dcff')).join('')}
-      ` : '';
-
       const avoidBlock = (data.avoid || []).length ? `
         <div class="report-section-title" style="color:#ffb2b2">Uzak Dur — Zayıf Segmentler</div>
         ${(data.avoid || []).map(s => insightItem(s, '#ffb2b2')).join('')}
@@ -3657,24 +3533,23 @@
         ${(data.watchlist || []).map(watchlistItem).join('')}
       ` : '';
 
-      const noFindings = !(data.play || []).length && !(data.fade || []).length
+      const noFindings = !(data.play || []).length
         && !(data.avoid || []).length && !(data.watchlist || []).length
         ? '<div class="report-mixed-detail" style="margin-top:14px">Henüz net bir segment çıkmadı — daha çok sonuçlanan sinyal gerek.</div>'
         : '';
 
       const simulationBlock = renderSimulationBlock(data.simulation, data.rules);
 
-      document.getElementById('insightsContent').innerHTML = `
+      return `
+        <div class="report-section-title">Çıkarım ve Tavsiye</div>
         <div class="report-headline">${escapeHtml(data.headline || '')}</div>
         ${adviceBlock}
         <div class="report-cards">${cards}</div>
         ${simulationBlock}
         ${playBlock}
-        ${fadeBlock}
         ${avoidBlock}
         ${watchBlock}
         ${noFindings}
-        <div class="report-ts">Oluşturuldu: ${escapeHtml(data.generated_at || '')}</div>
       `;
     }
 
@@ -3691,14 +3566,11 @@
 
     function ruleTourRow(item, color) {
       const rate = Number(item.rate || 0);
-      const fadeRate = Number(item.fade_rate || 0);
-      const fadeSpan = Number.isFinite(fadeRate) && fadeRate > 0
-        ? ` <span style="color:var(--text-soft)">· tersi %${fadeRate.toFixed(1)}</span>` : '';
       return `
         <div class="report-tour-row">
           <div class="report-tour-name" title="${escapeHtml(item.label)}">${escapeHtml(item.label)}</div>
           <div class="report-tour-rate" style="color:${color}">%${rate.toFixed(1)}</div>
-          <div class="report-tour-meta">n=${item.n}${fadeSpan}</div>
+          <div class="report-tour-meta">n=${item.n}</div>
         </div>
       `;
     }
@@ -3718,8 +3590,8 @@
           detail: `${filtered.success}/${filtered.n} sinyal · Δ <span style="color:${deltaColor};font-weight:600">${sign}${delta.toFixed(1)}p</span>` },
         { title: 'Atılan Sinyal', value: filtered.skipped,
           detail: `Bunların ${filtered.skipped_lost_wins || 0} tanesi başarılı olurdu (kaçırılan kazanç).` },
-        { title: 'Ters Oynanan', value: filtered.fade_count,
-          detail: `Fade ile ${filtered.fade_success} kazanç.` },
+        { title: 'Ters Oyun', value: filtered.special_count,
+          detail: `${filtered.special_success} sinyalde ters taraf kazanırdı.` },
       ].map(card => `
         <div class="report-card">
           <div class="report-card-title">${escapeHtml(card.title)}</div>
@@ -3729,16 +3601,17 @@
       `).join('');
 
       const impact = (simulation.rule_impact || []).map(r => {
-        const actionColor = r.action === 'SKIP' ? '#ffb2b2'
-                          : r.action === 'FADE' ? '#b9dcff'
-                          : '#9df0bd';
-        const wouldText = r.action === 'FADE'
-          ? `tersi %${(100 - Number(r.would_have_rate || 0)).toFixed(1)} kazanç`
-          : `bu sinyaller orijinalde %${Number(r.would_have_rate || 0).toFixed(1)} idi`;
+        const isReverse = r.action === 'REVERSE' || r.action === 'SPECIAL';
+        const actionColor = r.action === 'SKIP' ? '#ffb2b2' : (isReverse ? '#b9dcff' : '#9df0bd');
+        const actionLabel = isReverse ? 'TERS OYNA' : r.action;
+        const originalRate = Number(r.would_have_rate || 0);
+        const wouldText = isReverse
+          ? `orijinal başarı %${originalRate.toFixed(1)} idi; ters taraf %${(100 - originalRate).toFixed(1)} kazanırdı`
+          : `bu sinyallerde başarı %${originalRate.toFixed(1)} idi`;
         return `
           <div class="report-mixed-item" style="border-left:3px solid ${actionColor};padding-left:10px">
             <div class="report-mixed-match">
-              <span style="color:${actionColor};font-weight:600">${escapeHtml(r.action)}</span>
+              <span style="color:${actionColor};font-weight:600">${escapeHtml(actionLabel)}</span>
               &nbsp;·&nbsp; ${escapeHtml(r.label)}
               <span style="float:right;color:var(--text-soft)">${r.applied_to} sinyal</span>
             </div>
@@ -3753,7 +3626,7 @@
           item => ruleTourRow(item, '#9df0bd')),
         ruleListBlock('Turnuva Kara Liste — Atla', r.tournament_blacklist, '#ffb2b2',
           item => ruleTourRow(item, '#ffb2b2')),
-        ruleListBlock('Turnuva Fade — Tersi Oyna', r.tournament_fade, '#b9dcff',
+        ruleListBlock('Turnuva Ters Oyna', r.tournament_special, '#b9dcff',
           item => ruleTourRow(item, '#b9dcff')),
         ruleListBlock('Turnuva + Yön Yasağı', r.tournament_direction_skip, '#ffb2b2',
           item => ruleTourRow(item, '#ffb2b2')),
@@ -3761,7 +3634,7 @@
           item => ruleTourRow(item, '#ffb2b2')),
         ruleListBlock('Takım Kara Liste — Maçı Atla', r.team_blacklist, '#ffb2b2',
           item => ruleTourRow(item, '#ffb2b2')),
-        ruleListBlock('Takım Fade — Sinyalin Tersi', r.team_fade, '#b9dcff',
+        ruleListBlock('Takım Ters Oyna', r.team_special, '#b9dcff',
           item => ruleTourRow(item, '#b9dcff')),
       ].filter(Boolean).join('');
 
@@ -3804,7 +3677,6 @@
         closeSignalInfo();
         closeNoteInfo();
         closeReport();
-        closeInsights();
       }
     });
 
