@@ -2839,12 +2839,7 @@
     }
 
     function leagueQualityHtml(alert) {
-      const q = String(alert.league_quality || 'unknown');
-      const label = String(alert.league_quality_label || '');
-      const tip = String(alert.league_quality_tooltip || '');
-      if (!label || q === 'unknown' || q === 'neutral') return '';
-      const tone = String(alert.league_quality_tone || 'neutral').replace(/[^a-z]/gi, '');
-      return `<span class="league-q-pill lq-${escapeHtml(tone)}" title="${escapeHtml(tip)}">${escapeHtml(label)}</span>`;
+      return '';
     }
 
     function caHtml(alert) {

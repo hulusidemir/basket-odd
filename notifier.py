@@ -98,6 +98,35 @@ _CA_LABELS = {
 }
 
 
+def _simple_ai_reason(rule: str) -> str:
+    rule = str(rule or "").strip()
+    if not rule:
+        return "Geçmişte benzer maçlarda bu seçim daha güçlü göründü."
+    if rule == "100 Profili onayı":
+        return "Bu maç, geçmişte sık kazanan güçlü sinyal tipine benziyor."
+
+    simple_parts = []
+    folded = rule.lower()
+    if "açılış" in folded:
+        simple_parts.append("maç öncesi barem")
+    if "canlı" in folded:
+        simple_parts.append("şu anki skor/barem")
+    if "tempo" in folded:
+        simple_parts.append("maçın hızı")
+    if "fair" in folded or "adil" in folded:
+        simple_parts.append("adil barem hesabı")
+    if "projeksiyon" in folded:
+        simple_parts.append("maç sonu tahmini")
+    if "h2h" in folded:
+        simple_parts.append("takımların geçmiş maçları")
+    if "tersle" in folded:
+        return "İlk sinyal tuzak gibi duruyor. Yapay zeka ters tarafı daha mantıklı görüyor."
+
+    if simple_parts:
+        return f"Yapay zeka {', '.join(simple_parts)} bilgilerine baktı ve bu tarafı daha güçlü gördü."
+    return "Yapay zeka bu maçtaki sayılara baktı ve bu tarafı daha güçlü gördü."
+
+
 def _claude_ai_meta(analysis: dict) -> tuple[str, str, str, str] | None:
     """Returns (code, label, play, rule) or None."""
     if not isinstance(analysis, dict):
@@ -150,39 +179,28 @@ def _build_alert_text(
 
     proj_text = f"{float(projected):.1f}" if projected is not None else "-"
     h2h_text = f"{float(h2h_total):.1f}" if h2h_total is not None else "-"
-    quality_text = _quality_text(analysis)
-    list_text = _list_text(analysis)
     quarter_score_text = _quarter_score_text(analysis)
     match_ppm_text = _match_ppm_text(analysis)
     quarter_ppm_text = _quarter_ppm_text(analysis)
-    hundred_profile_warning = "⚠️ <b>100 PROFİLİ</b>\n" if _is_hundred_profile(analysis) else ""
+    hundred_profile_warning = "⚠️ <b>Güçlü geçmiş profili bulundu.</b>\n" if _is_hundred_profile(analysis) else ""
 
     ca_meta = _claude_ai_meta(analysis)
     if ca_meta:
         _ca_code, ca_label, ca_play, ca_rule = ca_meta
-        ca_banner = f"⭐ <b>C_A: {ca_label} → {ca_play} oyna</b>\n"
-        ca_line = f"\n<b>C_A ⭐:</b> {escape(ca_label)} → <b>{ca_play}</b>"
-        if ca_rule:
-            ca_line += f"\n<i>{escape(ca_rule)}</i>"
+        ai_reason = _simple_ai_reason(ca_rule)
+        ca_banner = (
+            f"🤖 <b>Yapay Zeka Önerisi: {ca_play} oyna</b>\n"
+            f"<i>{escape(ai_reason)}</i>\n"
+        )
         if ca_play and ca_play != direction:
-            signal_headline = f"<b>{ca_play} Oyna</b> · ters sinyal: {direction}{repeat}"
+            signal_headline = f"✅ <b>{ca_play} oyna</b>{repeat}\nNormal sinyal {direction} dedi ama yapay zeka ters tarafı seçti."
         else:
-            signal_headline = f"<b>{direction} Sinyali</b>{repeat}"
+            signal_headline = f"✅ <b>{direction} oyna</b>{repeat}"
     else:
         ca_banner = ""
-        ca_line = ""
-        signal_headline = f"<b>{direction} Sinyali</b>{repeat}"
+        signal_headline = f"✅ <b>{direction} oyna</b>{repeat}"
 
-    # Lig kalite uyarısı
-    lq = str(analysis.get("league_quality") or "")
-    lq_label = str(analysis.get("league_quality_label") or "")
-    lq_tooltip = str(analysis.get("league_quality_tooltip") or "")
-    if lq in ("good", "mid_good"):
-        league_line = f"\n<b>LİG:</b> {escape(lq_label)} ✅"
-    elif lq in ("bad", "mid_bad"):
-        league_line = f"\n<b>LİG:</b> {escape(lq_label)} ⚠️ {escape(lq_tooltip)}"
-    else:
-        league_line = ""
+    league_line = ""
 
     return (
         f"{ca_banner}"
@@ -191,17 +209,14 @@ def _build_alert_text(
         f"🏀 <b>{escape(match_name)}</b>\n"
         f"🏆 {escape(tournament or '-')}\n\n"
         f"<b>Skor:</b> {escape(score or '-')}\n"
-        f"<b>Sinyal Zamanı:</b> {when}\n"
+        f"<b>Ne zaman geldi:</b> {when}\n"
         f"<b>Çeyrek Skorları:</b> {escape(quarter_score_text)}\n"
-        f"<b>Maç PPM:</b> {escape(match_ppm_text)}\n"
-        f"<b>Çeyrek PPM:</b> {escape(quarter_ppm_text)}\n"
-        f"<b>Barem:</b> {opening:.1f} → {live:.1f} ({diff:+.1f})\n"
-        f"<b>KALİTE:</b> {escape(quality_text)}\n"
-        f"<b>LİSTE:</b> {escape(list_text)}\n"
-        f"<b>H2H:</b> {h2h_text}\n"
-        f"<b>ADİL BAREM:</b> {fair_text}\n"
-        f"<b>PROJEKSİYON:</b> {proj_text}"
-        f"{ca_line}"
+        f"<b>Maç hızı:</b> {escape(match_ppm_text)} sayı/dakika\n"
+        f"<b>Çeyrek hızları:</b> {escape(quarter_ppm_text)}\n"
+        f"<b>Barem değişimi:</b> {opening:.1f} → {live:.1f} ({diff:+.1f})\n"
+        f"<b>Adil barem:</b> {fair_text}\n"
+        f"<b>Maç sonu tahmini:</b> {proj_text}\n"
+        f"<b>Geçmiş maç ortalaması:</b> {h2h_text}"
         f"{league_line}"
     )
 
