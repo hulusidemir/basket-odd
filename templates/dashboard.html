@@ -2519,7 +2519,7 @@
               <li><strong>70-84 Güvenilir</strong>: oynanabilir, stake kontrollü.</li>
               <li><strong>60-69 Oynanabilir</strong>: sadece ek gerekçe varsa.</li>
               <li><strong>60 altı</strong>: çoğunlukla pas veya izleme.</li>
-              <li>Kalite sütunu artık bu skoru ve güven bandını gösterir; oyun yönünü değiştiren bir etiket değildir.</li>
+              <li>Kalite sütunu güven bandını gösterir; sayısal skor C_A hücresinde kalır.</li>
             </ul>
           </div>
 
@@ -2936,7 +2936,7 @@
       const hundred = Number(alert.hundred_profile || 0) === 1
         ? `<button type="button" class="hundred-profile-badge" onclick="event.stopPropagation();openSignalModal(${Number(alert.id || 0)})" title="100 Profili — ayrıntı için tıkla">100</button>`
         : '';
-      const displayLabel = Number.isFinite(score) ? `${scoreText} ${band}` : '-';
+      const displayLabel = Number.isFinite(score) ? (band || 'Skor') : '-';
       let badge;
       if (Number.isFinite(score)) {
         badge = `<button type="button" class="badge small-badge quality-badge ${escapeHtml(tone)}" title="Sinyal kalitesi için tıkla" onclick='event.stopPropagation();openQualityInfo(${jsString(displayLabel)}, ${jsString(details)})' style="border:1px solid transparent;font-family:inherit;">${escapeHtml(displayLabel)}</button>`;

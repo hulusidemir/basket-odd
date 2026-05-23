@@ -109,6 +109,33 @@ def _opposite_direction(direction: str) -> str:
     return "ALT" if _normalize_direction(direction) == "ÜST" else "ÜST"
 
 
+def _claude_play_direction(code) -> str:
+    code = str(code or "").strip().upper()
+    if code in {"TRUE_UNDER", "FADE_UNDER"}:
+        return "ALT"
+    if code in {"TRUE_OVER", "FADE_OVER"}:
+        return "ÜST"
+    return ""
+
+
+def _canonical_backtest_outcome(row: dict, analysis: dict, direction: str, success: bool) -> tuple[str, bool]:
+    """Old rows may have been settled against the pre-C_A direction.
+
+    Backtest buckets must learn from the playable direction shown to the user,
+    otherwise C_A flips teach the profile the exact opposite lesson.
+    """
+    stored_direction = _normalize_direction(direction)
+    final_direction = (
+        _claude_play_direction(row.get("claude_ai") or analysis.get("claude_ai"))
+        or _normalize_direction(
+            analysis.get("final_direction") or analysis.get("direction") or stored_direction
+        )
+    )
+    if final_direction in {"ALT", "ÜST"} and stored_direction != final_direction:
+        return final_direction, not success
+    return final_direction or stored_direction, success
+
+
 def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
@@ -1108,6 +1135,7 @@ def build_backtest_profile(rows: list[dict] | None) -> dict:
                 analysis = {}
         fair_edge = analysis.get("fair_edge", row.get("fair_edge"))
         projected = analysis.get("projected_total", row.get("projected"))
+        direction, success = _canonical_backtest_outcome(row, analysis, direction, success)
         keys = _backtest_keys_from_values(
             legacy_direction=analysis.get("legacy_direction") or direction,
             diff=row.get("diff"),
@@ -1538,7 +1566,13 @@ def enrich_analysis_with_backtest(
     selection_reason = selection.get("selection_reason")
     if selection_reason and selection_reason not in warnings:
         warnings = [selection_reason, *warnings]
-    return {**analysis, **decision, **selection, "warnings": warnings}
+    return {
+        **analysis,
+        **decision,
+        **selection,
+        "final_direction": decision.get("direction"),
+        "warnings": warnings,
+    }
 
 
 def build_signal_analysis(

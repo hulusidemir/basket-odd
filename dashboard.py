@@ -289,9 +289,14 @@ def enrich_alerts_with_analysis(
 
         stored_claude_ai = str(alert.get("claude_ai") or "")
         stored_claude_ai_rule = str(alert.get("claude_ai_rule") or "")
-        cai = evaluate_claude_ai(alert, analysis)
-        alert["claude_ai"] = cai["claude_ai"]
-        alert["claude_ai_rule"] = cai["claude_ai_rule"]
+        cai = evaluate_claude_ai(
+            {
+                **alert,
+                "direction": alert.get("final_direction") or analysis.get("direction") or alert.get("direction"),
+            },
+            analysis,
+        )
+        _apply_claude_ai_result(alert, analysis, cai)
         meta = scenario_meta(cai["claude_ai"])
         alert["claude_ai_label"] = meta.get("label", "")
         alert["claude_ai_play"] = meta.get("play", "")
@@ -366,6 +371,19 @@ def _claude_ai_play_direction(alert: dict) -> str:
         return ""
     play = _normalize_direction(alert.get("claude_ai_play"))
     return play if play in {"ALT", "ÜST"} else ""
+
+
+def _apply_claude_ai_result(alert: dict, analysis: dict, cai: dict) -> None:
+    """Keep current C_A fields authoritative over older ai_analysis snapshots."""
+    previous_rule = str(analysis.get("claude_ai_rule") or "")
+    previous_selection = str(analysis.get("selection_reason") or "")
+    alert["claude_ai"] = cai["claude_ai"]
+    alert["claude_ai_rule"] = cai["claude_ai_rule"]
+    analysis["claude_ai"] = cai["claude_ai"]
+    analysis["claude_ai_rule"] = cai["claude_ai_rule"]
+    if not cai["claude_ai"] and previous_rule and previous_selection == previous_rule:
+        analysis["selection_reason"] = ""
+        alert["selection_reason"] = ""
 
 
 def _apply_canonical_signal_direction(alert: dict, analysis: dict) -> None:
@@ -817,9 +835,14 @@ def _enrich_deleted_alert(
 
     stored_claude_ai = str(alert.get("claude_ai") or "")
     stored_claude_ai_rule = str(alert.get("claude_ai_rule") or "")
-    cai = evaluate_claude_ai(alert, analysis)
-    alert["claude_ai"] = cai["claude_ai"]
-    alert["claude_ai_rule"] = cai["claude_ai_rule"]
+    cai = evaluate_claude_ai(
+        {
+            **alert,
+            "direction": alert.get("final_direction") or analysis.get("direction") or alert.get("direction"),
+        },
+        analysis,
+    )
+    _apply_claude_ai_result(alert, analysis, cai)
     meta = scenario_meta(cai["claude_ai"])
     alert["claude_ai_label"] = meta.get("label", "")
     alert["claude_ai_play"] = meta.get("play", "")

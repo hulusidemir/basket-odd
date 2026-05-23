@@ -246,7 +246,11 @@ def compute_signal_score(alert: dict, analysis: dict | None = None) -> dict[str,
     Dönüş: {"score": int 0-100, "label": str}
     """
     a = analysis if isinstance(analysis, dict) else {}
-    code = str(alert.get("claude_ai") or a.get("claude_ai") or "").strip()
+    # The dashboard recomputes C_A from current rules. Older alerts can still
+    # carry stale C_A codes inside ai_analysis, so only fall back to analysis
+    # when the alert itself has no claude_ai field at all.
+    raw_code = alert.get("claude_ai") if "claude_ai" in alert else a.get("claude_ai")
+    code = str(raw_code or "").strip()
     direction = _code_play(code) or _normalize_direction(
         alert.get("direction") or a.get("direction") or a.get("final_direction")
     )

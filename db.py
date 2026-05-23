@@ -780,19 +780,27 @@ class Database:
         result: str,
         final_score: str,
         final_status: str,
+        direction: str = "",
     ) -> bool:
         with self._conn() as conn:
             cursor = conn.execute(
                 """
                 UPDATE alerts
                 SET result = ?,
+                    direction = CASE WHEN ? != '' THEN ? ELSE direction END,
                     score = CASE WHEN ? != '' THEN ? ELSE score END,
                     status = CASE WHEN ? != '' THEN ? ELSE status END
                 WHERE id = ?
                   AND deleted_at IS NOT NULL
                   AND deleted_at != ''
                 """,
-                (result, final_score, final_score, final_status, final_status, alert_id),
+                (
+                    result,
+                    direction, direction,
+                    final_score, final_score,
+                    final_status, final_status,
+                    alert_id,
+                ),
             )
         return cursor.rowcount > 0
 

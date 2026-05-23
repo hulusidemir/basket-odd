@@ -4,6 +4,7 @@ Used by both the background worker and manual UI-triggered checks.
 """
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -50,6 +51,37 @@ def evaluate_signal_result(direction: str, live_line: float, final_total: float)
     if direction_key in {"ÜST", "UST"}:
         return "Başarılı" if final_total > live_line else "Başarısız"
     return ""
+
+
+def _normalize_direction(direction: str) -> str:
+    direction_key = (direction or "").strip().upper().replace("UST", "ÜST")
+    if direction_key in {"ALT", "ÜST"}:
+        return direction_key
+    return ""
+
+
+def _claude_play_direction(code: str) -> str:
+    code_key = str(code or "").strip().upper()
+    if code_key in {"TRUE_UNDER", "FADE_UNDER"}:
+        return "ALT"
+    if code_key in {"TRUE_OVER", "FADE_OVER"}:
+        return "ÜST"
+    return ""
+
+
+def canonical_alert_direction(alert: dict) -> str:
+    """Return the playable direction, including C_A flip decisions."""
+    try:
+        analysis = json.loads(alert.get("ai_analysis") or "{}")
+    except Exception:
+        analysis = {}
+    return (
+        _claude_play_direction(alert.get("claude_ai") or analysis.get("claude_ai"))
+        or _normalize_direction(
+            analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
+        )
+        or _normalize_direction(alert.get("direction"))
+    )
 
 
 
@@ -357,13 +389,15 @@ async def run_finished_match_cycle(db, config) -> dict:
         pending_alerts = db.get_pending_deleted_alerts_for_match(result["match_id"])
 
         for alert in pending_alerts:
+            playable_direction = canonical_alert_direction(alert)
             signal_result = evaluate_signal_result(
-                alert.get("direction", ""),
+                playable_direction,
                 float(alert.get("live") or 0),
                 final_total,
             )
+            archived_alert = {**alert, "direction": playable_direction}
             inserted_id = db.archive_finished_alert(
-                alert,
+                archived_alert,
                 final_status=final_status_label(result.get("status", "")),
                 final_score=final_score,
                 final_total=final_total,
@@ -385,7 +419,7 @@ async def run_finished_match_cycle(db, config) -> dict:
             summary["details"].append({
                 "match_id": alert["match_id"],
                 "match_name": alert["match_name"],
-                "direction": alert["direction"],
+                "direction": playable_direction,
                 "live_line": float(alert["live"]),
                 "final_score": final_score,
                 "final_total": final_total,
@@ -526,8 +560,9 @@ async def run_single_deleted_match_result_check(db, config, alert_id: int) -> di
 
     summary["finished_match_count"] = 1
     for item in match_alerts:
+        playable_direction = canonical_alert_direction(item)
         signal_result = evaluate_signal_result(
-            item.get("direction", ""),
+            playable_direction,
             float(item.get("live") or 0),
             final_total,
         )
@@ -539,6 +574,7 @@ async def run_single_deleted_match_result_check(db, config, alert_id: int) -> di
             result=signal_result,
             final_score=final_score,
             final_status=final_status_label(result.get("status", "")),
+            direction=playable_direction,
         )
         if not updated:
             continue
@@ -554,7 +590,7 @@ async def run_single_deleted_match_result_check(db, config, alert_id: int) -> di
             "id": item["id"],
             "match_id": item["match_id"],
             "match_name": item["match_name"],
-            "direction": item["direction"],
+            "direction": playable_direction,
             "live_line": float(item["live"]),
             "final_score": final_score,
             "final_total": final_total,
@@ -601,8 +637,9 @@ async def _run_deleted_match_result_check_for_matches(db, config, tracked_matche
         summary["finished_match_count"] += 1
         alerts = db.get_deleted_alerts_for_result_check(result["match_id"])
         for alert in alerts:
+            playable_direction = canonical_alert_direction(alert)
             signal_result = evaluate_signal_result(
-                alert.get("direction", ""),
+                playable_direction,
                 float(alert.get("live") or 0),
                 final_total,
             )
@@ -614,6 +651,7 @@ async def _run_deleted_match_result_check_for_matches(db, config, tracked_matche
                 result=signal_result,
                 final_score=final_score,
                 final_status=final_status_label(result.get("status", "")),
+                direction=playable_direction,
             )
             if not updated:
                 continue
@@ -630,7 +668,7 @@ async def _run_deleted_match_result_check_for_matches(db, config, tracked_matche
                 "id": alert["id"],
                 "match_id": alert["match_id"],
                 "match_name": alert["match_name"],
-                "direction": alert["direction"],
+                "direction": playable_direction,
                 "live_line": float(alert["live"]),
                 "final_score": final_score,
                 "final_total": final_total,

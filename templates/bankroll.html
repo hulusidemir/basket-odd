@@ -652,6 +652,8 @@
 
   <script>
     // ── State ────────────────────────────────────────
+    const STAKE_RATE = 0.10;
+
     let state = {
       id: null,        // DB id (null = unsaved)
       name: '',
@@ -783,13 +785,7 @@
 
       // Only add next step if this is the last step
       if (stepIdx === group.steps.length - 1) {
-        const newAmount = step.amount * step.rate;
-        group.steps.push({
-          amount: newAmount,
-          rate: state.defaultRate,
-          status: 'pending',
-          note: ''
-        });
+        addNextStep(group, getStepResultBalance(step));
       }
 
       saveState();
@@ -798,7 +794,13 @@
 
     function markLoss(groupIdx, stepIdx) {
       const group = state.groups[groupIdx];
-      group.steps[stepIdx].status = 'lost';
+      const step = group.steps[stepIdx];
+      step.status = 'lost';
+
+      if (stepIdx === group.steps.length - 1) {
+        addNextStep(group, getStepResultBalance(step));
+      }
+
       saveState();
       renderAll();
     }
@@ -807,12 +809,9 @@
       const group = state.groups[groupIdx];
       const step = group.steps[stepIdx];
 
-      // If this step was won and there's a next pending step, remove it
-      if (step.status === 'won' && stepIdx === group.steps.length - 2) {
-        const nextStep = group.steps[stepIdx + 1];
-        if (nextStep.status === 'pending') {
-          group.steps.pop();
-        }
+      // Keep the timeline consistent when a finished result is reverted.
+      if (step.status !== 'pending') {
+        group.steps = group.steps.slice(0, stepIdx + 1);
       }
 
       step.status = 'pending';
@@ -858,33 +857,58 @@
 
     // ── Helpers ─────────────────────────────────────
     function fmt(n) {
-      return n.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ₺';
+      const value = Number(n) || 0;
+      return value.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ₺';
+    }
+
+    function getStepStake(step) {
+      return Math.max(0, (Number(step.amount) || 0) * STAKE_RATE);
+    }
+
+    function getStepPayout(step) {
+      return getStepStake(step) * (Number(step.rate) || 0);
+    }
+
+    function getStepResultBalance(step) {
+      const balance = Number(step.amount) || 0;
+      if (step.status === 'won') return balance - getStepStake(step) + getStepPayout(step);
+      if (step.status === 'lost') return Math.max(0, balance - getStepStake(step));
+      return balance;
+    }
+
+    function addNextStep(group, balance) {
+      const nextBalance = Math.max(0, balance);
+      if (nextBalance <= 0) return;
+      group.steps.push({
+        amount: nextBalance,
+        rate: state.defaultRate,
+        status: 'pending',
+        note: ''
+      });
     }
 
     function getGroupStatus(group) {
       const lastStep = group.steps[group.steps.length - 1];
-      if (lastStep.status === 'lost') return 'lost';
+      if (!lastStep || getStepResultBalance(lastStep) <= 0) return 'lost';
       return 'active';
     }
 
     function getGroupCurrentBalance(group) {
       const lastStep = group.steps[group.steps.length - 1];
-      if (lastStep.status === 'won') {
-        return lastStep.amount * lastStep.rate;
-      }
-      if (lastStep.status === 'lost') return 0;
-      return lastStep.amount;
+      if (!lastStep) return 0;
+      return getStepResultBalance(lastStep);
     }
 
     function showProjection(groupIdx) {
       const group = state.groups[groupIdx];
       const balance = getGroupCurrentBalance(group);
       const rate = state.defaultRate;
-      const milestones = Array.from({length: 20}, (_, i) => i + 1);
+      const milestones = Array.from({length: 100}, (_, i) => i + 1);
+      const winMultiplier = 1 + (STAKE_RATE * (rate - 1));
 
       let rows = '';
       milestones.forEach(n => {
-        const projected = balance * Math.pow(rate, n);
+        const projected = balance * Math.pow(winMultiplier, n);
         rows += `<div class="proj-row"><span class="proj-label">${n}. maç →</span><span class="proj-val">${fmt(projected)}</span></div>`;
       });
 
@@ -894,7 +918,7 @@
       overlay.innerHTML = `
         <div class="proj-modal">
           <div class="proj-modal-header">
-            <span>📈 Grup ${groupIdx + 1} — Projeksiyon (×${rate.toFixed(2)})</span>
+            <span>📈 Grup ${groupIdx + 1} — %10 Stake Projeksiyonu (×${rate.toFixed(2)})</span>
             <button class="proj-modal-close" onclick="this.closest('.proj-overlay').remove()">&times;</button>
           </div>
           <div class="proj-modal-body">
@@ -964,8 +988,16 @@
           const isWon = step.status === 'won';
           const isLost = step.status === 'lost';
           const rowClass = isWon ? 'won' : (isLost ? 'lost' : (isActive ? 'active' : ''));
-          const payout = step.amount * step.rate;
-          const profit = payout - step.amount;
+          const balanceBefore = Number(step.amount) || 0;
+          const stake = getStepStake(step);
+          const payout = getStepPayout(step);
+          const nextBalance = getStepResultBalance(step);
+          const winBalance = balanceBefore - stake + payout;
+          const stepDetail = isWon
+            ? `Kazandı: dönüş ${fmt(payout)} → ${fmt(nextBalance)}`
+            : isLost
+              ? `Kaybetti: -${fmt(stake)} → ${fmt(nextBalance)}`
+              : `Bahis sonrası ${fmt(balanceBefore - stake)} · Kazanırsa dönüş ${fmt(payout)} → ${fmt(winBalance)}`;
 
           if (isWon) totalWins++;
           if (isLost) totalLosses++;
@@ -973,8 +1005,8 @@
           html += `<div class="step-row ${rowClass}">`;
           html += `<div class="step-num">${si + 1}</div>`;
           html += `<div class="step-info">`;
-          html += `<div class="step-amount">${fmt(step.amount)}</div>`;
-          html += `<div class="step-target">Net kâr: ${fmt(profit)} → Toplam: ${fmt(payout)}</div>`;
+          html += `<div class="step-amount">${fmt(stake)} bahis</div>`;
+          html += `<div class="step-target">Bakiye: ${fmt(balanceBefore)} · ${stepDetail}</div>`;
           html += `</div>`;
 
           // Rate input

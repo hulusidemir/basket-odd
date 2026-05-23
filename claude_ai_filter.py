@@ -82,6 +82,20 @@ def _live_total(score: Any) -> int | None:
     return int(m.group(1)) + int(m.group(2))
 
 
+def _strong_over_consensus(a: dict, fair_edge: float | None, proj_gap: float | None) -> bool:
+    """Avoid reversing a clearly over-aligned live decision into C_A under."""
+    scores = a.get("signal_scores") if isinstance(a.get("signal_scores"), dict) else {}
+    over_score = _f(scores.get("ÜST")) or _f(scores.get("UST")) or 0.0
+    under_score = _f(scores.get("ALT")) or 0.0
+    over_margin = over_score - under_score
+
+    value_support = (
+        (fair_edge is not None and fair_edge >= 3)
+        or (proj_gap is not None and proj_gap >= 4)
+    )
+    return over_margin >= 8 and (value_support or over_score >= 24)
+
+
 # ---------- ana sınıflandırma ----------
 
 def evaluate_claude_ai(alert: dict, analysis: dict | None) -> dict:
@@ -194,6 +208,11 @@ def evaluate_claude_ai(alert: dict, analysis: dict | None) -> dict:
 
         # ---- KADEME F: GÜÇLÜ ALT ----
         # Düşük tempolu/düşük totalli maçlarda nihai karar ALT tarafıdır.
+        # Ancak canlı karar motoru net ÜST mutabakatı üretmişse C_A ters sinyali
+        # yazmasın; bu durumda normal ÜST kapıları değerlendirsin.
+        if _strong_over_consensus(a, fair_edge, proj_gap):
+            return {"claude_ai": "", "claude_ai_rule": ""}
+
         # F1 — train 49/51=96%, test 12/12=100%
         if (opening is not None and live_total is not None
                 and 160 <= opening < 170 and 120 <= live_total < 150

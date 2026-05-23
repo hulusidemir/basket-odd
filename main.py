@@ -201,14 +201,45 @@ async def process_match(
         "claude_ai_rule": claude_ai["claude_ai_rule"],
     }
     claude_play = scenario_meta(claude_ai["claude_ai"]).get("play", "")
+    claude_strong = claude_ai["claude_ai"] in {"TRUE_UNDER", "TRUE_OVER"}
     if claude_play in {"ALT", "ÜST"}:
         direction = claude_play
         analysis = {
             **analysis,
             "direction": direction,
             "final_direction": direction,
+            "telegram_eligible": bool(analysis.get("telegram_eligible")) or claude_strong,
             "selection_reason": claude_ai["claude_ai_rule"] or analysis.get("selection_reason") or "",
         }
+
+    backtest = analysis.get("backtest") if isinstance(analysis.get("backtest"), dict) else {}
+    try:
+        backtest_rate = float(backtest.get("chosen_rate"))
+    except (TypeError, ValueError):
+        backtest_rate = None
+    try:
+        backtest_samples = int(backtest.get("chosen_samples") or 0)
+    except (TypeError, ValueError):
+        backtest_samples = 0
+    # Backtest and fair-line quality are diagnostics here; the threshold move
+    # itself is enough to send, while weak buckets remain visible in analysis.
+    backtest_gate_ok = (
+        claude_strong
+        or backtest_rate is None
+        or backtest_samples < 120
+        or backtest_rate >= 45.0
+    )
+    quality_gate_passed = (bool(analysis.get("telegram_eligible")) and backtest_gate_ok) or claude_strong
+    analysis = {
+        **analysis,
+        "quality_gate_passed": quality_gate_passed,
+        "backtest_gate_ok": backtest_gate_ok,
+    }
+    if not quality_gate_passed:
+        log.debug(
+            "Sending threshold signal despite weak quality gate: id=%s match=%s direction=%s reason=%s",
+            match_id, match_name, direction, analysis.get("selection_reason") or "-",
+        )
 
     if period_has_any_alert:
         log.debug("Skipped (period %s already alerted): id=%s", period, match_id)
