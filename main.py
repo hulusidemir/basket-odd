@@ -21,7 +21,7 @@ from pace_tracker import PaceTracker
 from projection import game_clock, parse_score
 from signal_analysis import build_backtest_profile, build_signal_analysis
 from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
-from signal_profiles import evaluate_hundred_profile
+from signal_profiles import evaluate_hundred_profile, evaluate_legacy_hundred_profile
 from claude_ai_filter import evaluate_claude_ai, scenario_meta
 
 
@@ -171,7 +171,7 @@ async def process_match(
         "quality_rank": quality["rank"],
         "list_markers": build_signal_list_markers(alert_context, list_profile),
     }
-    hundred_profile = evaluate_hundred_profile(
+    claude_hundred_profile = evaluate_legacy_hundred_profile(
         {
             **alert_context,
             "diff": abs_diff,
@@ -181,7 +181,6 @@ async def process_match(
         },
         analysis,
     )
-    analysis = {**analysis, **hundred_profile}
 
     claude_ai = evaluate_claude_ai(
         {
@@ -191,7 +190,7 @@ async def process_match(
             "diff": abs_diff,
             "score": score,
             "alert_period": period,
-            "hundred_profile": 1 if hundred_profile.get("hundred_profile") else 0,
+            "hundred_profile": 1 if claude_hundred_profile.get("hundred_profile") else 0,
         },
         analysis,
     )
@@ -211,6 +210,16 @@ async def process_match(
             "telegram_eligible": bool(analysis.get("telegram_eligible")) or claude_strong,
             "selection_reason": claude_ai["claude_ai_rule"] or analysis.get("selection_reason") or "",
         }
+    hundred_profile = evaluate_hundred_profile(
+        {
+            **alert_context,
+            "direction": direction,
+            "final_direction": direction,
+            "diff": abs_diff,
+        },
+        analysis,
+    )
+    analysis = {**analysis, **hundred_profile}
 
     backtest = analysis.get("backtest") if isinstance(analysis.get("backtest"), dict) else {}
     try:

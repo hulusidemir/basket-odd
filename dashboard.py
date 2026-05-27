@@ -23,7 +23,7 @@ from finished_match_service import (
 )
 from signal_analysis import build_backtest_profile, build_signal_analysis, enrich_analysis_with_backtest
 from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
-from signal_profiles import evaluate_hundred_profile
+from signal_profiles import evaluate_hundred_profile, evaluate_legacy_hundred_profile
 from claude_ai_filter import evaluate_claude_ai, scenario_meta
 from signal_score import compute_signal_score
 from league_quality import evaluate_league_quality
@@ -274,6 +274,24 @@ def enrich_alerts_with_analysis(
         alert["list_markers"] = build_signal_list_markers(alert, list_profile)
         stored_hundred_profile = int(alert.get("hundred_profile") or 0)
         stored_hundred_profile_rule = str(alert.get("hundred_profile_rule") or "")
+        claude_hundred_profile = evaluate_legacy_hundred_profile(alert, analysis)
+
+        stored_claude_ai = str(alert.get("claude_ai") or "")
+        stored_claude_ai_rule = str(alert.get("claude_ai_rule") or "")
+        cai = evaluate_claude_ai(
+            {
+                **alert,
+                "direction": alert.get("final_direction") or analysis.get("direction") or alert.get("direction"),
+                "hundred_profile": 1 if claude_hundred_profile.get("hundred_profile") else 0,
+            },
+            analysis,
+        )
+        _apply_claude_ai_result(alert, analysis, cai)
+        meta = scenario_meta(cai["claude_ai"])
+        alert["claude_ai_label"] = meta.get("label", "")
+        alert["claude_ai_play"] = meta.get("play", "")
+        alert["claude_ai_tooltip"] = meta.get("tooltip", "")
+        _apply_canonical_signal_direction(alert, analysis)
         hundred_profile = evaluate_hundred_profile(alert, analysis)
         alert["hundred_profile"] = 1 if hundred_profile["hundred_profile"] else 0
         alert["hundred_profile_rule"] = hundred_profile["hundred_profile_rule"]
@@ -286,22 +304,6 @@ def enrich_alerts_with_analysis(
                 bool(alert["hundred_profile"]),
                 alert["hundred_profile_rule"],
             )
-
-        stored_claude_ai = str(alert.get("claude_ai") or "")
-        stored_claude_ai_rule = str(alert.get("claude_ai_rule") or "")
-        cai = evaluate_claude_ai(
-            {
-                **alert,
-                "direction": alert.get("final_direction") or analysis.get("direction") or alert.get("direction"),
-            },
-            analysis,
-        )
-        _apply_claude_ai_result(alert, analysis, cai)
-        meta = scenario_meta(cai["claude_ai"])
-        alert["claude_ai_label"] = meta.get("label", "")
-        alert["claude_ai_play"] = meta.get("play", "")
-        alert["claude_ai_tooltip"] = meta.get("tooltip", "")
-        _apply_canonical_signal_direction(alert, analysis)
         alert.update(evaluate_league_quality(alert.get("tournament"), alert.get("direction")))
         if int(alert.get("id") or 0) and (
             stored_claude_ai != alert["claude_ai"]
@@ -833,12 +835,16 @@ def _enrich_deleted_alert(
     alert["quality_rank"] = quality["rank"]
     alert["list_markers"] = build_signal_list_markers(alert, list_profile)
 
+    stored_hundred_profile = int(alert.get("hundred_profile") or 0)
+    stored_hundred_profile_rule = str(alert.get("hundred_profile_rule") or "")
+    claude_hundred_profile = evaluate_legacy_hundred_profile(alert, analysis)
     stored_claude_ai = str(alert.get("claude_ai") or "")
     stored_claude_ai_rule = str(alert.get("claude_ai_rule") or "")
     cai = evaluate_claude_ai(
         {
             **alert,
             "direction": alert.get("final_direction") or analysis.get("direction") or alert.get("direction"),
+            "hundred_profile": 1 if claude_hundred_profile.get("hundred_profile") else 0,
         },
         analysis,
     )
@@ -848,8 +854,20 @@ def _enrich_deleted_alert(
     alert["claude_ai_play"] = meta.get("play", "")
     alert["claude_ai_tooltip"] = meta.get("tooltip", "")
     _apply_canonical_signal_direction(alert, analysis)
+    hundred_profile = evaluate_hundred_profile(alert, analysis)
+    alert["hundred_profile"] = 1 if hundred_profile["hundred_profile"] else 0
+    alert["hundred_profile_rule"] = hundred_profile["hundred_profile_rule"]
     _apply_canonical_deleted_result(alert, stored_direction)
     alert.update(evaluate_league_quality(alert.get("tournament"), alert.get("direction")))
+    if int(alert.get("id") or 0) and (
+        stored_hundred_profile != int(alert["hundred_profile"])
+        or stored_hundred_profile_rule != alert["hundred_profile_rule"]
+    ):
+        db.update_alert_hundred_profile(
+            int(alert["id"]),
+            bool(alert["hundred_profile"]),
+            alert["hundred_profile_rule"],
+        )
     if int(alert.get("id") or 0) and (
         stored_claude_ai != alert["claude_ai"]
         or stored_claude_ai_rule != alert["claude_ai_rule"]
