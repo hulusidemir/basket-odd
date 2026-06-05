@@ -87,11 +87,13 @@ class AiscoreScraper:
                         "title=%s, url=%s, body_len=%s",
                         page_title, page_url, body_len,
                     )
-                    try:
-                        await list_page.screenshot(path="debug_aiscore.png", full_page=False)
-                        logger.info("Debug screenshot: debug_aiscore.png")
-                    except Exception:
-                        pass
+                    debug_path = os.getenv("AISCORE_DEBUG_SCREENSHOT")
+                    if debug_path:
+                        try:
+                            await list_page.screenshot(path=debug_path, full_page=False)
+                            logger.info("Debug screenshot: %s", debug_path)
+                        except Exception:
+                            pass
                     return []
 
                 logger.info("Found %s match links on AIScore.", len(links))

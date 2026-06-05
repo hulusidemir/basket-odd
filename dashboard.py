@@ -208,19 +208,11 @@ def enrich_alerts_with_analysis(
         alert["tournament"] = _sanitize_tournament_display(alert.get("tournament"))
         analysis = _parse_analysis(alert.get("ai_analysis"))
         alert.pop("ai_analysis", None)
+        if _analysis_needs_live_rebuild(analysis):
+            analysis = _rebuild_live_analysis_from_alert(alert, analysis, backtest_profile)
         if not analysis:
-            analysis = build_signal_analysis(
-                {
-                    **alert,
-                    "opening_total": alert.get("opening"),
-                    "inplay_total": alert.get("live"),
-                    "prematch_total": alert.get("prematch"),
-                },
-                {},
-                config.THRESHOLD,
-                backtest_profile=backtest_profile,
-            )
-        elif backtest_profile is not None:
+            analysis = {}
+        if backtest_profile is not None:
             analysis = enrich_analysis_with_backtest(alert, analysis, backtest_profile, config.THRESHOLD)
         analysis = _drop_recent_form_analysis(_sanitize_recent_form_analysis(analysis))
         if analysis.get("projected_total") is None:
@@ -795,6 +787,40 @@ def api_delete_signal_list_entry(entry_id: int):
 _LIST_HEAVY_RAW_COLUMNS = ("ai_analysis", "team_context", "quality_reasons", "quality_summary", "quality_setup")
 
 
+def _analysis_needs_live_rebuild(analysis: dict) -> bool:
+    """Older ai_analysis payloads predate fair-line/projection fields."""
+    return (
+        not isinstance(analysis, dict)
+        or analysis.get("projected_total") is None
+        or analysis.get("fair_line") is None
+    )
+
+
+def _rebuild_live_analysis_from_alert(
+    alert: dict,
+    analysis: dict | None,
+    backtest_profile: dict | None = None,
+) -> dict:
+    existing = analysis if isinstance(analysis, dict) else {}
+    try:
+        rebuilt = build_signal_analysis(
+            {
+                **alert,
+                "opening_total": alert.get("opening"),
+                "inplay_total": alert.get("live"),
+                "prematch_total": alert.get("prematch"),
+                "quarter_scores": alert.get("quarter_scores") or existing.get("quarter_scores") or {},
+                "signal_count": alert.get("signal_count") or existing.get("signal_count") or 1,
+            },
+            {},
+            config.THRESHOLD,
+            backtest_profile=backtest_profile,
+        )
+    except (TypeError, ValueError, KeyError):
+        return existing
+    return {**existing, **rebuilt}
+
+
 def _enrich_deleted_alert(
     alert: dict,
     backtest_profile: dict | None,
@@ -805,9 +831,11 @@ def _enrich_deleted_alert(
     """Populate flat fields from ai_analysis. When full=False, drop heavy modal-only fields."""
     analysis = _parse_analysis(alert.get("ai_analysis"))
     stored_direction = _normalize_direction(alert.get("direction"))
+    if _analysis_needs_live_rebuild(analysis):
+        analysis = _rebuild_live_analysis_from_alert(alert, analysis, backtest_profile)
     if not analysis:
         analysis = {}
-    elif backtest_profile is not None:
+    if backtest_profile is not None:
         analysis = enrich_analysis_with_backtest(alert, analysis, backtest_profile, config.THRESHOLD)
     analysis = _drop_recent_form_analysis(_sanitize_recent_form_analysis(analysis))
     if isinstance(analysis.get("backtest"), dict):
