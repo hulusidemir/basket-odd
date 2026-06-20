@@ -21,16 +21,18 @@ from finished_match_service import (
     run_deleted_match_result_cycle,
     run_single_deleted_match_result_check,
 )
+from aiscore_scraper import AiscoreScraper
 from signal_analysis import build_backtest_profile, build_signal_analysis, enrich_analysis_with_backtest
-from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
-from signal_profiles import evaluate_hundred_profile, evaluate_legacy_hundred_profile
-from claude_ai_filter import evaluate_claude_ai, scenario_meta
-from signal_score import compute_signal_score
-from league_quality import evaluate_league_quality
+from signal_lists import build_signal_list_markers, build_signal_list_profile
+from signal_quality import calculate_signal_quality
 
 config = Config()
 db = Database(config.DB_PATH)
 db.init()
+DELETED_SIGNAL_QUALITY_BACKFILL_MARKER = os.path.join(
+    os.path.dirname(os.path.abspath(config.DB_PATH)) or os.getcwd(),
+    ".deleted_signal_quality_backfill.done",
+)
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
@@ -179,6 +181,87 @@ def _drop_recent_form_analysis(analysis: dict) -> dict:
     return cleaned
 
 
+def _valid_basket_total(value) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 60 else None
+
+
+def _sanitize_h2h_score_rows(rows) -> list[dict]:
+    if not isinstance(rows, list):
+        return []
+    cleaned_rows: list[dict] = []
+    seen: set[tuple] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            home = int(row.get("home"))
+            away = int(row.get("away"))
+        except (TypeError, ValueError):
+            continue
+        total = home + away
+        if not (20 <= home <= 180 and 20 <= away <= 180 and 100 <= total <= 320):
+            continue
+        date = str(row.get("date") or "").strip()
+        key = (date, home, away)
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned_rows.append({
+            "date": date,
+            "home": home,
+            "away": away,
+            "total": total,
+        })
+        if len(cleaned_rows) >= 12:
+            break
+    return cleaned_rows
+
+
+def _sanitize_h2h_row_totals(values) -> list[int]:
+    if not isinstance(values, list):
+        return []
+    totals: list[int] = []
+    for value in values:
+        try:
+            total = int(value)
+        except (TypeError, ValueError):
+            continue
+        if 100 <= total <= 320 and total not in totals:
+            totals.append(total)
+        if len(totals) >= 12:
+            break
+    return totals
+
+
+def _sanitize_h2h_analysis(analysis: dict) -> dict:
+    if not isinstance(analysis, dict):
+        return analysis or {}
+    h2h_total = _valid_basket_total(analysis.get("h2h_total"))
+    history_total = _valid_basket_total(analysis.get("history_total"))
+    h2h_score_rows = _sanitize_h2h_score_rows(analysis.get("h2h_score_rows"))
+    h2h_row_totals = [row["total"] for row in h2h_score_rows] or _sanitize_h2h_row_totals(analysis.get("h2h_row_totals"))
+    cleaned = {
+        **analysis,
+        "h2h_total": h2h_total,
+        "history_total": history_total,
+        "h2h_score_rows": h2h_score_rows,
+        "h2h_row_totals": h2h_row_totals,
+    }
+    if isinstance(cleaned.get("team_context"), dict):
+        team_context = dict(cleaned["team_context"])
+        team_context["h2h_avg_total"] = _valid_basket_total(team_context.get("h2h_avg_total"))
+        if team_context.get("h2h_avg_total") is None and team_context.get("h2h_over_pct") is None:
+            team_context.pop("h2h_note", None)
+        cleaned["team_context"] = team_context
+    if isinstance(cleaned.get("fair_components"), dict):
+        cleaned["fair_components"] = {**cleaned["fair_components"], "h2h": h2h_total}
+    return cleaned
+
+
 def _trim_backtest_payload(backtest: dict | None) -> dict:
     if not isinstance(backtest, dict):
         return {}
@@ -198,15 +281,139 @@ def _trim_backtest_payload(backtest: dict | None) -> dict:
     }
 
 
+def _build_league_quality_profile(rows: list[dict]) -> dict:
+    grouped: dict[str, dict] = {}
+    for row in rows or []:
+        result_key = _fold(row.get("result"))
+        if result_key not in {"basarili", "basarisiz"}:
+            continue
+        tournament = str(row.get("tournament") or "").strip()
+        if not tournament:
+            continue
+        bucket = grouped.setdefault(tournament, {"resolved": 0, "success": 0})
+        bucket["resolved"] += 1
+        if result_key == "basarili":
+            bucket["success"] += 1
+    profile = {}
+    for tournament, bucket in grouped.items():
+        resolved = int(bucket.get("resolved") or 0)
+        if resolved <= 0:
+            continue
+        profile[tournament] = {
+            "resolved": resolved,
+            "success": int(bucket.get("success") or 0),
+            "rate": round((float(bucket.get("success") or 0) / resolved) * 100, 1),
+        }
+    return profile
+
+
+def _previous_directions_by_alert_id(alerts: list[dict]) -> dict[int, list[str]]:
+    history: dict[str, list[str]] = {}
+    previous: dict[int, list[str]] = {}
+
+    def sort_key(row: dict):
+        ts = _parse_ts(row.get("alerted_at")) or datetime.min
+        return (ts, int(row.get("id") or 0))
+
+    for row in sorted(alerts or [], key=sort_key):
+        alert_id = int(row.get("id") or 0)
+        match_id = str(row.get("match_id") or "").strip()
+        previous[alert_id] = list(history.get(match_id) or [])
+        direction = _normalize_direction(row.get("final_direction") or row.get("direction"))
+        if match_id and direction in {"ALT", "ÜST"}:
+            history.setdefault(match_id, []).append(direction)
+    return previous
+
+
+def _apply_signal_quality(alert: dict, league_profile: dict | None, previous_directions: list[str] | None = None) -> dict:
+    tournament = str(alert.get("tournament") or "").strip()
+    league_stats = (league_profile or {}).get(tournament) or {}
+    quality = calculate_signal_quality({
+        **alert,
+        "direction": alert.get("final_direction") or alert.get("direction"),
+        "league_success_rate": league_stats.get("rate"),
+        "league_success_samples": league_stats.get("resolved"),
+        "previous_directions": previous_directions or [],
+    })
+    alert["signal_quality"] = quality
+    alert["signal_quality_score"] = quality.get("quality_score")
+    alert["signal_quality_label"] = quality.get("quality_label")
+    alert["signal_quality_reason"] = quality.get("reason")
+    alert["signal_quality_risk_note"] = quality.get("risk_note")
+    return quality
+
+
+def _apply_stored_signal_quality(alert: dict, analysis: dict) -> dict:
+    quality = analysis.get("signal_quality") if isinstance(analysis.get("signal_quality"), dict) else {}
+    alert["signal_quality"] = quality
+    alert["signal_quality_score"] = quality.get("quality_score")
+    alert["signal_quality_label"] = quality.get("quality_label")
+    alert["signal_quality_reason"] = quality.get("reason")
+    alert["signal_quality_risk_note"] = quality.get("risk_note")
+    return quality
+
+
+def _persist_signal_quality_for_rows(rows: list[dict], *, active_only: bool) -> int:
+    if not rows:
+        return 0
+    league_quality_profile = _build_league_quality_profile(db.recent_deleted_alerts(limit=None))
+    previous_map = _previous_directions_by_alert_id(rows)
+    updated = 0
+    for row in rows:
+        alert = dict(row)
+        analysis = _parse_analysis(alert.get("ai_analysis"))
+        quality = _apply_signal_quality(
+            alert,
+            league_quality_profile,
+            previous_map.get(int(alert.get("id") or 0), []),
+        )
+        if isinstance(analysis.get("signal_quality"), dict) and analysis.get("signal_quality") == quality:
+            continue
+        analysis = {**analysis, "signal_quality": quality}
+        if db.update_alert_ai_analysis(
+            int(alert.get("id") or 0),
+            json.dumps(analysis, ensure_ascii=False),
+            active_only=active_only,
+        ):
+            updated += 1
+    return updated
+
+
+def _persist_active_signal_quality(match_id: str | None = None) -> int:
+    rows = db.active_alerts_for_match(match_id) if match_id else db.active_alerts(limit=None)
+    return _persist_signal_quality_for_rows(rows, active_only=True)
+
+
+def _backfill_deleted_signal_quality_once() -> int:
+    if os.path.exists(DELETED_SIGNAL_QUALITY_BACKFILL_MARKER):
+        return 0
+    rows = db.recent_deleted_alerts(limit=None)
+    missing = [
+        row for row in rows
+        if not isinstance(_parse_analysis(row.get("ai_analysis")).get("signal_quality"), dict)
+    ]
+    updated = _persist_signal_quality_for_rows(missing, active_only=False)
+    try:
+        with open(DELETED_SIGNAL_QUALITY_BACKFILL_MARKER, "w", encoding="utf-8") as marker:
+            marker.write(datetime.now().isoformat(timespec="seconds"))
+    except OSError:
+        pass
+    return updated
+
+
 def enrich_alerts_with_analysis(
     alerts: list[dict],
     backtest_profile: dict | None = None,
     history_profile: dict | None = None,
     list_profile: dict | None = None,
+    league_quality_profile: dict | None = None,
+    persist_signal_quality: bool = False,
 ) -> list[dict]:
+    previous_map = _previous_directions_by_alert_id(alerts)
     for alert in alerts:
         alert["tournament"] = _sanitize_tournament_display(alert.get("tournament"))
-        analysis = _parse_analysis(alert.get("ai_analysis"))
+        raw_analysis = alert.get("ai_analysis")
+        analysis = _parse_analysis(raw_analysis)
         alert.pop("ai_analysis", None)
         if _analysis_needs_live_rebuild(analysis):
             analysis = _rebuild_live_analysis_from_alert(alert, analysis, backtest_profile)
@@ -214,7 +421,7 @@ def enrich_alerts_with_analysis(
             analysis = {}
         if backtest_profile is not None:
             analysis = enrich_analysis_with_backtest(alert, analysis, backtest_profile, config.THRESHOLD)
-        analysis = _drop_recent_form_analysis(_sanitize_recent_form_analysis(analysis))
+        analysis = _sanitize_h2h_analysis(_drop_recent_form_analysis(_sanitize_recent_form_analysis(analysis)))
         if analysis.get("projected_total") is None:
             analysis = {**analysis}
             analysis["fair_line"] = None
@@ -248,71 +455,42 @@ def enrich_alerts_with_analysis(
         alert["away_last6"] = {}
         alert["h2h_total"] = analysis.get("h2h_total")
         alert["history_total"] = analysis.get("history_total")
+        alert["h2h_games"] = analysis.get("h2h_games")
+        alert["h2h_source"] = analysis.get("h2h_source") or ""
+        alert["h2h_score_rows"] = analysis.get("h2h_score_rows") if isinstance(analysis.get("h2h_score_rows"), list) else []
+        alert["h2h_row_totals"] = analysis.get("h2h_row_totals") if isinstance(analysis.get("h2h_row_totals"), list) else []
+        alert["h2h_quality_score"] = analysis.get("h2h_quality_score")
+        alert["h2h_quality_notes"] = analysis.get("h2h_quality_notes") if isinstance(analysis.get("h2h_quality_notes"), list) else []
+        alert["h2h_note"] = analysis.get("h2h_note") or ""
+        alert["history_note"] = analysis.get("history_note") or ""
+        alert["team_context"] = analysis.get("team_context") if isinstance(analysis.get("team_context"), dict) else {}
         alert["recommendation"] = analysis.get("recommendation") or ""
         alert["legacy_direction"] = analysis.get("legacy_direction") or alert.get("direction")
         alert["final_direction"] = analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
-        alert["signal_scores"] = analysis.get("signal_scores") or {}
-        alert["signal_votes"] = analysis.get("signal_votes") if isinstance(analysis.get("signal_votes"), list) else []
+        alert["quarter_scores"] = analysis.get("quarter_scores") or {}
+        alert["quarter_totals"] = analysis.get("quarter_totals") or []
+        alert["quarter_ppm"] = analysis.get("quarter_ppm") or []
+        alert["quarter_length"] = analysis.get("quarter_length")
+        alert["match_ppm"] = analysis.get("match_ppm")
+        alert["sustainable_ppm"] = analysis.get("sustainable_ppm")
         alert["backtest"] = _trim_backtest_payload(analysis.get("backtest"))
-        alert["telegram_eligible"] = bool(analysis.get("telegram_eligible"))
         alert["selection_reason"] = analysis.get("selection_reason") or ""
         alert["projection_quality"] = analysis.get("projection_quality")
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
-        quality = build_quality_tag(alert, list_profile)
-        alert["quality_label"] = quality["label"]
-        alert["quality_tone"] = quality["tone"]
-        alert["quality_title"] = quality["title"]
-        alert["quality_rank"] = quality["rank"]
         alert["list_markers"] = build_signal_list_markers(alert, list_profile)
-        stored_hundred_profile = int(alert.get("hundred_profile") or 0)
-        stored_hundred_profile_rule = str(alert.get("hundred_profile_rule") or "")
-        claude_hundred_profile = evaluate_legacy_hundred_profile(alert, analysis)
-
-        stored_claude_ai = str(alert.get("claude_ai") or "")
-        stored_claude_ai_rule = str(alert.get("claude_ai_rule") or "")
-        cai = evaluate_claude_ai(
-            {
-                **alert,
-                "direction": alert.get("final_direction") or analysis.get("direction") or alert.get("direction"),
-                "hundred_profile": 1 if claude_hundred_profile.get("hundred_profile") else 0,
-            },
-            analysis,
-        )
-        _apply_claude_ai_result(alert, analysis, cai)
-        meta = scenario_meta(cai["claude_ai"])
-        alert["claude_ai_label"] = meta.get("label", "")
-        alert["claude_ai_play"] = meta.get("play", "")
-        alert["claude_ai_tooltip"] = meta.get("tooltip", "")
         _apply_canonical_signal_direction(alert, analysis)
-        hundred_profile = evaluate_hundred_profile(alert, analysis)
-        alert["hundred_profile"] = 1 if hundred_profile["hundred_profile"] else 0
-        alert["hundred_profile_rule"] = hundred_profile["hundred_profile_rule"]
-        if int(alert.get("id") or 0) and (
-            stored_hundred_profile != int(alert["hundred_profile"])
-            or stored_hundred_profile_rule != alert["hundred_profile_rule"]
-        ):
-            db.update_alert_hundred_profile(
-                int(alert["id"]),
-                bool(alert["hundred_profile"]),
-                alert["hundred_profile_rule"],
-            )
-        alert.update(evaluate_league_quality(alert.get("tournament"), alert.get("direction")))
-        if int(alert.get("id") or 0) and (
-            stored_claude_ai != alert["claude_ai"]
-            or stored_claude_ai_rule != alert["claude_ai_rule"]
-        ):
-            db.update_alert_claude_ai(
-                int(alert["id"]),
-                alert["claude_ai"],
-                alert["claude_ai_rule"],
-            )
+        quality = _apply_signal_quality(alert, league_quality_profile, previous_map.get(int(alert.get("id") or 0), []))
+        if analysis.get("signal_quality") != quality:
+            analysis = {**analysis, "signal_quality": quality}
+            alert["analysis"] = analysis
+            if persist_signal_quality and int(alert.get("id") or 0):
+                db.update_alert_ai_analysis(
+                    int(alert["id"]),
+                    json.dumps(analysis, ensure_ascii=False),
+                    active_only=True,
+                )
         if history_profile is not None:
             alert["history_guard"] = _build_alert_history_guard(alert, history_profile)
-        sig_score = compute_signal_score(alert, analysis)
-        alert["signal_score"] = sig_score.get("score")
-        alert["signal_score_label"] = sig_score.get("label")
-        if alert["signal_score"] is not None:
-            alert["quality_rank"] = alert["signal_score"]
     return alerts
 
 
@@ -360,30 +538,9 @@ def _normalize_direction(value) -> str:
     return text or "-"
 
 
-def _claude_ai_play_direction(alert: dict) -> str:
-    if not str(alert.get("claude_ai") or "").strip():
-        return ""
-    play = _normalize_direction(alert.get("claude_ai_play"))
-    return play if play in {"ALT", "ÜST"} else ""
-
-
-def _apply_claude_ai_result(alert: dict, analysis: dict, cai: dict) -> None:
-    """Keep current C_A fields authoritative over older ai_analysis snapshots."""
-    previous_rule = str(analysis.get("claude_ai_rule") or "")
-    previous_selection = str(analysis.get("selection_reason") or "")
-    alert["claude_ai"] = cai["claude_ai"]
-    alert["claude_ai_rule"] = cai["claude_ai_rule"]
-    analysis["claude_ai"] = cai["claude_ai"]
-    analysis["claude_ai_rule"] = cai["claude_ai_rule"]
-    if not cai["claude_ai"] and previous_rule and previous_selection == previous_rule:
-        analysis["selection_reason"] = ""
-        alert["selection_reason"] = ""
-
-
 def _apply_canonical_signal_direction(alert: dict, analysis: dict) -> None:
     """Expose one playable ALT/ÜST direction to the UI."""
-    play = _claude_ai_play_direction(alert)
-    final_direction = play or _normalize_direction(
+    final_direction = _normalize_direction(
         alert.get("final_direction") or analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
     )
     if final_direction in {"ALT", "ÜST"}:
@@ -391,9 +548,6 @@ def _apply_canonical_signal_direction(alert: dict, analysis: dict) -> None:
         alert["final_direction"] = final_direction
         analysis["direction"] = final_direction
         analysis["final_direction"] = final_direction
-        if play and alert.get("claude_ai_rule"):
-            analysis["selection_reason"] = alert.get("claude_ai_rule")
-            alert["selection_reason"] = alert.get("claude_ai_rule")
 
 
 def _apply_canonical_deleted_result(alert: dict, stored_direction: str) -> None:
@@ -569,7 +723,7 @@ def build_bet_builder(max_count: int) -> dict:
             continue
 
         original_direction = _normalize_direction(alert.get("direction"))
-        direction = _claude_ai_play_direction(alert)
+        direction = _normalize_direction(alert.get("final_direction") or alert.get("direction"))
         if direction not in {"ALT", "ÜST"}:
             continue
 
@@ -591,8 +745,8 @@ def build_bet_builder(max_count: int) -> dict:
             "url": alert.get("url", ""),
             "direction": direction,
             "original_direction": original_direction,
-            "signal_tier": alert.get("claude_ai_label") or "C_A",
-            "signal_code": alert.get("claude_ai") or f"{direction}-C_A",
+            "signal_tier": "Sinyal",
+            "signal_code": direction,
             "opening": round(opening, 1),
             "live": round(live, 1),
             "projected": round(float(projected), 1) if projected is not None else None,
@@ -747,11 +901,14 @@ def api_alerts():
     backtest_profile = build_backtest_profile(deleted_rows)
     history_profile = _build_history_profile(deleted_rows)
     list_profile = build_signal_list_profile(db.list_signal_list_entries())
+    league_quality_profile = _build_league_quality_profile(deleted_rows)
     alerts = enrich_alerts_with_analysis(
         db.recent_alerts(limit=500),
         backtest_profile,
         history_profile,
         list_profile,
+        league_quality_profile,
+        persist_signal_quality=True,
     )
     followed_ids = db.upcoming_followed_match_ids([a.get("match_id") for a in alerts])
     for alert in alerts:
@@ -772,7 +929,7 @@ def api_add_signal_list_entry():
         payload.get("scope") or "",
         payload.get("value") or "",
     )
-    if not entry:
+    if entry is None:
         return jsonify({"error": "invalid_list_entry"}), 400
     return jsonify({"entry": entry, "created": True})
 
@@ -784,7 +941,7 @@ def api_delete_signal_list_entry(entry_id: int):
     return jsonify({"id": entry_id, "deleted": True})
 
 
-_LIST_HEAVY_RAW_COLUMNS = ("ai_analysis", "team_context", "quality_reasons", "quality_summary", "quality_setup")
+_LIST_HEAVY_RAW_COLUMNS = ("ai_analysis", "team_context")
 
 
 def _analysis_needs_live_rebuild(analysis: dict) -> bool:
@@ -826,7 +983,8 @@ def _enrich_deleted_alert(
     backtest_profile: dict | None,
     *,
     full: bool,
-    list_profile: dict | None = None,
+    league_quality_profile: dict | None = None,
+    previous_directions: list[str] | None = None,
 ) -> dict:
     """Populate flat fields from ai_analysis. When full=False, drop heavy modal-only fields."""
     analysis = _parse_analysis(alert.get("ai_analysis"))
@@ -837,7 +995,7 @@ def _enrich_deleted_alert(
         analysis = {}
     if backtest_profile is not None:
         analysis = enrich_analysis_with_backtest(alert, analysis, backtest_profile, config.THRESHOLD)
-    analysis = _drop_recent_form_analysis(_sanitize_recent_form_analysis(analysis))
+    analysis = _sanitize_h2h_analysis(_drop_recent_form_analysis(_sanitize_recent_form_analysis(analysis)))
     if isinstance(analysis.get("backtest"), dict):
         analysis = {**analysis, "backtest": _trim_backtest_payload(analysis.get("backtest"))}
 
@@ -850,79 +1008,19 @@ def _enrich_deleted_alert(
     alert["projection_quality"] = analysis.get("projection_quality")
     alert["legacy_direction"] = analysis.get("legacy_direction") or alert.get("direction")
     alert["final_direction"] = analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
-    stored_quality_label = str(analysis.get("quality_label") or "").strip()
-    quality = {
-        "label": stored_quality_label or "-",
-        "tone": analysis.get("quality_tone") or ("empty" if not stored_quality_label else "neutral"),
-        "title": analysis.get("quality_title") or "Sinyal anında kaydedilmiş kalite etiketi.",
-        "rank": analysis.get("quality_rank") or 0,
-    }
-    alert["quality_label"] = quality["label"]
-    alert["quality_tone"] = quality["tone"]
-    alert["quality_title"] = quality["title"]
-    alert["quality_rank"] = quality["rank"]
-    alert["list_markers"] = build_signal_list_markers(alert, list_profile)
-
-    stored_hundred_profile = int(alert.get("hundred_profile") or 0)
-    stored_hundred_profile_rule = str(alert.get("hundred_profile_rule") or "")
-    claude_hundred_profile = evaluate_legacy_hundred_profile(alert, analysis)
-    stored_claude_ai = str(alert.get("claude_ai") or "")
-    stored_claude_ai_rule = str(alert.get("claude_ai_rule") or "")
-    cai = evaluate_claude_ai(
-        {
-            **alert,
-            "direction": alert.get("final_direction") or analysis.get("direction") or alert.get("direction"),
-            "hundred_profile": 1 if claude_hundred_profile.get("hundred_profile") else 0,
-        },
-        analysis,
-    )
-    _apply_claude_ai_result(alert, analysis, cai)
-    meta = scenario_meta(cai["claude_ai"])
-    alert["claude_ai_label"] = meta.get("label", "")
-    alert["claude_ai_play"] = meta.get("play", "")
-    alert["claude_ai_tooltip"] = meta.get("tooltip", "")
     _apply_canonical_signal_direction(alert, analysis)
-    hundred_profile = evaluate_hundred_profile(alert, analysis)
-    alert["hundred_profile"] = 1 if hundred_profile["hundred_profile"] else 0
-    alert["hundred_profile_rule"] = hundred_profile["hundred_profile_rule"]
+    _apply_stored_signal_quality(alert, analysis)
     _apply_canonical_deleted_result(alert, stored_direction)
-    alert.update(evaluate_league_quality(alert.get("tournament"), alert.get("direction")))
-    if int(alert.get("id") or 0) and (
-        stored_hundred_profile != int(alert["hundred_profile"])
-        or stored_hundred_profile_rule != alert["hundred_profile_rule"]
-    ):
-        db.update_alert_hundred_profile(
-            int(alert["id"]),
-            bool(alert["hundred_profile"]),
-            alert["hundred_profile_rule"],
-        )
-    if int(alert.get("id") or 0) and (
-        stored_claude_ai != alert["claude_ai"]
-        or stored_claude_ai_rule != alert["claude_ai_rule"]
-    ):
-        db.update_alert_claude_ai(
-            int(alert["id"]),
-            alert["claude_ai"],
-            alert["claude_ai_rule"],
-        )
-
-    sig_score = compute_signal_score(alert, analysis)
-    alert["signal_score"] = sig_score.get("score")
-    alert["signal_score_label"] = sig_score.get("label")
-    if alert["signal_score"] is not None:
-        alert["quality_rank"] = alert["signal_score"]
-
     if full:
         alert["analysis"] = analysis
         alert["home_last6"] = {}
         alert["away_last6"] = {}
         alert["h2h_total"] = analysis.get("h2h_total")
         alert["history_total"] = analysis.get("history_total")
+        alert["h2h_score_rows"] = analysis.get("h2h_score_rows") if isinstance(analysis.get("h2h_score_rows"), list) else []
+        alert["h2h_row_totals"] = analysis.get("h2h_row_totals") if isinstance(analysis.get("h2h_row_totals"), list) else []
         alert["recommendation"] = analysis.get("recommendation") or ""
-        alert["signal_scores"] = analysis.get("signal_scores") or {}
-        alert["signal_votes"] = analysis.get("signal_votes") if isinstance(analysis.get("signal_votes"), list) else []
         alert["backtest"] = _trim_backtest_payload(analysis.get("backtest"))
-        alert["telegram_eligible"] = bool(analysis.get("telegram_eligible"))
         alert["selection_reason"] = analysis.get("selection_reason") or ""
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
     else:
@@ -935,10 +1033,17 @@ def _enrich_deleted_alert(
 def _lightweight_enrich_deleted_alerts(
     alerts: list[dict],
     backtest_profile: dict | None = None,
-    list_profile: dict | None = None,
+    league_quality_profile: dict | None = None,
 ) -> list[dict]:
+    previous_map = _previous_directions_by_alert_id(alerts)
     for alert in alerts:
-        _enrich_deleted_alert(alert, backtest_profile, full=False, list_profile=list_profile)
+        _enrich_deleted_alert(
+            alert,
+            backtest_profile,
+            full=False,
+            league_quality_profile=league_quality_profile,
+            previous_directions=previous_map.get(int(alert.get("id") or 0), []),
+        )
     return alerts
 
 
@@ -947,9 +1052,9 @@ def api_deleted_matches():
     raw_limit = request.args.get("limit", type=int)
     all_rows = db.recent_deleted_alerts(limit=None)
     backtest_profile = build_backtest_profile(all_rows)
-    list_profile = build_signal_list_profile(db.list_signal_list_entries())
+    league_quality_profile = _build_league_quality_profile(all_rows)
     rows = all_rows if raw_limit is None or raw_limit <= 0 else all_rows[:raw_limit]
-    return jsonify(_lightweight_enrich_deleted_alerts(rows, backtest_profile, list_profile))
+    return jsonify(_lightweight_enrich_deleted_alerts(rows, backtest_profile, league_quality_profile))
 
 
 @app.route("/api/deleted-matches/<int:alert_id>/details")
@@ -959,17 +1064,24 @@ def api_deleted_match_details(alert_id: int):
     if not target:
         return jsonify({"error": "not_found"}), 404
     backtest_profile = build_backtest_profile(all_rows)
-    list_profile = build_signal_list_profile(db.list_signal_list_entries())
-    return jsonify(_enrich_deleted_alert(target, backtest_profile, full=True, list_profile=list_profile))
+    league_quality_profile = _build_league_quality_profile(all_rows)
+    previous_map = _previous_directions_by_alert_id(all_rows)
+    return jsonify(_enrich_deleted_alert(
+        target,
+        backtest_profile,
+        full=True,
+        league_quality_profile=league_quality_profile,
+        previous_directions=previous_map.get(int(target.get("id") or 0), []),
+    ))
 
 
 @app.route("/api/deleted-matches/export.csv")
 def api_export_finished_deleted_matches_csv():
     deleted_rows = db.recent_deleted_alerts(limit=None)
     backtest_profile = build_backtest_profile(deleted_rows)
-    list_profile = build_signal_list_profile(db.list_signal_list_entries())
+    league_quality_profile = _build_league_quality_profile(deleted_rows)
     rows = [
-        row for row in _lightweight_enrich_deleted_alerts(deleted_rows, backtest_profile, list_profile)
+        row for row in _lightweight_enrich_deleted_alerts(deleted_rows, backtest_profile, league_quality_profile)
         if str(row.get("result") or "").strip()
     ]
 
@@ -978,7 +1090,7 @@ def api_export_finished_deleted_matches_csv():
     writer = csv.writer(output)
     writer.writerow([
         "Maç", "Lig", "Sinyal Tarihi (TR)", "Sinyal Saati (TR)", "Sinyal Anı", "Sinyal Türü", "Skor",
-        "Açılış", "Canlı", "Proj.", "Adil Barem", "Kalite", "Liste", "Sonuç", "Not",
+        "Açılış", "Canlı", "Proj.", "Adil Barem", "S.K. Puan", "S.K. Etiket", "Sonuç", "Not",
     ])
 
     for row in rows:
@@ -989,8 +1101,6 @@ def api_export_finished_deleted_matches_csv():
         projected_cell = f"{float(projected):.1f}" if projected is not None else ""
         fair_line = row.get("fair_line")
         fair_line_cell = f"{float(fair_line):.1f}" if fair_line is not None else "Hesaplanamıyor"
-        markers = row.get("list_markers") if isinstance(row.get("list_markers"), list) else []
-        marker_cell = " | ".join(str(marker.get("title") or "").strip() for marker in markers if isinstance(marker, dict))
         alerted_at = str(row.get("alerted_at") or "").strip()
         alerted_date, _, alerted_time = alerted_at.partition(" ")
         writer.writerow([
@@ -1005,8 +1115,8 @@ def api_export_finished_deleted_matches_csv():
             row.get("live") if row.get("live") is not None else "",
             projected_cell,
             fair_line_cell,
-            row.get("quality_label") or "",
-            marker_cell,
+            row.get("signal_quality_score") if row.get("signal_quality_score") is not None else "",
+            row.get("signal_quality_label") or "",
             row.get("result") or "",
             row.get("note") or "",
         ])
@@ -1159,6 +1269,129 @@ _PERIOD_BUCKET_ORDER = [
 ]
 
 
+_QUALITY_BUCKET_ORDER = ["80-100", "60-79", "50-59", "0-49", "Bilinmiyor"]
+
+
+def _quality_bucket(value) -> str:
+    try:
+        score = int(round(float(value)))
+    except (TypeError, ValueError):
+        return "Bilinmiyor"
+    if score >= 80:
+        return "80-100"
+    if score >= 60:
+        return "60-79"
+    if score >= 50:
+        return "50-59"
+    return "0-49"
+
+
+def _line_diff_bucket(row: dict) -> str:
+    opening = _safe_float(row.get("opening"), None)
+    live = _safe_float(row.get("live"), None)
+    if opening is None or live is None:
+        return "Bilinmiyor"
+    diff = live - opening
+    abs_diff = abs(diff)
+    prefix = "+" if diff >= 0 else "-"
+    if abs_diff < 10:
+        return "0-9.9"
+    if abs_diff < 15:
+        return f"{prefix}10-14.9"
+    if abs_diff < 20:
+        return f"{prefix}15-19.9"
+    if abs_diff <= 30:
+        return f"{prefix}20-30"
+    return f"{prefix}30+"
+
+
+def _projection_diff_bucket(value) -> str:
+    try:
+        diff = float(value)
+    except (TypeError, ValueError):
+        return "Bilinmiyor"
+    if diff <= -10:
+        return "<= -10"
+    if diff <= -5:
+        return "-10 - -5"
+    if diff < 5:
+        return "-5 - +5"
+    if diff < 10:
+        return "+5 - +10"
+    return ">= +10"
+
+
+def _score_gap_bucket(value) -> str:
+    try:
+        gap = abs(int(value))
+    except (TypeError, ValueError):
+        return "Bilinmiyor"
+    if gap <= 7:
+        return "0-7"
+    if gap <= 15:
+        return "8-15"
+    if gap <= 24:
+        return "16-24"
+    return "25+"
+
+
+def _stats_for_grouped_rows(groups: dict[str, list], order: list[str] | None = None, min_resolved: int = 0) -> list[dict]:
+    labels = order or sorted(groups.keys())
+    rows_out = []
+    for label in labels:
+        rows = groups.get(label) or []
+        if not rows:
+            continue
+        stats = _bucket_stats(rows)
+        if stats["resolved"] < min_resolved:
+            continue
+        stats["label"] = label
+        rows_out.append(stats)
+    return rows_out
+
+
+def build_signal_quality_report(signals: list[dict]) -> dict:
+    resolved = [s for s in signals if _fold(s.get("result")) in {"basarili", "basarisiz"}]
+    quality_groups: dict[str, list] = {label: [] for label in _QUALITY_BUCKET_ORDER}
+    for row in resolved:
+        quality_groups[_quality_bucket(row.get("signal_quality_score"))].append(row)
+
+    by_direction: dict[str, list[dict]] = {}
+    for direction in ("ALT", "ÜST"):
+        scoped = [row for row in resolved if _normalize_direction(row.get("direction")) == direction]
+        groups = {label: [] for label in _QUALITY_BUCKET_ORDER}
+        for row in scoped:
+            groups[_quality_bucket(row.get("signal_quality_score"))].append(row)
+        by_direction[direction] = _stats_for_grouped_rows(groups, _QUALITY_BUCKET_ORDER)
+
+    league_groups: dict[str, list] = {}
+    period_groups: dict[str, list] = {label: [] for label in _PERIOD_BUCKET_ORDER}
+    line_diff_groups: dict[str, list] = {}
+    projection_diff_groups: dict[str, list] = {}
+    score_gap_groups: dict[str, list] = {}
+    for row in resolved:
+        tournament = str(row.get("tournament") or "").strip() or "Bilinmiyor"
+        league_groups.setdefault(tournament, []).append(row)
+        period_groups[_period_bucket(row.get("alert_moment") or row.get("status"))].append(row)
+        line_diff_groups.setdefault(_line_diff_bucket(row), []).append(row)
+        quality = row.get("signal_quality") if isinstance(row.get("signal_quality"), dict) else {}
+        projection_diff_groups.setdefault(_projection_diff_bucket(quality.get("projection_diff")), []).append(row)
+        score_gap_groups.setdefault(_score_gap_bucket(quality.get("score_gap")), []).append(row)
+
+    league_rows = _stats_for_grouped_rows(league_groups, min_resolved=3)
+    league_rows.sort(key=lambda item: (-item["resolved"], -item["rate"], item["label"]))
+
+    return {
+        "quality_buckets": _stats_for_grouped_rows(quality_groups, _QUALITY_BUCKET_ORDER),
+        "by_direction": by_direction,
+        "league": league_rows,
+        "period": _stats_for_grouped_rows(period_groups, _PERIOD_BUCKET_ORDER),
+        "line_diff": _stats_for_grouped_rows(line_diff_groups),
+        "projection_diff": _stats_for_grouped_rows(projection_diff_groups),
+        "score_gap": _stats_for_grouped_rows(score_gap_groups, ["0-7", "8-15", "16-24", "25+", "Bilinmiyor"]),
+    }
+
+
 def _parse_ts(value):
     if not value:
         return None
@@ -1190,6 +1423,7 @@ def build_deleted_matches_report(signals: list) -> dict:
             "worst_dir_period": [],
             "tournament_top": [],
             "tournament_bottom": [],
+            "signal_quality_report": build_signal_quality_report([]),
             "trend_7d": None,
             "actions": [],
         }
@@ -1350,7 +1584,7 @@ def build_deleted_matches_report(signals: list) -> dict:
             )
         elif overall_rate < 44:
             actions.append(
-                f"Genel başarı %{overall_rate:.1f} — C_A/100 ve yüksek skor dışında kalan normal sinyaller filtrelenmeli."
+                f"Genel başarı %{overall_rate:.1f} — ham sinyaller segmentlere göre filtrelenmeli."
             )
 
     worst_diff = None
@@ -1532,6 +1766,7 @@ def build_deleted_matches_report(signals: list) -> dict:
         "worst_dir_period": worst_dir_period,
         "tournament_top": tournament_top,
         "tournament_bottom": tournament_bottom,
+        "signal_quality_report": build_signal_quality_report(signals),
         "trend_7d": trend_7d,
         "actions": actions,
     }
@@ -1541,8 +1776,8 @@ def build_deleted_matches_report(signals: list) -> dict:
 def api_deleted_matches_report():
     signals = db.recent_deleted_alerts(limit=None)
     backtest_profile = build_backtest_profile(signals)
-    list_profile = build_signal_list_profile(db.list_signal_list_entries())
-    signals = _lightweight_enrich_deleted_alerts(signals, backtest_profile, list_profile)
+    league_quality_profile = _build_league_quality_profile(signals)
+    signals = _lightweight_enrich_deleted_alerts(signals, backtest_profile, league_quality_profile)
     return jsonify(build_deleted_matches_report(signals))
 
 
@@ -2027,8 +2262,8 @@ def _derive_rules_and_simulate(resolved_signals: list, baseline_rate: float) -> 
 def api_deleted_matches_insights():
     signals = db.recent_deleted_alerts(limit=None)
     backtest_profile = build_backtest_profile(signals)
-    list_profile = build_signal_list_profile(db.list_signal_list_entries())
-    signals = _lightweight_enrich_deleted_alerts(signals, backtest_profile, list_profile)
+    league_quality_profile = _build_league_quality_profile(signals)
+    signals = _lightweight_enrich_deleted_alerts(signals, backtest_profile, league_quality_profile)
     return jsonify(build_deleted_matches_insights(signals))
 
 
@@ -2203,11 +2438,148 @@ def api_update_alert_note(alert_id: int):
     })
 
 
+async def _fetch_alert_overview_snapshot(url: str) -> dict:
+    scraper = AiscoreScraper(
+        aiscore_url=config.AISCORE_URL,
+        max_matches_per_cycle=1,
+        page_timeout_ms=config.PAGE_TIMEOUT_MS,
+        skip_h2h=True,
+    )
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as p:
+        browser, context = await scraper._create_browser_context(p)
+        page = await context.new_page()
+        page.set_default_timeout(config.PAGE_TIMEOUT_MS)
+        try:
+            return await scraper._fetch_overview_data(page, url)
+        finally:
+            await context.close()
+            await browser.close()
+
+
+async def _fetch_alert_h2h_body(url: str) -> str:
+    scraper = AiscoreScraper(
+        aiscore_url=config.AISCORE_URL,
+        max_matches_per_cycle=1,
+        page_timeout_ms=config.PAGE_TIMEOUT_MS,
+        skip_h2h=False,
+    )
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as p:
+        browser, context = await scraper._create_browser_context(p)
+        page = await context.new_page()
+        page.set_default_timeout(config.PAGE_TIMEOUT_MS)
+        try:
+            return await scraper._fetch_h2h_body(page, url)
+        finally:
+            await context.close()
+            await browser.close()
+
+
+@app.route("/api/alerts/<int:alert_id>/h2h/refresh", methods=["POST"])
+def api_refresh_alert_h2h(alert_id: int):
+    alert = db.get_alert(alert_id)
+    if not alert:
+        return jsonify({"error": "not found"}), 404
+    url = str(alert.get("url") or "").strip()
+    if not url:
+        return jsonify({"error": "missing_url"}), 400
+
+    try:
+        h2h_body = asyncio.run(_fetch_alert_h2h_body(url))
+    except Exception as exc:
+        return jsonify({"error": "fetch_failed", "detail": str(exc)}), 502
+
+    if not h2h_body:
+        return jsonify({"error": "h2h_not_found"}), 404
+
+    existing_analysis = _parse_analysis(alert.get("ai_analysis"))
+    rebuilt = build_signal_analysis(
+        {
+            **alert,
+            "opening_total": alert.get("opening"),
+            "inplay_total": alert.get("live"),
+            "prematch_total": alert.get("prematch"),
+            "quarter_scores": existing_analysis.get("quarter_scores") or {},
+            "signal_count": alert.get("signal_count") or existing_analysis.get("signal_count") or 1,
+        },
+        {"h2h": {"body_text": h2h_body}},
+        config.THRESHOLD,
+    )
+    analysis = {
+        **existing_analysis,
+        **rebuilt,
+    }
+    db.update_alert_live_snapshot(
+        alert_id,
+        ai_analysis=json.dumps(analysis, ensure_ascii=False),
+    )
+    updated = db.get_alert(alert_id) or alert
+    updated["ai_analysis"] = json.dumps(analysis, ensure_ascii=False)
+    enriched = enrich_alerts_with_analysis([updated])[0]
+    return jsonify({"ok": True, "alert": enriched, "analysis": analysis})
+
+
+@app.route("/api/alerts/<int:alert_id>/quarter-scores/refresh", methods=["POST"])
+def api_refresh_alert_quarter_scores(alert_id: int):
+    alert = db.get_alert(alert_id)
+    if not alert:
+        return jsonify({"error": "not found"}), 404
+    url = str(alert.get("url") or "").strip()
+    if not url:
+        return jsonify({"error": "missing_url"}), 400
+
+    try:
+        overview = asyncio.run(_fetch_alert_overview_snapshot(url))
+    except Exception as exc:
+        return jsonify({"error": "fetch_failed", "detail": str(exc)}), 502
+
+    quarter_scores = overview.get("quarterScores") if isinstance(overview, dict) else {}
+    if not isinstance(quarter_scores, dict) or not quarter_scores.get("home") or not quarter_scores.get("away"):
+        return jsonify({"error": "quarter_scores_not_found"}), 404
+
+    status = str(overview.get("status") or alert.get("status") or "")
+    score = str(overview.get("score") or alert.get("score") or "")
+    existing_analysis = _parse_analysis(alert.get("ai_analysis"))
+    rebuilt = build_signal_analysis(
+        {
+            **alert,
+            "status": status,
+            "score": score,
+            "opening_total": alert.get("opening"),
+            "inplay_total": alert.get("live"),
+            "prematch_total": alert.get("prematch"),
+            "quarter_scores": quarter_scores,
+            "signal_count": alert.get("signal_count") or existing_analysis.get("signal_count") or 1,
+        },
+        {},
+        config.THRESHOLD,
+    )
+    analysis = {
+        **existing_analysis,
+        **rebuilt,
+        "quarter_scores": quarter_scores,
+    }
+    db.update_alert_live_snapshot(
+        alert_id,
+        status=status,
+        score=score,
+        ai_analysis=json.dumps(analysis, ensure_ascii=False),
+    )
+    updated = db.get_alert(alert_id) or {**alert, "status": status, "score": score}
+    updated["ai_analysis"] = json.dumps(analysis, ensure_ascii=False)
+    enriched = enrich_alerts_with_analysis([updated])[0]
+    return jsonify({"ok": True, "alert": enriched, "analysis": analysis})
+
+
 @app.route("/api/alerts/<int:alert_id>", methods=["DELETE"])
 def api_delete_alert(alert_id: int):
     alert = db.get_alert(alert_id)
     if not alert:
         return jsonify({"error": "not found"}), 404
+    _persist_active_signal_quality(alert["match_id"])
     deleted_count = db.delete_match_data(alert["match_id"])
     return jsonify({
         "id": alert_id,
@@ -2354,8 +2726,15 @@ def api_team_history_lookup():
 
 @app.route("/api/clear", methods=["POST"])
 def api_clear_db():
+    _persist_active_signal_quality()
     moved_count = db.clear_all()
     return jsonify({"cleared": True, "moved_count": moved_count})
+
+
+try:
+    _backfill_deleted_signal_quality_once()
+except Exception:
+    pass
 
 
 if __name__ == "__main__":

@@ -19,7 +19,6 @@ from flask import Blueprint, jsonify, render_template, request
 
 from config import Config
 from db import Database
-from signal_lists import build_signal_list_markers, build_signal_list_profile
 from upcoming_scraper import UpcomingScraper
 
 log = logging.getLogger("upcoming_app")
@@ -84,9 +83,6 @@ def upcoming_api_list():
     db = Database(config.DB_PATH)
     db.init()
     matches = db.list_upcoming_matches(limit=500)
-    list_profile = build_signal_list_profile(db.list_signal_list_entries())
-    for match in matches:
-        match["list_markers"] = build_signal_list_markers(match, list_profile)
     saved_signals = sum(1 for match in matches if match.get("signal_direction"))
     return jsonify(
         {

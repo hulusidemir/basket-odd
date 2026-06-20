@@ -20,9 +20,6 @@ from notifier import TelegramNotifier
 from pace_tracker import PaceTracker
 from projection import game_clock, parse_score
 from signal_analysis import build_backtest_profile, build_signal_analysis
-from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
-from signal_profiles import evaluate_hundred_profile, evaluate_legacy_hundred_profile
-from claude_ai_filter import evaluate_claude_ai, scenario_meta
 
 
 def setup_logging(level: str):
@@ -131,6 +128,9 @@ async def process_match(
         return
 
     period_has_any_alert = period is not None and db.was_alerted_in_period(match_id, period)
+    if period_has_any_alert:
+        log.debug("Skipped (period %s already alerted): id=%s", period, match_id)
+        return
 
     signal_count = total_alerts + 1
     context = {"h2h": {"body_text": match.get("h2h_body_text", "")}}
@@ -149,110 +149,11 @@ async def process_match(
         backtest_profile=backtest_profile,
     )
     direction = analysis.get("direction") or legacy_direction
-
-    alert_context = {
-        "match_name": match_name,
-        "tournament": tournament,
-        "status": status,
-        "score": score,
-        "opening": opening_total,
-        "live": inplay_total,
+    analysis = {
+        **analysis,
         "direction": direction,
-        "fair_line": analysis.get("fair_line"),
-        "projected_total": analysis.get("projected_total"),
+        "final_direction": direction,
     }
-    list_profile = build_signal_list_profile(db.list_signal_list_entries())
-    quality = build_quality_tag(alert_context, list_profile)
-    analysis = {
-        **analysis,
-        "quality_label": quality["label"],
-        "quality_tone": quality["tone"],
-        "quality_title": quality["title"],
-        "quality_rank": quality["rank"],
-        "list_markers": build_signal_list_markers(alert_context, list_profile),
-    }
-    claude_hundred_profile = evaluate_legacy_hundred_profile(
-        {
-            **alert_context,
-            "diff": abs_diff,
-            "projected": analysis.get("projected_total"),
-            "projected_gap": analysis.get("projected_gap"),
-            "quality_label": quality["label"],
-        },
-        analysis,
-    )
-
-    claude_ai = evaluate_claude_ai(
-        {
-            "direction": direction,
-            "opening": opening_total,
-            "live": inplay_total,
-            "diff": abs_diff,
-            "score": score,
-            "alert_period": period,
-            "hundred_profile": 1 if claude_hundred_profile.get("hundred_profile") else 0,
-        },
-        analysis,
-    )
-    analysis = {
-        **analysis,
-        "claude_ai": claude_ai["claude_ai"],
-        "claude_ai_rule": claude_ai["claude_ai_rule"],
-    }
-    claude_play = scenario_meta(claude_ai["claude_ai"]).get("play", "")
-    claude_strong = claude_ai["claude_ai"] in {"TRUE_UNDER", "TRUE_OVER"}
-    if claude_play in {"ALT", "ÜST"}:
-        direction = claude_play
-        analysis = {
-            **analysis,
-            "direction": direction,
-            "final_direction": direction,
-            "telegram_eligible": bool(analysis.get("telegram_eligible")) or claude_strong,
-            "selection_reason": claude_ai["claude_ai_rule"] or analysis.get("selection_reason") or "",
-        }
-    hundred_profile = evaluate_hundred_profile(
-        {
-            **alert_context,
-            "direction": direction,
-            "final_direction": direction,
-            "diff": abs_diff,
-        },
-        analysis,
-    )
-    analysis = {**analysis, **hundred_profile}
-
-    backtest = analysis.get("backtest") if isinstance(analysis.get("backtest"), dict) else {}
-    try:
-        backtest_rate = float(backtest.get("chosen_rate"))
-    except (TypeError, ValueError):
-        backtest_rate = None
-    try:
-        backtest_samples = int(backtest.get("chosen_samples") or 0)
-    except (TypeError, ValueError):
-        backtest_samples = 0
-    # Backtest and fair-line quality are diagnostics here; the threshold move
-    # itself is enough to send, while weak buckets remain visible in analysis.
-    backtest_gate_ok = (
-        claude_strong
-        or backtest_rate is None
-        or backtest_samples < 120
-        or backtest_rate >= 45.0
-    )
-    quality_gate_passed = (bool(analysis.get("telegram_eligible")) and backtest_gate_ok) or claude_strong
-    analysis = {
-        **analysis,
-        "quality_gate_passed": quality_gate_passed,
-        "backtest_gate_ok": backtest_gate_ok,
-    }
-    if not quality_gate_passed:
-        log.debug(
-            "Sending threshold signal despite weak quality gate: id=%s match=%s direction=%s reason=%s",
-            match_id, match_name, direction, analysis.get("selection_reason") or "-",
-        )
-
-    if period_has_any_alert:
-        log.debug("Skipped (period %s already alerted): id=%s", period, match_id)
-        return
 
     alert_id = db.save_alert(
         match_id, match_name, opening_total, inplay_total, direction, abs_diff,
@@ -261,10 +162,6 @@ async def process_match(
         ai_analysis=json.dumps(analysis, ensure_ascii=False),
         alert_period=period,
         alert_moment=" | ".join(p for p in (status, score) if p),
-        hundred_profile=hundred_profile["hundred_profile"],
-        hundred_profile_rule=hundred_profile["hundred_profile_rule"],
-        claude_ai=claude_ai["claude_ai"],
-        claude_ai_rule=claude_ai["claude_ai_rule"],
     )
 
     followed_upcoming = db.is_upcoming_followed(match_id)

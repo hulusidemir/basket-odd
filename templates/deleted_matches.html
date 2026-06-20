@@ -980,6 +980,48 @@
 	      gap: 6px;
 	      min-width: 54px;
 	    }
+	    .signal-quality-box { max-width: 720px; }
+	    .signal-quality-body {
+	      display: grid;
+	      gap: 12px;
+	      padding: 2px 0 0;
+	      line-height: 1.5;
+	    }
+	    .signal-quality-card {
+	      border: 1px solid rgba(129, 162, 198, 0.12);
+	      border-radius: 12px;
+	      background: rgba(8, 8, 14, 0.72);
+	      padding: 12px 14px;
+	    }
+	    .signal-quality-row {
+	      display: flex;
+	      align-items: center;
+	      justify-content: space-between;
+	      gap: 16px;
+	      padding: 8px 0;
+	      border-top: 1px solid rgba(129, 162, 198, 0.08);
+	      font-size: 13px;
+	    }
+	    .signal-quality-row:first-child { border-top: 0; padding-top: 0; }
+	    .signal-quality-row span { color: var(--text-soft); }
+	    .signal-quality-row strong {
+	      color: var(--text);
+	      text-align: right;
+	      overflow-wrap: anywhere;
+	      font-variant-numeric: tabular-nums;
+	    }
+	    .signal-quality-title {
+	      color: var(--text);
+	      font-size: 12px;
+	      font-weight: 900;
+	      letter-spacing: 0.06em;
+	      text-transform: uppercase;
+	    }
+	    .signal-quality-note {
+	      color: var(--text-soft);
+	      font-size: 12.5px;
+	      line-height: 1.55;
+	    }
 	    .list-marker {
 	      display: inline-block;
 	      width: 10px;
@@ -1738,16 +1780,6 @@
           <span>Başarı %</span>
           <strong id="statRate">-</strong>
 	        </div>
-        <div class="stat-chip hundred clickable" id="chipHundredProfile" onclick="toggleHundredProfileFilter()" title="100 Profil rozeti olan silinen sinyalleri göster">
-          <span>100 Profil</span>
-          <strong id="statHundredProfile">0</strong>
-          <div class="muted" id="statHundredProfileRate" style="font-size:11px;margin-top:2px;">Başarı: -</div>
-        </div>
-        <div class="stat-chip hundred clickable" id="chipClaudeAi" onclick="toggleClaudeAiFilter()" title="C_A filtresinden geçen yıldızlı sinyaller">
-          <span>C_A ⭐</span>
-          <strong id="statClaudeAi">0</strong>
-          <div class="muted" id="statClaudeAiRate" style="font-size:11px;margin-top:2px;">Başarı: -</div>
-        </div>
 	      </section>
 
 	      <section class="panel">
@@ -1786,15 +1818,14 @@
               <th data-sort="match_name">Maç</th>
 	              <th data-sort="alert_moment">Sinyal Anı</th>
 	              <th data-sort="direction">Sinyal</th>
-              <th class="ca-cell" data-sort="claude_ai" title="Claude AI filtresi">C_A</th>
               <th data-sort="status">Durum</th>
               <th data-sort="score">Skor</th>
               <th data-sort="opening">Açılış</th>
               <th data-sort="live">Canlı</th>
               <th data-sort="projected">Proj.</th>
+              <th data-sort="signal_quality_score">S.K.</th>
               <th data-sort="diff">Fark</th>
               <th data-sort="fair_line">Adil Barem</th>
-              <th data-sort="quality_rank">Kalite</th>
               <th data-sort="result">Sonuç</th>
               <th aria-label="Sil"></th>
             </tr>
@@ -1832,20 +1863,30 @@
     </div>
   </div>
 
-  <div class="modal-overlay" id="signalInfoModal" onclick="if(event.target===this)closeSignalInfo()">
-    <div class="modal-box signal-info-box">
-      <div class="modal-header">
-        <h2>Sinyal Bilgileri</h2>
-        <button class="modal-close" onclick="closeSignalInfo()">Kapat</button>
+	  <div class="modal-overlay" id="signalInfoModal" onclick="if(event.target===this)closeSignalInfo()">
+	    <div class="modal-box signal-info-box">
+	      <div class="modal-header">
+	        <h2>Sinyal Bilgileri</h2>
+	        <button class="modal-close" onclick="closeSignalInfo()">Kapat</button>
       </div>
       <div id="signalInfoContent">
         <div class="report-loading">Sinyal bilgileri yükleniyor…</div>
-      </div>
-    </div>
-  </div>
+	      </div>
+	    </div>
+	  </div>
 
-  <div class="modal-overlay" id="noteInfoModal" onclick="if(event.target===this)closeNoteInfo()">
-    <div class="modal-box">
+	  <div class="modal-overlay" id="signalQualityModal" onclick="if(event.target===this)closeSignalQualityModal()">
+	    <div class="modal-box signal-quality-box">
+	      <div class="modal-header">
+	        <h2 id="signalQualityTitle">Sinyal Kalitesi</h2>
+	        <button class="modal-close" onclick="closeSignalQualityModal()">Kapat</button>
+	      </div>
+	      <div id="signalQualityContent" class="signal-quality-body"></div>
+	    </div>
+	  </div>
+
+	  <div class="modal-overlay" id="noteInfoModal" onclick="if(event.target===this)closeNoteInfo()">
+	    <div class="modal-box">
       <div class="modal-header">
         <h2 id="noteInfoTitle">Maç Notu</h2>
         <button class="modal-close" onclick="closeNoteInfo()">Kapat</button>
@@ -1958,93 +1999,12 @@
       return Number.isFinite(projected) && Number.isFinite(live) ? projected - live : null;
     }
 
-    function isHundredProfileCandidate(alert) {
-      return Number(alert.hundred_profile || 0) === 1;
-    }
-
-    function hundredProfileStats() {
-      const rows = deletedAlerts.filter(isHundredProfileCandidate);
-      const successRows = rows.filter(item => item.result === 'Başarılı');
-      const resolved = rows.filter(item => item.result === 'Başarılı' || item.result === 'Başarısız').length;
-      const rate = resolved > 0 ? Math.round((successRows.length / resolved) * 1000) / 10 : null;
-      return { total: rows.length, success: successRows.length, resolved, rate };
-    }
-
-    function isClaudeAiCandidate(alert) {
-      return String(alert.claude_ai || '').trim() !== '';
-    }
-
-    function claudeAiStats() {
-      const rows = deletedAlerts.filter(isClaudeAiCandidate);
-      const resolvedRows = rows.filter(item => item.result === 'Başarılı' || item.result === 'Başarısız');
-      const successRows = resolvedRows.filter(item => item.result === 'Başarılı');
-      const rate = resolvedRows.length > 0 ? Math.round((successRows.length / resolvedRows.length) * 1000) / 10 : null;
-      return { total: rows.length, success: successRows.length, resolved: resolvedRows.length, rate };
-    }
-
-    function caOutcome(alert) {
-      const play = String(alert.claude_ai_play || '');
-      const result = String(alert.result || '');
-      if (!play || (result !== 'Başarılı' && result !== 'Başarısız')) return null;
-      return result === 'Başarılı';
-    }
-
-    const CA_DETAILS = {
-      TRUE_UNDER: { label: 'Güçlü Alt', play: 'ALT', desc: 'C_A geçmişte güçlü çalışan örüntüleri yakaladı. Nihai seçim ALT.' },
-      TRUE_OVER:  { label: 'Güçlü Üst', play: 'ÜST', desc: 'C_A geçmişte güçlü çalışan örüntüleri yakaladı. Nihai seçim ÜST.' },
-      FADE_OVER:  { label: 'Güçlü Üst', play: 'ÜST', desc: 'C_A geçmişte güçlü çalışan örüntüleri yakaladı. Nihai seçim ÜST.' },
-      FADE_UNDER: { label: 'Güçlü Alt', play: 'ALT', desc: 'C_A geçmişte güçlü çalışan örüntüleri yakaladı. Nihai seçim ALT.' },
-    };
-
     function bigVerdictHtml(alert) {
       const dir = String(alert.direction || '');
       const dirArrow = dir === 'ALT' ? '▼' : (dir === 'ÜST' ? '▲' : '·');
-      const hundred = Number(alert.hundred_profile || 0) === 1;
-      const code = String(alert.claude_ai || '').trim();
-      const rule = String(alert.claude_ai_rule || '').trim();
       const result = String(alert.result || '');
       const resolved = (result === 'Başarılı' || result === 'Başarısız');
 
-      // Sonuç rozeti üretici (C_A bahsinin kazanıp kaybetmediğine göre)
-      const outcomeBadge = (play) => {
-        if (!resolved || !play) return '';
-        const ok = caOutcome({ ...alert, claude_ai_play: play });
-        return `<span class="big-verdict-result ${ok ? 'win' : 'loss'}">${ok ? '✓ Kazandı' : '✗ Kaybetti'}</span>`;
-      };
-
-      if (hundred) {
-        return `
-          <div class="big-verdict gold">
-            <div class="big-verdict-icon">💯</div>
-            <div class="big-verdict-text">
-              <div class="big-verdict-play">
-                <span>${dirArrow}</span> ${escapeHtml(dir)} oyna!
-                ${outcomeBadge(dir)}
-              </div>
-              <div class="big-verdict-desc">Çok güçlü sinyal. Aynı tip maçlar geçmişte 124/124 (%100) tutmuş.</div>
-              ${rule ? `<div class="big-verdict-rule">Kural: ${escapeHtml(rule)}</div>` : ''}
-            </div>
-          </div>`;
-      }
-
-      if (CA_DETAILS[code]) {
-        const play = CA_DETAILS[code].play || dir;
-        const playArrow = play === 'ALT' ? '▼' : '▲';
-        return `
-          <div class="big-verdict true-yellow">
-            <div class="big-verdict-icon">⭐</div>
-            <div class="big-verdict-text">
-              <div class="big-verdict-play">
-                <span>${playArrow}</span> ${play} oyna
-                ${outcomeBadge(play)}
-              </div>
-              <div class="big-verdict-desc">${escapeHtml(CA_DETAILS[code].desc || 'Geçmiş veri bu yönü destekliyor.')}</div>
-              ${rule ? `<div class="big-verdict-rule">Kural: ${escapeHtml(rule)}</div>` : ''}
-            </div>
-          </div>`;
-      }
-
-      // Net sinyal yok
       const sysOutcome = resolved
         ? `<span class="big-verdict-result ${result === 'Başarılı' ? 'win' : 'loss'}">${result === 'Başarılı' ? '✓ Sistem kazandı' : '✗ Sistem kaybetti'}</span>`
         : '';
@@ -2059,80 +2019,6 @@
             <div class="big-verdict-desc">Standart sinyal. Net seçim yönü yukarıda gösterilen taraftı.</div>
           </div>
         </div>`;
-    }
-
-    function signalTagsHtml(alert) {
-      const code = String(alert.claude_ai || '').trim();
-      const isHundred = Number(alert.hundred_profile || 0) === 1;
-      const result = String(alert.result || '');
-      const resolved = (result === 'Başarılı' || result === 'Başarısız');
-
-      const caCard = (() => {
-        if (!code || !CA_DETAILS[code]) {
-          return `
-            <div class="signal-tag-card empty">
-              <div class="signal-tag-head"><span class="icon">☆</span> C_A Filtresi</div>
-              <div class="signal-tag-rule">Bu sinyal yüksek-güven kovalarına girmedi. Standart riskte değerlendir.</div>
-            </div>`;
-        }
-        const d = CA_DETAILS[code];
-        const cls = 'ca-true';
-        const playCls = d.play === 'ALT' ? 'alt' : 'ust';
-        const rule = String(alert.claude_ai_rule || '').trim();
-        const outcome = caOutcome(alert);
-        const outcomeBadge = (resolved && outcome !== null)
-          ? `<span class="signal-tag-outcome ${outcome ? 'win' : 'loss'}">${outcome ? '✓ Kazandı' : '✗ Kaybetti'}</span>`
-          : '';
-        return `
-          <div class="signal-tag-card ${cls}">
-            <div class="signal-tag-head">
-              <span class="icon">⭐</span> C_A: ${escapeHtml(d.label)}
-              <span class="signal-tag-play ${playCls}">${d.play} oyna</span>
-              ${outcomeBadge}
-            </div>
-            <div class="signal-tag-rule" style="color:var(--text);">${escapeHtml(d.desc)}</div>
-            ${rule ? `<div class="signal-tag-rule"><b>Kural:</b> ${escapeHtml(rule)}</div>` : ''}
-          </div>`;
-      })();
-
-      const hundredCard = (() => {
-        if (!isHundred) {
-          return `
-            <div class="signal-tag-card empty">
-              <div class="signal-tag-head"><span class="icon">○</span> 100 Profili</div>
-              <div class="signal-tag-rule">Bu sinyal 100 Profili kuralına girmedi.</div>
-            </div>`;
-        }
-        const rule = String(alert.hundred_profile_rule || '').trim();
-        const dirBadge = String(alert.direction || '');
-        const playCls = dirBadge === 'ALT' ? 'alt' : 'ust';
-        const outcomeBadge = (resolved)
-          ? `<span class="signal-tag-outcome ${result === 'Başarılı' ? 'win' : 'loss'}">${result === 'Başarılı' ? '✓ Kazandı' : '✗ Kaybetti'}</span>`
-          : '';
-        return `
-          <div class="signal-tag-card hundred">
-            <div class="signal-tag-head">
-              <span class="icon">💯</span> 100 Profili
-              <span class="signal-tag-play ${playCls}">${escapeHtml(dirBadge)} oyna</span>
-              ${outcomeBadge}
-            </div>
-            <div class="signal-tag-rule" style="color:var(--text);">Geçmişte 124/124 (%100) tutmuş yüksek-kalite örüntü.</div>
-            ${rule ? `<div class="signal-tag-rule"><b>Kural:</b> ${escapeHtml(rule)}</div>` : ''}
-          </div>`;
-      })();
-
-      return `<div class="signal-tag-grid">${caCard}${hundredCard}</div>`;
-    }
-
-    function caHtml(alert) {
-      const code = String(alert.claude_ai || '').trim();
-      if (!code) return '<span class="ca-empty" aria-hidden="true">·</span>';
-      const label = String(alert.claude_ai_label || code);
-      const outcome = caOutcome(alert);
-      const outcomeCls = outcome === null ? '' : (outcome ? 'win' : 'loss');
-      const cls = `ca-star ${outcomeCls}`.trim();
-      const id = Number(alert.id || 0);
-      return `<button type="button" class="${cls}" onclick="openSignalInfo(${id})" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)} — ayrıntı için tıkla">⭐</button>`;
     }
 
     function recommendationText(alert) {
@@ -2230,86 +2116,64 @@
       return `<span class="fair-line-cell"><span class="mono">${fairLabel}</span>${fairEdgeAlertHtml(alert)}</span>`;
     }
 
-    function listMarkersHtml(alert, scope) {
-      const markers = Array.isArray(alert.list_markers) ? alert.list_markers : [];
-      const filtered = markers.filter(m => String(m.scope || '') === scope);
-      if (!filtered.length) return '';
-      return filtered.map(m => {
-        const tone = String(m.tone || '').replace(/[^a-z-]/gi, '');
-        return `<span class="list-marker ${escapeHtml(tone)}" title="${escapeHtml(m.title || '')}" aria-label="${escapeHtml(m.title || '')}"></span>`;
-      }).join('');
+    function signalQualityTone(score) {
+      const num = Number(score);
+      if (!Number.isFinite(num)) return 'neutral';
+      if (num >= 80) return 'strong';
+      if (num >= 60) return 'playable';
+      if (num >= 50) return 'watch';
+      return 'pass';
     }
 
-    function qualityHtml(alert) {
-      const rawScore = alert.signal_score;
-      const score = rawScore === null || rawScore === undefined || rawScore === '' ? null : Number(rawScore);
-      const scoreText = Number.isFinite(score) ? String(score) : '-';
-      const band = String(alert.signal_score_label || (Number.isFinite(score) ? 'Skor' : '-'));
-      let tone = 'empty';
-      if (Number.isFinite(score)) {
-        if (score >= 85) tone = 'strong';
-        else if (score >= 70) tone = 'playable';
-        else if (score >= 50) tone = 'watch';
-        else tone = 'pass';
-      }
-      const direction = String(alert.final_direction || alert.direction || '-');
-      const ca = String(alert.claude_ai_label || '').trim();
-      const hundredActive = Number(alert.hundred_profile || 0) === 1;
-      const baseNote = String(alert.quality_title || '').trim();
-      const scoreNote = Number.isFinite(score)
-        ? (score >= 85 ? 'Ana güven bölgesi. C_A veya 100 profil desteği varsa en güçlü oyun adayıdır.'
-          : score >= 70 ? 'Güvenilir bölge. Sinyal yönü oynanabilir, stake kontrollü ilerlenir.'
-          : score >= 60 ? 'Oynanabilir bölge. Ek gerekçe varsa değerlendir, agresif stake kullanma.'
-          : score >= 50 ? 'İzleme bölgesi. Tek başına güçlü bahis sebebi değildir.'
-          : 'Pas bölgesi. Sinyal yönü net gösterilir ama güven düşük.')
-        : 'Sinyal skoru hesaplanamadı.';
-      const details = [
-        `<b>Nihai sinyal:</b> ${escapeHtml(direction)}`,
-        `<b>Sinyal skoru:</b> ${escapeHtml(scoreText)}${band && band !== '-' ? ` / ${escapeHtml(band)}` : ''}`,
-        escapeHtml(scoreNote),
-        ca ? `<b>C_A:</b> ${escapeHtml(ca)}` : '',
-        hundredActive ? '<b>100 Profil:</b> aktif, geçmiş profil desteği var.' : '',
-        baseNote && baseNote !== 'Kalite kuralı uygulanmadı.' ? `<b>Ek kalite notu:</b> ${escapeHtml(baseNote)}` : '',
-      ].filter(Boolean).join('<br>');
-      const hundred = Number(alert.hundred_profile || 0) === 1
-        ? `<button type="button" class="hundred-profile-badge" onclick="event.stopPropagation();openSignalInfo(${Number(alert.id || 0)})" title="100 Profili — ayrıntı için tıkla" style="border:none;font-family:inherit;">100</button>`
-        : '';
-      const displayLabel = Number.isFinite(score) ? `${scoreText} ${band}` : '-';
-      let badge;
-      if (Number.isFinite(score)) {
-        badge = `<button type="button" class="badge quality-badge ${escapeHtml(tone)}" title="Sinyal kalitesi için tıkla" onclick='event.stopPropagation();openQualityInfo(${jsString(displayLabel)}, ${jsString(details)})' style="border:1px solid rgba(148,163,184,0.22);font-family:inherit;">${escapeHtml(displayLabel)}</button>`;
-      } else {
-        badge = `<button type="button" class="badge quality-badge empty" title="Sinyal kalitesi için tıkla" onclick='event.stopPropagation();openQualityInfo("-", ${jsString(details)})' style="border:1px solid rgba(148,163,184,0.22);font-family:inherit;">-</button>`;
-      }
-      return `<span class="quality-cell">${badge}${hundred}</span>`;
-    }
+	    function signalQualityHtml(alert) {
+	      const quality = alert?.signal_quality && typeof alert.signal_quality === 'object' ? alert.signal_quality : {};
+	      const score = Number(alert.signal_quality_score ?? quality.quality_score);
+	      const label = alert.signal_quality_label || quality.quality_label || '-';
+	      const text = Number.isFinite(score) ? String(Math.round(score)) : '-';
+	      const reason = quality.risk_note || label;
+	      return `<span class="quality-cell"><button type="button" class="badge quality-badge ${signalQualityTone(score)}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(reason)}" aria-label="Sinyal kalitesi detayını aç">${escapeHtml(text)}</button></span>`;
+	    }
 
-    function openQualityInfo(label, body) {
-      const existing = document.getElementById('qualityInfoOverlay');
-      if (existing) existing.remove();
-      const overlay = document.createElement('div');
-      overlay.id = 'qualityInfoOverlay';
-      overlay.className = 'quality-info-overlay';
-      overlay.innerHTML = `
-        <div class="quality-info-box" onclick="event.stopPropagation();">
-          <div class="quality-info-head"><span class="icon">${escapeHtml(label)}</span><span>Sinyal Kalitesi</span></div>
-          <div class="quality-info-body">${body}</div>
-          <button type="button" class="quality-info-close" onclick="closeQualityInfo()">Kapat</button>
-        </div>`;
-      overlay.addEventListener('click', closeQualityInfo);
-      document.body.appendChild(overlay);
-      document.addEventListener('keydown', _qualityInfoEsc);
-    }
-    function closeQualityInfo() {
-      const o = document.getElementById('qualityInfoOverlay');
-      if (o) o.remove();
-      document.removeEventListener('keydown', _qualityInfoEsc);
-    }
-    function _qualityInfoEsc(e) { if (e.key === 'Escape') closeQualityInfo(); }
+	    function qualityValue(value, digits = 1) {
+	      const n = Number(value);
+	      return Number.isFinite(n) ? n.toFixed(digits) : '-';
+	    }
 
-    function modalListItem(key, value) {
-      return `<li><span class="signal-info-key">${escapeHtml(key)}</span><span class="signal-info-value">${escapeHtml(value ?? '-')}</span></li>`;
-    }
+	    function openSignalQualityModal(alertId) {
+	      const alert = deletedAlerts.find(item => Number(item.id || 0) === Number(alertId || 0));
+	      const modal = document.getElementById('signalQualityModal');
+	      const content = document.getElementById('signalQualityContent');
+	      if (!alert || !modal || !content) return;
+	      const quality = alert.signal_quality && typeof alert.signal_quality === 'object' ? alert.signal_quality : {};
+	      const score = quality.quality_score ?? alert.signal_quality_score;
+	      const label = quality.quality_label ?? alert.signal_quality_label ?? '-';
+	      document.getElementById('signalQualityTitle').textContent = `Sinyal Kalitesi - ${cleanMatchName(alert.match_name || '-')}`;
+	      content.innerHTML = `
+	        <div class="signal-quality-card">
+	          <div class="signal-quality-row"><span>Sinyal Kalitesi Puanı</span><strong>${escapeHtml(score ?? '-')}</strong></div>
+	          <div class="signal-quality-row"><span>Sinyal Kalitesi Etiketi</span><strong>${escapeHtml(label)}</strong></div>
+	          <div class="signal-quality-row"><span>Projeksiyon</span><strong>${qualityValue(quality.projection)}</strong></div>
+	          <div class="signal-quality-row"><span>Projeksiyon - Canlı Barem Farkı</span><strong>${qualityValue(quality.projection_diff)}</strong></div>
+	          <div class="signal-quality-row"><span>Gereken Tempo</span><strong>${qualityValue(quality.required_pace, 2)}</strong></div>
+	          <div class="signal-quality-row"><span>Mevcut Tempo</span><strong>${qualityValue(quality.current_pace, 2)}</strong></div>
+	          <div class="signal-quality-row"><span>Skor Farkı</span><strong>${escapeHtml(quality.score_gap ?? '-')}</strong></div>
+	          <div class="signal-quality-row"><span>Risk Notu</span><strong>${escapeHtml(quality.risk_note || alert.signal_quality_risk_note || '-')}</strong></div>
+	        </div>
+	        <div class="signal-quality-title">Kalite Gerekçesi</div>
+	        <div class="signal-quality-card signal-quality-note">${escapeHtml(quality.reason || alert.signal_quality_reason || '-')}</div>
+	        <div class="signal-quality-note">Sinyal Kalitesi yalnızca veri kalitesi ve model güven puanıdır; kesinlik veya finansal karar anlamı taşımaz.</div>
+	      `;
+	      modal.classList.add('open');
+	    }
+
+	    function closeSignalQualityModal() {
+	      const modal = document.getElementById('signalQualityModal');
+	      if (modal) modal.classList.remove('open');
+	    }
+
+	    function modalListItem(key, value) {
+	      return `<li><span class="signal-info-key">${escapeHtml(key)}</span><span class="signal-info-value">${escapeHtml(value ?? '-')}</span></li>`;
+	    }
 
     function weightsText(weights) {
       const labels = {
@@ -2404,11 +2268,9 @@
       const selectionReason = alert.selection_reason || analysis.selection_reason || '';
       const projectionQuality = Number(alert.projection_quality ?? analysis.projection_quality);
 	      const finalDir = analysis.final_direction || alert.final_direction || analysis.direction || alert.direction || '-';
-	      const signalScores = analysis.signal_scores || alert.signal_scores || {};
-	      const voteRows = Array.isArray(analysis.signal_votes || alert.signal_votes) ? (analysis.signal_votes || alert.signal_votes).slice(0, 6) : [];
-      const listText = Array.isArray(alert.list_markers) && alert.list_markers.length
-        ? alert.list_markers.map(marker => marker.title || '').filter(Boolean).join(' | ')
-        : '-';
+      const signalQuality = alert.signal_quality && typeof alert.signal_quality === 'object' ? alert.signal_quality : {};
+      const signalQualityScore = alert.signal_quality_score ?? signalQuality.quality_score;
+      const signalQualityLabel = alert.signal_quality_label || signalQuality.quality_label || '-';
       const warnings = Array.isArray(alert.warnings) && alert.warnings.length
         ? alert.warnings
         : (Array.isArray(analysis.warnings) ? analysis.warnings : []);
@@ -2420,14 +2282,6 @@
         analysis.history_note,
         ...warnings,
       ].filter(Boolean);
-      const voteSection = voteRows.length
-        ? `<div class="signal-info-section wide">
-            <div class="signal-info-section-title">Sinyal Oyları</div>
-            <ul class="signal-metrics-list">
-              ${voteRows.map(v => modalListItem(`${v.name || '-'} → ${v.direction || '-'}`, `${formatNumber(v.score)} puan`)).join('')}
-            </ul>
-          </div>`
-        : '';
       const fairLineNum = Number(analysis.fair_line ?? alert.fair_line);
       const fairLineStr = Number.isFinite(fairLineNum) ? fairLineNum.toFixed(1) : '–';
       const fairEdgeStr = Number.isFinite(fairEdge) ? `${fairEdge >= 0 ? '+' : ''}${fairEdge.toFixed(1)}` : '';
@@ -2517,17 +2371,15 @@
           <details style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.06);">
             <summary class="modal-detail-toggle">🔬 Tüm teknik detayları göster</summary>
             <div style="margin-top:12px;">
-              ${signalTagsHtml(alert)}
               <div class="signal-info-grid">
                 ${teamContextHtml(analysis.team_context || alert.team_context)}
                 <div class="signal-info-section">
                   <div class="signal-info-section-title">Özet</div>
                   <ul class="signal-metrics-list">
                     ${modalListItem('Canlı veri', Number.isFinite(projectionQuality) ? `${projectionQuality.toFixed(0)}/100` : '-')}
-                    ${modalListItem('Sinyal Kalitesi', alert.signal_score ? `${alert.signal_score} / ${alert.signal_score_label || '-'}` : '-')}
-                    ${modalListItem('Liste', listText)}
+                    ${modalListItem('S.K.', signalQualityScore != null ? `${signalQualityScore} / ${signalQualityLabel}` : '-')}
+                    ${modalListItem('S.K. risk notu', signalQuality.risk_note || alert.signal_quality_risk_note || '-')}
                     ${modalListItem('Nihai Yön', finalDir)}
-                    ${modalListItem('ALT / ÜST Puan', `${formatNumber(signalScores.ALT)} / ${formatNumber(signalScores['ÜST'])}`)}
                     ${modalListItem('Karar', selectionReason || '-')}
                   </ul>
                 </div>
@@ -2550,7 +2402,6 @@
                     ${modalListItem('H2H kalite', analysis.h2h_quality_score != null ? `${analysis.h2h_quality_score}/100` : '-')}
                   </ul>
                 </div>
-                ${voteSection}
                 ${notes.length > 2 ? `
                   <div class="signal-info-section wide">
                     <div class="signal-info-section-title">Diğer Riskler ve Notlar</div>
@@ -2629,8 +2480,6 @@
       let rows = [...deletedAlerts];
 	      if (activeFilter) {
 	        rows = rows.filter(alert => {
-	          if (activeFilter.hundredProfile && !isHundredProfileCandidate(alert)) return false;
-	          if (activeFilter.claudeAi && !isClaudeAiCandidate(alert)) return false;
 	          if (activeFilter.direction && alert.direction !== activeFilter.direction) return false;
 	          if (activeFilter.result && alert.result !== activeFilter.result) return false;
 	          if (activeFilter.matchKey && matchKey(alert) !== activeFilter.matchKey) return false;
@@ -2650,8 +2499,6 @@
         alert.result,
         alert.note,
         recommendationText(alert),
-        alert.quality_label,
-        alert.quality_title,
         fairLineValue(alert),
         alert.projected,
       ].some(value => String(value || '').toLowerCase().includes(q)));
@@ -2666,11 +2513,10 @@
 
     function sortValue(alert, field) {
       if (field === 'deleted_at' || field === 'alerted_at') return parseDateValue(alert[field]);
-	      if (['opening', 'live', 'projected', 'diff', 'signal_count', 'fair_line', 'fair_edge', 'quality_rank'].includes(field)) {
+	      if (['opening', 'live', 'projected', 'diff', 'signal_count', 'fair_line', 'fair_edge', 'signal_quality_score'].includes(field)) {
         const num = Number(alert[field]);
         return Number.isFinite(num) ? num : -Infinity;
       }
-      if (field === 'claude_ai') return isClaudeAiCandidate(alert) ? 1 : 0;
       if (field === 'match_name') return cleanMatchName(alert.match_name || '').toLocaleLowerCase('tr-TR');
       return String(alert[field] || '').toLocaleLowerCase('tr-TR');
     }
@@ -2709,24 +2555,6 @@
       document.getElementById('statSuccess').textContent = successList.length;
       document.getElementById('statFail').textContent = failList.length;
       document.getElementById('statRate').textContent = rate !== null ? `%${rate.toFixed(1)}` : '-';
-      const profileStats = hundredProfileStats();
-      const profileCount = document.getElementById('statHundredProfile');
-      const profileRate = document.getElementById('statHundredProfileRate');
-      if (profileCount) profileCount.textContent = profileStats.total;
-      if (profileRate) {
-        profileRate.textContent = profileStats.rate !== null
-          ? `Başarı: %${profileStats.rate.toFixed(1)} (${profileStats.success}/${profileStats.resolved})`
-          : 'Başarı: -';
-      }
-      const caStats = claudeAiStats();
-      const caCount = document.getElementById('statClaudeAi');
-      const caRate = document.getElementById('statClaudeAiRate');
-      if (caCount) caCount.textContent = caStats.total;
-      if (caRate) {
-        caRate.textContent = caStats.rate !== null
-          ? `Başarı: %${caStats.rate.toFixed(1)} (${caStats.success}/${caStats.resolved})`
-          : 'Başarı: -';
-      }
       renderSignalBreakdown();
     }
 
@@ -2803,37 +2631,17 @@
       render();
     }
 
-    function toggleHundredProfileFilter() {
-      const isSame = activeFilter && activeFilter.hundredProfile && Object.keys(activeFilter).length === 1;
-      activeFilter = isSame ? null : { hundredProfile: true };
-      currentPage = 1;
-      render();
-    }
-
-    function toggleClaudeAiFilter() {
-      const isSame = activeFilter && activeFilter.claudeAi && Object.keys(activeFilter).length === 1;
-      activeFilter = isSame ? null : { claudeAi: true };
-      currentPage = 1;
-      render();
-    }
-
 	    function updateStatChips() {
 	      const chipAlt = document.getElementById('chipAlt');
       const chipUst = document.getElementById('chipUst');
       const chipSuccess = document.getElementById('chipSuccess');
       const chipFail = document.getElementById('chipFail');
-      const chipProfile = document.getElementById('chipHundredProfile');
-      const chipCa = document.getElementById('chipClaudeAi');
-      const isProfile = activeFilter && activeFilter.hundredProfile;
-      const isCa = activeFilter && activeFilter.claudeAi;
-      const isDir = activeFilter && !activeFilter.result && !activeFilter.matchKey && !activeFilter.hundredProfile && !activeFilter.claudeAi;
-      const isRes = activeFilter && !activeFilter.direction && !activeFilter.matchKey && !activeFilter.hundredProfile && !activeFilter.claudeAi;
+      const isDir = activeFilter && !activeFilter.result && !activeFilter.matchKey;
+      const isRes = activeFilter && !activeFilter.direction && !activeFilter.matchKey;
       if (chipAlt) chipAlt.classList.toggle('active', isDir && activeFilter.direction === 'ALT');
       if (chipUst) chipUst.classList.toggle('active', isDir && activeFilter.direction === 'ÜST');
 	      if (chipSuccess) chipSuccess.classList.toggle('active', isRes && activeFilter.result === 'Başarılı');
 	      if (chipFail) chipFail.classList.toggle('active', isRes && activeFilter.result === 'Başarısız');
-      if (chipProfile) chipProfile.classList.toggle('active', Boolean(isProfile));
-      if (chipCa) chipCa.classList.toggle('active', Boolean(isCa));
 	    }
 
 	    function updatePeriodButtons() {
@@ -2864,32 +2672,6 @@
     function periodSummaryRows() {
       if (!activePeriods.size) return [];
       return deletedAlerts.filter(alert => activePeriods.has(`${alert.direction}-${alertPeriod(alert)}`));
-    }
-
-    function periodQualityBreakdown(rows) {
-      const map = new Map();
-      rows.forEach(alert => {
-        const raw = String(alert.signal_score_label || '').trim();
-        const score = Number(alert.signal_score || 0);
-        const label = raw && raw !== '-' ? `${raw} (${score || '-'})` : 'Skorsuz';
-        const bucket = map.get(label) || { label, total: 0, success: 0, fail: 0, push: 0 };
-        bucket.total += 1;
-        const result = String(alert.result || '').trim();
-        if (result === 'Başarılı') bucket.success += 1;
-        else if (result === 'Başarısız') bucket.fail += 1;
-        else if (result === 'İade') bucket.push += 1;
-        map.set(label, bucket);
-      });
-      return [...map.values()].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label, 'tr-TR'));
-    }
-
-    function periodSubsetStats(rows, predicate) {
-      const scoped = rows.filter(predicate);
-      const success = scoped.filter(r => r.result === 'Başarılı').length;
-      const fail = scoped.filter(r => r.result === 'Başarısız').length;
-      const resolved = success + fail;
-      const rate = resolved > 0 ? Math.round((success / resolved) * 1000) / 10 : null;
-      return { total: scoped.length, success, fail, resolved, rate };
     }
 
     function renderPeriodSummary() {
@@ -2931,27 +2713,6 @@
       const rate = resolved > 0 ? Math.round((successList.length / resolved) * 1000) / 10 : null;
       const uniqueMatches = uniqueMatchCount(rows);
 
-      const hundred = periodSubsetStats(rows, isHundredProfileCandidate);
-      const caRows = rows.filter(isClaudeAiCandidate);
-      const caResolved = caRows.filter(r => r.result === 'Başarılı' || r.result === 'Başarısız');
-      const caSuccess = caResolved.filter(item => item.result === 'Başarılı');
-      const caRate = caResolved.length ? Math.round((caSuccess.length / caResolved.length) * 1000) / 10 : null;
-
-      const quality = periodQualityBreakdown(rows);
-      const qualityHtml = quality.map(item => {
-        const r = item.success + item.fail;
-        const rt = r > 0 ? Math.round((item.success / r) * 1000) / 10 : null;
-        const rateCls = rt === null ? 'empty' : (rt >= 55 ? 'good' : (rt <= 40 ? 'bad' : ''));
-        const rateLabel = rt !== null ? `%${rt.toFixed(1)}` : '-';
-        return `
-          <div class="period-summary-quality-row">
-            <span class="q-label">${escapeHtml(item.label)}</span>
-            <span class="q-stats">${item.total} • ${item.success}/${item.fail}</span>
-            <span class="q-rate ${rateCls}">${rateLabel}</span>
-          </div>
-        `;
-      }).join('');
-
       host.hidden = false;
       host.innerHTML = `
         <div class="period-summary-header">
@@ -2967,19 +2728,6 @@
           <div class="period-summary-cell pending"><span class="label">Beklemede</span><span class="value">${Math.max(0, pending)}</span></div>
           <div class="period-summary-cell rate"><span class="label">Başarı %</span><span class="value">${rate !== null ? '%' + rate.toFixed(1) : '-'}</span><span class="sub">${successList.length}/${resolved}</span></div>
         </div>
-        <div>
-          <div class="period-summary-section-title">Sinyal Tipleri</div>
-          <div class="period-summary-grid">
-            <div class="period-summary-cell"><span class="label">100 Profili</span><span class="value">${hundred.total}</span><span class="sub">${hundred.rate !== null ? '%' + hundred.rate.toFixed(1) : 'Başarı: -'} • ${hundred.success}/${hundred.resolved}</span></div>
-            <div class="period-summary-cell"><span class="label">C_A ⭐</span><span class="value">${caRows.length}</span><span class="sub">${caRate !== null ? '%' + caRate.toFixed(1) : 'Başarı: -'} • ${caSuccess.length}/${caResolved.length}</span></div>
-          </div>
-        </div>
-        ${quality.length ? `
-          <div>
-            <div class="period-summary-section-title">Kalite Etiketleri (Toplam • Başarı/Hata • Oran)</div>
-            <div class="period-summary-quality-grid">${qualityHtml}</div>
-          </div>
-        ` : ''}
       `;
     }
 
@@ -3029,25 +2777,23 @@
               <div class="match-cell-wrap">
                 ${matchFocusButtonHtml(alert)}
                 ${matchHtml}
-                ${listMarkersHtml(alert,'team')}
                 ${noteInfoButton(alert)}
               </div>
-              <div class="subline">${escapeHtml(alert.tournament || '-')}${listMarkersHtml(alert,'league')}</div>
+              <div class="subline">${escapeHtml(alert.tournament || '-')}</div>
             </td>
             <td class="mono">${escapeHtml(alert.alert_moment || '-')}</td>
 	            <td>
 	              ${signalBadge(alert)}
 	              ${Number(alert.signal_count || 0) > 1 ? `<div class="subline">${Number(alert.signal_count)}. sinyal</div>` : ''}
 	            </td>
-            <td class="ca-cell">${caHtml(alert)}</td>
             <td>${escapeHtml(alert.status || '-')}</td>
             <td class="mono">${escapeHtml(alert.score || '-')}${(() => { const total = calculateScoreTotal(alert.score); return total !== null ? ` <span style="font-style: normal; font-size: 0.85em; color: var(--text-dim);">(${total})</span>` : ''; })()}</td>
             <td class="mono">${formatNumber(alert.opening)}</td>
             <td class="mono">${formatNumber(alert.live)}</td>
             <td class="mono">${formatNumber(alert.projected)}</td>
+            <td>${signalQualityHtml(alert)}</td>
             <td class="mono">${formatNumber(alert.diff)}</td>
             <td>${fairLineCell(alert)}</td>
-            <td>${qualityHtml(alert)}</td>
             <td>${resultCell(alert)}</td>
             <td><button class="row-delete-btn" type="button" onclick="deleteDeletedAlert(${Number(alert.id)}, this)" title="Kaydı sil" aria-label="Kaydı sil">🗑</button></td>
           </tr>
@@ -3673,11 +3419,12 @@
     });
 
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        closeSignalInfo();
-        closeNoteInfo();
-        closeReport();
-      }
+	      if (e.key === 'Escape') {
+	        closeSignalInfo();
+	        closeSignalQualityModal();
+	        closeNoteInfo();
+	        closeReport();
+	      }
     });
 
     loadDeletedMatches();

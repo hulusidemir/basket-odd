@@ -1037,7 +1037,7 @@
       margin-top: 8px;
     }
     .sig-quarter-chip {
-      min-height: 58px;
+      min-height: 74px;
       padding: 8px 9px;
       border-radius: 10px;
       background: rgba(8,10,18,0.58);
@@ -1066,6 +1066,13 @@
       font-size: 11px;
       font-weight: 800;
       margin-top: 3px;
+    }
+    .sig-quarter-chip .projected-final {
+      display: block;
+      color: var(--text-soft);
+      font-size: 11px;
+      font-weight: 800;
+      margin-top: 2px;
     }
 
     .sig-reasons { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
@@ -1310,6 +1317,37 @@
       border-color: rgba(52,211,153,0.3);
     }
 
+    .alert-card.is-followed {
+      background: linear-gradient(180deg, rgba(92,72,14,0.88), rgba(48,36,10,0.96));
+      border-color: rgba(251,191,36,0.46);
+      box-shadow: 0 0 0 1px rgba(251,191,36,0.18), 0 10px 24px rgba(120,78,0,0.18);
+    }
+    .alert-card.is-followed .card-strip,
+    .alert-card.is-followed .card-hero,
+    .alert-card.is-followed .card-chip {
+      background: rgba(24,18,6,0.5);
+      border-color: rgba(251,191,36,0.22);
+    }
+    .alert-card.is-followed .match-link,
+    .alert-card.is-followed .card-tournament,
+    .alert-card.is-followed .card-status,
+    .alert-card.is-followed .card-score {
+      color: #fde68a;
+    }
+
+    .alert-card.is-ignored {
+      opacity: 0.32;
+      filter: grayscale(0.82);
+    }
+    .alert-card.is-ignored .card-title,
+    .alert-card.is-ignored .card-tournament-row,
+    .alert-card.is-ignored .card-strip,
+    .alert-card.is-ignored .card-hero,
+    .alert-card.is-ignored .card-chips {
+      text-decoration: line-through;
+      text-decoration-color: rgba(255,255,255,0.28);
+    }
+
     /* Üst satır: maç adı + saat */
     .card-head {
       display: flex;
@@ -1381,6 +1419,23 @@
     }
     .card-status { color: #c4b5fd; font-weight: 800; }
     .card-score { color: var(--text); font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 850; }
+    .score-click {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      padding: 0;
+      margin: 0;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      text-decoration: underline;
+      text-decoration-color: rgba(147,197,253,0.45);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 3px;
+    }
+    .score-click:hover { color: #bfdbfe; text-decoration-color: rgba(147,197,253,0.9); }
     .card-signal-count {
       padding: 3px 8px; border-radius: 999px;
       background: rgba(124,92,246,0.16); border: 1px solid rgba(124,92,246,0.3);
@@ -1447,7 +1502,7 @@
       color: var(--text-soft);
     }
 
-    /* Detay çipleri: Adil · Proj · Kalite */
+    /* Detay çipleri: Adil · Proj */
     .card-chips {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2301,8 +2356,6 @@
           <button class="btn" data-filter="ignored">Pas Geçilen</button>
           <button class="btn" data-filter="alt">ALT</button>
           <button class="btn" data-filter="ust">ÜST</button>
-          <button class="btn warning" data-filter="hundred_profile" title="100 Profil rozeti olan sinyaller">100 Profil</button>
-          <button class="btn warning" data-filter="claude_ai" title="C_A filtresinden geçen yıldızlı sinyaller">C_A ⭐</button>
         </div>
       </section>
 
@@ -2330,11 +2383,10 @@
               <tr>
                 <th class="select-cell"><input class="match-select" id="selectAll" type="checkbox" onchange="selectPage(this.checked)" aria-label="Sayfadaki maçları seç"></th>
 	                <th data-sort="alerted_at">Zaman</th>
-	                <th data-sort="direction">Sinyal</th>
-	                <th class="ca-cell" data-sort="claude_ai" title="Claude AI filtresi">C_A</th>
-	                <th data-sort="fair_line">Adil</th>
+                <th data-sort="direction">Sinyal</th>
+                <th data-sort="fair_line">Adil</th>
                 <th data-sort="projected">Proj.</th>
-                <th data-sort="quality_rank">Kalite</th>
+                <th data-sort="signal_quality_score">S.K.</th>
                 <th data-sort="match_name">Maç</th>
                 <th data-sort="tournament">Turnuva</th>
                 <th data-sort="status">Durum</th>
@@ -2477,91 +2529,43 @@
       </div>
       <div class="ai-guide-body">
         <div class="ai-guide-lead">
-          Bu ekran artık tek bir şey söyler: oynanacak yön ALT mı ÜST mü? Dashboard ve Telegram aynı nihai yönü gösterir; C_A veya 100 Profil bir taraf seçtiyse sinyal doğrudan o taraf olarak gelir.
+          Bu ekran yalnızca temel sinyali, maç bağlamını ve hareket aksiyonlarını gösterir. Eski güven katmanları kaldırıldı.
         </div>
 
         <div class="ai-guide-grid">
           <div class="ai-guide-card">
             <h4>Tek Yön Mantığı</h4>
             <ul class="ai-guide-list">
-              <li><strong>ALT</strong>: Bu maçta alt tarafı oynanacak nihai seçimdir.</li>
-              <li><strong>ÜST</strong>: Bu maçta üst tarafı oynanacak nihai seçimdir.</li>
-              <li>Artık ekranda “sistem üst dedi ama alt oyna” veya ters sinyal dili yoktur.</li>
-              <li>Düşük toplam/düşük tempolu eski ÜST dönüş profilleri artık doğrudan <strong>ALT</strong> sinyali olarak görünür.</li>
-            </ul>
-          </div>
-
-          <div class="ai-guide-card">
-            <h4>C_A Yıldızı</h4>
-            <ul class="ai-guide-list">
-              <li><strong>C_A ⭐</strong>, geçmişte güçlü çalışan özel profil yakalandığını gösterir.</li>
-              <li>C_A varsa yön önceliklidir: C_A ALT diyorsa ALT, ÜST diyorsa ÜST.</li>
-              <li>Geçmiş ölçümde C_A katmanı yaklaşık <strong>%93</strong> başarı verdi.</li>
-              <li>En kaliteli yapıların önemli kısmı düşük toplam/düşük tempoda ALT tarafına dönen profillerdi; artık bunlar direkt ALT görünür.</li>
-            </ul>
-          </div>
-
-          <div class="ai-guide-card">
-            <h4>100 Profil</h4>
-            <ul class="ai-guide-list">
-              <li><strong>100 Profil</strong>, geçmişte çok yüksek başarı veren dar örüntü eşleşmesidir.</li>
-              <li>Kalite sütununda <strong>100</strong> rozeti olarak görünür.</li>
-              <li>Geçmiş ölçümde 100 Profil katmanı yaklaşık <strong>%85</strong> başarı verdi.</li>
-              <li>C_A ve 100 Profil birlikte gelirse sinyal ana oyun adaylarından biridir.</li>
-            </ul>
-          </div>
-
-          <div class="ai-guide-card">
-            <h4>Sinyal Skoru</h4>
-            <ul class="ai-guide-list">
-              <li><strong>95-100 Çok Güçlü</strong>: ana güven bölgesi.</li>
-              <li><strong>85-94 Güçlü</strong>: güvenilir oyun bölgesi.</li>
-              <li><strong>70-84 Güvenilir</strong>: oynanabilir, stake kontrollü.</li>
-              <li><strong>60-69 Oynanabilir</strong>: sadece ek gerekçe varsa.</li>
-              <li><strong>60 altı</strong>: çoğunlukla pas veya izleme.</li>
-              <li>Kalite sütunu güven bandını gösterir; sayısal skor C_A hücresinde kalır.</li>
+              <li><strong>ALT</strong>: Sistem bu maçta alt tarafında değer gördü.</li>
+              <li><strong>ÜST</strong>: Sistem bu maçta üst tarafında değer gördü.</li>
+              <li>Dashboard ve Telegram aynı sinyal yönünü gösterir.</li>
             </ul>
           </div>
 
           <div class="ai-guide-card">
             <h4>Adil ve Proj.</h4>
             <ul class="ai-guide-list">
-              <li><strong>Adil</strong>: açılış/prematch çizgisi ile saf canlı tempo projeksiyonunun harmanıdır.</li>
-              <li>Adil canlıdan yüksekse ÜST değeri, düşükse ALT değeri üretir.</li>
-              <li><strong>Proj.</strong>, maç mevcut tempo ve çeyrek dağılımıyla nereye gider sorusudur.</li>
-              <li>H2H ve takım formu ana karar değil, arka plan ve risk notudur.</li>
+              <li><strong>Adil</strong>: açılış çizgisi, canlı tempo ve maç bağlamından üretilen referans baremdir.</li>
+              <li><strong>Proj.</strong>: maç mevcut tempo ve çeyrek dağılımıyla nereye gider sorusudur.</li>
+              <li>Bu iki değer sinyalin bağlamını okumak için kullanılır; ayrıca kalite skoru üretmez.</li>
             </ul>
           </div>
 
           <div class="ai-guide-card">
-            <h4>Ne Zaman Pas?</h4>
+            <h4>Ne Zaman Temkin?</h4>
             <ul class="ai-guide-list">
-              <li>C_A yok, 100 Profil yok ve skor 60 altıysa pas daha sağlıklı.</li>
               <li>Adil barem canlıya çok yakınsa net değer alanı zayıftır.</li>
-              <li>Projeksiyon yönle sert çelişiyorsa stake düşür veya izle.</li>
+              <li>Projeksiyon yönle sert çelişiyorsa sinyal izlenebilir.</li>
               <li>Q1 erken bölüm, blowout ve Q4 son bölüm özel risk taşır.</li>
             </ul>
           </div>
 
           <div class="ai-guide-card wide">
-            <h4>Pratik Oynama Sırası</h4>
+            <h4>Pratik Kullanım</h4>
             <ul class="ai-guide-list">
-              <li><strong>1.</strong> Önce yön rozetine bak: ALT yazıyorsa alt, ÜST yazıyorsa üst.</li>
-              <li><strong>2.</strong> C_A yıldızı veya 100 rozeti var mı kontrol et.</li>
-              <li><strong>3.</strong> Sinyal skorunu oku: 85+ ana oyun, 70-84 seçici oyun, 60 altı pas.</li>
-              <li><strong>4.</strong> Adil ve Proj. kolonları yönü destekliyor mu bak.</li>
-              <li><strong>5.</strong> Modal içindeki risk notlarında blowout, düşük veri kalitesi veya yakın adil barem uyarısı varsa temkinli ol.</li>
-              <li><strong>6.</strong> Karar verdikten sonra Bahis, Takip veya Pas aksiyonuyla maçı işaretle.</li>
-            </ul>
-          </div>
-
-          <div class="ai-guide-card wide">
-            <h4>Profesyonel Kullanım Notu</h4>
-            <ul class="ai-guide-list">
-              <li>Bu sistemin edge’i tüm alarmları oynamakta değil; C_A, 100 Profil ve yüksek skor kesişimini seçmekte.</li>
-              <li>Normal sinyal C_A/100 dışındaysa geçmişte yaklaşık yazı-tura kaldı; bunu bahis sebebi değil ham alarm gibi oku.</li>
-              <li>En temiz aday: <strong>C_A ⭐ + skor 85+</strong>. İkinci aday: <strong>100 Profil + skor 85+</strong>.</li>
-              <li>Telegram mesajı ile dashboard aynı nihai yönü gösterir; ekranda gördüğün yön oynanacak yöndür.</li>
+              <li><strong>1.</strong> Önce yön rozetini oku.</li>
+              <li><strong>2.</strong> Adil, projeksiyon, skor ve maç dakikasını birlikte değerlendir.</li>
+              <li><strong>3.</strong> Karar verdikten sonra Bahis, Takip veya Pas aksiyonuyla maçı işaretle.</li>
             </ul>
           </div>
         </div>
@@ -2759,49 +2763,33 @@
       return `<span class="badge small-badge">${fmt(alert.projected)}</span>`;
     }
 
-    const CA_DETAILS = {
-      TRUE_UNDER: { label: 'Güçlü Alt', play: 'ALT', desc: 'C_A geçmişte güçlü çalışan örüntüleri yakaladı. Nihai seçim ALT.' },
-      TRUE_OVER:  { label: 'Güçlü Üst', play: 'ÜST', desc: 'C_A geçmişte güçlü çalışan örüntüleri yakaladı. Nihai seçim ÜST.' },
-      FADE_OVER:  { label: 'Güçlü Üst', play: 'ÜST', desc: 'C_A geçmişte güçlü çalışan örüntüleri yakaladı. Nihai seçim ÜST.' },
-      FADE_UNDER: { label: 'Güçlü Alt', play: 'ALT', desc: 'C_A geçmişte güçlü çalışan örüntüleri yakaladı. Nihai seçim ALT.' },
-    };
+    function signalQualityTone(score) {
+      const n = num(score);
+      if (n === null) return 'neutral';
+      if (n >= 80) return 'strong';
+      if (n >= 60) return 'playable';
+      if (n >= 50) return 'watch';
+      return 'pass';
+    }
+
+    function signalQualityHtml(alert) {
+      const quality = alert.signal_quality && typeof alert.signal_quality === 'object' ? alert.signal_quality : {};
+      const score = num(alert.signal_quality_score ?? quality.quality_score);
+      const label = String(alert.signal_quality_label || quality.quality_label || '-');
+      const text = score === null ? '-' : String(Math.round(score));
+      return `<button type="button" class="badge small-badge quality-badge ${signalQualityTone(score)}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(label)}">${escapeHtml(text)}</button>`;
+    }
+
+    function scoreButtonHtml(alert, extraClass = '') {
+      const score = String(alert.score || '').trim() || '-';
+      const id = Number(alert.id || 0);
+      if (!id) return `<strong>${escapeHtml(score)}</strong>`;
+      return `<button type="button" class="score-click ${extraClass}" onclick="event.stopPropagation();openQuarterScores(${id})" title="Çeyrek skorlarını göster" aria-label="Çeyrek skorlarını göster">${escapeHtml(score)}</button>`;
+    }
 
     function bigVerdictHtml(alert) {
       const dir = String(alert.direction || '');
       const dirArrow = dir === 'ALT' ? '▼' : (dir === 'ÜST' ? '▲' : '·');
-      const hundred = Number(alert.hundred_profile || 0) === 1;
-      const code = String(alert.claude_ai || '').trim();
-      const rule = String(alert.claude_ai_rule || '').trim();
-
-      // En yüksek güven: 100 Profili
-      if (hundred) {
-        return `
-          <div class="big-verdict gold">
-            <div class="big-verdict-icon">💯</div>
-            <div class="big-verdict-text">
-              <div class="big-verdict-play"><span class="arrow">${dirArrow}</span> ${escapeHtml(dir)} oyna!</div>
-              <div class="big-verdict-desc">Çok güçlü sinyal. Aynı tip maçlar geçmişte 124/124 (%100) tutmuş.</div>
-              ${rule ? `<div class="big-verdict-rule">Kural: ${escapeHtml(rule)}</div>` : ''}
-            </div>
-          </div>`;
-      }
-
-      // C_A güçlü
-      if (CA_DETAILS[code]) {
-        const play = CA_DETAILS[code].play || dir;
-        const playArrow = play === 'ALT' ? '▼' : '▲';
-        return `
-          <div class="big-verdict true-yellow">
-            <div class="big-verdict-icon">⭐</div>
-            <div class="big-verdict-text">
-              <div class="big-verdict-play"><span class="arrow">${playArrow}</span> ${play} oyna</div>
-              <div class="big-verdict-desc">${escapeHtml(CA_DETAILS[code].desc || 'Geçmiş veri bu yönü destekliyor.')}</div>
-              ${rule ? `<div class="big-verdict-rule">Kural: ${escapeHtml(rule)}</div>` : ''}
-            </div>
-          </div>`;
-      }
-
-      // Sıradan sinyal
       return `
         <div class="big-verdict gray">
             <div class="big-verdict-icon">📍</div>
@@ -2812,190 +2800,9 @@
         </div>`;
     }
 
-    function signalTagsHtml(alert) {
-      const code = String(alert.claude_ai || '').trim();
-      const isHundred = Number(alert.hundred_profile || 0) === 1;
-      const caCard = (() => {
-        if (!code || !CA_DETAILS[code]) {
-          return `
-            <div class="signal-tag-card empty">
-              <div class="signal-tag-head"><span class="icon">☆</span> C_A Filtresi</div>
-              <div class="signal-tag-rule">Bu sinyal yüksek-güven kovalarına girmedi. Standart riskte değerlendir.</div>
-            </div>`;
-        }
-        const d = CA_DETAILS[code];
-        const cls = 'ca-true';
-        const playCls = d.play === 'ALT' ? 'alt' : 'ust';
-        const rule = String(alert.claude_ai_rule || '').trim();
-        return `
-          <div class="signal-tag-card ${cls}">
-            <div class="signal-tag-head">
-              <span class="icon">⭐</span> C_A: ${escapeHtml(d.label)}
-              <span class="signal-tag-play ${playCls}">${d.play} oyna</span>
-            </div>
-            <div class="signal-tag-rule" style="margin-bottom:6px;">${escapeHtml(d.desc)}</div>
-            ${rule ? `<div class="signal-tag-rule"><b>Kural:</b> ${escapeHtml(rule)}</div>` : ''}
-          </div>`;
-      })();
-      const hundredCard = (() => {
-        if (!isHundred) {
-          return `
-            <div class="signal-tag-card empty">
-              <div class="signal-tag-head"><span class="icon">○</span> 100 Profili</div>
-              <div class="signal-tag-rule">Bu sinyal 100 Profili kuralına girmedi.</div>
-            </div>`;
-        }
-        const rule = String(alert.hundred_profile_rule || '').trim();
-        return `
-          <div class="signal-tag-card hundred">
-            <div class="signal-tag-head">
-              <span class="icon">💯</span> 100 Profili
-              <span class="signal-tag-play ${alert.direction === 'ALT' ? 'alt' : 'ust'}">${escapeHtml(alert.direction || '')} oyna</span>
-            </div>
-            <div class="signal-tag-rule" style="margin-bottom:6px;">Geçmişte 124/124 (%100) tutmuş yüksek-kalite örüntü.</div>
-            ${rule ? `<div class="signal-tag-rule"><b>Kural:</b> ${escapeHtml(rule)}</div>` : ''}
-          </div>`;
-      })();
-      return `<div class="signal-tag-grid">${caCard}${hundredCard}</div>`;
-    }
-
-    function signalScorePillHtml(alert) {
-      const raw = alert.signal_score;
-      if (raw === null || raw === undefined || raw === '') return '';
-      const n = Number(raw);
-      let cls = 's-weak';
-      if (n >= 80) cls = 's-strong';
-      else if (n >= 65) cls = 's-good';
-      else if (n >= 50) cls = 's-mid';
-      else if (n >= 35) cls = 's-weak';
-      else cls = 's-pass';
-      const lbl = String(alert.signal_score_label || '');
-      return `<span class="sig-score-pill ${cls}" title="Sinyal skoru: ${n}${lbl ? ' (' + escapeHtml(lbl) + ')' : ''}">${n}</span>`;
-    }
-
-    function leagueQualityHtml(alert) {
-      return '';
-    }
-
-    function caHtml(alert) {
-      const code = String(alert.claude_ai || '').trim();
-      const pill = signalScorePillHtml(alert);
-      const lq = leagueQualityHtml(alert);
-      if (!code) {
-        const inner = `${pill}${lq}`;
-        return inner ? `<span class="ca-stack">${inner}</span>` : '<span class="ca-empty" aria-hidden="true">·</span>';
-      }
-      const label = String(alert.claude_ai_label || code);
-      const cls = 'ca-star';
-      const id = Number(alert.id || 0);
-      const star = `<button type="button" class="${cls}" onclick="openSignalModal(${id})" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)} — ayrıntı için tıkla">⭐</button>`;
-      return `<span class="ca-stack">${star}${pill}${lq}</span>`;
-    }
-
-    function listMarkersHtml(alert, scope) {
-      const markers = Array.isArray(alert.list_markers) ? alert.list_markers : [];
-      const filtered = markers.filter(m => String(m.scope || '') === scope);
-      if (!filtered.length) return '';
-      return filtered.map(m => {
-        const tone = String(m.tone || '').replace(/[^a-z-]/gi, '');
-        return `<span class="list-marker ${escapeHtml(tone)}" title="${escapeHtml(m.title || '')}" aria-label="${escapeHtml(m.title || '')}"></span>`;
-      }).join('');
-    }
-
-    function qualityHtml(alert) {
-      const rawScore = alert.signal_score;
-      const score = rawScore === null || rawScore === undefined || rawScore === '' ? null : Number(rawScore);
-      const scoreText = Number.isFinite(score) ? String(score) : '-';
-      const band = String(alert.signal_score_label || (Number.isFinite(score) ? 'Skor' : '-'));
-      let tone = 'empty';
-      if (Number.isFinite(score)) {
-        if (score >= 85) tone = 'strong';
-        else if (score >= 70) tone = 'playable';
-        else if (score >= 50) tone = 'watch';
-        else tone = 'pass';
-      }
-      const direction = String(alert.final_direction || alert.direction || '-');
-      const ca = String(alert.claude_ai_label || '').trim();
-      const hundredActive = Number(alert.hundred_profile || 0) === 1;
-      const baseNote = String(alert.quality_title || '').trim();
-      const scoreNote = Number.isFinite(score)
-        ? (score >= 85 ? 'Ana güven bölgesi. C_A veya 100 profil desteği varsa en güçlü oyun adayıdır.'
-          : score >= 70 ? 'Güvenilir bölge. Sinyal yönü oynanabilir, stake kontrollü ilerlenir.'
-          : score >= 60 ? 'Oynanabilir bölge. Ek gerekçe varsa değerlendir, agresif stake kullanma.'
-          : score >= 50 ? 'İzleme bölgesi. Tek başına güçlü bahis sebebi değildir.'
-          : 'Pas bölgesi. Sinyal yönü net gösterilir ama güven düşük.')
-        : 'Sinyal skoru hesaplanamadı.';
-      const details = [
-        `<b>Nihai sinyal:</b> ${escapeHtml(direction)}`,
-        `<b>Sinyal skoru:</b> ${escapeHtml(scoreText)}${band && band !== '-' ? ` / ${escapeHtml(band)}` : ''}`,
-        escapeHtml(scoreNote),
-        ca ? `<b>C_A:</b> ${escapeHtml(ca)}` : '',
-        hundredActive ? '<b>100 Profil:</b> aktif, geçmiş profil desteği var.' : '',
-        baseNote && baseNote !== 'Kalite kuralı uygulanmadı.' ? `<b>Ek kalite notu:</b> ${escapeHtml(baseNote)}` : '',
-      ].filter(Boolean).join('<br>');
-      const hundred = Number(alert.hundred_profile || 0) === 1
-        ? `<button type="button" class="hundred-profile-badge" onclick="event.stopPropagation();openSignalModal(${Number(alert.id || 0)})" title="100 Profili — ayrıntı için tıkla">100</button>`
-        : '';
-      const displayLabel = Number.isFinite(score) ? (band || 'Skor') : '-';
-      let badge;
-      if (Number.isFinite(score)) {
-        badge = `<button type="button" class="badge small-badge quality-badge ${escapeHtml(tone)}" title="Sinyal kalitesi için tıkla" onclick='event.stopPropagation();openQualityInfo(${jsString(displayLabel)}, ${jsString(details)})' style="border:1px solid transparent;font-family:inherit;">${escapeHtml(displayLabel)}</button>`;
-      } else {
-        badge = `<button type="button" class="badge small-badge quality-badge empty" title="Sinyal kalitesi için tıkla" onclick='event.stopPropagation();openQualityInfo("-", ${jsString(details)})' style="border:1px solid transparent;font-family:inherit;">-</button>`;
-      }
-      return `<span class="quality-cell">${badge}${hundred}</span>`;
-    }
-
-    function openQualityInfo(label, body) {
-      const existing = document.getElementById('qualityInfoOverlay');
-      if (existing) existing.remove();
-      const overlay = document.createElement('div');
-      overlay.id = 'qualityInfoOverlay';
-      overlay.className = 'quality-info-overlay';
-      overlay.innerHTML = `
-        <div class="quality-info-box" onclick="event.stopPropagation();">
-          <div class="quality-info-head"><span class="icon">${escapeHtml(label)}</span><span>Sinyal Kalitesi</span></div>
-          <div class="quality-info-body">${body}</div>
-          <button type="button" class="quality-info-close" onclick="closeQualityInfo()">Kapat</button>
-        </div>`;
-      overlay.addEventListener('click', closeQualityInfo);
-      document.body.appendChild(overlay);
-      document.addEventListener('keydown', _qualityInfoEsc);
-    }
-    function closeQualityInfo() {
-      const o = document.getElementById('qualityInfoOverlay');
-      if (o) o.remove();
-      document.removeEventListener('keydown', _qualityInfoEsc);
-    }
-    function _qualityInfoEsc(e) { if (e.key === 'Escape') closeQualityInfo(); }
-
     function splitMatchTeams(name) {
       const parts = cleanMatchName(name).split(/\s+-\s+/);
       return parts.length >= 2 ? [parts[0].trim(), parts.slice(1).join(' - ').trim()] : [];
-    }
-
-    function listQuickActionsHtml(alert) {
-      const teams = splitMatchTeams(alert.match_name || '');
-      const items = [];
-      if (alert.tournament) items.push({ scope: 'league', label: 'Lig', value: alert.tournament });
-      teams.forEach((team, index) => {
-        if (team) items.push({ scope: 'team', label: index === 0 ? 'Ev' : 'Dep', value: team });
-      });
-      if (!items.length) return '';
-      const buttons = items.map(item => {
-        const alertId = Number(alert.id || 0);
-        return `
-          <button class="list-quick-btn black" data-list-type="black" data-scope="${escapeHtml(item.scope)}" data-value="${escapeHtml(item.value)}" onclick="addSignalListEntryFromButton(${alertId}, this)" title="${escapeHtml(item.value)}">Kara · ${escapeHtml(item.label)}: ${escapeHtml(item.value)}</button>
-          <button class="list-quick-btn white" data-list-type="white" data-scope="${escapeHtml(item.scope)}" data-value="${escapeHtml(item.value)}" onclick="addSignalListEntryFromButton(${alertId}, this)" title="${escapeHtml(item.value)}">Beyaz · ${escapeHtml(item.label)}: ${escapeHtml(item.value)}</button>
-        `;
-      }).join('');
-      return `
-        <div class="sig-card">
-          <h4>Kara / Beyaz Liste</h4>
-          <div class="sig-help">Bu maçın ligini veya takımlarını kalite sütununda işaretlemek için listeye ekle.</div>
-          <div class="list-quick-actions">${buttons}</div>
-        </div>
-      `;
     }
 
     function matchLink(alert) {
@@ -3013,6 +2820,38 @@
       return String(alert.note || '').trim()
         ? `<button class="note-info-btn" type="button" onclick="openNoteInfo(${Number(alert.id || 0)})" aria-label="Maç notunu göster" title="Not var">i</button>`
         : '';
+    }
+
+    function listMarkersHtml(alert, scope) {
+      const markers = Array.isArray(alert.list_markers) ? alert.list_markers : [];
+      const filtered = markers.filter(m => String(m.scope || '') === scope);
+      if (!filtered.length) return '';
+      return filtered.map(m => {
+        const tone = String(m.tone || '').replace(/[^a-z-]/gi, '');
+        return `<span class="list-marker ${escapeHtml(tone)}" title="${escapeHtml(m.title || '')}" aria-label="${escapeHtml(m.title || '')}"></span>`;
+      }).join('');
+    }
+
+    function listQuickOptions(alert) {
+      const teams = splitMatchTeams(alert.match_name || '');
+      const options = teams.map(team => ({ scope: 'team', label: 'Takım', value: team })).filter(item => item.value);
+      const tournament = String(alert.tournament || '').trim();
+      if (tournament) options.push({ scope: 'league', label: 'Lig', value: tournament });
+      if (!options.length) return '';
+      const buttons = options.map(item => {
+        const alertId = Number(alert.id || 0);
+        return `
+          <button class="list-quick-btn black" data-list-type="black" data-scope="${escapeHtml(item.scope)}" data-value="${escapeHtml(item.value)}" onclick="addSignalListEntryFromButton(${alertId}, this)" title="${escapeHtml(item.value)}">Kara - ${escapeHtml(item.label)}: ${escapeHtml(item.value)}</button>
+          <button class="list-quick-btn white" data-list-type="white" data-scope="${escapeHtml(item.scope)}" data-value="${escapeHtml(item.value)}" onclick="addSignalListEntryFromButton(${alertId}, this)" title="${escapeHtml(item.value)}">Beyaz - ${escapeHtml(item.label)}: ${escapeHtml(item.value)}</button>
+        `;
+      }).join('');
+      return `
+        <div class="sig-card">
+          <h4>Kara / Beyaz Liste</h4>
+          <div class="sig-help">Bu maçın ligini veya takımlarını işaretlemek için listeye ekle.</div>
+          <div class="list-quick-actions">${buttons}</div>
+        </div>
+      `;
     }
 
     function focusButton(alert) {
@@ -3037,10 +2876,9 @@
     }
 
     function sortValue(alert, field) {
-	      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count', 'quality_rank'].includes(field)) {
+	      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count', 'signal_quality_score'].includes(field)) {
 	        return num(alert[field]) ?? Number.NEGATIVE_INFINITY;
 	      }
-      if (field === 'claude_ai') return String(alert.claude_ai || '').trim() ? 1 : 0;
       if (field === 'alerted_at') return alert.alerted_at ? new Date(`${String(alert.alerted_at).replace(' ', 'T')}Z`).getTime() : 0;
       return String(alert[field] || '').toLocaleLowerCase('tr-TR');
     }
@@ -3070,10 +2908,6 @@
       return projected !== null && live !== null ? projected - live : null;
     }
 
-    function isHundredProfileCandidate(alert) {
-      return Number(alert.hundred_profile || 0) === 1;
-    }
-
     function filteredAlerts() {
       let list = [...allAlerts];
       if (focusedMatchId) list = list.filter(a => normalizeId(a.match_id) === focusedMatchId);
@@ -3083,15 +2917,13 @@
       if (currentFilter === 'ignored') list = list.filter(a => a.ignored);
       if (currentFilter === 'alt') list = list.filter(a => a.direction === 'ALT');
       if (currentFilter === 'ust') list = list.filter(a => a.direction === 'ÜST');
-      if (currentFilter === 'hundred_profile') list = list.filter(isHundredProfileCandidate);
-      if (currentFilter === 'claude_ai') list = list.filter(a => String(a.claude_ai || '').trim() !== '');
       if (activePeriods.size) {
         list = list.filter(a => activePeriods.has(`${a.direction}-${a.alert_period}`));
       }
       if (searchQuery) {
         const q = searchQuery.toLocaleLowerCase('tr-TR');
         list = list.filter(a => [
-          a.match_name, a.tournament, a.status, a.score, a.note, a.recommendation, a.quality_label,
+          a.match_name, a.tournament, a.status, a.score, a.note, a.recommendation,
         ].some(v => String(v || '').toLocaleLowerCase('tr-TR').includes(q)));
       }
       list.sort((a, b) => {
@@ -3153,15 +2985,14 @@
           <tr class="${classes}">
             <td class="select-cell"><input class="match-select" type="checkbox" ${selectedMatchIds.has(matchId) ? 'checked' : ''} onchange='toggleSelected(${matchIdArg}, this.checked)' aria-label="Maç seç"></td>
 	            <td class="mono">${timeText(a.alerted_at)}</td>
-	            <td>${directionBadge(a)} ${Number(a.signal_count || 1) > 1 ? `<span class="badge small-badge">${Number(a.signal_count)}. sinyal</span>` : ''}</td>
-	            <td class="ca-cell">${caHtml(a)}</td>
-	            <td>${fairHtml(a)}</td>
+            <td>${directionBadge(a)} ${Number(a.signal_count || 1) > 1 ? `<span class="badge small-badge">${Number(a.signal_count)}. sinyal</span>` : ''}</td>
+            <td>${fairHtml(a)}</td>
             <td>${projectedHtml(a)}</td>
-            <td>${qualityHtml(a)}</td>
-            <td><div class="match-cell-wrap">${focusButton(a)}${matchLink(a)}${listMarkersHtml(a,'team')}${noteInfoButton(a)}</div></td>
-            <td><div class="tournament-row"><span class="subline tournament-cell">${tournament}</span>${listMarkersHtml(a,'league')}</div></td>
+            <td>${signalQualityHtml(a)}</td>
+            <td><div class="match-cell-wrap">${focusButton(a)}${matchLink(a)}${listMarkersHtml(a, 'team')}${noteInfoButton(a)}</div></td>
+            <td><div class="tournament-row"><span class="subline tournament-cell">${tournament}</span>${listMarkersHtml(a, 'league')}</div></td>
             <td>${escapeHtml(a.status || '-')}</td>
-            <td><strong>${escapeHtml(a.score || '-')}</strong></td>
+            <td>${scoreButtonHtml(a)}</td>
             <td class="mono">${fmt(a.opening)}</td>
             <td class="mono">${fmt(a.live)}</td>
             <td class="mono ${diffCls}">${signed(a.diff)}</td>
@@ -3192,15 +3023,17 @@
           'alert-card',
           dirCls,
           a.bet_placed ? 'bet-placed' : '',
+          a.followed ? 'is-followed' : '',
+          a.ignored ? 'is-ignored' : '',
           isSelected ? 'is-selected' : '',
         ].filter(Boolean).join(' ');
         return `
           <article class="${cardClasses}">
             <div class="card-head">
-              <div class="card-title">${focusButton(a)}${matchLink(a)}${listMarkersHtml(a,'team')}${noteInfoButton(a)}</div>
+              <div class="card-title">${focusButton(a)}${matchLink(a)}${listMarkersHtml(a, 'team')}${noteInfoButton(a)}</div>
               <div class="card-time">${timeText(a.alerted_at)}</div>
             </div>
-            <div class="card-tournament-row"><div class="card-tournament">${escapeHtml(a.tournament || '-')}</div>${listMarkersHtml(a,'league')}</div>
+            <div class="card-tournament-row"><div class="card-tournament">${escapeHtml(a.tournament || '-')}</div>${listMarkersHtml(a, 'league')}</div>
 
             <div class="card-strip">
               <div class="card-strip-left">
@@ -3209,7 +3042,7 @@
               </div>
               <div class="card-strip-right">
                 <span class="card-status">${escapeHtml(status)}</span>
-                <span class="card-score">${escapeHtml(score)}</span>
+                ${scoreButtonHtml(a, 'card-score')}
               </div>
             </div>
 
@@ -3241,12 +3074,8 @@
                 <span class="card-chip-value">${projectedHtml(a)}</span>
               </div>
               <div class="card-chip">
-                <span class="card-chip-label">Kalite</span>
-                <span class="card-chip-value">${qualityHtml(a)}</span>
-              </div>
-              <div class="card-chip">
-                <span class="card-chip-label">C_A</span>
-                <span class="card-chip-value">${caHtml(a)}</span>
+                <span class="card-chip-label">S.K.</span>
+                <span class="card-chip-value">${signalQualityHtml(a)}</span>
               </div>
             </div>
 
@@ -3282,7 +3111,7 @@
       }
     }
 
-    async function addSignalListEntry(listType, scope, value, alertId, button) {
+    async function addSignalListEntry(listType, scope, value, alertId = null, button = null) {
       if (!value) return;
       if (button) button.disabled = true;
       try {
@@ -3305,14 +3134,13 @@
       }
     }
 
-    function addSignalListEntryFromButton(alertId, button) {
-      if (!button) return;
-      addSignalListEntry(
-        button.dataset.listType || '',
-        button.dataset.scope || '',
-        button.dataset.value || '',
+    async function addSignalListEntryFromButton(alertId, button) {
+      await addSignalListEntry(
+        button?.dataset?.listType || '',
+        button?.dataset?.scope || '',
+        button?.dataset?.value || '',
         alertId,
-        button
+        button,
       );
     }
 
@@ -3359,7 +3187,7 @@
           ? rows.map(item => `
               <div class="list-manager-row">
                 <div class="list-manager-value" title="${escapeHtml(item.value || '')}">${escapeHtml(item.value || '-')}</div>
-                <button class="list-manager-delete" onclick="deleteSignalListEntry(${Number(item.id || 0)}, this)" title="Sil" aria-label="Sil">×</button>
+                <button class="list-manager-delete" onclick="deleteSignalListEntry(${Number(item.id || 0)}, this)" title="Sil" aria-label="Sil">x</button>
               </div>
             `).join('')
           : '<div class="list-manager-empty">Kayıt yok.</div>';
@@ -3387,7 +3215,6 @@
     }
 
     async function deleteSignalListEntry(id, button) {
-      if (!id) return;
       if (button) button.disabled = true;
       try {
         const res = await fetch(`/api/signal-lists/${id}`, { method: 'DELETE' });
@@ -3398,7 +3225,6 @@
         await fetchAlerts();
       } catch (error) {
         showBanner(error.message || 'Kayıt silinemedi.', 'error');
-      } finally {
         if (button) button.disabled = false;
       }
     }
@@ -3625,20 +3451,60 @@
       const away = Array.isArray(qs.away) ? qs.away : [];
       const ppm = Array.isArray(analysis?.quarter_ppm) ? analysis.quarter_ppm : [];
       const quarterLength = num(analysis?.quarter_length) || 10;
+      const elapsedMinutes = num(analysis?.elapsed_minutes);
       const count = Math.min(4, Math.max(home.length, away.length, ppm.length));
       const rows = [];
+      let cumulativeHome = 0;
+      let cumulativeAway = 0;
       for (let i = 0; i < count; i++) {
         const h = num(home[i]);
         const a = num(away[i]);
         const total = h !== null && a !== null ? h + a : null;
-        const qPpm = num(ppm[i]) ?? (total !== null && quarterLength ? total / quarterLength : null);
+        const rowStartMinute = i * quarterLength;
+        const playedMinutes = elapsedMinutes !== null
+          ? Math.max(0, Math.min(quarterLength, elapsedMinutes - rowStartMinute))
+          : quarterLength;
+        const qPpm = total !== null && playedMinutes > 0
+          ? total / playedMinutes
+          : num(ppm[i]) ?? (total !== null && quarterLength ? total / quarterLength : null);
+        if (h !== null) cumulativeHome += h;
+        if (a !== null) cumulativeAway += a;
         rows.push({
           label: `Q${i + 1}`,
+          home: h,
+          away: a,
+          total,
+          cumulativeHome,
+          cumulativeAway,
+          completedMinutes: elapsedMinutes !== null && playedMinutes > 0 && playedMinutes < quarterLength
+            ? elapsedMinutes
+            : (i + 1) * quarterLength,
           score: h !== null && a !== null ? `${h}-${a}` : '-',
           ppm: qPpm,
         });
       }
       return rows;
+    }
+
+    function quarterProjectedFinalText(row, analysis) {
+      const quarterLength = num(analysis?.quarter_length) || 10;
+      const totalGameMinutes = quarterLength === 20 ? 40 : quarterLength * 4;
+      const qPpm = num(row?.ppm);
+      if (qPpm === null || qPpm <= 0) return '-';
+
+      const cumulativeHome = num(row?.cumulativeHome);
+      const cumulativeAway = num(row?.cumulativeAway);
+      const completedMinutes = num(row?.completedMinutes);
+      if (cumulativeHome === null || cumulativeAway === null || completedMinutes === null) return '-';
+
+      const remainingMinutes = Math.max(0, totalGameMinutes - completedMinutes);
+      const remainingPoints = Math.max(0, qPpm * remainingMinutes);
+      const projectedTotal = Math.round(cumulativeHome + cumulativeAway + remainingPoints);
+      const currentTotal = cumulativeHome + cumulativeAway;
+      const homeShare = currentTotal > 0 ? cumulativeHome / currentTotal : 0.5;
+      const projectedHome = Math.round(cumulativeHome + remainingPoints * homeShare);
+      const projectedAway = Math.max(0, projectedTotal - projectedHome);
+      return `(${projectedHome}-${projectedAway} / ${projectedTotal})`;
     }
 
     function quarterScoreHtml(analysis) {
@@ -3651,6 +3517,7 @@
               <span class="q">${escapeHtml(row.label)}</span>
               <span class="score">${escapeHtml(row.score)}</span>
               <span class="ppm">${row.ppm !== null ? `${row.ppm.toFixed(2)} ppm` : '-'}</span>
+              <span class="projected-final">${escapeHtml(quarterProjectedFinalText(row, analysis))}</span>
             </div>
           `).join('')}
         </div>`;
@@ -3693,6 +3560,97 @@
           <div class="row"><span>Çeyrek PPM</span><strong>${escapeHtml(quarterPaceSummaryText(analysis))}</strong></div>
           ${quarterScoreHtml(analysis)}
         </div>`;
+    }
+
+    function quarterAnalysisFromAlert(alert) {
+      const analysis = { ...parseAnalysis(alert) };
+      if (alert.quarter_scores && typeof alert.quarter_scores === 'object') analysis.quarter_scores = alert.quarter_scores;
+      if (Array.isArray(alert.quarter_totals)) analysis.quarter_totals = alert.quarter_totals;
+      if (Array.isArray(alert.quarter_ppm)) analysis.quarter_ppm = alert.quarter_ppm;
+      if (alert.quarter_length !== undefined && alert.quarter_length !== null) analysis.quarter_length = alert.quarter_length;
+      if (alert.match_ppm !== undefined && alert.match_ppm !== null) analysis.match_ppm = alert.match_ppm;
+      if (alert.sustainable_ppm !== undefined && alert.sustainable_ppm !== null) analysis.sustainable_ppm = alert.sustainable_ppm;
+      return analysis;
+    }
+
+    function openQuarterScores(id) {
+      const alert = allAlerts.find(a => Number(a.id) === Number(id));
+      if (!alert) return;
+      const analysis = quarterAnalysisFromAlert(alert);
+      $('signalModalTitle').textContent = `Çeyrek Skorları - ${cleanMatchName(alert.match_name)}`;
+      $('signalModalBody').innerHTML = `
+        <div style="padding:16px 18px;line-height:1.5;">
+          <div style="font-size:12.5px;color:var(--text-soft);margin-bottom:12px;">
+            ${escapeHtml(alert.tournament || '-')} &nbsp;·&nbsp;
+            ${escapeHtml(alert.status || '-')} &nbsp;·&nbsp;
+            <b style="color:var(--text);">${escapeHtml(alert.score || '-')}</b>
+          </div>
+          ${pacePanelHtml(analysis)}
+          <div class="modal-actions">
+            <button class="btn" onclick="refreshQuarterScores(${Number(alert.id || 0)}, this)">Çeyrek skorlarını yenile</button>
+            <button class="btn" onclick="openSignalModal(${Number(alert.id || 0)})">Sinyal detayını aç</button>
+          </div>
+        </div>
+      `;
+      $('signalModal').classList.add('active');
+    }
+
+    function qualityValue(value, digits = 1) {
+      const n = num(value);
+      return n === null ? '-' : n.toFixed(digits);
+    }
+
+    function openSignalQualityModal(id) {
+      const alert = allAlerts.find(a => Number(a.id) === Number(id));
+      if (!alert) return;
+      const quality = alert.signal_quality && typeof alert.signal_quality === 'object' ? alert.signal_quality : {};
+      const score = quality.quality_score ?? alert.signal_quality_score;
+      const label = quality.quality_label ?? alert.signal_quality_label ?? '-';
+      $('signalModalTitle').textContent = `Sinyal Kalitesi - ${cleanMatchName(alert.match_name)}`;
+      $('signalModalBody').innerHTML = `
+        <div style="padding:16px 18px;line-height:1.5;">
+          <div class="sig-card">
+            <div class="row"><span>Sinyal Kalitesi Puanı</span><strong>${escapeHtml(score ?? '-')}</strong></div>
+            <div class="row"><span>Sinyal Kalitesi Etiketi</span><strong>${escapeHtml(label)}</strong></div>
+            <div class="row"><span>Projeksiyon</span><strong>${qualityValue(quality.projection)}</strong></div>
+            <div class="row"><span>Projeksiyon - Canlı Barem Farkı</span><strong>${qualityValue(quality.projection_diff)}</strong></div>
+            <div class="row"><span>Gereken Tempo</span><strong>${qualityValue(quality.required_pace, 2)}</strong></div>
+            <div class="row"><span>Mevcut Tempo</span><strong>${qualityValue(quality.current_pace, 2)}</strong></div>
+            <div class="row"><span>Skor Farkı</span><strong>${escapeHtml(quality.score_gap ?? '-')}</strong></div>
+            <div class="row"><span>Risk Notu</span><strong>${escapeHtml(quality.risk_note || '-')}</strong></div>
+          </div>
+          <div class="sig-section-title">Kalite Gerekçesi</div>
+          <div class="sig-card"><div class="sig-help">${escapeHtml(quality.reason || alert.signal_quality_reason || '-')}</div></div>
+          <div class="sig-help" style="margin-top:10px;">Sinyal Kalitesi yalnızca veri kalitesi ve model güven puanıdır; kesinlik veya finansal karar anlamı taşımaz.</div>
+        </div>
+      `;
+      $('signalModal').classList.add('active');
+    }
+
+    async function refreshQuarterScores(alertId, button) {
+      if (!alertId) return;
+      const oldText = button ? button.textContent : '';
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Yenileniyor...';
+      }
+      try {
+        const res = await fetch(`/api/alerts/${Number(alertId)}/quarter-scores/refresh`, { method: 'POST' });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.detail || payload?.error || 'Çeyrek skorları yenilenemedi.');
+        if (payload.alert) {
+          allAlerts = allAlerts.map(a => Number(a.id) === Number(alertId) ? payload.alert : a);
+          render();
+          openQuarterScores(alertId);
+        }
+        showBanner('Çeyrek skorları yenilendi.');
+      } catch (error) {
+        showBanner(error.message || 'Çeyrek skorları yenilenemedi.', 'error');
+        if (button) {
+          button.disabled = false;
+          button.textContent = oldText || 'Çeyrek skorlarını yenile';
+        }
+      }
     }
 
     function historyGuardStatHtml(title, stat) {
@@ -3937,12 +3895,12 @@
 
           <!-- BUTONLAR -->
           ${actionsHtml}
+          ${listQuickOptions(alert)}
 
           <!-- TÜM TEKNİK DETAY (kapalı) -->
           <details style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.06);">
             <summary class="modal-detail-toggle">🔬 Tüm teknik detayları göster</summary>
             <div style="margin-top:12px;">
-              ${signalTagsHtml(alert)}
               ${pacePanelHtml(analysis)}
               <div class="sig-section-title">Sistem Değerlendirmesi</div>
               <div class="sig-verdict ${edgeClass}">
@@ -3974,7 +3932,6 @@
                   ${alert.signal_count > 1 ? `<div class="row"><span>Sinyal tekrarı</span><strong>${alert.signal_count}. kez</strong></div>` : ''}
                   <div class="row"><span>Veri kalitesi</span><strong>${escapeHtml(dataLabel)}${projectionQuality !== null ? ` <span style="color:var(--text-soft);font-weight:600;">(${projectionQuality.toFixed(0)}/100)</span>` : ''}</strong></div>
                 </div>
-                ${listQuickActionsHtml(alert)}
               </div>
               ${warnings.length > 2 ? `
                 <div class="sig-section-title">Diğer Risk Notları</div>
@@ -4441,12 +4398,11 @@
     $('manualListValue').addEventListener('keydown', event => {
       if (event.key === 'Enter') addManualSignalListEntry();
     });
-
     document.querySelectorAll('th[data-sort]').forEach(th => {
       th.addEventListener('click', () => {
         const field = th.dataset.sort;
         if (sortField === field) sortAsc = !sortAsc;
-        else { sortField = field; sortAsc = field === 'quality_rank' ? false : true; }
+        else { sortField = field; sortAsc = true; }
         render();
       });
     });

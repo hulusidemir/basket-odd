@@ -10,6 +10,8 @@ import os
 import re
 import time
 
+from signal_quality import calculate_signal_quality
+
 try:
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
     from playwright.async_api import async_playwright
@@ -19,6 +21,44 @@ except ModuleNotFoundError:
 
 
 logger = logging.getLogger("finished_match_service")
+
+
+def _parse_analysis(raw) -> dict:
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _normalize_direction(value) -> str:
+    text = str(value or "").strip().upper().replace("UST", "ÜST")
+    return text if text in {"ALT", "ÜST"} else ""
+
+
+def _persist_signal_quality_before_delete(db, match_id: str) -> int:
+    rows = db.active_alerts_for_match(match_id)
+    history: list[str] = []
+    updated = 0
+    for row in rows:
+        analysis = _parse_analysis(row.get("ai_analysis"))
+        if not isinstance(analysis.get("signal_quality"), dict):
+            quality = calculate_signal_quality({
+                **row,
+                "direction": row.get("final_direction") or row.get("direction"),
+                "previous_directions": history,
+            })
+            analysis = {**analysis, "signal_quality": quality}
+            if db.update_alert_ai_analysis(int(row.get("id") or 0), json.dumps(analysis, ensure_ascii=False), active_only=True):
+                updated += 1
+        direction = _normalize_direction(row.get("final_direction") or row.get("direction"))
+        if direction:
+            history.append(direction)
+    return updated
 
 
 def is_final_status(status: str) -> bool:
@@ -60,26 +100,14 @@ def _normalize_direction(direction: str) -> str:
     return ""
 
 
-def _claude_play_direction(code: str) -> str:
-    code_key = str(code or "").strip().upper()
-    if code_key in {"TRUE_UNDER", "FADE_UNDER"}:
-        return "ALT"
-    if code_key in {"TRUE_OVER", "FADE_OVER"}:
-        return "ÜST"
-    return ""
-
-
 def canonical_alert_direction(alert: dict) -> str:
-    """Return the playable direction, including C_A flip decisions."""
+    """Return the stored playable direction for result settlement."""
     try:
         analysis = json.loads(alert.get("ai_analysis") or "{}")
     except Exception:
         analysis = {}
     return (
-        _claude_play_direction(alert.get("claude_ai") or analysis.get("claude_ai"))
-        or _normalize_direction(
-            analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
-        )
+        _normalize_direction(analysis.get("final_direction") or analysis.get("direction") or alert.get("direction"))
         or _normalize_direction(alert.get("direction"))
     )
 
@@ -458,6 +486,7 @@ async def run_active_match_finished_scan(db, config) -> dict:
         match_id = result.get("match_id")
         if not match_id:
             continue
+        _persist_signal_quality_before_delete(db, match_id)
         affected = db.delete_match_data(match_id)
         if affected > 0:
             summary["moved_count"] += 1

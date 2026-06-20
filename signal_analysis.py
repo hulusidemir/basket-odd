@@ -109,30 +109,11 @@ def _opposite_direction(direction: str) -> str:
     return "ALT" if _normalize_direction(direction) == "ÜST" else "ÜST"
 
 
-def _claude_play_direction(code) -> str:
-    code = str(code or "").strip().upper()
-    if code in {"TRUE_UNDER", "FADE_UNDER"}:
-        return "ALT"
-    if code in {"TRUE_OVER", "FADE_OVER"}:
-        return "ÜST"
-    return ""
-
-
 def _canonical_backtest_outcome(row: dict, analysis: dict, direction: str, success: bool) -> tuple[str, bool]:
-    """Old rows may have been settled against the pre-C_A direction.
-
-    Backtest buckets must learn from the playable direction shown to the user,
-    otherwise C_A flips teach the profile the exact opposite lesson.
-    """
     stored_direction = _normalize_direction(direction)
-    final_direction = (
-        _claude_play_direction(row.get("claude_ai") or analysis.get("claude_ai"))
-        or _normalize_direction(
-            analysis.get("final_direction") or analysis.get("direction") or stored_direction
-        )
+    final_direction = _normalize_direction(
+        analysis.get("final_direction") or analysis.get("direction") or stored_direction
     )
-    if final_direction in {"ALT", "ÜST"} and stored_direction != final_direction:
-        return final_direction, not success
     return final_direction or stored_direction, success
 
 
@@ -529,10 +510,10 @@ def _extract_h2h_metrics(body_text: str, match_name: str, *, include_team_form: 
             }
         return {}
 
-    def h2h_totals_from_match_rows() -> list[int]:
+    def h2h_score_rows_from_match_rows() -> list[dict]:
         if not text:
             return []
-        totals: list[int] = []
+        rows: list[dict] = []
         date_matches = list(re.finditer(date_re, text, re.IGNORECASE))
         seen: set[tuple] = set()
         for idx, match in enumerate(date_matches):
@@ -546,11 +527,16 @@ def _extract_h2h_metrics(body_text: str, match_name: str, *, include_team_form: 
             parsed = _score_row_for_team(chunk, home_team, away_team)
             if parsed:
                 total = parsed["total"]
-                key = (match.group(0), total)
+                key = (match.group(0), parsed["for"], parsed["against"])
                 if 100 <= total <= 320 and key not in seen:
                     seen.add(key)
-                    totals.append(total)
-        return totals[:12]
+                    rows.append({
+                        "date": match.group(0),
+                        "home": parsed["for"],
+                        "away": parsed["against"],
+                        "total": total,
+                    })
+        return rows[:12]
 
     h2h_games = None
     h2h_avg_total = None
@@ -601,7 +587,8 @@ def _extract_h2h_metrics(body_text: str, match_name: str, *, include_team_form: 
             h2h_avg_total = float(generic.group(1))
             h2h_source = "average_text"
 
-    h2h_row_totals = h2h_totals_from_match_rows()
+    h2h_score_rows = h2h_score_rows_from_match_rows()
+    h2h_row_totals = [row["total"] for row in h2h_score_rows]
     if h2h_avg_total is None and h2h_row_totals:
         h2h_avg_total = round(mean(h2h_row_totals), 1)
         h2h_source = "score_rows"
@@ -684,6 +671,7 @@ def _extract_h2h_metrics(body_text: str, match_name: str, *, include_team_form: 
         "h2h_over_pct": h2h_over_pct,
         "h2h_games": h2h_games,
         "h2h_source": h2h_source,
+        "h2h_score_rows": h2h_score_rows,
         "h2h_row_totals": h2h_row_totals,
         "h2h_body_chars": len(text),
         "h2h_quality_score": quality_score,
@@ -1225,7 +1213,7 @@ def _classify_signal(decision: dict) -> dict:
     yön kararıyla uyumlu olduğunda Telegram'a uygun. Diğer durumlarda dashboard'da
     görünür kalır ama mesaj atılmaz.
     """
-    scores = decision.get("signal_scores") or {}
+    scores = decision.get("direction_totals") or {}
     margin = abs(float(scores.get("ALT", 0) or 0) - float(scores.get("ÜST", 0) or 0))
     final_direction = _normalize_direction(decision.get("direction"))
     legacy_direction = _normalize_direction(decision.get("legacy_direction") or final_direction)
@@ -1247,7 +1235,7 @@ def _classify_signal(decision: dict) -> dict:
     fair_edge_threshold = 6.0 if final_direction == "ÜST" else 4.5
     opening_val = _safe_float(decision.get("opening")) or 0.0
 
-    telegram_eligible = (
+    send_allowed = (
         fair_edge_abs >= fair_edge_threshold
         and fair_aligned
         and (projection_aligned or projection_direction is None)
@@ -1256,12 +1244,12 @@ def _classify_signal(decision: dict) -> dict:
 
     # Düşük totalli ÜST için ek kapı (veri: <150 toplam ÜST ~%18-30 başarı).
     low_total_ust_block = False
-    if telegram_eligible and final_direction == "ÜST" and 0 < opening_val < 155:
+    if send_allowed and final_direction == "ÜST" and 0 < opening_val < 155:
         if not projection_aligned or fair_edge_abs < 7.0:
-            telegram_eligible = False
+            send_allowed = False
             low_total_ust_block = True
 
-    if telegram_eligible:
+    if send_allowed:
         reason = (
             f"Adil barem canlıdan {fair_edge_abs:.1f} puan {'yüksek' if fair_edge > 0 else 'düşük'}; "
             f"yön {final_direction} ile uyumlu."
@@ -1289,7 +1277,6 @@ def _classify_signal(decision: dict) -> dict:
             )
 
     return {
-        "telegram_eligible": telegram_eligible,
         "selection_reason": reason,
     }
 
@@ -1500,8 +1487,8 @@ def _decision_from_components(
     return {
         "direction": final_direction,
         "legacy_direction": legacy_direction,
-        "signal_scores": {key: round(value, 1) for key, value in totals.items()},
-        "signal_votes": sorted(votes, key=lambda item: item["score"], reverse=True),
+        "direction_totals": {key: round(value, 1) for key, value in totals.items()},
+        "vote_details": sorted(votes, key=lambda item: item["score"], reverse=True),
         "projection_quality": projection_quality,
         "fair_edge": fair_edge,
         "fair_edge_abs": round(fair_abs, 1),
@@ -1562,6 +1549,10 @@ def enrich_analysis_with_backtest(
         backtest_profile=backtest_profile,
     )
     selection = _classify_signal(decision)
+    decision = {
+        key: value for key, value in decision.items()
+        if key not in {"direction_totals", "vote_details", "flip_reason"}
+    }
     warnings = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
     selection_reason = selection.get("selection_reason")
     if selection_reason and selection_reason not in warnings:
@@ -1569,8 +1560,8 @@ def enrich_analysis_with_backtest(
     return {
         **analysis,
         **decision,
-        **selection,
         "final_direction": decision.get("direction"),
+        "selection_reason": selection.get("selection_reason"),
         "warnings": warnings,
     }
 
@@ -1739,8 +1730,6 @@ def build_signal_analysis(
         backtest_profile=backtest_profile,
     )
     direction = decision["direction"]
-    if decision.get("flip_reason"):
-        warnings.insert(0, decision["flip_reason"])
     selection = _classify_signal(decision)
     warnings.insert(0, selection["selection_reason"])
 
@@ -1779,6 +1768,8 @@ def build_signal_analysis(
         "history_total": _safe_round(history_total),
         "h2h_games": h2h_games,
         "h2h_source": h2h_metrics.get("h2h_source") or "",
+        "h2h_score_rows": h2h_metrics.get("h2h_score_rows") or [],
+        "h2h_row_totals": h2h_metrics.get("h2h_row_totals") or [],
         "h2h_body_chars": h2h_metrics.get("h2h_body_chars"),
         "h2h_quality_score": h2h_quality_score,
         "h2h_quality_notes": h2h_quality_notes,
@@ -1813,11 +1804,7 @@ def build_signal_analysis(
         "pace_anomaly_pct": pace_anomaly_pct,
         "quarter_paces": quarter_paces,
         "pace_anomaly_note": pace_anomaly_note,
-        "signal_scores": decision.get("signal_scores"),
-        "signal_votes": decision.get("signal_votes"),
         "backtest": decision.get("backtest"),
-        "flip_reason": decision.get("flip_reason"),
-        "telegram_eligible": selection.get("telegram_eligible"),
         "selection_reason": selection.get("selection_reason"),
     }
     return result

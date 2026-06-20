@@ -8,7 +8,7 @@ This project monitors live basketball matches on AIScore and detects Total Point
 - Pre-match vs live total anomaly detection, with opening-line fallback
 - Telegram alerts (single or multiple chat IDs)
 - Per-match signal cap to avoid spam
-- Signal score, C_A profile, 100 profile and projection-based review
+- Projection-based review for live total context
 - Flask dashboard for reviewing alerts and actions
 - Country/league visibility in tournament field (for example `Japan : Japan League B3`)
 - Repeated-signal indicator (for example `2nd signal`, `3rd signal`)
@@ -21,16 +21,13 @@ This project monitors live basketball matches on AIScore and detects Total Point
 | Live - Reference >= THRESHOLD | `ALT` candidate |
 | Reference - Live >= THRESHOLD | `UST` candidate |
 
-Reference means pre-match total first, opening total if no pre-match line is available. After the raw candidate is found, C_A and 100 profile logic can promote the final single direction shown in the dashboard and Telegram message. The app stores one final `ALT` or `ÜST` signal with its reason.
+Reference means pre-match total first, opening total if no pre-match line is available. The app stores the resulting `ALT` or `ÜST` signal with its live context and reason.
 
 ## Architecture
 
 - `main.py`: Bot loop, anomaly evaluation, alert orchestration
 - `aiscore_scraper.py`: AIScore scraping and odds extraction
 - `notifier.py`: Telegram messaging
-- `signal_score.py`: Signal score and trust band logic
-- `claude_ai_filter.py`: C_A profile classification
-- `signal_profiles.py`: 100 profile classification
 - `projection.py`: Current-pace final total projection
 - `db.py`: SQLite schema and data access
 - `dashboard.py`: Flask API + UI backend

@@ -1055,19 +1055,10 @@
         </div>
       `;
     }
-    function listMarkersHtml(row, scope) {
-      const markers = Array.isArray(row.list_markers) ? row.list_markers : [];
-      const filtered = markers.filter(m => String(m.scope || '') === scope);
-      if (!filtered.length) return '';
-      return filtered.map(m => {
-        const tone = String(m.tone || '').replace(/[^a-z-]/gi, '');
-        return `<span class="list-marker ${escapeHtml(tone)}" title="${escapeHtml(m.title || '')}" aria-label="${escapeHtml(m.title || '')}"></span>`;
-      }).join('');
-    }
     function fmtMatch(row) {
       const name = escapeHtml(row.match_name || '');
       const link = row.url ? `<a href="${escapeHtml(row.url)}" target="_blank" rel="noopener">${name}</a>` : name;
-      return `<div class="match-name">${link}${listMarkersHtml(row,'team')}</div>`;
+      return `<div class="match-name">${link}</div>`;
     }
     function offenseTotal(row) {
       const home = num(row.home_last6 && row.home_last6.ppg);
@@ -1155,7 +1146,7 @@
         <tr class="${m.bet_placed ? 'bet-placed' : ''} ${m.followed ? 'is-followed' : ''} ${m.ignored ? 'is-ignored' : ''}">
           <td>${escapeHtml(m.kickoff || '-')}</td>
           <td>${fmtMatch(m)}</td>
-          <td class="league-cell" title="${escapeHtml(m.tournament || '')}">${escapeHtml(m.tournament || '-')}${listMarkersHtml(m,'league')}</td>
+          <td class="league-cell" title="${escapeHtml(m.tournament || '')}">${escapeHtml(m.tournament || '-')}</td>
           <td class="num">${fmtNum(m.opening_total)}</td>
           <td class="sf-cell">${fmtSf(m.home_last6 || {})}</td>
           <td class="sf-cell">${fmtSf(m.away_last6 || {})}</td>

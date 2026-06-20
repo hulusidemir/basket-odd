@@ -12,31 +12,6 @@ from telegram.error import TelegramError
 logger = logging.getLogger(__name__)
 
 
-def _quality_text(analysis: dict) -> str:
-    label = str(analysis.get("quality_label") or "").strip()
-    title = str(analysis.get("quality_title") or "").strip()
-    if not label or label == "-":
-        return "-"
-    if title and title != "Kalite kuralı uygulanmadı.":
-        return f"{label} — {title}"
-    return label
-
-
-def _list_text(analysis: dict) -> str:
-    markers = analysis.get("list_markers") if isinstance(analysis, dict) else []
-    if not isinstance(markers, list) or not markers:
-        return "-"
-    parts = []
-    for marker in markers:
-        if not isinstance(marker, dict):
-            continue
-        prefix = "🟥" if marker.get("type") == "black" else "🟩"
-        title = str(marker.get("title") or "").strip()
-        if title:
-            parts.append(f"{prefix} {title}")
-    return " | ".join(parts) if parts else "-"
-
-
 def _float_text(value, digits: int = 2) -> str:
     try:
         return f"{float(value):.{digits}f}"
@@ -83,59 +58,6 @@ def _match_ppm_text(analysis: dict) -> str:
     return _float_text(value)
 
 
-def _is_hundred_profile(analysis: dict) -> bool:
-    value = analysis.get("hundred_profile") if isinstance(analysis, dict) else False
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "evet"}
-    return bool(value)
-
-
-_CA_LABELS = {
-    "TRUE_UNDER": ("Güçlü Alt", "ALT"),
-    "TRUE_OVER":  ("Güçlü Üst", "ÜST"),
-    "FADE_OVER":  ("Güçlü Üst", "ÜST"),
-    "FADE_UNDER": ("Güçlü Alt", "ALT"),
-}
-
-
-def _simple_ai_reason(rule: str) -> str:
-    rule = str(rule or "").strip()
-    if not rule:
-        return "Geçmişte benzer maçlarda bu seçim daha güçlü göründü."
-    if rule == "100 Profili onayı":
-        return "Bu maç, geçmişte sık kazanan güçlü sinyal tipine benziyor."
-
-    simple_parts = []
-    folded = rule.lower()
-    if "açılış" in folded:
-        simple_parts.append("maç öncesi barem")
-    if "canlı" in folded:
-        simple_parts.append("şu anki skor/barem")
-    if "tempo" in folded:
-        simple_parts.append("maçın hızı")
-    if "fair" in folded or "adil" in folded:
-        simple_parts.append("adil barem hesabı")
-    if "projeksiyon" in folded:
-        simple_parts.append("maç sonu tahmini")
-    if "h2h" in folded:
-        simple_parts.append("takımların geçmiş maçları")
-    if simple_parts:
-        return f"Yapay zeka {', '.join(simple_parts)} bilgilerine baktı ve bu tarafı daha güçlü gördü."
-    return "Yapay zeka bu maçtaki sayılara baktı ve bu tarafı daha güçlü gördü."
-
-
-def _claude_ai_meta(analysis: dict) -> tuple[str, str, str, str] | None:
-    """Returns (code, label, play, rule) or None."""
-    if not isinstance(analysis, dict):
-        return None
-    code = str(analysis.get("claude_ai") or "").strip()
-    if not code or code not in _CA_LABELS:
-        return None
-    label, play = _CA_LABELS[code]
-    rule = str(analysis.get("claude_ai_rule") or "").strip()
-    return code, label, play, rule
-
-
 def _build_alert_text(
     *,
     match_name: str,
@@ -179,41 +101,23 @@ def _build_alert_text(
     quarter_score_text = _quarter_score_text(analysis)
     match_ppm_text = _match_ppm_text(analysis)
     quarter_ppm_text = _quarter_ppm_text(analysis)
-    hundred_profile_warning = "⚠️ <b>Güçlü geçmiş profili bulundu.</b>\n" if _is_hundred_profile(analysis) else ""
-
-    ca_meta = _claude_ai_meta(analysis)
     final_direction = str(
-        (ca_meta[2] if ca_meta else "")
-        or analysis.get("final_direction")
+        analysis.get("final_direction")
         or analysis.get("direction")
         or direction
     ).strip().upper().replace("UST", "ÜST")
     if final_direction not in {"ALT", "ÜST"}:
         final_direction = direction
 
-    if ca_meta:
-        _ca_code, ca_label, _ca_play, ca_rule = ca_meta
-        ai_reason = _simple_ai_reason(ca_rule)
-        ca_banner = (
-            f"🤖 <b>Yapay Zeka Onayı: {final_direction} oyna</b>\n"
-            f"<i>{escape(ai_reason)}</i>\n"
-        )
-        signal_headline = f"✅ <b>{final_direction} oyna</b>{repeat}"
-    else:
-        ca_banner = ""
-        signal_headline = f"✅ <b>{final_direction} oyna</b>{repeat}"
+    signal_headline = f"✅ <b>{final_direction} oyna</b>{repeat}"
 
     reason_text = str(analysis.get("selection_reason") or "").strip()
-    if ca_meta and ca_meta[3]:
-        reason_text = _simple_ai_reason(ca_meta[3])
-    elif not reason_text:
+    if not reason_text:
         reason_text = "Nihai sinyal yönü, canlı barem hareketi ve adil barem/projeksiyon kontrolüyle seçildi."
 
     league_line = ""
 
     return (
-        f"{ca_banner}"
-        f"{hundred_profile_warning}"
         f"{signal_headline}\n"
         f"🏀 <b>{escape(match_name)}</b>\n"
         f"🏆 {escape(tournament or '-')}\n\n"
@@ -282,7 +186,7 @@ class TelegramNotifier:
             period=period,
         )
         if followed_upcoming:
-            text = "⭐ <b>TAKİP EDİLEN MAÇA AİT SİNYAL GELDİ</b>\n" + text
+            text = "<b>TAKİP EDİLEN MAÇA AİT SİNYAL GELDİ</b>\n" + text
         try:
             msg_ids = await self._send_to_all(text)
             logger.info(f"Alert sent: {match_name} [{direction}]")

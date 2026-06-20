@@ -47,8 +47,6 @@ class Database:
                     score        TEXT NOT NULL DEFAULT '',
                     signal_count INTEGER NOT NULL DEFAULT 1,
                     ai_analysis  TEXT NOT NULL DEFAULT '',
-                    hundred_profile INTEGER NOT NULL DEFAULT 0,
-                    hundred_profile_rule TEXT NOT NULL DEFAULT '',
                     bet_placed   INTEGER NOT NULL DEFAULT 0,
                     ignored      INTEGER NOT NULL DEFAULT 0,
                     followed     INTEGER NOT NULL DEFAULT 0,
@@ -165,6 +163,7 @@ class Database:
 
                 CREATE INDEX IF NOT EXISTS idx_signal_lists_lookup
                 ON signal_lists(list_type, scope, normalized_value);
+
             """)
             # Backward-compatible migrations for older DB files. New installs
             # get the clean schema above; old installs keep their extra quality_*
@@ -180,10 +179,6 @@ class Database:
                 "ALTER TABLE alerts ADD COLUMN score TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE alerts ADD COLUMN signal_count INTEGER NOT NULL DEFAULT 1",
                 "ALTER TABLE alerts ADD COLUMN ai_analysis TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN hundred_profile INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE alerts ADD COLUMN hundred_profile_rule TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN claude_ai TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN claude_ai_rule TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE alerts ADD COLUMN deleted_at TIMESTAMP",
                 "ALTER TABLE alerts ADD COLUMN prematch REAL",
                 "ALTER TABLE alerts ADD COLUMN result TEXT NOT NULL DEFAULT ''",
@@ -203,8 +198,6 @@ class Database:
                 except Exception:
                     pass
             conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_deleted_at ON alerts(deleted_at)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_hundred_profile ON alerts(hundred_profile)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_claude_ai ON alerts(claude_ai)")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS signal_lists (
@@ -383,37 +376,6 @@ class Database:
             ).fetchone()
         return row is not None
 
-    def was_telegram_alerted_in_period(self, match_id: str, period: int) -> bool:
-        if period is None:
-            return False
-        with self._conn() as conn:
-            row = conn.execute(
-                """
-                SELECT 1 FROM alerts
-                WHERE match_id = ?
-                  AND alert_period = ?
-                  AND ai_analysis LIKE '%"telegram_eligible": true%'
-                  AND (deleted_at IS NULL OR deleted_at = '')
-                LIMIT 1
-                """,
-                (match_id, int(period)),
-            ).fetchone()
-        return row is not None
-
-    def count_match_telegram_alerts(self, match_id: str) -> int:
-        with self._conn() as conn:
-            row = conn.execute(
-                """
-                SELECT COUNT(*) as cnt
-                FROM alerts
-                WHERE match_id = ?
-                  AND ai_analysis LIKE '%"telegram_eligible": true%'
-                  AND (deleted_at IS NULL OR deleted_at = '')
-                """,
-                (match_id,),
-            ).fetchone()
-        return row["cnt"] if row else 0
-
     def is_match_deleted(self, match_id: str) -> bool:
         with self._conn() as conn:
             row = conn.execute(
@@ -453,10 +415,6 @@ class Database:
         ai_analysis: str = "",
         alert_period: int | None = None,
         alert_moment: str = "",
-        hundred_profile: bool = False,
-        hundred_profile_rule: str = "",
-        claude_ai: str = "",
-        claude_ai_rule: str = "",
     ) -> int:
         with self._conn() as conn:
             action = conn.execute(
@@ -472,43 +430,42 @@ class Database:
                 INSERT INTO alerts (
                     match_id, match_name, opening, prematch, live, direction, diff,
                     tournament, status, url, score, signal_count, ai_analysis,
-                    hundred_profile, hundred_profile_rule,
-                    claude_ai, claude_ai_rule,
                     bet_placed, ignored, followed, deleted_at, alert_period, alert_moment
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     match_id, match_name, opening, prematch, live, direction, diff,
                     tournament, status, url, score, signal_count, ai_analysis,
-                    1 if hundred_profile else 0, str(hundred_profile_rule or "")[:120],
-                    str(claude_ai or "")[:32], str(claude_ai_rule or "")[:160],
                     bet, ign, fol, deleted_at, alert_period, alert_moment,
                 ),
             )
             return cursor.lastrowid
 
-    def update_alert_hundred_profile(self, alert_id: int, enabled: bool, rule: str = "") -> bool:
+    def update_alert_live_snapshot(
+        self,
+        alert_id: int,
+        *,
+        status: str = "",
+        score: str = "",
+        ai_analysis: str = "",
+    ) -> bool:
         with self._conn() as conn:
             cursor = conn.execute(
                 """
                 UPDATE alerts
-                SET hundred_profile = ?, hundred_profile_rule = ?
+                SET status = CASE WHEN ? != '' THEN ? ELSE status END,
+                    score = CASE WHEN ? != '' THEN ? ELSE score END,
+                    ai_analysis = CASE WHEN ? != '' THEN ? ELSE ai_analysis END
                 WHERE id = ?
+                  AND (deleted_at IS NULL OR deleted_at = '')
                 """,
-                (1 if enabled else 0, str(rule or "")[:120], int(alert_id)),
-            )
-        return cursor.rowcount > 0
-
-    def update_alert_claude_ai(self, alert_id: int, code: str, rule: str = "") -> bool:
-        with self._conn() as conn:
-            cursor = conn.execute(
-                """
-                UPDATE alerts
-                SET claude_ai = ?, claude_ai_rule = ?
-                WHERE id = ?
-                """,
-                (str(code or "")[:32], str(rule or "")[:160], int(alert_id)),
+                (
+                    status, status,
+                    score, score,
+                    ai_analysis, ai_analysis,
+                    int(alert_id),
+                ),
             )
         return cursor.rowcount > 0
 
@@ -531,6 +488,52 @@ class Database:
                 (limit,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def active_alerts(self, limit: int | None = None) -> list:
+        with self._conn() as conn:
+            sql = """
+                SELECT a.*, COALESCE(ma.note, '') AS note
+                FROM alerts a
+                LEFT JOIN match_actions ma ON ma.match_id = a.match_id
+                WHERE (a.deleted_at IS NULL OR a.deleted_at = '')
+                  AND NOT (
+                    COALESCE(a.alert_period, 0) = -1
+                    AND COALESCE(a.alert_moment, '') = 'Gelecek Maç'
+                  )
+                  AND COALESCE(a.status, '') != 'Gelecek'
+                ORDER BY a.alerted_at ASC, a.id ASC
+            """
+            if limit is None:
+                rows = conn.execute(sql).fetchall()
+            else:
+                rows = conn.execute(f"{sql} LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def active_alerts_for_match(self, match_id: str) -> list:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT a.*, COALESCE(ma.note, '') AS note
+                FROM alerts a
+                LEFT JOIN match_actions ma ON ma.match_id = a.match_id
+                WHERE a.match_id = ?
+                  AND (a.deleted_at IS NULL OR a.deleted_at = '')
+                ORDER BY a.alerted_at ASC, a.id ASC
+                """,
+                (match_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_alert_ai_analysis(self, alert_id: int, ai_analysis: str, *, active_only: bool = True) -> bool:
+        where = "id = ?"
+        if active_only:
+            where += " AND (deleted_at IS NULL OR deleted_at = '')"
+        with self._conn() as conn:
+            cursor = conn.execute(
+                f"UPDATE alerts SET ai_analysis = ? WHERE {where}",
+                (ai_analysis, int(alert_id)),
+            )
+        return cursor.rowcount > 0
 
     def update_match_note(self, match_id: str, note: str) -> int:
         clean_note = str(note or "").strip()[:240]
