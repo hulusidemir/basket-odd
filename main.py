@@ -20,6 +20,8 @@ from notifier import TelegramNotifier
 from pace_tracker import PaceTracker
 from projection import game_clock, parse_score
 from signal_analysis import build_backtest_profile, build_signal_analysis
+from signal_profiles import evaluate_telegram_profiles
+from signal_repeat import live_total_delta
 
 
 def setup_logging(level: str):
@@ -155,6 +157,24 @@ async def process_match(
         "final_direction": direction,
     }
 
+    previous_same_direction = db.latest_match_alert_in_direction(match_id, direction)
+    if previous_same_direction:
+        previous_live = previous_same_direction.get("live")
+        repeat_delta = live_total_delta(inplay_total, previous_live)
+        if repeat_delta is None:
+            log.debug(
+                "Skipped (same-direction live delta unavailable): id=%s match=%s direction=%s current=%r previous=%r",
+                match_id, match_name, direction, inplay_total, previous_live,
+            )
+            return
+
+        if repeat_delta < config.SAME_DIRECTION_MIN_LIVE_DELTA:
+            log.debug(
+                "Skipped (same-direction live delta too small): id=%s match=%s direction=%s delta=%.1f min=%.1f",
+                match_id, match_name, direction, repeat_delta, config.SAME_DIRECTION_MIN_LIVE_DELTA,
+            )
+            return
+
     alert_id = db.save_alert(
         match_id, match_name, opening_total, inplay_total, direction, abs_diff,
         tournament=tournament, status=status, url=url, score=score,
@@ -164,17 +184,38 @@ async def process_match(
         alert_moment=" | ".join(p for p in (status, score) if p),
     )
 
+    profiles = evaluate_telegram_profiles(
+        {
+            **match,
+            "opening": opening_total,
+            "live": inplay_total,
+            "direction": direction,
+            "diff": abs_diff,
+            "alert_period": period,
+        },
+        analysis,
+    )
+    db.update_active_alert_profiles(alert_id, **profiles)
+
     followed_upcoming = db.is_upcoming_followed(match_id)
 
-    await notifier.send_alert(
-        match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
-        score=score, signal_count=signal_count, prematch=prematch_total, analysis=analysis,
-        period=period,
-        followed_upcoming=followed_upcoming,
-    )
+    telegram_sent = profiles["hundred_profile"] and bool(profiles["claude_ai"])
+    if telegram_sent:
+        await notifier.send_alert(
+            match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
+            score=score, signal_count=signal_count, prematch=prematch_total, analysis=analysis,
+            period=period,
+            followed_upcoming=followed_upcoming,
+        )
+    else:
+        log.info(
+            "Telegram skipped (requires C_A + 100 Profile): alert_id=%s match_id=%s | hundred=%s | C_A=%s",
+            alert_id, match_id, profiles["hundred_profile"], profiles["claude_ai"] or "-",
+        )
 
     log.info(
-        "Signal saved (telegram%s): alert_id=%s match_id=%s | %s | %s | diff=%.2f | fair_line=%s",
+        "Signal saved (telegram=%s%s): alert_id=%s match_id=%s | %s | %s | diff=%.2f | fair_line=%s",
+        "sent" if telegram_sent else "filtered",
         " · followed" if followed_upcoming else "",
         alert_id, match_id, match_name, direction, abs_diff, analysis.get("fair_line"),
     )
@@ -204,9 +245,9 @@ async def run():
 
     await notifier.send_startup()
     log.info(
-        "Bot started. Threshold: %s pts | Poll: %s-%ss | Max/match: %s | 1 alert per period",
+        "Bot started. Threshold: %s pts | Poll: %s-%ss | Max/match: %s | Same direction: %s pts live-total gap | 1 alert per period",
         config.THRESHOLD, config.POLL_INTERVAL_MIN, config.POLL_INTERVAL_MAX,
-        config.MAX_SIGNALS_PER_MATCH,
+        config.MAX_SIGNALS_PER_MATCH, config.SAME_DIRECTION_MIN_LIVE_DELTA,
     )
 
     consecutive_errors = 0

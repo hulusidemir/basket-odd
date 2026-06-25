@@ -851,11 +851,16 @@ class AiscoreScraper:
                     .filter(Boolean);
                   let homePeriods = null;
                   let awayPeriods = null;
-                  for (const row of contentRows) {
+                  let homeRowIndex = -1;
+                  for (let rowIndex = 0; rowIndex < contentRows.length; rowIndex++) {
+                    const row = contentRows[rowIndex];
                     const homeRow = parseQuarterRow(row, scoreHome);
                     const awayRow = parseQuarterRow(row, scoreAway);
-                    if (homeRow && !homePeriods) homePeriods = homeRow;
-                    if (awayRow && !awayPeriods && row !== contentRows.find(r => parseQuarterRow(r, scoreHome))) awayPeriods = awayRow;
+                    if (homeRow && !homePeriods) {
+                      homePeriods = homeRow;
+                      homeRowIndex = rowIndex;
+                    }
+                    if (awayRow && !awayPeriods && rowIndex !== homeRowIndex) awayPeriods = awayRow;
                   }
                   if (homePeriods && awayPeriods) {
                     quarterScores = {
@@ -1069,9 +1074,16 @@ class AiscoreScraper:
                         .filter(Boolean);
                       let homePeriods = null;
                       let awayPeriods = null;
-                      for (const row of rows) {
-                        if (!homePeriods) homePeriods = parseQuarterRow(row, scoreHome);
-                        if (!awayPeriods) awayPeriods = parseQuarterRow(row, scoreAway);
+                      let homeRowIndex = -1;
+                      for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+                        const row = rows[rowIndex];
+                        const homeRow = parseQuarterRow(row, scoreHome);
+                        const awayRow = parseQuarterRow(row, scoreAway);
+                        if (homeRow && !homePeriods) {
+                          homePeriods = homeRow;
+                          homeRowIndex = rowIndex;
+                        }
+                        if (awayRow && !awayPeriods && rowIndex !== homeRowIndex) awayPeriods = awayRow;
                       }
                       if (homePeriods && awayPeriods) {
                         quarterScores = {

@@ -109,6 +109,7 @@ Dashboard capabilities:
 | `POLL_INTERVAL_MIN` | Minimum loop delay (seconds) |
 | `POLL_INTERVAL_MAX` | Maximum loop delay (seconds) |
 | `MAX_SIGNALS_PER_MATCH` | Maximum stored signals per match |
+| `SAME_DIRECTION_MIN_LIVE_DELTA` | Minimum live-total difference before repeating the same direction (default: 10) |
 | `FINISHED_MATCH_POLL_SECONDS` | Finished match result polling interval |
 | `FINISHED_MATCH_BATCH_SIZE` | Finished match result batch size |
 | `DB_PATH` | SQLite file path |

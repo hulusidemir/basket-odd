@@ -350,6 +350,11 @@
       letter-spacing: 0;
     }
 
+    .stat-chip strong.profile-metrics {
+      font-size: 17px;
+      white-space: nowrap;
+    }
+
     .stat-chip.success strong { color: var(--accent-green); }
     .stat-chip.fail strong { color: var(--accent-red); }
     .stat-chip.rate strong { color: var(--accent-yellow); }
@@ -1733,6 +1738,7 @@
           <span class="nav-link active">Silinen</span>
           <a href="/upcoming/" class="nav-link">Gelecek Maçlar</a>
           <a href="/bankroll" class="nav-link">Bankroll</a>
+          <a href="/balance-tracker/" class="nav-link">Bakiye Takip</a>
         </nav>
         <span class="nav-sep">|</span>
         <div class="page-actions">
@@ -1767,6 +1773,14 @@
         <div class="stat-chip clickable" id="chipUst" onclick="toggleStatFilter('direction','ÜST')" title="Sadece ÜST sinyalleri göster">
           <span>ÜST</span>
           <strong id="statUst">0</strong>
+        </div>
+        <div class="stat-chip clickable" id="chipHundred" onclick="toggleStatFilter('hundred_profile',1)" title="Toplam / Başarısız / Başarı %">
+          <span>100 Profil</span>
+          <strong class="profile-metrics" id="statHundred">0 / 0 / -</strong>
+        </div>
+        <div class="stat-chip clickable" id="chipClaude" onclick="toggleStatFilter('claude_ai',1)" title="Toplam / Başarısız / Başarı %">
+          <span>C_A ⭐</span>
+          <strong class="profile-metrics" id="statClaude">0 / 0 / -</strong>
         </div>
         <div class="stat-chip success clickable" id="chipSuccess" onclick="toggleStatFilter('result','Başarılı')" title="Sadece başarılı sinyalleri göster">
           <span>Başarılı</span>
@@ -1824,6 +1838,7 @@
               <th data-sort="live">Canlı</th>
               <th data-sort="projected">Proj.</th>
               <th data-sort="signal_quality_score">S.K.</th>
+              <th class="ca-cell" data-sort="claude_ai">C_A</th>
               <th data-sort="diff">Fark</th>
               <th data-sort="fair_line">Adil Barem</th>
               <th data-sort="result">Sonuç</th>
@@ -2000,6 +2015,20 @@
     }
 
     function bigVerdictHtml(alert) {
+      const caCode = String(alert.claude_ai || '').trim();
+      if (caCode) {
+        const play = String(alert.claude_ai_play || alert.direction || '-');
+        const label = String(alert.claude_ai_label || 'C_A');
+        const rule = String(alert.claude_ai_rule || 'Canlıdayken kaydedilen profil eşleşmesi');
+        return `
+          <div class="big-verdict gold">
+            <div class="big-verdict-icon">⭐</div>
+            <div class="big-verdict-text">
+              <div class="big-verdict-play">${escapeHtml(play)} oyna <span class="badge small-badge">${escapeHtml(label)}</span></div>
+              <div class="big-verdict-desc">Canlı C_A kaydı: ${escapeHtml(rule)}</div>
+            </div>
+          </div>`;
+      }
       const dir = String(alert.direction || '');
       const dirArrow = dir === 'ALT' ? '▼' : (dir === 'ÜST' ? '▲' : '·');
       const result = String(alert.result || '');
@@ -2131,8 +2160,19 @@
 	      const label = alert.signal_quality_label || quality.quality_label || '-';
 	      const text = Number.isFinite(score) ? String(Math.round(score)) : '-';
 	      const reason = quality.risk_note || label;
-	      return `<span class="quality-cell"><button type="button" class="badge quality-badge ${signalQualityTone(score)}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(reason)}" aria-label="Sinyal kalitesi detayını aç">${escapeHtml(text)}</button></span>`;
+	      const hundred = Number(alert.hundred_profile || 0) === 1
+	        ? `<button type="button" class="hundred-profile-badge" onclick="event.stopPropagation();openSignalInfo(${Number(alert.id || 0)})" title="${escapeHtml(alert.hundred_profile_rule || '100 Profili')}">100</button>`
+	        : '';
+	      return `<span class="quality-cell"><button type="button" class="badge quality-badge ${signalQualityTone(score)}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(reason)}" aria-label="Sinyal kalitesi detayını aç">${escapeHtml(text)}</button>${hundred}</span>`;
 	    }
+
+    function claudeAiHtml(alert) {
+      const code = String(alert.claude_ai || '').trim();
+      if (!code) return '<span class="ca-empty" aria-hidden="true">·</span>';
+      const label = String(alert.claude_ai_label || code);
+      const title = String(alert.claude_ai_tooltip || alert.claude_ai_rule || label);
+      return `<button type="button" class="ca-star" onclick="event.stopPropagation();openSignalInfo(${Number(alert.id || 0)})" title="${escapeHtml(title)}" aria-label="${escapeHtml(label)}">⭐</button>`;
+    }
 
 	    function qualityValue(value, digits = 1) {
 	      const n = Number(value);
@@ -2483,6 +2523,8 @@
 	          if (activeFilter.direction && alert.direction !== activeFilter.direction) return false;
 	          if (activeFilter.result && alert.result !== activeFilter.result) return false;
 	          if (activeFilter.matchKey && matchKey(alert) !== activeFilter.matchKey) return false;
+	          if (activeFilter.hundred_profile && Number(alert.hundred_profile || 0) !== 1) return false;
+	          if (activeFilter.claude_ai && !String(alert.claude_ai || '').trim()) return false;
 	          return true;
 	        });
 	      }
@@ -2552,6 +2594,17 @@
       document.getElementById('statMatches').textContent = matchIds.size;
       document.getElementById('statAlt').textContent = deletedAlerts.filter(item => item.direction === 'ALT').length;
       document.getElementById('statUst').textContent = deletedAlerts.filter(item => item.direction === 'ÜST').length;
+      const compactProfileStats = rows => {
+        const failed = rows.filter(item => item.result === 'Başarısız').length;
+        const succeeded = rows.filter(item => item.result === 'Başarılı').length;
+        const resolvedCount = succeeded + failed;
+        const successRate = resolvedCount > 0 ? (succeeded / resolvedCount) * 100 : null;
+        return `${rows.length} / ${failed} / ${successRate !== null ? '%' + successRate.toFixed(1) : '-'}`;
+      };
+      const hundredRows = deletedAlerts.filter(item => Number(item.hundred_profile || 0) === 1);
+      const claudeRows = deletedAlerts.filter(item => String(item.claude_ai || '').trim());
+      document.getElementById('statHundred').textContent = compactProfileStats(hundredRows);
+      document.getElementById('statClaude').textContent = compactProfileStats(claudeRows);
       document.getElementById('statSuccess').textContent = successList.length;
       document.getElementById('statFail').textContent = failList.length;
       document.getElementById('statRate').textContent = rate !== null ? `%${rate.toFixed(1)}` : '-';
@@ -2636,12 +2689,16 @@
       const chipUst = document.getElementById('chipUst');
       const chipSuccess = document.getElementById('chipSuccess');
       const chipFail = document.getElementById('chipFail');
+      const chipHundred = document.getElementById('chipHundred');
+      const chipClaude = document.getElementById('chipClaude');
       const isDir = activeFilter && !activeFilter.result && !activeFilter.matchKey;
       const isRes = activeFilter && !activeFilter.direction && !activeFilter.matchKey;
       if (chipAlt) chipAlt.classList.toggle('active', isDir && activeFilter.direction === 'ALT');
       if (chipUst) chipUst.classList.toggle('active', isDir && activeFilter.direction === 'ÜST');
 	      if (chipSuccess) chipSuccess.classList.toggle('active', isRes && activeFilter.result === 'Başarılı');
 	      if (chipFail) chipFail.classList.toggle('active', isRes && activeFilter.result === 'Başarısız');
+	      if (chipHundred) chipHundred.classList.toggle('active', !!activeFilter?.hundred_profile);
+	      if (chipClaude) chipClaude.classList.toggle('active', !!activeFilter?.claude_ai);
 	    }
 
 	    function updatePeriodButtons() {
@@ -2792,6 +2849,7 @@
             <td class="mono">${formatNumber(alert.live)}</td>
             <td class="mono">${formatNumber(alert.projected)}</td>
             <td>${signalQualityHtml(alert)}</td>
+            <td class="ca-cell">${claudeAiHtml(alert)}</td>
             <td class="mono">${formatNumber(alert.diff)}</td>
             <td>${fairLineCell(alert)}</td>
             <td>${resultCell(alert)}</td>

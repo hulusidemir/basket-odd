@@ -11,6 +11,7 @@ class Config:
     POLL_INTERVAL_MIN: int = int(os.getenv("POLL_INTERVAL_MIN", "25"))
     POLL_INTERVAL_MAX: int = int(os.getenv("POLL_INTERVAL_MAX", "40"))
     MAX_SIGNALS_PER_MATCH: int = int(os.getenv("MAX_SIGNALS_PER_MATCH", "3"))
+    SAME_DIRECTION_MIN_LIVE_DELTA: float = float(os.getenv("SAME_DIRECTION_MIN_LIVE_DELTA", "10"))
     DB_PATH: str = os.getenv("DB_PATH", "basketball.db")
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     AISCORE_URL: str = os.getenv("AISCORE_URL", "https://www.aiscore.com/basketball")
@@ -31,3 +32,5 @@ class Config:
             raise ValueError("POLL_INTERVAL_MIN/MAX 0'dan büyük olmalı.")
         if self.POLL_INTERVAL_MIN > self.POLL_INTERVAL_MAX:
             raise ValueError("POLL_INTERVAL_MIN, POLL_INTERVAL_MAX'ten büyük olamaz.")
+        if self.SAME_DIRECTION_MIN_LIVE_DELTA < 0:
+            raise ValueError("SAME_DIRECTION_MIN_LIVE_DELTA negatif olamaz.")

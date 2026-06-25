@@ -230,6 +230,28 @@ def _quarter_totals(quarter_scores: dict | None) -> list[int]:
     return totals[:4]
 
 
+def calculate_quarter_ppm(
+    quarter_totals: list[int],
+    *,
+    period: int | None,
+    remaining_min: float | None,
+    quarter_length: float,
+) -> list[float]:
+    """Calculate live-period pace with elapsed time, not full period time."""
+    values: list[float] = []
+    for index, total in enumerate(quarter_totals[:4], start=1):
+        played_minutes = float(quarter_length)
+        if index == period and remaining_min is not None and remaining_min > 0:
+            played_minutes = max(
+                0.0,
+                min(float(quarter_length), float(quarter_length) - float(remaining_min)),
+            )
+        if played_minutes <= 0:
+            continue
+        values.append(round(float(total) / played_minutes, 2))
+    return values
+
+
 def calculate_live_projection(
     score: str,
     status: str,

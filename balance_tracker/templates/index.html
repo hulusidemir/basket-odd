@@ -1,0 +1,1756 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bakiye Takip</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080d16;
+      --sidebar: #121a26;
+      --panel: #162131;
+      --panel-2: #1d2a3c;
+      --panel-3: #243246;
+      --line: rgba(202, 213, 226, 0.18);
+      --line-strong: rgba(202, 213, 226, 0.38);
+      --text: #ecf2f8;
+      --muted: #a8b3c2;
+      --green: #22f29a;
+      --green-soft: rgba(34, 242, 154, 0.13);
+      --red: #ff5d6c;
+      --red-soft: rgba(255, 93, 108, 0.13);
+      --blue: #5da8ff;
+      --blue-soft: rgba(93, 168, 255, 0.14);
+      --amber: #ffb13d;
+      --violet: #9a7bff;
+      --shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+    }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button, input, select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+    }
+
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+    }
+
+    .sidebar {
+      background: var(--sidebar);
+      border-right: 1px solid var(--line);
+      padding: 18px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 6px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand-mark {
+      color: var(--green);
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+    }
+
+    .brand-title {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 17px;
+      line-height: 1.15;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .nav {
+      display: grid;
+      gap: 8px;
+    }
+
+    .nav-item {
+      height: 48px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 14px;
+      border-radius: 8px;
+      color: var(--muted);
+      background: transparent;
+      cursor: default;
+      text-decoration: none;
+    }
+
+    .nav-item.active {
+      color: white;
+      background: #089238;
+    }
+
+    .nav-spacer {
+      flex: 1;
+    }
+
+    .side-note {
+      color: #7e8ca0;
+      font-size: 12px;
+      line-height: 1.5;
+      border-top: 1px solid var(--line);
+      padding: 16px 8px 0;
+    }
+
+    .main {
+      padding: 28px 32px 40px;
+      min-width: 0;
+    }
+
+    .mobile-top {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--sidebar);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 24px;
+    }
+
+    .title-group {
+      display: grid;
+      gap: 6px;
+    }
+
+    .page-title {
+      margin: 0;
+      font-size: clamp(24px, 3vw, 34px);
+      line-height: 1.1;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .select,
+    .field {
+      height: 40px;
+      border: 1px solid var(--line);
+      background: #111925;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0 12px;
+      outline: none;
+    }
+
+    .select:focus,
+    .field:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(93, 168, 255, 0.12);
+    }
+
+    .btn {
+      height: 40px;
+      border-radius: 8px;
+      padding: 0 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: var(--text);
+      background: var(--panel-3);
+      border: 1px solid var(--line);
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      border-color: var(--line-strong);
+      background: #2b3a50;
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn.primary {
+      background: #0b4a98;
+      border-color: rgba(93, 168, 255, 0.45);
+    }
+
+    .btn.success {
+      background: #087c45;
+      border-color: rgba(34, 242, 154, 0.35);
+    }
+
+    .btn.danger {
+      background: #651e2a;
+      border-color: rgba(255, 93, 108, 0.35);
+      color: #ffdfe2;
+    }
+
+    .btn.icon {
+      width: 40px;
+      padding: 0;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .metric {
+      min-height: 132px;
+      background: var(--panel);
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .metric .ghost-icon {
+      position: absolute;
+      right: 20px;
+      top: 18px;
+      width: 56px;
+      height: 56px;
+      opacity: 0.12;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      font-size: clamp(26px, 2.4vw, 32px);
+      line-height: 1.1;
+      font-weight: 800;
+      word-break: break-word;
+    }
+
+    .metric-sub {
+      color: var(--muted);
+      margin-top: 10px;
+      font-size: 14px;
+    }
+
+    .metric-sub.positive,
+    .positive {
+      color: var(--green);
+    }
+
+    .negative {
+      color: var(--red);
+    }
+
+    .amber {
+      color: var(--amber);
+    }
+
+    .progress-track {
+      height: 8px;
+      border-radius: 99px;
+      background: #334052;
+      overflow: hidden;
+      margin-top: 14px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0;
+      background: var(--violet);
+      border-radius: 99px;
+      transition: width 0.2s ease;
+    }
+
+    .table-panel {
+      background: var(--panel);
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .table-head {
+      min-height: 84px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .table-title {
+      font-size: 20px;
+      font-weight: 800;
+      margin: 0;
+    }
+
+    .table-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: calc(100vh - 340px);
+    }
+
+    table {
+      width: 100%;
+      min-width: 1180px;
+      border-collapse: collapse;
+    }
+
+    thead {
+      background: #0d1320;
+      color: #c9bdad;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 16px 18px;
+      border-bottom: 1px solid rgba(202, 213, 226, 0.07);
+      white-space: nowrap;
+      height: 66px;
+    }
+
+    th {
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    tbody tr {
+      transition: background 0.15s ease;
+    }
+
+    tbody tr:hover {
+      background: rgba(93, 168, 255, 0.08);
+    }
+
+    tbody tr.today {
+      background: rgba(38, 84, 170, 0.28);
+    }
+
+    tbody tr.next {
+      background: rgba(202, 213, 226, 0.10);
+    }
+
+    .balance-cell,
+    th.balance-cell {
+      background: rgba(25, 61, 126, 0.24);
+    }
+
+    .money-input {
+      width: 132px;
+      height: 34px;
+      border: 1px solid #6b7482;
+      border-radius: 5px;
+      color: var(--text);
+      background: #303a48;
+      padding: 0 10px;
+      outline: none;
+    }
+
+    .money-input:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(93, 168, 255, 0.12);
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      height: 26px;
+      padding: 0 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .status.good {
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .status.bad {
+      background: var(--red-soft);
+      color: var(--red);
+    }
+
+    .pager {
+      min-height: 58px;
+      padding: 10px 16px;
+      border-top: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .empty {
+      min-height: 420px;
+      display: grid;
+      place-items: center;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .empty-inner {
+      max-width: 520px;
+      display: grid;
+      gap: 16px;
+      justify-items: center;
+    }
+
+    .empty h2 {
+      margin: 0;
+      font-size: 26px;
+    }
+
+    .empty p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: rgba(0, 0, 0, 0.62);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .modal {
+      width: min(560px, 100%);
+      max-height: min(760px, 92vh);
+      overflow: auto;
+      background: #121b28;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .modal-header,
+    .modal-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .modal-footer {
+      border-top: 1px solid var(--line);
+      border-bottom: 0;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .modal-title {
+      margin: 0;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .modal-body {
+      padding: 20px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .form-row {
+      display: grid;
+      gap: 7px;
+    }
+
+    .form-row.full {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .field {
+      width: 100%;
+    }
+
+    .result-box {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #101824;
+      min-height: 62px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .pill-tabs {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+      background: #0e1520;
+      border: 1px solid var(--line);
+      padding: 4px;
+      border-radius: 8px;
+    }
+
+    .pill-tabs button {
+      height: 34px;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .pill-tabs button.active {
+      background: #0b4a98;
+      color: white;
+    }
+
+    .toast {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 80;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: #142235;
+      border: 1px solid var(--line-strong);
+      box-shadow: var(--shadow);
+      color: var(--text);
+      display: none;
+    }
+
+    .toast.show {
+      display: block;
+    }
+
+    @media (max-width: 1180px) {
+      .stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 820px) {
+      .shell {
+        display: block;
+      }
+
+      .sidebar {
+        display: none;
+      }
+
+      .mobile-top {
+        display: flex;
+      }
+
+      .main {
+        padding: 18px 14px 28px;
+      }
+
+      .topline,
+      .table-head {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .toolbar,
+      .table-actions {
+        justify-content: stretch;
+      }
+
+      .toolbar > *,
+      .table-actions > * {
+        flex: 1 1 auto;
+      }
+
+      .stats,
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .metric {
+        min-height: 116px;
+      }
+
+      .table-wrap {
+        max-height: none;
+      }
+    }
+
+    :root {
+      --bg: #0a0a10;
+      --sidebar: #111118;
+      --panel: rgba(17, 17, 24, 0.97);
+      --panel-2: rgba(20, 19, 34, 0.96);
+      --panel-3: rgba(30, 28, 48, 0.9);
+      --line: rgba(120, 100, 220, 0.14);
+      --line-strong: rgba(120, 100, 220, 0.24);
+      --text: #ede9ff;
+      --muted: #7870a0;
+      --green: #34d399;
+      --green-soft: rgba(52, 211, 153, 0.12);
+      --red: #f87171;
+      --red-soft: rgba(248, 113, 113, 0.12);
+      --blue: #60a5fa;
+      --blue-soft: rgba(96, 165, 250, 0.12);
+      --amber: #fbbf24;
+      --violet: #7c5cf6;
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+
+    body {
+      background:
+        radial-gradient(ellipse at 70% 0%, rgba(100,60,220,0.13) 0%, transparent 55%),
+        radial-gradient(ellipse at 0% 100%, rgba(20,180,140,0.07) 0%, transparent 45%),
+        #0a0a10;
+      color: var(--text);
+    }
+
+    .shell {
+      min-height: 100vh;
+      display: block;
+    }
+
+    .sidebar,
+    .mobile-top {
+      display: none !important;
+    }
+
+    .main {
+      width: calc(100% - 4px);
+      max-width: none;
+      margin: 2px auto 16px;
+      padding: 0;
+      min-width: 0;
+    }
+
+    .topbar,
+    .table-panel,
+    .metric,
+    .modal {
+      background: rgba(17, 17, 24, 0.97);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 14px 18px;
+      border-radius: 18px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      border-color: rgba(120,100,220,0.22);
+    }
+
+    .topbar .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .status-pill {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: rgba(124,92,246,0.15);
+      border: 1px solid rgba(124,92,246,0.35);
+      position: relative;
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .status-pill::after {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #7c5cf6;
+      box-shadow: 0 0 10px rgba(124,92,246,0.8);
+    }
+
+    .topbar .brand-title {
+      font-family: "Inter", "Segoe UI", sans-serif;
+      font-size: 19px;
+      line-height: 1.1;
+      font-weight: 900;
+      letter-spacing: -0.3px;
+      text-transform: none;
+      white-space: nowrap;
+      background: linear-gradient(90deg, #a78bfa, #e879f9);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-sub {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-wrap: wrap;
+      background: rgba(8,7,14,0.75);
+      border: 1px solid rgba(120,100,220,0.15);
+      border-radius: 13px;
+      padding: 4px;
+    }
+
+    .nav-link {
+      padding: 7px 14px;
+      border-radius: 9px;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      color: rgba(180,170,240,0.55);
+      transition: color 0.15s, background 0.15s;
+      white-space: nowrap;
+      letter-spacing: 0.01em;
+    }
+
+    .nav-link:hover {
+      color: rgba(220,215,255,0.9);
+      background: rgba(124,92,246,0.12);
+    }
+
+    .nav-link.active {
+      color: #fff;
+      background: linear-gradient(135deg, #5c30d0, #7c5cf6);
+      box-shadow: 0 2px 8px rgba(92,48,208,0.45), inset 0 1px 0 rgba(255,255,255,0.1);
+      cursor: default;
+      font-weight: 700;
+    }
+
+    .topline {
+      background: rgba(17,17,24,0.97);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      border-radius: 18px;
+      margin-bottom: 12px;
+      padding: 14px 18px;
+    }
+
+    .page-title {
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: -0.3px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .select,
+    .field,
+    .money-input {
+      background: rgba(10,10,16,0.98);
+      border-color: var(--line-strong);
+      color: var(--text);
+      border-radius: 10px;
+    }
+
+    .select:focus,
+    .field:focus,
+    .money-input:focus {
+      border-color: rgba(124,92,246,0.6);
+      box-shadow: 0 0 0 3px rgba(124,92,246,0.1);
+    }
+
+    .btn {
+      border: 1px solid var(--line-strong);
+      background: rgba(30,28,48,0.9);
+      color: var(--text);
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      transition: border-color 0.15s, background 0.15s, opacity 0.15s, box-shadow 0.15s;
+    }
+
+    .btn:hover {
+      border-color: rgba(124,92,246,0.55);
+      background: rgba(40,36,68,0.96);
+      box-shadow: 0 0 0 1px rgba(124,92,246,0.12);
+    }
+
+    .btn.primary,
+    .btn.success,
+    .pill-tabs button.active {
+      background: linear-gradient(135deg, #6d42e8, #7c5cf6);
+      color: #fff;
+      border-color: transparent;
+      box-shadow: 0 4px 14px rgba(124,92,246,0.35);
+    }
+
+    .btn.danger {
+      background: rgba(239,68,68,0.13);
+      border-color: rgba(239,68,68,0.32);
+      color: #fca5a5;
+    }
+
+    .stats {
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .metric {
+      min-height: 112px;
+      border-radius: 14px;
+      padding: 14px;
+      background: rgba(20,19,34,0.96);
+    }
+
+    .metric .ghost-icon {
+      color: #a78bfa;
+      opacity: 0.12;
+      right: 14px;
+      top: 12px;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .metric-value {
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: -1px;
+    }
+
+    .metric-sub {
+      color: var(--muted);
+      margin-top: 5px;
+      font-size: 12px;
+    }
+
+    .progress-track {
+      height: 7px;
+      background: rgba(120,100,220,0.18);
+    }
+
+    .progress-fill {
+      background: linear-gradient(90deg, #7c5cf6, #e879f9);
+    }
+
+    .table-panel {
+      border-radius: 14px;
+      background: rgba(17,17,24,0.97);
+    }
+
+    .table-head {
+      min-height: 60px;
+      padding: 12px 14px;
+      border-bottom-color: var(--line);
+    }
+
+    .table-title {
+      font-size: 18px;
+      font-weight: 900;
+    }
+
+    .table-wrap {
+      max-height: calc(100vh - 330px);
+    }
+
+    table {
+      min-width: 1160px;
+    }
+
+    thead {
+      background: rgba(10,10,16,0.98);
+      color: rgba(237,233,255,0.72);
+    }
+
+    th,
+    td {
+      height: 54px;
+      padding: 11px 14px;
+      border-bottom: 1px solid rgba(120,100,220,0.10);
+    }
+
+    th {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    tbody tr:hover {
+      background: rgba(124,92,246,0.08);
+    }
+
+    tbody tr.today {
+      background: rgba(124,92,246,0.20);
+    }
+
+    tbody tr.next {
+      background: rgba(255,255,255,0.04);
+    }
+
+    .balance-cell,
+    th.balance-cell {
+      background: rgba(124,92,246,0.10);
+    }
+
+    .money-input {
+      height: 32px;
+      width: 118px;
+      padding: 0 9px;
+    }
+
+    .pager {
+      min-height: 48px;
+      border-top-color: var(--line);
+      color: var(--muted);
+    }
+
+    .empty {
+      min-height: 360px;
+    }
+
+    .modal {
+      background: rgba(17,17,24,0.98);
+      border-radius: 14px;
+    }
+
+    .modal-header,
+    .modal-footer {
+      border-color: var(--line);
+    }
+
+    .result-box,
+    .pill-tabs {
+      background: rgba(10,10,16,0.98);
+      border-color: var(--line);
+    }
+
+    .toast {
+      background: rgba(17,17,24,0.98);
+      border-color: var(--line-strong);
+    }
+
+    @media (max-width: 820px) {
+      .main {
+        width: calc(100% - 4px);
+        margin: 2px auto 12px;
+        padding: 0;
+      }
+
+      .topbar,
+      .topline {
+        border-radius: 16px;
+      }
+
+      .topbar-right,
+      .toolbar,
+      .table-actions,
+      .select,
+      .btn {
+        width: 100%;
+      }
+
+      .nav-links,
+      .nav-link {
+        width: 100%;
+      }
+
+      .nav-link {
+        text-align: center;
+      }
+
+      .stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 560px) {
+      .stats {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="mobile-top">
+    <div class="brand">
+      <span class="brand-mark"><i data-lucide="wallet-cards"></i></span>
+      <span class="brand-title">Bakiye Takip</span>
+    </div>
+    <button class="btn icon" id="mobileNewPlan" title="Yeni plan"><i data-lucide="plus"></i></button>
+  </div>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark"><i data-lucide="wallet-cards"></i></span>
+        <span class="brand-title">Bakiye Takip</span>
+      </div>
+      <nav class="nav">
+        <a class="nav-item" href="{{ home_href|default('/') }}"><i data-lucide="radio-tower"></i> Canlı Sinyaller</a>
+        <span class="nav-item active"><i data-lucide="layout-dashboard"></i> Panel</span>
+        <span class="nav-item"><i data-lucide="target"></i> Günlük Hedef</span>
+        <span class="nav-item"><i data-lucide="calendar-days"></i> Plan</span>
+      </nav>
+      <div class="nav-spacer"></div>
+      <div class="side-note">
+        Bahis bakiyesi için izole takip modülü. Veriler yalnızca bu modülün SQLite dosyasında tutulur.
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="brand">
+          <span class="status-pill" aria-hidden="true"></span>
+          <div>
+            <div class="brand-title">Basket Sinyal Dashboard</div>
+            <div class="brand-sub">Bakiye Takip</div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <nav class="nav-links">
+            <a href="{{ home_href|default('/') }}" class="nav-link">Canlı</a>
+            <a href="/deleted-matches" class="nav-link">Silinen</a>
+            <a href="/upcoming/" class="nav-link">Gelecek Maçlar</a>
+            <a href="/bankroll" class="nav-link">Bankroll</a>
+            <span class="nav-link active">Bakiye Takip</span>
+          </nav>
+        </div>
+      </header>
+
+      <section class="topline">
+        <div class="title-group">
+          <h1 class="page-title">Bakiye Takip</h1>
+          <div class="subtitle" id="planMeta">Plan yükleniyor...</div>
+        </div>
+        <div class="toolbar">
+          <select class="select" id="planSelect" title="Aktif plan"></select>
+          <button class="btn success" id="newPlanBtn"><i data-lucide="plus"></i> Yeni Plan</button>
+          <button class="btn danger" id="deletePlanBtn"><i data-lucide="trash-2"></i> Sil</button>
+        </div>
+      </section>
+
+      <section id="dashboard">
+        <div class="stats">
+          <article class="metric">
+            <i class="ghost-icon" data-lucide="wallet"></i>
+            <div class="metric-label">Mevcut Bakiye</div>
+            <div class="metric-value" id="currentBalance">-</div>
+            <div class="metric-sub" id="startBalance">Başlangıç: -</div>
+          </article>
+
+          <article class="metric">
+            <i class="ghost-icon" data-lucide="trending-up"></i>
+            <div class="metric-label">Toplam Kar</div>
+            <div class="metric-value positive" id="totalProfit">-</div>
+            <div class="metric-sub positive" id="totalProfitPercent">-</div>
+          </article>
+
+          <article class="metric">
+            <i class="ghost-icon" data-lucide="calendar"></i>
+            <div class="metric-label">İlerleme</div>
+            <div class="metric-value" id="progressText">-</div>
+            <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+          </article>
+
+          <article class="metric">
+            <i class="ghost-icon" data-lucide="crosshair"></i>
+            <div class="metric-label">Beklenen Bakiye</div>
+            <div class="metric-value" id="expectedBalance">-</div>
+            <div class="metric-sub amber" id="dailyGoal">Günlük Hedef: -</div>
+          </article>
+        </div>
+
+        <section class="table-panel">
+          <div class="table-head">
+            <h2 class="table-title" id="tableTitle">Plan</h2>
+            <div class="table-actions">
+              <button class="btn danger" id="withdrawBtn"><i data-lucide="arrow-down-left"></i> Para Çek</button>
+              <button class="btn primary" id="projectionBtn"><i data-lucide="calculator"></i> Projeksiyon Hesapla</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>No</th>
+                  <th>Tarih</th>
+                  <th class="negative">Çekim</th>
+                  <th class="balance-cell">Bakiye (Giriş)</th>
+                  <th>Beklenen Bakiye</th>
+                  <th>Bek. Kar</th>
+                  <th>Gerçekleşen Kar</th>
+                  <th>% Kar</th>
+                  <th>+/- Bakiye</th>
+                  <th>% Uzaklık</th>
+                  <th>Durum</th>
+                </tr>
+              </thead>
+              <tbody id="planRows"></tbody>
+            </table>
+          </div>
+          <div class="pager">
+            <button class="btn icon" id="prevPage" title="Önceki sayfa"><i data-lucide="chevron-left"></i></button>
+            <span id="pageInfo">Sayfa 1 / 1</span>
+            <button class="btn icon" id="nextPage" title="Sonraki sayfa"><i data-lucide="chevron-right"></i></button>
+          </div>
+        </section>
+      </section>
+
+      <section class="table-panel empty" id="emptyState" hidden>
+        <div class="empty-inner">
+          <i data-lucide="wallet-cards" style="width: 54px; height: 54px; color: var(--green)"></i>
+          <h2>İlk planı oluştur</h2>
+          <p>Başlangıç bakiyesi, günlük kar hedefi ve takip süresini girerek bahis bakiyeni günlük olarak izlemeye başlayabilirsin.</p>
+          <button class="btn success" id="emptyNewPlan"><i data-lucide="plus"></i> Yeni Plan</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="planModal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="planModalTitle">
+      <div class="modal-header">
+        <h3 class="modal-title" id="planModalTitle"><i data-lucide="settings"></i> Yeni Plan</h3>
+        <button class="btn icon" data-close="planModal" title="Kapat"><i data-lucide="x"></i></button>
+      </div>
+      <form id="planForm">
+        <div class="modal-body form-grid">
+          <div class="form-row full">
+            <label for="planName">Plan Adı</label>
+            <input class="field" id="planName" name="planName" value="Bahis Bakiye Planı" required>
+          </div>
+          <div class="form-row">
+            <label for="startBalanceInput">Başlangıç Bakiyesi</label>
+            <input class="field" id="startBalanceInput" name="startBalance" type="number" min="0" step="0.01" value="10000" required>
+          </div>
+          <div class="form-row">
+            <label for="currencyInput">Para Birimi</label>
+            <select class="field" id="currencyInput" name="currency">
+              <option value="TRY">TRY</option>
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="startDateInput">Başlangıç Tarihi</label>
+            <input class="field" id="startDateInput" name="startDate" type="date" required>
+          </div>
+          <div class="form-row">
+            <label for="targetInput">Günlük Kar Hedefi (%)</label>
+            <input class="field" id="targetInput" name="target" type="number" min="-100" step="0.1" value="20" required>
+          </div>
+          <div class="form-row full">
+            <label for="daysInput">Takip Süresi (Gün)</label>
+            <input class="field" id="daysInput" name="days" type="number" min="1" max="2000" step="1" value="365" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn" type="button" data-close="planModal">Vazgeç</button>
+          <button class="btn success" type="submit"><i data-lucide="save"></i> Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="withdrawModal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="withdrawModalTitle">
+      <div class="modal-header">
+        <h3 class="modal-title" id="withdrawModalTitle"><i data-lucide="arrow-down-left"></i> Para Çek</h3>
+        <button class="btn icon" data-close="withdrawModal" title="Kapat"><i data-lucide="x"></i></button>
+      </div>
+      <form id="withdrawForm">
+        <div class="modal-body form-grid">
+          <div class="form-row">
+            <label for="withdrawAmount">Tutar</label>
+            <input class="field" id="withdrawAmount" name="amount" type="number" min="0.01" step="0.01" required>
+          </div>
+          <div class="form-row">
+            <label for="withdrawDate">Tarih</label>
+            <input class="field" id="withdrawDate" name="date" type="date" required>
+          </div>
+          <div class="form-row full">
+            <label>Tip</label>
+            <div class="pill-tabs">
+              <button type="button" class="active" data-withdraw-type="one-time">Tek Sefer</button>
+              <button type="button" data-withdraw-type="periodic">Periyodik</button>
+            </div>
+          </div>
+          <div class="form-row full" id="frequencyRow" hidden>
+            <label for="withdrawFrequency">Sıklık</label>
+            <select class="field" id="withdrawFrequency" name="frequency">
+              <option value="daily">Günlük</option>
+              <option value="weekly">Haftalık</option>
+              <option value="monthly">Aylık</option>
+            </select>
+          </div>
+          <div class="form-row full">
+            <label for="withdrawNote">Not</label>
+            <input class="field" id="withdrawNote" name="note" placeholder="Opsiyonel">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn" type="button" data-close="withdrawModal">Vazgeç</button>
+          <button class="btn danger" type="submit"><i data-lucide="save"></i> Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="projectionModal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="projectionModalTitle">
+      <div class="modal-header">
+        <h3 class="modal-title" id="projectionModalTitle"><i data-lucide="calculator"></i> Projeksiyon</h3>
+        <button class="btn icon" data-close="projectionModal" title="Kapat"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body form-grid">
+        <div class="form-row">
+          <label for="projectionBalance">Mevcut Bakiye</label>
+          <input class="field" id="projectionBalance" type="number" min="0" step="0.01">
+        </div>
+        <div class="form-row">
+          <label for="projectionRate">Günlük Hedef (%)</label>
+          <input class="field" id="projectionRate" type="number" step="0.1">
+        </div>
+        <div class="form-row">
+          <label for="projectionDays">Gün Sayısı</label>
+          <input class="field" id="projectionDays" type="number" min="1" step="1" value="30">
+        </div>
+        <div class="form-row">
+          <label for="projectionTarget">Hedef Bakiye</label>
+          <input class="field" id="projectionTarget" type="number" min="0" step="0.01">
+        </div>
+        <div class="form-row full">
+          <button class="btn primary" id="calculateProjection" type="button"><i data-lucide="sparkles"></i> Hesapla</button>
+        </div>
+        <div class="form-row full">
+          <div class="result-box" id="projectionResult">Projeksiyon sonucu burada görünecek.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const state = {
+      plans: [],
+      activePlan: null,
+      planRows: [],
+      page: 1,
+      perPage: 15,
+      withdrawType: 'one-time',
+      saveTimers: new Map(),
+    };
+
+    const API_BASE = {{ api_base|default('/api')|tojson }};
+    const el = (id) => document.getElementById(id);
+    const todayYmd = () => localDateYmd(new Date());
+
+    function localDateYmd(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function parseYmd(value) {
+      const [year, month, day] = String(value).split('-').map(Number);
+      return new Date(year, month - 1, day);
+    }
+
+    function formatDate(value) {
+      return parseYmd(value).toLocaleDateString('tr-TR');
+    }
+
+    function addDays(value, days) {
+      const date = parseYmd(value);
+      date.setDate(date.getDate() + days);
+      return localDateYmd(date);
+    }
+
+    function money(value, currency) {
+      if (value === undefined || value === null || Number.isNaN(Number(value))) return '-';
+      const locale = currency === 'TRY' ? 'tr-TR' : 'en-US';
+      return new Intl.NumberFormat(locale, {
+        style: 'currency',
+        currency,
+        maximumFractionDigits: 2,
+      }).format(Number(value));
+    }
+
+    function percent(value) {
+      if (value === undefined || value === null || Number.isNaN(Number(value))) return '-';
+      const sign = Number(value) > 0 ? '+' : '';
+      return `${sign}${Number(value).toFixed(2)}%`;
+    }
+
+    function number(value, fallback = 0) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'İşlem tamamlanamadı');
+      return data;
+    }
+
+    async function loadState() {
+      const data = await api(`${API_BASE}/state`);
+      state.plans = data.plans || [];
+      state.activePlan = data.activePlan;
+      state.page = 1;
+      render();
+    }
+
+    function generatePlan(plan) {
+      if (!plan) return [];
+      const settings = plan.settings;
+      const withdrawals = plan.withdrawals || [];
+      const rows = [];
+      let currentBalance = number(settings.startBalance);
+      for (let day = 1; day <= number(settings.days, 365); day += 1) {
+        const date = addDays(settings.startDate, day - 1);
+        const withdrawalAmount = withdrawalForDate(withdrawals, date);
+        const expectedProfit = currentBalance * (number(settings.dailyTargetPercent) / 100);
+        const expectedEndBalance = currentBalance + expectedProfit - withdrawalAmount;
+        const progress = plan.progress?.[String(day)];
+        rows.push({
+          day,
+          date,
+          dateLabel: formatDate(date),
+          startBalance: currentBalance,
+          expectedProfit,
+          expectedEndBalance,
+          withdrawalAmount,
+          actualBalance: progress?.actualBalance ?? undefined,
+        });
+        currentBalance = expectedEndBalance;
+      }
+      return rows;
+    }
+
+    function withdrawalForDate(withdrawals, dateValue) {
+      const currentDate = parseYmd(dateValue);
+      return withdrawals.reduce((sum, withdrawal) => {
+        const start = parseYmd(withdrawal.date);
+        if (currentDate < start) return sum;
+        if (withdrawal.type === 'one-time') {
+          return currentDate.getTime() === start.getTime() ? sum + number(withdrawal.amount) : sum;
+        }
+        if (withdrawal.frequency === 'daily') return sum + number(withdrawal.amount);
+        if (withdrawal.frequency === 'weekly') {
+          const diffDays = Math.round((currentDate - start) / 86400000);
+          return diffDays % 7 === 0 ? sum + number(withdrawal.amount) : sum;
+        }
+        if (withdrawal.frequency === 'monthly') {
+          return currentDate.getDate() === start.getDate() ? sum + number(withdrawal.amount) : sum;
+        }
+        return sum;
+      }, 0);
+    }
+
+    function render() {
+      const hasPlan = Boolean(state.activePlan);
+      el('dashboard').hidden = !hasPlan;
+      el('emptyState').hidden = hasPlan;
+      renderPlanSelect();
+      if (!hasPlan) {
+        el('planMeta').textContent = 'Aktif plan yok';
+        renderIcons();
+        return;
+      }
+      state.planRows = generatePlan(state.activePlan);
+      renderStats();
+      renderTable();
+      renderIcons();
+    }
+
+    function renderPlanSelect() {
+      const select = el('planSelect');
+      select.innerHTML = '';
+      if (!state.plans.length) {
+        select.innerHTML = '<option>Plan yok</option>';
+        select.disabled = true;
+        el('deletePlanBtn').disabled = true;
+        return;
+      }
+      select.disabled = false;
+      el('deletePlanBtn').disabled = false;
+      for (const plan of state.plans) {
+        const option = document.createElement('option');
+        option.value = plan.id;
+        option.textContent = plan.name;
+        option.selected = state.activePlan && plan.id === state.activePlan.id;
+        select.append(option);
+      }
+    }
+
+    function lastCompletedRow() {
+      return [...state.planRows].reverse().find((row) => row.actualBalance !== undefined && row.actualBalance !== null);
+    }
+
+    function renderStats() {
+      const plan = state.activePlan;
+      const settings = plan.settings;
+      const currency = settings.currency;
+      const completed = lastCompletedRow();
+      const currentBalance = completed?.actualBalance ?? settings.startBalance;
+      const totalProfit = currentBalance - settings.startBalance;
+      const totalProfitPercent = settings.startBalance ? (totalProfit / settings.startBalance) * 100 : 0;
+      const currentDay = completed?.day ?? 0;
+      const progress = settings.days ? Math.min(100, (currentDay / settings.days) * 100) : 0;
+      const expectedIndex = Math.min(currentDay, state.planRows.length - 1);
+      const nextExpected = state.planRows[expectedIndex]?.expectedEndBalance;
+
+      el('planMeta').textContent = `${formatDate(settings.startDate)} başlangıçlı, ${settings.days} günlük plan`;
+      el('tableTitle').textContent = plan.name;
+      el('currentBalance').textContent = money(currentBalance, currency);
+      el('startBalance').textContent = `Başlangıç: ${money(settings.startBalance, currency)}`;
+      el('totalProfit').textContent = money(totalProfit, currency);
+      el('totalProfit').className = `metric-value ${totalProfit >= 0 ? 'positive' : 'negative'}`;
+      el('totalProfitPercent').textContent = percent(totalProfitPercent);
+      el('totalProfitPercent').className = `metric-sub ${totalProfit >= 0 ? 'positive' : 'negative'}`;
+      el('progressText').innerHTML = `${currentDay} <span style="font-size:18px;color:var(--muted)">/ ${settings.days} Gün</span>`;
+      el('progressFill').style.width = `${progress}%`;
+      el('expectedBalance').textContent = money(nextExpected, currency);
+      el('dailyGoal').textContent = `↗ Günlük Hedef: %${settings.dailyTargetPercent}`;
+    }
+
+    function renderTable() {
+      const tbody = el('planRows');
+      const plan = state.activePlan;
+      const currency = plan.settings.currency;
+      const totalPages = Math.max(1, Math.ceil(state.planRows.length / state.perPage));
+      state.page = Math.min(Math.max(1, state.page), totalPages);
+      const start = (state.page - 1) * state.perPage;
+      const rows = state.planRows.slice(start, start + state.perPage);
+      const currentDate = todayYmd();
+      const nextOpenDay = state.planRows.find((row) => row.actualBalance === undefined || row.actualBalance === null)?.day;
+
+      tbody.innerHTML = '';
+      for (const row of rows) {
+        const prev = row.day > 1 ? state.planRows[row.day - 2] : null;
+        const prevBalance = prev ? (prev.actualBalance ?? prev.expectedEndBalance) : plan.settings.startBalance;
+        const actualProfit = row.actualBalance !== undefined && row.actualBalance !== null ? row.actualBalance - prevBalance : undefined;
+        const actualProfitPercent = actualProfit !== undefined && prevBalance ? (actualProfit / prevBalance) * 100 : undefined;
+        const diff = row.actualBalance !== undefined && row.actualBalance !== null ? row.actualBalance - row.expectedEndBalance : undefined;
+        const distance = diff !== undefined && row.expectedEndBalance ? (diff / row.expectedEndBalance) * 100 : undefined;
+        const targetMet = row.actualBalance !== undefined && row.actualBalance !== null && row.actualBalance >= row.expectedEndBalance;
+
+        const tr = document.createElement('tr');
+        if (row.date === currentDate) tr.classList.add('today');
+        if (row.day === nextOpenDay && row.date !== currentDate) tr.classList.add('next');
+        tr.innerHTML = `
+          <td>${row.day}</td>
+          <td>${row.dateLabel}</td>
+          <td class="negative">${row.withdrawalAmount ? money(row.withdrawalAmount, currency) : '-'}</td>
+          <td class="balance-cell">
+            <input class="money-input" type="number" min="0" step="0.01" placeholder="0.00"
+              data-day="${row.day}" value="${row.actualBalance ?? ''}">
+          </td>
+          <td class="positive">${money(row.expectedEndBalance, currency)}</td>
+          <td style="color:#62d49b">${money(row.expectedProfit, currency)}</td>
+          <td class="${actualProfit === undefined ? '' : actualProfit >= 0 ? 'positive' : 'negative'}">${money(actualProfit, currency)}</td>
+          <td class="${actualProfitPercent === undefined ? '' : actualProfitPercent >= 0 ? 'positive' : 'negative'}">${percent(actualProfitPercent)}</td>
+          <td class="${diff === undefined ? '' : diff >= 0 ? 'positive' : 'negative'}">${money(diff, currency)}</td>
+          <td class="${distance === undefined ? '' : distance >= 0 ? 'positive' : 'negative'}">${percent(distance)}</td>
+          <td>${row.actualBalance === undefined || row.actualBalance === null ? '-' : `<span class="status ${targetMet ? 'good' : 'bad'}">${targetMet ? 'Hedef Tamam' : 'Eksik'}</span>`}</td>
+        `;
+        tbody.append(tr);
+      }
+
+      tbody.querySelectorAll('.money-input').forEach((input) => {
+        input.addEventListener('input', onBalanceInput);
+        input.addEventListener('change', () => {
+          renderTable();
+          renderIcons();
+        });
+      });
+      el('pageInfo').textContent = `Sayfa ${state.page} / ${totalPages}`;
+      el('prevPage').disabled = state.page === 1;
+      el('nextPage').disabled = state.page === totalPages;
+    }
+
+    function onBalanceInput(event) {
+      const input = event.currentTarget;
+      const day = Number(input.dataset.day);
+      const value = input.value === '' ? undefined : number(input.value);
+      const row = state.planRows.find((item) => item.day === day);
+      if (row) row.actualBalance = value;
+      state.activePlan.progress[String(day)] = { actualBalance: value };
+      renderStats();
+
+      clearTimeout(state.saveTimers.get(day));
+      const timer = setTimeout(async () => {
+        try {
+          await api(`${API_BASE}/plans/${state.activePlan.id}/progress`, {
+            method: 'PUT',
+            body: JSON.stringify({ day, actualBalance: value }),
+          });
+          showToast('Kaydedildi');
+        } catch (error) {
+          showToast(error.message);
+        }
+      }, 350);
+      state.saveTimers.set(day, timer);
+    }
+
+    function openModal(id) {
+      el(id).classList.add('open');
+      renderIcons();
+    }
+
+    function closeModal(id) {
+      el(id).classList.remove('open');
+    }
+
+    function setDefaultDates() {
+      el('startDateInput').value = todayYmd();
+      el('withdrawDate').value = todayYmd();
+    }
+
+    function showToast(message) {
+      const toast = el('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toast.classList.remove('show'), 1600);
+    }
+
+    function renderIcons() {
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+    }
+
+    async function createPlan(event) {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      await api(`${API_BASE}/plans`, {
+        method: 'POST',
+        body: JSON.stringify({
+          name: form.get('planName'),
+          settings: {
+            startBalance: number(form.get('startBalance')),
+            startDate: form.get('startDate'),
+            dailyTargetPercent: number(form.get('target'), 20),
+            days: number(form.get('days'), 365),
+            currency: form.get('currency'),
+          },
+        }),
+      });
+      closeModal('planModal');
+      await loadState();
+      showToast('Plan oluşturuldu');
+    }
+
+    async function addWithdrawal(event) {
+      event.preventDefault();
+      if (!state.activePlan) return;
+      const form = new FormData(event.currentTarget);
+      await api(`${API_BASE}/plans/${state.activePlan.id}/withdrawals`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: number(form.get('amount')),
+          date: form.get('date'),
+          type: state.withdrawType,
+          frequency: form.get('frequency'),
+          note: form.get('note'),
+        }),
+      });
+      event.currentTarget.reset();
+      el('withdrawDate').value = todayYmd();
+      closeModal('withdrawModal');
+      await loadState();
+      showToast('Para çekim eklendi');
+    }
+
+    function calculateProjection() {
+      const plan = state.activePlan;
+      const currency = plan?.settings.currency || 'TRY';
+      const balance = number(el('projectionBalance').value);
+      const rate = number(el('projectionRate').value);
+      const days = Math.max(1, Math.floor(number(el('projectionDays').value, 1)));
+      const target = number(el('projectionTarget').value);
+      const endBalance = balance * Math.pow(1 + rate / 100, days);
+
+      let message = `${days} gün sonunda beklenen bakiye: <strong class="positive">${money(endBalance, currency)}</strong>.`;
+      if (target > balance && rate > 0) {
+        const requiredDays = Math.ceil(Math.log(target / balance) / Math.log(1 + rate / 100));
+        message += `<br>Hedef bakiyeye ulaşmak için yaklaşık <strong>${requiredDays} gün</strong> gerekir.`;
+      }
+      el('projectionResult').innerHTML = message;
+    }
+
+    function fillProjectionDefaults() {
+      if (!state.activePlan) return;
+      const completed = lastCompletedRow();
+      el('projectionBalance').value = completed?.actualBalance ?? state.activePlan.settings.startBalance;
+      el('projectionRate').value = state.activePlan.settings.dailyTargetPercent;
+      el('projectionTarget').value = '';
+      el('projectionResult').textContent = 'Projeksiyon sonucu burada görünecek.';
+    }
+
+    function bindEvents() {
+      el('newPlanBtn').addEventListener('click', () => openModal('planModal'));
+      el('mobileNewPlan').addEventListener('click', () => openModal('planModal'));
+      el('emptyNewPlan').addEventListener('click', () => openModal('planModal'));
+      el('withdrawBtn').addEventListener('click', () => openModal('withdrawModal'));
+      el('projectionBtn').addEventListener('click', () => {
+        fillProjectionDefaults();
+        openModal('projectionModal');
+      });
+      el('calculateProjection').addEventListener('click', calculateProjection);
+      el('planForm').addEventListener('submit', createPlan);
+      el('withdrawForm').addEventListener('submit', addWithdrawal);
+
+      document.querySelectorAll('[data-close]').forEach((button) => {
+        button.addEventListener('click', () => closeModal(button.dataset.close));
+      });
+      document.querySelectorAll('.modal-backdrop').forEach((backdrop) => {
+        backdrop.addEventListener('click', (event) => {
+          if (event.target === backdrop) closeModal(backdrop.id);
+        });
+      });
+      document.querySelectorAll('[data-withdraw-type]').forEach((button) => {
+        button.addEventListener('click', () => {
+          state.withdrawType = button.dataset.withdrawType;
+          document.querySelectorAll('[data-withdraw-type]').forEach((item) => item.classList.toggle('active', item === button));
+          el('frequencyRow').hidden = state.withdrawType !== 'periodic';
+        });
+      });
+
+      el('planSelect').addEventListener('change', async (event) => {
+        await api(`${API_BASE}/plans/${event.target.value}/activate`, { method: 'PUT' });
+        await loadState();
+      });
+      el('deletePlanBtn').addEventListener('click', async () => {
+        if (!state.activePlan) return;
+        if (!confirm(`${state.activePlan.name} silinsin mi?`)) return;
+        await api(`${API_BASE}/plans/${state.activePlan.id}`, { method: 'DELETE' });
+        await loadState();
+        showToast('Plan silindi');
+      });
+      el('prevPage').addEventListener('click', () => {
+        state.page -= 1;
+        renderTable();
+        renderIcons();
+      });
+      el('nextPage').addEventListener('click', () => {
+        state.page += 1;
+        renderTable();
+        renderIcons();
+      });
+    }
+
+    setDefaultDates();
+    bindEvents();
+    loadState().catch((error) => showToast(error.message));
+    renderIcons();
+  </script>
+</body>
+</html>

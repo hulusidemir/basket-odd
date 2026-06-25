@@ -23,17 +23,14 @@ from finished_match_service import (
 )
 from aiscore_scraper import AiscoreScraper
 from signal_analysis import build_backtest_profile, build_signal_analysis, enrich_analysis_with_backtest
-from signal_lists import build_signal_list_markers, build_signal_list_profile
+from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
 from signal_quality import calculate_signal_quality
+from signal_profiles import evaluate_hundred_profile
+from claude_ai_filter import evaluate_claude_ai, scenario_meta, scenario_play_direction
 
 config = Config()
 db = Database(config.DB_PATH)
 db.init()
-DELETED_SIGNAL_QUALITY_BACKFILL_MARKER = os.path.join(
-    os.path.dirname(os.path.abspath(config.DB_PATH)) or os.getcwd(),
-    ".deleted_signal_quality_backfill.done",
-)
-
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
@@ -363,7 +360,7 @@ def _persist_signal_quality_for_rows(rows: list[dict], *, active_only: bool) -> 
         alert = dict(row)
         analysis = _parse_analysis(alert.get("ai_analysis"))
         quality = _apply_signal_quality(
-            alert,
+            {**analysis, **alert},
             league_quality_profile,
             previous_map.get(int(alert.get("id") or 0), []),
         )
@@ -382,23 +379,6 @@ def _persist_signal_quality_for_rows(rows: list[dict], *, active_only: bool) -> 
 def _persist_active_signal_quality(match_id: str | None = None) -> int:
     rows = db.active_alerts_for_match(match_id) if match_id else db.active_alerts(limit=None)
     return _persist_signal_quality_for_rows(rows, active_only=True)
-
-
-def _backfill_deleted_signal_quality_once() -> int:
-    if os.path.exists(DELETED_SIGNAL_QUALITY_BACKFILL_MARKER):
-        return 0
-    rows = db.recent_deleted_alerts(limit=None)
-    missing = [
-        row for row in rows
-        if not isinstance(_parse_analysis(row.get("ai_analysis")).get("signal_quality"), dict)
-    ]
-    updated = _persist_signal_quality_for_rows(missing, active_only=False)
-    try:
-        with open(DELETED_SIGNAL_QUALITY_BACKFILL_MARKER, "w", encoding="utf-8") as marker:
-            marker.write(datetime.now().isoformat(timespec="seconds"))
-    except OSError:
-        pass
-    return updated
 
 
 def enrich_alerts_with_analysis(
@@ -477,8 +457,24 @@ def enrich_alerts_with_analysis(
         alert["selection_reason"] = analysis.get("selection_reason") or ""
         alert["projection_quality"] = analysis.get("projection_quality")
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
-        alert["list_markers"] = build_signal_list_markers(alert, list_profile)
         _apply_canonical_signal_direction(alert, analysis)
+        stored_hundred = int(alert.get("hundred_profile") or 0)
+        stored_hundred_rule = str(alert.get("hundred_profile_rule") or "")
+        stored_claude = str(alert.get("claude_ai") or "")
+        stored_claude_rule = str(alert.get("claude_ai_rule") or "")
+        legacy_quality = build_quality_tag(alert, list_profile)
+        alert["quality_label"] = legacy_quality["label"]
+        alert["quality_tone"] = legacy_quality["tone"]
+        alert["quality_title"] = legacy_quality["title"]
+        alert["quality_rank"] = legacy_quality["rank"]
+        hundred = evaluate_hundred_profile(alert, analysis)
+        alert["hundred_profile"] = 1 if hundred.get("hundred_profile") else 0
+        alert["hundred_profile_rule"] = str(hundred.get("hundred_profile_rule") or "")
+        claude = evaluate_claude_ai(alert, analysis)
+        alert["claude_ai"] = str(claude.get("claude_ai") or "")
+        alert["claude_ai_rule"] = str(claude.get("claude_ai_rule") or "")
+        _apply_claude_ai_display_direction(alert)
+        alert["list_markers"] = build_signal_list_markers(alert, list_profile)
         quality = _apply_signal_quality(alert, league_quality_profile, previous_map.get(int(alert.get("id") or 0), []))
         if analysis.get("signal_quality") != quality:
             analysis = {**analysis, "signal_quality": quality}
@@ -489,6 +485,20 @@ def enrich_alerts_with_analysis(
                     json.dumps(analysis, ensure_ascii=False),
                     active_only=True,
                 )
+        alert_id = int(alert.get("id") or 0)
+        if alert_id and (
+            stored_hundred != alert["hundred_profile"]
+            or stored_hundred_rule != alert["hundred_profile_rule"]
+            or stored_claude != alert["claude_ai"]
+            or stored_claude_rule != alert["claude_ai_rule"]
+        ):
+            db.update_active_alert_profiles(
+                alert_id,
+                hundred_profile=bool(alert["hundred_profile"]),
+                hundred_profile_rule=alert["hundred_profile_rule"],
+                claude_ai=alert["claude_ai"],
+                claude_ai_rule=alert["claude_ai_rule"],
+            )
         if history_profile is not None:
             alert["history_guard"] = _build_alert_history_guard(alert, history_profile)
     return alerts
@@ -536,6 +546,32 @@ def _normalize_direction(value) -> str:
     if text in {"ALT", "ÜST"}:
         return text
     return text or "-"
+
+
+def _apply_claude_ai_display_direction(alert: dict) -> None:
+    """Use the C_A play side as the single visible, playable direction."""
+    code = str(alert.get("claude_ai") or "").strip()
+    claude_meta = scenario_meta(code)
+    play_direction = scenario_play_direction(code)
+    stored_direction = _normalize_direction(alert.get("direction"))
+    alert["claude_ai_label"] = claude_meta.get("label", "")
+    alert["claude_ai_play"] = play_direction
+    alert["claude_ai_tooltip"] = claude_meta.get("tooltip", "")
+    if play_direction in {"ALT", "ÜST"}:
+        result = str(alert.get("result") or "").strip()
+        if (
+            result in {"Başarılı", "Başarısız"}
+            and stored_direction in {"ALT", "ÜST"}
+            and stored_direction != play_direction
+            and not alert.get("result_adjusted")
+        ):
+            alert["raw_result"] = result
+            alert["result"] = "Başarısız" if result == "Başarılı" else "Başarılı"
+            alert["result_adjusted"] = True
+        if result in {"Başarılı", "Başarısız"}:
+            alert["result_direction"] = play_direction
+        alert["direction"] = play_direction
+        alert["final_direction"] = play_direction
 
 
 def _apply_canonical_signal_direction(alert: dict, analysis: dict) -> None:
@@ -895,24 +931,41 @@ def deleted_matches():
     return render_template("deleted_matches.html")
 
 
-@app.route("/api/alerts")
-def api_alerts():
+def _build_live_dashboard_rows(rows: list[dict]) -> list[dict]:
     deleted_rows = db.recent_deleted_alerts(limit=None)
-    backtest_profile = build_backtest_profile(deleted_rows)
-    history_profile = _build_history_profile(deleted_rows)
-    list_profile = build_signal_list_profile(db.list_signal_list_entries())
-    league_quality_profile = _build_league_quality_profile(deleted_rows)
-    alerts = enrich_alerts_with_analysis(
-        db.recent_alerts(limit=500),
-        backtest_profile,
-        history_profile,
-        list_profile,
-        league_quality_profile,
+    enriched = enrich_alerts_with_analysis(
+        rows,
+        build_backtest_profile(deleted_rows),
+        _build_history_profile(deleted_rows),
+        build_signal_list_profile(db.list_signal_list_entries()),
+        _build_league_quality_profile(deleted_rows),
         persist_signal_quality=True,
     )
-    followed_ids = db.upcoming_followed_match_ids([a.get("match_id") for a in alerts])
-    for alert in alerts:
-        alert["upcoming_followed"] = 1 if str(alert.get("match_id") or "") in followed_ids else 0
+    followed_ids = db.upcoming_followed_match_ids([row.get("match_id") for row in enriched])
+    for row in enriched:
+        row["upcoming_followed"] = 1 if str(row.get("match_id") or "") in followed_ids else 0
+    return enriched
+
+
+def _save_dashboard_snapshots(rows: list[dict]) -> int:
+    snapshots = {}
+    for row in rows:
+        payload = dict(row)
+        payload.pop("display_snapshot", None)
+        alert_id = int(payload.get("id") or 0)
+        if alert_id:
+            snapshots[alert_id] = payload
+    return db.save_active_alert_display_snapshots(snapshots)
+
+
+def _snapshot_active_rows(rows: list[dict]) -> int:
+    return _save_dashboard_snapshots(_build_live_dashboard_rows(rows))
+
+
+@app.route("/api/alerts")
+def api_alerts():
+    alerts = _build_live_dashboard_rows(db.recent_alerts(limit=500))
+    _save_dashboard_snapshots(alerts)
     return jsonify(alerts)
 
 
@@ -980,54 +1033,39 @@ def _rebuild_live_analysis_from_alert(
 
 def _enrich_deleted_alert(
     alert: dict,
-    backtest_profile: dict | None,
+    backtest_profile: dict | None = None,
     *,
     full: bool,
     league_quality_profile: dict | None = None,
     previous_directions: list[str] | None = None,
 ) -> dict:
-    """Populate flat fields from ai_analysis. When full=False, drop heavy modal-only fields."""
-    analysis = _parse_analysis(alert.get("ai_analysis"))
-    stored_direction = _normalize_direction(alert.get("direction"))
-    if _analysis_needs_live_rebuild(analysis):
-        analysis = _rebuild_live_analysis_from_alert(alert, analysis, backtest_profile)
-    if not analysis:
-        analysis = {}
-    if backtest_profile is not None:
-        analysis = enrich_analysis_with_backtest(alert, analysis, backtest_profile, config.THRESHOLD)
-    analysis = _sanitize_h2h_analysis(_drop_recent_form_analysis(_sanitize_recent_form_analysis(analysis)))
-    if isinstance(analysis.get("backtest"), dict):
-        analysis = {**analysis, "backtest": _trim_backtest_payload(analysis.get("backtest"))}
+    """Read the display state frozen while the alert was active; never recalculate it."""
+    raw = dict(alert)
+    snapshot = _parse_analysis(raw.get("display_snapshot"))
+    result = dict(snapshot) if snapshot else raw
 
-    alert["fair_line"] = analysis.get("fair_line")
-    alert["fair_edge"] = analysis.get("fair_edge")
-    alert["projected"] = analysis.get("projected_total")
-    alert["market_total"] = analysis.get("market_total")
-    alert["team_recent_total"] = None
-    alert["projected_gap"] = analysis.get("projected_gap")
-    alert["projection_quality"] = analysis.get("projection_quality")
-    alert["legacy_direction"] = analysis.get("legacy_direction") or alert.get("direction")
-    alert["final_direction"] = analysis.get("final_direction") or analysis.get("direction") or alert.get("direction")
-    _apply_canonical_signal_direction(alert, analysis)
-    _apply_stored_signal_quality(alert, analysis)
-    _apply_canonical_deleted_result(alert, stored_direction)
-    if full:
-        alert["analysis"] = analysis
-        alert["home_last6"] = {}
-        alert["away_last6"] = {}
-        alert["h2h_total"] = analysis.get("h2h_total")
-        alert["history_total"] = analysis.get("history_total")
-        alert["h2h_score_rows"] = analysis.get("h2h_score_rows") if isinstance(analysis.get("h2h_score_rows"), list) else []
-        alert["h2h_row_totals"] = analysis.get("h2h_row_totals") if isinstance(analysis.get("h2h_row_totals"), list) else []
-        alert["recommendation"] = analysis.get("recommendation") or ""
-        alert["backtest"] = _trim_backtest_payload(analysis.get("backtest"))
-        alert["selection_reason"] = analysis.get("selection_reason") or ""
-        alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
-    else:
-        for column in _LIST_HEAVY_RAW_COLUMNS:
-            alert.pop(column, None)
-        alert["recommendation"] = analysis.get("recommendation") or ""
-    return alert
+    if not snapshot:
+        analysis = _parse_analysis(raw.get("ai_analysis"))
+        result["analysis"] = analysis
+        result["fair_line"] = analysis.get("fair_line")
+        result["fair_edge"] = analysis.get("fair_edge")
+        result["projected"] = analysis.get("projected_total")
+        result["projected_gap"] = analysis.get("projected_gap")
+        result["projection_quality"] = analysis.get("projection_quality")
+        result["recommendation"] = analysis.get("recommendation") or ""
+        _apply_stored_signal_quality(result, analysis)
+
+    # Settlement and deletion metadata may legitimately change after the snapshot.
+    for key in (
+        "id", "match_id", "deleted_at", "result", "status", "score", "note",
+        "bet_placed", "ignored", "followed", "alerted_at", "alert_moment",
+    ):
+        if key in raw:
+            result[key] = raw[key]
+    _apply_claude_ai_display_direction(result)
+    result.pop("display_snapshot", None)
+    result.pop("ai_analysis", None)
+    return result
 
 
 def _lightweight_enrich_deleted_alerts(
@@ -1035,26 +1073,15 @@ def _lightweight_enrich_deleted_alerts(
     backtest_profile: dict | None = None,
     league_quality_profile: dict | None = None,
 ) -> list[dict]:
-    previous_map = _previous_directions_by_alert_id(alerts)
-    for alert in alerts:
-        _enrich_deleted_alert(
-            alert,
-            backtest_profile,
-            full=False,
-            league_quality_profile=league_quality_profile,
-            previous_directions=previous_map.get(int(alert.get("id") or 0), []),
-        )
-    return alerts
+    return [_enrich_deleted_alert(alert, full=False) for alert in alerts]
 
 
 @app.route("/api/deleted-matches")
 def api_deleted_matches():
     raw_limit = request.args.get("limit", type=int)
     all_rows = db.recent_deleted_alerts(limit=None)
-    backtest_profile = build_backtest_profile(all_rows)
-    league_quality_profile = _build_league_quality_profile(all_rows)
     rows = all_rows if raw_limit is None or raw_limit <= 0 else all_rows[:raw_limit]
-    return jsonify(_lightweight_enrich_deleted_alerts(rows, backtest_profile, league_quality_profile))
+    return jsonify(_lightweight_enrich_deleted_alerts(rows))
 
 
 @app.route("/api/deleted-matches/<int:alert_id>/details")
@@ -1063,25 +1090,14 @@ def api_deleted_match_details(alert_id: int):
     target = next((row for row in all_rows if int(row.get("id") or 0) == alert_id), None)
     if not target:
         return jsonify({"error": "not_found"}), 404
-    backtest_profile = build_backtest_profile(all_rows)
-    league_quality_profile = _build_league_quality_profile(all_rows)
-    previous_map = _previous_directions_by_alert_id(all_rows)
-    return jsonify(_enrich_deleted_alert(
-        target,
-        backtest_profile,
-        full=True,
-        league_quality_profile=league_quality_profile,
-        previous_directions=previous_map.get(int(target.get("id") or 0), []),
-    ))
+    return jsonify(_enrich_deleted_alert(target, full=True))
 
 
 @app.route("/api/deleted-matches/export.csv")
 def api_export_finished_deleted_matches_csv():
     deleted_rows = db.recent_deleted_alerts(limit=None)
-    backtest_profile = build_backtest_profile(deleted_rows)
-    league_quality_profile = _build_league_quality_profile(deleted_rows)
     rows = [
-        row for row in _lightweight_enrich_deleted_alerts(deleted_rows, backtest_profile, league_quality_profile)
+        row for row in _lightweight_enrich_deleted_alerts(deleted_rows)
         if str(row.get("result") or "").strip()
     ]
 
@@ -1145,6 +1161,7 @@ def api_purge_deleted_alert(alert_id: int):
 
 @app.route("/api/alerts/check-finished", methods=["POST"])
 def api_check_active_match_finished():
+    _snapshot_active_rows(db.active_alerts(limit=None))
     summary = asyncio.run(run_active_match_finished_scan(db, config))
     return jsonify(summary)
 
@@ -2579,7 +2596,7 @@ def api_delete_alert(alert_id: int):
     alert = db.get_alert(alert_id)
     if not alert:
         return jsonify({"error": "not found"}), 404
-    _persist_active_signal_quality(alert["match_id"])
+    _snapshot_active_rows(db.active_alerts_for_match(alert["match_id"]))
     deleted_count = db.delete_match_data(alert["match_id"])
     return jsonify({
         "id": alert_id,
@@ -2726,15 +2743,9 @@ def api_team_history_lookup():
 
 @app.route("/api/clear", methods=["POST"])
 def api_clear_db():
-    _persist_active_signal_quality()
+    _snapshot_active_rows(db.active_alerts(limit=None))
     moved_count = db.clear_all()
     return jsonify({"cleared": True, "moved_count": moved_count})
-
-
-try:
-    _backfill_deleted_signal_quality_once()
-except Exception:
-    pass
 
 
 if __name__ == "__main__":

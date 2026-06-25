@@ -2306,6 +2306,7 @@
           <a href="/deleted-matches" class="nav-link">Silinen</a>
           <a href="/upcoming/" class="nav-link">Gelecek Maçlar</a>
           <a href="/bankroll" class="nav-link">Bankroll</a>
+          <a href="/balance-tracker/" class="nav-link">Bakiye Takip</a>
         </nav>
         <span class="nav-sep">|</span>
         <div class="page-actions">
@@ -2356,6 +2357,8 @@
           <button class="btn" data-filter="ignored">Pas Geçilen</button>
           <button class="btn" data-filter="alt">ALT</button>
           <button class="btn" data-filter="ust">ÜST</button>
+          <button class="btn warning" data-filter="hundred_profile">100 Profil</button>
+          <button class="btn warning" data-filter="claude_ai">C_A ⭐</button>
         </div>
       </section>
 
@@ -2387,6 +2390,7 @@
                 <th data-sort="fair_line">Adil</th>
                 <th data-sort="projected">Proj.</th>
                 <th data-sort="signal_quality_score">S.K.</th>
+                <th class="ca-cell" data-sort="claude_ai">C_A</th>
                 <th data-sort="match_name">Maç</th>
                 <th data-sort="tournament">Turnuva</th>
                 <th data-sort="status">Durum</th>
@@ -2777,7 +2781,18 @@
       const score = num(alert.signal_quality_score ?? quality.quality_score);
       const label = String(alert.signal_quality_label || quality.quality_label || '-');
       const text = score === null ? '-' : String(Math.round(score));
-      return `<button type="button" class="badge small-badge quality-badge ${signalQualityTone(score)}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(label)}">${escapeHtml(text)}</button>`;
+      const hundred = Number(alert.hundred_profile || 0) === 1
+        ? `<button type="button" class="hundred-profile-badge" onclick="event.stopPropagation();openSignalModal(${Number(alert.id || 0)})" title="${escapeHtml(alert.hundred_profile_rule || '100 Profili')}">100</button>`
+        : '';
+      return `<span class="ca-stack"><button type="button" class="badge small-badge quality-badge ${signalQualityTone(score)}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(label)}">${escapeHtml(text)}</button>${hundred}</span>`;
+    }
+
+    function claudeAiHtml(alert) {
+      const code = String(alert.claude_ai || '').trim();
+      if (!code) return '<span class="ca-empty" aria-hidden="true">·</span>';
+      const label = String(alert.claude_ai_label || code);
+      const title = String(alert.claude_ai_tooltip || alert.claude_ai_rule || label);
+      return `<button type="button" class="ca-star" onclick="event.stopPropagation();openSignalModal(${Number(alert.id || 0)})" title="${escapeHtml(title)}" aria-label="${escapeHtml(label)}">⭐</button>`;
     }
 
     function scoreButtonHtml(alert, extraClass = '') {
@@ -2788,6 +2803,20 @@
     }
 
     function bigVerdictHtml(alert) {
+      const caCode = String(alert.claude_ai || '').trim();
+      if (caCode) {
+        const play = String(alert.claude_ai_play || alert.direction || '-');
+        const label = String(alert.claude_ai_label || 'C_A');
+        const rule = String(alert.claude_ai_rule || 'Geçmiş profil eşleşmesi');
+        return `
+          <div class="big-verdict gold">
+            <div class="big-verdict-icon">⭐</div>
+            <div class="big-verdict-text">
+              <div class="big-verdict-play">${escapeHtml(play)} oyna <span class="badge small-badge">${escapeHtml(label)}</span></div>
+              <div class="big-verdict-desc">C_A: ${escapeHtml(rule)}</div>
+            </div>
+          </div>`;
+      }
       const dir = String(alert.direction || '');
       const dirArrow = dir === 'ALT' ? '▼' : (dir === 'ÜST' ? '▲' : '·');
       return `
@@ -2917,6 +2946,8 @@
       if (currentFilter === 'ignored') list = list.filter(a => a.ignored);
       if (currentFilter === 'alt') list = list.filter(a => a.direction === 'ALT');
       if (currentFilter === 'ust') list = list.filter(a => a.direction === 'ÜST');
+      if (currentFilter === 'hundred_profile') list = list.filter(a => Number(a.hundred_profile || 0) === 1);
+      if (currentFilter === 'claude_ai') list = list.filter(a => String(a.claude_ai || '').trim() !== '');
       if (activePeriods.size) {
         list = list.filter(a => activePeriods.has(`${a.direction}-${a.alert_period}`));
       }
@@ -2989,6 +3020,7 @@
             <td>${fairHtml(a)}</td>
             <td>${projectedHtml(a)}</td>
             <td>${signalQualityHtml(a)}</td>
+            <td class="ca-cell">${claudeAiHtml(a)}</td>
             <td><div class="match-cell-wrap">${focusButton(a)}${matchLink(a)}${listMarkersHtml(a, 'team')}${noteInfoButton(a)}</div></td>
             <td><div class="tournament-row"><span class="subline tournament-cell">${tournament}</span>${listMarkersHtml(a, 'league')}</div></td>
             <td>${escapeHtml(a.status || '-')}</td>
@@ -3039,6 +3071,8 @@
               <div class="card-strip-left">
                 ${directionBadge(a)}
                 ${signalCount > 1 ? `<span class="card-signal-count">${signalCount}. sinyal</span>` : ''}
+                ${signalQualityHtml(a)}
+                ${claudeAiHtml(a)}
               </div>
               <div class="card-strip-right">
                 <span class="card-status">${escapeHtml(status)}</span>

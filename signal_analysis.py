@@ -3,7 +3,7 @@ import math
 import re
 from statistics import mean
 
-from projection import calculate_live_projection, game_clock, parse_score
+from projection import calculate_live_projection, calculate_quarter_ppm, game_clock, parse_score
 
 
 def calculate_fair_line(
@@ -802,12 +802,7 @@ def build_team_context(h2h_metrics: dict, live: float, direction: str) -> dict |
 
 def _market_total(match: dict, opening: float) -> float | None:
     odds = match.get("odds_snapshot") if isinstance(match.get("odds_snapshot"), dict) else {}
-    for key in ("opening_total", "opening", "baseline"):
-        parsed = _safe_float(match.get(key))
-        if parsed is not None:
-            return round(parsed, 1)
     for value in (
-        odds.get("opening_median"),
         odds.get("prematch_median"),
     ):
         parsed = _safe_float(value)
@@ -816,6 +811,16 @@ def _market_total(match: dict, opening: float) -> float | None:
     for key in ("prematch_total", "prematch"):
         value = match.get(key)
         parsed = _safe_float(value)
+        if parsed is not None:
+            return round(parsed, 1)
+    for value in (
+        odds.get("opening_median"),
+    ):
+        parsed = _safe_float(value)
+        if parsed is not None:
+            return round(parsed, 1)
+    for key in ("opening_total", "opening", "baseline"):
+        parsed = _safe_float(match.get(key))
         if parsed is not None:
             return round(parsed, 1)
     return round(opening, 1)
@@ -1668,11 +1673,12 @@ def build_signal_analysis(
     )
     projection_components = live_projection.get("components") or {}
     quarter_totals = live_projection.get("quarter_totals") or []
-    quarter_ppm = [
-        _safe_round(total / quarter_length, 2)
-        for total in quarter_totals
-        if _safe_round(total) is not None and quarter_length
-    ]
+    quarter_ppm = calculate_quarter_ppm(
+        quarter_totals,
+        period=period,
+        remaining_min=remaining_min,
+        quarter_length=quarter_length,
+    )
     match_ppm = _safe_round(projection_components.get("current_pace_per_min"), 2)
     sustainable_ppm = _safe_round(projection_components.get("sustainable_pace_per_min"), 2)
     script = _script_warning(score, status, match_name, tournament)

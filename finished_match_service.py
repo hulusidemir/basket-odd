@@ -10,6 +10,7 @@ import os
 import re
 import time
 
+from claude_ai_filter import scenario_play_direction
 from signal_quality import calculate_signal_quality
 
 try:
@@ -48,14 +49,17 @@ def _persist_signal_quality_before_delete(db, match_id: str) -> int:
         analysis = _parse_analysis(row.get("ai_analysis"))
         if not isinstance(analysis.get("signal_quality"), dict):
             quality = calculate_signal_quality({
+                **analysis,
                 **row,
-                "direction": row.get("final_direction") or row.get("direction"),
+                "direction": analysis.get("final_direction") or analysis.get("direction") or row.get("direction"),
                 "previous_directions": history,
             })
             analysis = {**analysis, "signal_quality": quality}
             if db.update_alert_ai_analysis(int(row.get("id") or 0), json.dumps(analysis, ensure_ascii=False), active_only=True):
                 updated += 1
-        direction = _normalize_direction(row.get("final_direction") or row.get("direction"))
+        direction = _normalize_direction(
+            analysis.get("final_direction") or analysis.get("direction") or row.get("direction")
+        )
         if direction:
             history.append(direction)
     return updated
@@ -107,7 +111,10 @@ def canonical_alert_direction(alert: dict) -> str:
     except Exception:
         analysis = {}
     return (
-        _normalize_direction(analysis.get("final_direction") or analysis.get("direction") or alert.get("direction"))
+        scenario_play_direction(alert.get("claude_ai"))
+        or _normalize_direction(alert.get("claude_ai_play"))
+        or _normalize_direction(analysis.get("claude_ai_play"))
+        or _normalize_direction(analysis.get("final_direction") or analysis.get("direction") or alert.get("direction"))
         or _normalize_direction(alert.get("direction"))
     )
 
