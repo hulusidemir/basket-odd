@@ -1811,238 +1811,6 @@
       .th-match-meta { padding-left: 0; }
     }
 
-    #betModal .modal-box.wide { width: min(96vw, 1120px); }
-    #betModal .modal-header {
-      background:
-        linear-gradient(135deg, rgba(124,92,246,0.16), rgba(52,211,153,0.07)),
-        rgba(12,12,20,0.98);
-    }
-    #betModal .modal-body {
-      display: grid;
-      gap: 12px;
-      background:
-        linear-gradient(180deg, rgba(124,92,246,0.045), transparent 180px),
-        rgba(8,8,14,0.98);
-    }
-    .bet-toolbar {
-      display: grid;
-      grid-template-columns: 124px minmax(220px,1fr) auto auto;
-      gap: 10px;
-      align-items: stretch;
-      padding: 10px;
-      border: 1px solid rgba(124,92,246,0.18);
-      border-radius: 14px;
-      background: rgba(15,15,25,0.82);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.035);
-    }
-    .bet-toolbar .btn,
-    .bet-toolbar .bet-name-input,
-    .bet-toolbar .bet-count-select { min-height: 42px; }
-    .bet-count-select, .bet-name-input {
-      border-radius: 11px;
-      background: rgba(5,5,10,0.88);
-    }
-    #betResult {
-      display: block;
-      padding: 0;
-      border: 0;
-      background: transparent;
-      text-align: left;
-    }
-    #betResult.empty-state {
-      color: var(--text-soft);
-      border: 1px dashed rgba(120,100,220,0.2);
-      border-radius: 14px;
-      background: rgba(10,10,18,0.45);
-      padding: 24px 16px;
-      text-align: center;
-    }
-    .bet-summary-card {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 10px;
-      padding: 13px 14px;
-      border: 1px solid rgba(124,92,246,0.18);
-      border-radius: 14px;
-      background:
-        linear-gradient(135deg, rgba(124,92,246,0.12), rgba(52,211,153,0.055)),
-        rgba(12,12,20,0.94);
-    }
-    .bet-summary-main { min-width: 0; }
-    .bet-summary-main strong {
-      display: block;
-      color: var(--text);
-      font-size: 13px;
-      line-height: 1.45;
-      overflow-wrap: anywhere;
-    }
-    .bet-summary-stats { display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
-    .bet-stat {
-      min-width: 86px;
-      padding: 7px 9px;
-      border-radius: 10px;
-      border: 1px solid rgba(148,163,184,0.14);
-      background: rgba(5,5,10,0.55);
-      color: var(--text-soft);
-      font-size: 10px;
-      font-weight: 900;
-      letter-spacing: .04em;
-      text-transform: uppercase;
-      text-align: center;
-    }
-    .bet-stat b {
-      display: block;
-      color: var(--text);
-      font-size: 16px;
-      letter-spacing: 0;
-      margin-top: 1px;
-    }
-    .bet-result-panel {
-      border: 1px solid rgba(124,92,246,0.15);
-      border-radius: 14px;
-      overflow: hidden;
-      background: rgba(10,10,18,0.74);
-    }
-    .bet-result-panel .table-wrap {
-      border-radius: 0;
-      border: 0;
-      background: transparent;
-      max-height: 440px;
-    }
-    .bet-table { min-width: 880px; }
-    .bet-table th {
-      background: rgba(14,14,24,0.98);
-      color: rgba(237,233,255,0.64);
-      font-size: 10px;
-    }
-    .bet-table td {
-      padding: 12px 13px;
-      border-color: rgba(100,80,180,0.075);
-      vertical-align: middle;
-    }
-    .bet-table tbody tr:hover { background: rgba(124,92,246,0.055); }
-    .bet-match-link, .saved-match-link {
-      color: var(--text);
-      text-decoration: none;
-      font-weight: 850;
-      overflow-wrap: anywhere;
-    }
-    .bet-match-link:hover, .saved-match-link:hover { color: #c4b5fd; text-decoration: underline; text-underline-offset: 3px; }
-    .bet-play-pill {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 92px;
-      padding: 5px 9px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 900;
-      font-variant-numeric: tabular-nums;
-      border: 1px solid rgba(148,163,184,0.16);
-    }
-    .bet-play-pill.ust { color: #bbf7d0; background: rgba(34,197,94,0.14); border-color: rgba(34,197,94,0.34); }
-    .bet-play-pill.alt { color: #fecaca; background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.34); }
-    .saved-list { display: grid; gap: 9px; margin-top: 0; }
-    .saved-list-title {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 11px;
-      font-weight: 850;
-      letter-spacing: .06em;
-      color: rgba(200,190,255,.58);
-      text-transform: uppercase;
-      margin: 2px 0 -2px;
-    }
-    .saved-list-title::before {
-      content: "";
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #34d399;
-      box-shadow: 0 0 12px rgba(52,211,153,0.65);
-    }
-
-    .saved-row {
-      border: 1px solid rgba(124,92,246,0.14);
-      border-radius: 14px;
-      background:
-        linear-gradient(135deg, rgba(124,92,246,0.06), rgba(52,211,153,0.025)),
-        rgba(10,10,18,0.76);
-      overflow: hidden;
-    }
-    .saved-row-header {
-      display: flex; align-items: center; justify-content: space-between; gap: 9px;
-      padding: 11px 13px;
-      cursor: pointer;
-      user-select: none;
-    }
-    .saved-row-header:hover { background: rgba(100,80,180,0.07); }
-    .saved-row-toggle { font-size: 11px; color: rgba(200,190,255,.5); transition: transform .2s; flex-shrink: 0; }
-    .saved-row.open .saved-row-toggle { transform: rotate(90deg); }
-    .saved-title-line { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-    .saved-status-tag {
-      display: inline-flex; align-items: center; justify-content: center;
-      min-height: 22px;
-      padding: 3px 8px;
-      border-radius: 999px;
-      border: 1px solid rgba(148,163,184,0.22);
-      font-size: 10px;
-      font-weight: 900;
-      letter-spacing: .03em;
-      text-transform: uppercase;
-    }
-    .saved-status-tag.failed {
-      color: #fecaca;
-      background: rgba(239,68,68,0.16);
-      border-color: rgba(239,68,68,0.42);
-    }
-    .saved-status-tag.success {
-      color: #bbf7d0;
-      background: rgba(34,197,94,0.13);
-      border-color: rgba(34,197,94,0.34);
-    }
-    .saved-row-body {
-      display: none;
-      padding: 2px 13px 12px;
-      border-top: 1px solid rgba(100,80,180,0.09);
-      background: rgba(4,4,9,0.2);
-    }
-    .saved-row.open .saved-row-body { display: block; }
-    .saved-slip-match {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      align-items: center;
-      padding: 7px 0;
-      border-bottom: 1px solid rgba(100,80,180,0.06);
-      font-size: 12px;
-      gap: 10px;
-    }
-    .saved-slip-match-name { min-width: 0; overflow-wrap: anywhere; }
-    .saved-slip-actions { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-    .saved-slip-match:last-child { border-bottom: none; }
-    .saved-slip-dir { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
-    .saved-slip-dir.ust { background: rgba(52,211,153,0.15); color: #a7f3d0; }
-    .saved-slip-dir.alt { background: rgba(248,113,113,0.15); color: #fecaca; }
-    .saved-result-btn {
-      min-width: 72px;
-      height: 28px;
-      border-radius: 8px;
-      padding: 0 9px;
-      border: 1px solid rgba(148,163,184,0.22);
-      background: rgba(30,28,48,0.8);
-      color: #cbd5e1;
-      font-size: 11px;
-      font-weight: 850;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-    .saved-result-btn:hover { border-color: rgba(124,92,246,0.48); background: rgba(40,36,68,0.96); }
-    .saved-result-btn.success.active { background: rgba(34,197,94,0.18); border-color: rgba(34,197,94,0.45); color: #bbf7d0; }
-    .saved-result-btn.failed.active { background: rgba(239,68,68,0.18); border-color: rgba(239,68,68,0.48); color: #fecaca; }
-
     .ai-guide-box { width: min(96vw, 920px); }
 
     .ai-guide-body {
@@ -2121,8 +1889,6 @@
       .ai-guide-grid { grid-template-columns: 1fr; }
       .bet-summary-card { align-items: flex-start; flex-direction: column; }
       .bet-summary-stats { justify-content: flex-start; }
-      .saved-slip-match { grid-template-columns: 1fr; align-items: flex-start; }
-      .saved-slip-actions { justify-content: flex-start; }
     }
 
     @media (max-width: 720px) {
@@ -2365,7 +2131,6 @@
       <section class="panel toolbar">
         <div class="toolbar-main">
           <input id="searchInput" class="search-box" type="search" placeholder="Takım, lig, maç veya not ara">
-          <button class="btn warning" onclick="openBetBuilder()">Bahis Oluşturucu</button>
           <button class="btn" onclick="openSignalListManager()">Kara/Beyaz Liste</button>
           <button class="btn" onclick="manualRefresh()">Listeyi Yenile</button>
           <button class="btn" id="checkFinishedBtn" onclick="checkFinishedMatches(this)">Bitenleri Kontrol Et</button>
@@ -2497,34 +2262,6 @@
     </div>
   </div>
 
-  <div class="modal-overlay" id="betModal" onclick="if(event.target===this)closeBetBuilder()">
-    <div class="modal-box wide">
-      <div class="modal-header">
-        <h3>Bahis Oluşturucu</h3>
-        <button class="modal-close" onclick="closeBetBuilder()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="bet-toolbar">
-          <select class="bet-count-select" id="betCount">
-            <option value="1">1 maç</option>
-            <option value="2">2 maç</option>
-            <option value="3">3 maç</option>
-            <option value="4" selected>4 maç</option>
-            <option value="5">5 maç</option>
-            <option value="6">6 maç</option>
-          </select>
-          <input class="bet-name-input" id="betName" type="text" placeholder="Kupon adı">
-          <button class="btn primary" onclick="generateBetSlip()">Kupon Oluştur</button>
-          <button class="btn warning" id="saveSlipBtn" onclick="saveBetSlip()">Kaydet</button>
-        </div>
-        <div id="betStatus" class="banner"></div>
-        <div id="betResult" class="empty-state" style="display:block;">Kupon oluşturmak için butona bas.</div>
-        <div class="saved-list-title">Geçmiş Bahisler</div>
-        <div class="saved-list" id="savedList"></div>
-      </div>
-    </div>
-  </div>
-
   <div class="modal-overlay" id="signalGuideModal" onclick="if(event.target===this)closeSignalGuide()">
     <div class="modal-box ai-guide-box">
       <div class="modal-header">
@@ -2591,7 +2328,6 @@
     let focusedMatchName = '';
     let selectedMatchIds = new Set();
     let noteAlertId = null;
-    let latestSlip = null;
     let signalListEntries = [];
 
     const $ = id => document.getElementById(id);
@@ -2652,58 +2388,6 @@
 
     function closeSignalGuide() {
       $('signalGuideModal').classList.remove('active');
-    }
-
-    function setBetStatus(message, type = 'success') {
-      const target = $('betStatus');
-      target.textContent = message || '';
-      target.className = type === 'error' ? 'banner error' : 'banner';
-      target.style.display = message ? 'block' : 'none';
-    }
-
-    function savedResultKey(value) {
-      const normalized = String(value || '').trim().toLocaleLowerCase('tr-TR')
-        .replaceAll('ı', 'i')
-        .replaceAll('ş', 's');
-      if (normalized === 'basarili' || normalized === 'success') return 'success';
-      if (normalized === 'basarisiz' || normalized === 'fail' || normalized === 'failed') return 'failed';
-      return '';
-    }
-
-    function savedSlipStatus(slip) {
-      if (!Array.isArray(slip) || !slip.length) return null;
-      const results = slip.map(item => savedResultKey(item?.result));
-      if (results.includes('failed')) return { key: 'failed', label: 'Başarısız' };
-      if (results.every(result => result === 'success')) return { key: 'success', label: 'Başarılı' };
-      return null;
-    }
-
-    function savedSlipStatusBadge(slip) {
-      const status = savedSlipStatus(slip);
-      return status ? `<span class="saved-status-tag ${status.key}">${escapeHtml(status.label)}</span>` : '';
-    }
-
-    function savedResultButton(slipId, matchId, result, label, cls) {
-      const active = savedResultKey(result) === cls ? ' active' : '';
-      return `<button class="saved-result-btn ${cls}${active}" data-slip-id="${Number(slipId)}" data-match-id="${escapeHtml(matchId)}" onclick='setSavedSlipResultFromButton(this, ${jsString(label)})'>${escapeHtml(label)}</button>`;
-    }
-
-    function safeExternalUrl(value) {
-      const raw = String(value || '').trim();
-      if (!raw) return '';
-      try {
-        const parsed = new URL(raw, window.location.origin);
-        return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : '';
-      } catch {
-        return '';
-      }
-    }
-
-    function betMatchNameHtml(item, className = 'bet-match-link') {
-      const name = cleanMatchName(item?.match_name || '-');
-      const url = safeExternalUrl(item?.url);
-      if (!url) return `<span class="${className}">${escapeHtml(name)}</span>`;
-      return `<a class="${className}" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(name)}</a>`;
     }
 
     function timeText(value) {
@@ -4210,190 +3894,6 @@
       }
     }
 
-    function openBetBuilder() {
-      $('betModal').classList.add('active');
-      loadSavedSlips();
-      generateBetSlip();
-    }
-
-    function closeBetBuilder() {
-      $('betModal').classList.remove('active');
-    }
-
-    function renderSlip(payload) {
-      $('betResult').className = 'bet-result-slot';
-      latestSlip = payload && Array.isArray(payload.slip) && payload.slip.length ? payload : null;
-      const summary = `
-        <div class="bet-summary-card">
-          <div class="bet-summary-main">
-            <strong>${escapeHtml(payload?.message || '')}</strong>
-          </div>
-          <div class="bet-summary-stats">
-            <span class="bet-stat">Uygun <b>${Number(payload?.eligible_count || 0)}</b></span>
-            <span class="bet-stat">Seçilen <b>${Number(payload?.selected_count || 0)}</b></span>
-          </div>
-        </div>`;
-      if (!latestSlip) {
-        $('betResult').style.display = 'block';
-        $('betResult').innerHTML = `${summary}<div class="empty-state" style="display:block;">Kupona uygun maç yok.</div>`;
-        return;
-      }
-      const rows = latestSlip.slip.map(item => {
-        const direction = String(item.direction || '').toUpperCase();
-        const dirCls = direction === 'ÜST' ? 'ust' : 'alt';
-        return `
-          <tr>
-            <td>${betMatchNameHtml(item)}<div class="subline">${escapeHtml(item.tournament || '-')}</div></td>
-            <td><span class="bet-play-pill ${dirCls}">${escapeHtml(`${fmt(item.live)}-${item.direction || '-'}`)}</span></td>
-            <td class="mono">${fmt(item.opening)}</td>
-            <td class="mono">${signed(item.diff || item.opening_gap || 0)}</td>
-            <td><strong>${escapeHtml(item.score || '-')}</strong></td>
-            <td>${escapeHtml(item.status || '-')}</td>
-            <td><button class="row-action danger" onclick='removeSlipMatch(${jsString(normalizeId(item.match_id))})'>⌫</button></td>
-          </tr>
-        `;
-      }).join('');
-      $('betResult').style.display = 'block';
-      $('betResult').innerHTML = `${summary}<div class="bet-result-panel"><div class="table-wrap"><table class="bet-table"><thead><tr><th>Maç</th><th>Oynanacak</th><th>Açılış</th><th>Fark</th><th>Skor</th><th>Durum</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
-    }
-
-    async function generateBetSlip() {
-      setBetStatus('');
-      $('betResult').className = 'empty-state';
-      $('betResult').style.display = 'block';
-      $('betResult').textContent = 'Kupon hazırlanıyor...';
-      try {
-        const count = Number($('betCount').value || 4);
-        const res = await fetch(`/api/bet-builder?max_count=${count}`);
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(payload?.error || 'Kupon oluşturulamadı.');
-        renderSlip(payload);
-      } catch (error) {
-        latestSlip = null;
-        $('betResult').className = 'empty-state';
-        $('betResult').textContent = error.message || 'Kupon oluşturulamadı.';
-      }
-    }
-
-    async function saveBetSlip() {
-      const name = $('betName').value.trim();
-      if (!name) return setBetStatus('Kupon adı gir.', 'error');
-      if (!latestSlip) return setBetStatus('Kaydedilecek kupon yok.', 'error');
-      $('saveSlipBtn').disabled = true;
-      try {
-        const res = await fetch('/api/bet-builder/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, payload: latestSlip }),
-        });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(payload?.error || 'Kupon kaydedilemedi.');
-        setBetStatus('Kupon kaydedildi.');
-        loadSavedSlips();
-      } catch (error) {
-        setBetStatus(error.message || 'Kupon kaydedilemedi.', 'error');
-      } finally {
-        $('saveSlipBtn').disabled = false;
-      }
-    }
-
-    async function loadSavedSlips() {
-      try {
-        const openIds = new Set(Array.from(document.querySelectorAll('.saved-row.open')).map(row => String(row.dataset.id || '')));
-        const res = await fetch('/api/bet-builder/saved?limit=30');
-        const payload = await res.json();
-        const items = Array.isArray(payload) ? payload : [];
-        $('savedList').innerHTML = items.length ? items.map(item => {
-          const slip = (item.payload && Array.isArray(item.payload.slip)) ? item.payload.slip : [];
-          const matchRows = slip.map(m => {
-            const dir = (m.direction || '').toUpperCase();
-            const dirCls = dir === 'ÜST' ? 'ust' : 'alt';
-            const matchId = normalizeId(m.match_id);
-            return `<div class="saved-slip-match">
-              <div class="saved-slip-match-name">
-                ${betMatchNameHtml(m, 'saved-match-link')}
-                <span class="subline" style="display:inline;margin-left:6px;opacity:.55;">${escapeHtml(m.tournament || '')}</span>
-              </div>
-              <div class="saved-slip-actions">
-                <span class="saved-slip-dir ${dirCls}">${escapeHtml(dir)}</span>
-                ${savedResultButton(item.id, matchId, m.result, 'Başarılı', 'success')}
-                ${savedResultButton(item.id, matchId, m.result, 'Başarısız', 'failed')}
-              </div>
-            </div>`;
-          }).join('');
-          const rowId = String(Number(item.id));
-          const openClass = openIds.has(rowId) ? ' open' : '';
-          return `<div class="saved-row${openClass}" id="savedRow_${Number(item.id)}" data-id="${Number(item.id)}">
-            <div class="saved-row-header" onclick="toggleSavedRow(${Number(item.id)})">
-              <div>
-                <div class="saved-title-line">
-                  <strong>${escapeHtml(item.name || '-')}</strong>
-                  ${savedSlipStatusBadge(slip)}
-                </div>
-                <div class="subline">${escapeHtml(item.created_at || '')} &middot; ${Number(item.selected_count || 0)} maç</div>
-              </div>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span class="saved-row-toggle">&#9654;</span>
-                <button class="row-action danger" onclick="event.stopPropagation();deleteSavedSlip(${Number(item.id)})">⌫</button>
-              </div>
-            </div>
-            <div class="saved-row-body">${matchRows || '<div class="subline" style="padding:6px 0;">Maç bilgisi yok.</div>'}</div>
-          </div>`;
-        }).join('') : '<div class="subline" style="padding:6px 0 0;">Kayıtlı kupon yok.</div>';
-      } catch {
-        $('savedList').innerHTML = '';
-      }
-    }
-
-    async function setSavedSlipResultFromButton(button, result) {
-      const slipId = Number(button?.dataset?.slipId || 0);
-      const matchId = normalizeId(button?.dataset?.matchId || '');
-      if (!slipId || !matchId) return;
-      button.disabled = true;
-      try {
-        const res = await fetch(`/api/bet-builder/saved/${slipId}/result`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ match_id: matchId, result }),
-        });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(payload?.error || 'Sonuç kaydedilemedi.');
-        setBetStatus('Maç sonucu kaydedildi.');
-        loadSavedSlips();
-      } catch (error) {
-        button.disabled = false;
-        setBetStatus(error.message || 'Sonuç kaydedilemedi.', 'error');
-      }
-    }
-
-    function toggleSavedRow(id) {
-      const el = document.getElementById('savedRow_' + id);
-      if (el) el.classList.toggle('open');
-    }
-
-    async function deleteSavedSlip(id) {
-      if (!confirm('Kupon kaydı silinsin mi?')) return;
-      await fetch(`/api/bet-builder/saved/${id}`, { method: 'DELETE' });
-      loadSavedSlips();
-    }
-
-    async function removeSlipMatch(matchId) {
-      if (!matchId) return;
-      try {
-        const res = await fetch(`/api/matches/${encodeURIComponent(matchId)}/ignore`, { method: 'POST' });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(payload?.error || 'Maç çıkarılamadı.');
-        latestSlip.slip = latestSlip.slip.filter(item => normalizeId(item.match_id) !== matchId);
-        latestSlip.selected_count = latestSlip.slip.length;
-        allAlerts = allAlerts.map(a => normalizeId(a.match_id) === matchId ? { ...a, ignored: 1, bet_placed: 0, followed: 0 } : a);
-        renderSlip(latestSlip);
-        render();
-        setBetStatus('Maç kupondan çıkarıldı ve pas geçildi.');
-      } catch (error) {
-        setBetStatus(error.message || 'Maç çıkarılamadı.', 'error');
-      }
-    }
-
     document.querySelectorAll('[data-filter]').forEach(button => {
       button.addEventListener('click', () => {
         document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('primary'));
@@ -4446,7 +3946,6 @@
         closeSignalModal();
         closeNoteModal();
         closeNoteInfo();
-        closeBetBuilder();
       }
     });
 

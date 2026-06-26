@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from playwright.async_api import async_playwright
 
-from signal_analysis import _extract_h2h_metrics, _split_match_name
+from signal_analysis import _split_match_name, extract_h2h_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,11 @@ class UpcomingScraper:
         except ZoneInfoNotFoundError:
             logger.warning("Unknown AISCORE_TIMEZONE=%s; falling back to UTC.", self.timezone_id)
             self.timezone_id = "UTC"
+        default_match_timeout = max(45, min(75, int(self.page_timeout_ms / 1000) * 2))
+        self.match_timeout_seconds = max(
+            30,
+            int(os.getenv("UPCOMING_MATCH_TIMEOUT_SECONDS", str(default_match_timeout))),
+        )
         self._listing_rows_by_id: dict[str, dict] = {}
 
     async def fetch(self) -> list[dict]:
@@ -69,7 +74,16 @@ class UpcomingScraper:
             try:
                 links = await self._collect_upcoming_links(context)
                 if not links:
-                    logger.warning("No upcoming match links collected.")
+                    logger.warning("No upcoming links on first listing attempt; retrying once.")
+                    await asyncio.sleep(2)
+                    links = await self._collect_upcoming_links(context)
+                if not links:
+                    logger.warning(
+                        "No upcoming match links collected. url=%s days_ahead=%s timezone=%s",
+                        self.aiscore_url,
+                        self.days_ahead,
+                        self.timezone_id,
+                    )
                     return []
 
                 if self.max_matches:
@@ -80,7 +94,13 @@ class UpcomingScraper:
                 results: list[dict] = []
                 for i in range(0, len(links), concurrency):
                     batch = links[i : i + concurrency]
-                    coros = [self._extract_one(context, link) for link in batch]
+                    logger.info(
+                        "Fetching upcoming detail batch %s-%s/%s.",
+                        i + 1,
+                        min(i + len(batch), len(links)),
+                        len(links),
+                    )
+                    coros = [self._extract_one_with_timeout(context, link) for link in batch]
                     chunk = await asyncio.gather(*coros, return_exceptions=True)
                     for r in chunk:
                         if isinstance(r, dict):
@@ -321,11 +341,33 @@ class UpcomingScraper:
         page = await context.new_page()
         page.set_default_timeout(self.page_timeout_ms)
         try:
-            try:
-                await page.goto(listing_url, wait_until="networkidle")
-            except Exception:
-                await page.goto(listing_url, wait_until="domcontentloaded")
+            loaded = False
+            last_error = None
+            for wait_until in ("domcontentloaded", "load", "networkidle"):
+                try:
+                    await page.goto(listing_url, wait_until=wait_until, timeout=self.page_timeout_ms)
+                    loaded = True
+                    break
+                except Exception as exc:
+                    last_error = exc
+                    logger.debug(
+                        "today-matches nav failed wait_until=%s (%s): %s",
+                        wait_until,
+                        listing_url,
+                        exc,
+                    )
+                    await page.wait_for_timeout(800)
+            if not loaded:
+                logger.warning("today-matches listing could not be loaded: %s", last_error)
+                return []
             await page.wait_for_timeout(3000)
+            try:
+                await page.wait_for_selector(
+                    'a[href*="/basketball/match-"]',
+                    timeout=min(15000, self.page_timeout_ms),
+                )
+            except Exception:
+                pass
 
             # Trigger lazy lists by scrolling once.
             for _ in range(4):
@@ -398,6 +440,20 @@ class UpcomingScraper:
 
     # ── Match detail extraction ───────────────────────────────────────
 
+    async def _extract_one_with_timeout(self, context, link: str) -> dict | None:
+        try:
+            return await asyncio.wait_for(
+                self._extract_one(context, link),
+                timeout=self.match_timeout_seconds,
+            )
+        except TimeoutError:
+            logger.warning(
+                "Upcoming match detail timed out after %ss: %s",
+                self.match_timeout_seconds,
+                link,
+            )
+            return None
+
     async def _extract_one(self, context, link: str) -> dict | None:
         page = await context.new_page()
         page.set_default_timeout(self.page_timeout_ms)
@@ -468,7 +524,7 @@ class UpcomingScraper:
             metrics = {}
             if h2h_text:
                 try:
-                    metrics = _extract_h2h_metrics(h2h_text, match_name) or {}
+                    metrics = extract_h2h_metrics(h2h_text, match_name) or {}
                 except Exception as exc:
                     logger.debug("H2H metrics failed for %s: %s", link, exc)
                     metrics = {}

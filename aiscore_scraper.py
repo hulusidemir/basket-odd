@@ -2,10 +2,8 @@ import asyncio
 import logging
 import os
 import re
-from playwright.async_api import Error as PlaywrightError
 from urllib.parse import urljoin
 
-from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
 
 logger = logging.getLogger(__name__)
@@ -20,9 +18,6 @@ class AiscoreScraper:
         # Per-match H2H body cache. H2H data does not change during a match, so
         # re-scraping the H2H tab on every poll cycle is wasted work.
         self._h2h_cache: dict[str, str] = {}
-
-    def forget_h2h_cache(self, match_id: str) -> None:
-        self._h2h_cache.pop(str(match_id), None)
 
     @staticmethod
     def _sanitize_tournament(value: str, url: str) -> str:

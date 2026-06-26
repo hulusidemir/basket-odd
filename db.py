@@ -25,13 +25,6 @@ class Database:
     def init(self):
         with self._conn() as conn:
             conn.executescript("""
-                CREATE TABLE IF NOT EXISTS opening_lines (
-                    match_id    TEXT PRIMARY KEY,
-                    match_name  TEXT NOT NULL,
-                    opening     REAL NOT NULL,
-                    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-
                 CREATE TABLE IF NOT EXISTS alerts (
                     id           INTEGER PRIMARY KEY AUTOINCREMENT,
                     match_id     TEXT NOT NULL,
@@ -68,53 +61,6 @@ class Database:
                     note        TEXT NOT NULL DEFAULT '',
                     deleted_at  TIMESTAMP
                 );
-
-                CREATE TABLE IF NOT EXISTS finished_matches (
-                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                    source_alert_id INTEGER NOT NULL UNIQUE,
-                    match_id        TEXT NOT NULL,
-                    match_name      TEXT NOT NULL,
-                    tournament      TEXT NOT NULL DEFAULT '',
-                    status          TEXT NOT NULL DEFAULT '',
-                    final_status    TEXT NOT NULL DEFAULT '',
-                    opening         REAL NOT NULL,
-                    prematch        REAL,
-                    live            REAL NOT NULL,
-                    direction       TEXT NOT NULL,
-                    diff            REAL NOT NULL,
-                    url             TEXT NOT NULL DEFAULT '',
-                    bet_placed      INTEGER NOT NULL DEFAULT 0,
-                    ignored         INTEGER NOT NULL DEFAULT 0,
-                    followed        INTEGER NOT NULL DEFAULT 0,
-                    alerted_at      TIMESTAMP,
-                    score           TEXT NOT NULL DEFAULT '',
-                    signal_count    INTEGER NOT NULL DEFAULT 1,
-                    ai_analysis     TEXT NOT NULL DEFAULT '',
-                    final_score     TEXT NOT NULL DEFAULT '',
-                    final_total     REAL,
-                    result          TEXT NOT NULL DEFAULT '',
-                    finished_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_finished_matches_match_id
-                ON finished_matches(match_id);
-
-                CREATE INDEX IF NOT EXISTS idx_finished_matches_finished_at
-                ON finished_matches(finished_at DESC);
-
-                CREATE TABLE IF NOT EXISTS saved_bet_slips (
-                    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name                TEXT NOT NULL,
-                    requested_max_count INTEGER NOT NULL DEFAULT 1,
-                    selected_count      INTEGER NOT NULL DEFAULT 0,
-                    eligible_count      INTEGER NOT NULL DEFAULT 0,
-                    message             TEXT NOT NULL DEFAULT '',
-                    payload_json        TEXT NOT NULL,
-                    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_saved_bet_slips_created_at
-                ON saved_bet_slips(created_at DESC, id DESC);
 
                 CREATE TABLE IF NOT EXISTS upcoming_matches (
                     match_id       TEXT PRIMARY KEY,
@@ -194,12 +140,6 @@ class Database:
                 "ALTER TABLE alerts ADD COLUMN result TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE alerts ADD COLUMN alert_period INTEGER",
                 "ALTER TABLE alerts ADD COLUMN alert_moment TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE finished_matches ADD COLUMN final_status TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE finished_matches ADD COLUMN final_score TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE finished_matches ADD COLUMN final_total REAL",
-                "ALTER TABLE finished_matches ADD COLUMN result TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE finished_matches ADD COLUMN prematch REAL",
-                "ALTER TABLE finished_matches ADD COLUMN ai_analysis TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE match_actions ADD COLUMN note TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE match_actions ADD COLUMN deleted_at TIMESTAMP",
             ):
@@ -210,6 +150,9 @@ class Database:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_deleted_at ON alerts(deleted_at)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_hundred_profile ON alerts(hundred_profile)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_claude_ai ON alerts(claude_ai)")
+            conn.execute("DROP TABLE IF EXISTS opening_lines")
+            conn.execute("DROP TABLE IF EXISTS finished_matches")
+            conn.execute("DROP TABLE IF EXISTS saved_bet_slips")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS signal_lists (
@@ -280,27 +223,6 @@ class Database:
                 )
             except Exception:
                 pass
-
-    # ---------- opening line ----------
-
-    def get_opening(self, match_id: str) -> float | None:
-        with self._conn() as conn:
-            row = conn.execute(
-                "SELECT opening FROM opening_lines WHERE match_id = ?",
-                (match_id,),
-            ).fetchone()
-        return row["opening"] if row else None
-
-    def save_opening(self, match_id: str, match_name: str, opening: float):
-        with self._conn() as conn:
-            conn.execute(
-                "INSERT OR IGNORE INTO opening_lines (match_id, match_name, opening) VALUES (?, ?, ?)",
-                (match_id, match_name, opening),
-            )
-
-    def delete_opening(self, match_id: str):
-        with self._conn() as conn:
-            conn.execute("DELETE FROM opening_lines WHERE match_id = ?", (match_id,))
 
     # ---------- signal black/white lists ----------
 
@@ -734,7 +656,6 @@ class Database:
                 """,
                 (match_id,),
             )
-            conn.execute("DELETE FROM opening_lines WHERE match_id = ?", (match_id,))
         return cursor.rowcount
 
     def clear_all(self):
@@ -763,7 +684,6 @@ class Database:
                     """,
                     (match_id,),
                 )
-            conn.execute("DELETE FROM opening_lines")
         return cursor.rowcount
 
     # ---------- deleted matches ----------
@@ -812,14 +732,6 @@ class Database:
                 )
                 conn.execute(
                     f"DELETE FROM match_actions WHERE match_id IN ({placeholders})",
-                    tuple(match_ids),
-                )
-                conn.execute(
-                    f"DELETE FROM opening_lines WHERE match_id IN ({placeholders})",
-                    tuple(match_ids),
-                )
-                conn.execute(
-                    f"DELETE FROM finished_matches WHERE match_id IN ({placeholders})",
                     tuple(match_ids),
                 )
             else:
@@ -880,27 +792,6 @@ class Database:
             )
         return cursor.rowcount > 0
 
-    def mark_deleted_alert_in_progress(self, alert_id: int) -> bool:
-        with self._conn() as conn:
-            cursor = conn.execute(
-                """
-                UPDATE alerts
-                SET result = '',
-                    status = 'Devam Ediyor',
-                    score = CASE
-                        WHEN TRIM(COALESCE(result, '')) != ''
-                             OR UPPER(TRIM(COALESCE(status, ''))) IN ('FT', 'FULL TIME', 'FINISHED', 'ENDED', 'FINAL')
-                        THEN ''
-                        ELSE score
-                    END
-                WHERE id = ?
-                  AND deleted_at IS NOT NULL
-                  AND deleted_at != ''
-                """,
-                (alert_id,),
-            )
-        return cursor.rowcount > 0
-
     def mark_deleted_match_in_progress(self, match_id: str) -> int:
         with self._conn() as conn:
             cursor = conn.execute(
@@ -921,28 +812,6 @@ class Database:
                 (match_id,),
             )
         return cursor.rowcount
-
-    # ---------- saved bet slips ----------
-
-    def save_bet_slip(self, name: str, payload: dict) -> int:
-        with self._conn() as conn:
-            cursor = conn.execute(
-                """
-                INSERT INTO saved_bet_slips (
-                    name, requested_max_count, selected_count, eligible_count, message, payload_json
-                )
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    name,
-                    int(payload.get("requested_max_count") or 1),
-                    int(payload.get("selected_count") or 0),
-                    int(payload.get("eligible_count") or 0),
-                    str(payload.get("message") or ""),
-                    json.dumps(payload, ensure_ascii=False),
-                ),
-            )
-        return cursor.lastrowid
 
     # ---------- upcoming matches ----------
 
@@ -1080,10 +949,6 @@ class Database:
                       AND alert_period = -1
                       AND alert_moment = 'Gelecek Maç'
                     """,
-                    tuple(legacy_ids),
-                )
-                conn.execute(
-                    f"DELETE FROM opening_lines WHERE match_id IN ({placeholders})",
                     tuple(legacy_ids),
                 )
 
@@ -1244,36 +1109,6 @@ class Database:
             )
         return int(cursor.rowcount or 0)
 
-    def match_action_statuses(self, match_ids: list[str]) -> dict[str, dict]:
-        keys = [str(mid) for mid in match_ids if str(mid).strip()]
-        if not keys:
-            return {}
-        placeholders = ", ".join("?" for _ in keys)
-        with self._conn() as conn:
-            rows = conn.execute(
-                f"""
-                SELECT match_id, bet_placed, ignored, followed, deleted_at
-                FROM match_actions
-                WHERE match_id IN ({placeholders})
-                """,
-                tuple(keys),
-            ).fetchall()
-        return {str(row["match_id"]): dict(row) for row in rows}
-
-    def get_match_action_status(self, match_id: str) -> dict:
-        key = str(match_id or "").strip()
-        if not key:
-            return {"bet_placed": 0, "ignored": 0, "followed": 0}
-        latest = self.latest_alerts_by_match_ids([key]).get(key) or {}
-        action = self.match_action_statuses([key]).get(key) or {}
-        return {
-            "match_id": key,
-            "alert_id": latest.get("id"),
-            "bet_placed": int((latest.get("bet_placed") if latest.get("bet_placed") is not None else action.get("bet_placed")) or 0),
-            "ignored": int((latest.get("ignored") if latest.get("ignored") is not None else action.get("ignored")) or 0),
-            "followed": int((latest.get("followed") if latest.get("followed") is not None else action.get("followed")) or 0),
-        }
-
     def delete_upcoming_match_data(self, match_id: str) -> int:
         key = str(match_id or "").strip()
         if not key:
@@ -1300,7 +1135,6 @@ class Database:
             action_count = conn.execute("DELETE FROM upcoming_match_actions").rowcount
 
             alert_count = 0
-            opening_count = 0
             if match_ids:
                 placeholders = ", ".join("?" for _ in match_ids)
                 alert_count = conn.execute(
@@ -1312,16 +1146,11 @@ class Database:
                     """,
                     tuple(match_ids),
                 ).rowcount
-                opening_count = conn.execute(
-                    f"DELETE FROM opening_lines WHERE match_id IN ({placeholders})",
-                    tuple(match_ids),
-                ).rowcount
 
         return {
             "deleted_upcoming": int(upcoming_count or 0),
             "deleted_actions": int(action_count or 0),
             "deleted_alerts": int(alert_count or 0),
-            "deleted_openings": int(opening_count or 0),
         }
 
     @staticmethod
@@ -1332,77 +1161,6 @@ class Database:
             return float(value)
         except (TypeError, ValueError):
             return None
-
-    def list_saved_bet_slips(self, limit: int = 50) -> list:
-        with self._conn() as conn:
-            rows = conn.execute(
-                """
-                SELECT id, name, requested_max_count, selected_count, eligible_count, message, payload_json, created_at
-                FROM saved_bet_slips
-                ORDER BY created_at DESC, id DESC
-                LIMIT ?
-                """,
-                (max(1, limit),),
-            ).fetchall()
-
-        items = []
-        for row in rows:
-            item = dict(row)
-            try:
-                payload = json.loads(item.get("payload_json") or "{}")
-            except Exception:
-                payload = {}
-            item["payload"] = payload if isinstance(payload, dict) else {}
-            item.pop("payload_json", None)
-            items.append(item)
-        return items
-
-    def get_saved_bet_slip(self, slip_id: int) -> dict | None:
-        with self._conn() as conn:
-            row = conn.execute(
-                """
-                SELECT id, name, requested_max_count, selected_count, eligible_count, message, payload_json, created_at
-                FROM saved_bet_slips
-                WHERE id = ?
-                """,
-                (slip_id,),
-            ).fetchone()
-        if not row:
-            return None
-        item = dict(row)
-        try:
-            payload = json.loads(item.get("payload_json") or "{}")
-        except Exception:
-            payload = {}
-        item["payload"] = payload if isinstance(payload, dict) else {}
-        item.pop("payload_json", None)
-        return item
-
-    def latest_finished_by_match_ids(self, match_ids: list[str]) -> dict[str, dict]:
-        keys = [str(mid) for mid in match_ids if str(mid).strip()]
-        if not keys:
-            return {}
-
-        placeholders = ", ".join("?" for _ in keys)
-        with self._conn() as conn:
-            rows = conn.execute(
-                f"""
-                SELECT id, match_id, final_status, final_score, final_total, result, finished_at
-                FROM finished_matches
-                WHERE match_id IN ({placeholders})
-                ORDER BY finished_at DESC, id DESC
-                """,
-                tuple(keys),
-            ).fetchall()
-
-        by_match: dict[str, dict] = {}
-        for row in rows:
-            item = dict(row)
-            match_id = str(item.get("match_id") or "")
-            if not match_id or match_id in by_match:
-                continue
-            by_match[match_id] = item
-        return by_match
 
     def latest_alerts_by_match_ids(self, match_ids: list[str]) -> dict[str, dict]:
         keys = [str(mid) for mid in match_ids if str(mid).strip()]
@@ -1430,30 +1188,6 @@ class Database:
                 continue
             by_match[match_id] = item
         return by_match
-
-    def get_saved_bet_match_ids(self, limit: int = 500) -> set[str]:
-        rows = self.list_saved_bet_slips(limit=max(1, limit))
-        match_ids: set[str] = set()
-        for row in rows:
-            payload = row.get("payload") if isinstance(row, dict) else {}
-            slip = payload.get("slip") if isinstance(payload, dict) else []
-            if not isinstance(slip, list):
-                continue
-            for leg in slip:
-                if not isinstance(leg, dict):
-                    continue
-                match_id = str(leg.get("match_id") or "").strip()
-                if match_id:
-                    match_ids.add(match_id)
-        return match_ids
-
-    def delete_saved_bet_slip(self, slip_id: int) -> bool:
-        with self._conn() as conn:
-            cursor = conn.execute(
-                "DELETE FROM saved_bet_slips WHERE id = ?",
-                (slip_id,),
-            )
-        return cursor.rowcount > 0
 
     # ---------- saved match lists ----------
 
@@ -1509,136 +1243,7 @@ class Database:
             )
         return cursor.rowcount > 0
 
-    def update_saved_bet_slip_result(self, slip_id: int, match_id: str, result: str) -> bool:
-        saved = self.get_saved_bet_slip(slip_id)
-        if not saved:
-            return False
-
-        payload = saved.get("payload") if isinstance(saved, dict) else {}
-        if not isinstance(payload, dict):
-            return False
-
-        slip = payload.get("slip")
-        if not isinstance(slip, list):
-            return False
-
-        target_match_id = str(match_id or "").strip()
-        updated = False
-        normalized_slip: list[dict] = []
-
-        for leg in slip:
-            if not isinstance(leg, dict):
-                continue
-            item = dict(leg)
-            if str(item.get("match_id") or "").strip() == target_match_id:
-                item["result"] = result
-                updated = True
-            normalized_slip.append(item)
-
-        if not updated:
-            return False
-
-        payload["slip"] = normalized_slip
-        with self._conn() as conn:
-            conn.execute(
-                """
-                UPDATE saved_bet_slips
-                SET payload_json = ?, selected_count = ?, eligible_count = ?, requested_max_count = ?, message = ?
-                WHERE id = ?
-                """,
-                (
-                    json.dumps(payload, ensure_ascii=False),
-                    int(payload.get("selected_count") or len(normalized_slip)),
-                    int(payload.get("eligible_count") or len(normalized_slip)),
-                    int(payload.get("requested_max_count") or len(normalized_slip) or 1),
-                    str(payload.get("message") or ""),
-                    slip_id,
-                ),
-            )
-        return True
-
-    # ---------- finished matches ----------
-
-    def recent_finished_matches(self, limit: int | None = 500) -> list:
-        with self._conn() as conn:
-            if limit is None:
-                rows = conn.execute(
-                    "SELECT * FROM finished_matches ORDER BY finished_at DESC, id DESC"
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT * FROM finished_matches ORDER BY finished_at DESC, id DESC LIMIT ?",
-                    (limit,),
-                ).fetchall()
-        return [dict(r) for r in rows]
-
-    def delete_finished_match(self, finished_match_id: int) -> bool:
-        with self._conn() as conn:
-            cursor = conn.execute(
-                "DELETE FROM finished_matches WHERE id = ?",
-                (finished_match_id,),
-            )
-        return cursor.rowcount > 0
-
-    def clear_finished_matches(self) -> int:
-        with self._conn() as conn:
-            cursor = conn.execute("DELETE FROM finished_matches")
-        return cursor.rowcount
-
-    def update_finished_match_result(self, finished_match_id: int, result: str) -> bool:
-        with self._conn() as conn:
-            cursor = conn.execute(
-                "UPDATE finished_matches SET result = ? WHERE id = ?",
-                (result, finished_match_id),
-            )
-        return cursor.rowcount > 0
-
-    def get_tracked_deleted_matches(self, limit: int = 200) -> list:
-        with self._conn() as conn:
-            rows = conn.execute(
-                """
-                SELECT a.match_id, a.match_name, a.tournament, a.url, a.status, a.score, a.alerted_at, a.deleted_at
-                FROM alerts a
-                INNER JOIN (
-                    SELECT match_id, MAX(id) AS latest_alert_id
-                    FROM alerts
-                    WHERE url != ''
-                      AND deleted_at IS NOT NULL
-                      AND deleted_at != ''
-                    GROUP BY match_id
-                ) latest ON latest.latest_alert_id = a.id
-                WHERE EXISTS (
-                    SELECT 1
-                    FROM alerts pending
-                    LEFT JOIN finished_matches fm ON fm.source_alert_id = pending.id
-                    WHERE pending.match_id = a.match_id
-                      AND pending.deleted_at IS NOT NULL
-                      AND pending.deleted_at != ''
-                      AND fm.id IS NULL
-                )
-                ORDER BY a.deleted_at DESC, a.alerted_at DESC, a.id DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
-        return [dict(r) for r in rows]
-
-    def get_pending_deleted_alerts_for_match(self, match_id: str) -> list:
-        with self._conn() as conn:
-            rows = conn.execute(
-                """
-                SELECT a.*
-                FROM alerts a
-                LEFT JOIN finished_matches fm ON fm.source_alert_id = a.id
-                WHERE a.match_id = ?
-                  AND a.deleted_at IS NOT NULL
-                  AND a.deleted_at != ''
-                  AND fm.id IS NULL
-                ORDER BY a.alerted_at ASC, a.id ASC
-                """,
-                (match_id,),
-            ).fetchall()
-        return [dict(r) for r in rows]
+    # ---------- deleted match result checks ----------
 
     def get_deleted_matches_for_result_check(self, limit: int | None = 200) -> list:
         with self._conn() as conn:
@@ -1729,50 +1334,3 @@ class Database:
                 (match_id,),
             ).fetchall()
         return [dict(r) for r in rows]
-
-    def archive_finished_alert(
-        self,
-        alert: dict,
-        *,
-        final_status: str,
-        final_score: str,
-        final_total: float | None,
-        result: str,
-    ) -> int:
-        with self._conn() as conn:
-            cursor = conn.execute(
-                """
-                INSERT OR IGNORE INTO finished_matches (
-                    source_alert_id, match_id, match_name, tournament, status, final_status,
-                    opening, prematch, live, direction, diff, url, bet_placed, ignored, followed,
-                    alerted_at, score, signal_count, ai_analysis,
-                    final_score, final_total, result
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    alert["id"],
-                    alert["match_id"],
-                    alert["match_name"],
-                    alert.get("tournament", ""),
-                    alert.get("status", ""),
-                    final_status,
-                    alert["opening"],
-                    alert.get("prematch"),
-                    alert["live"],
-                    alert["direction"],
-                    alert["diff"],
-                    alert.get("url", ""),
-                    alert.get("bet_placed", 0),
-                    alert.get("ignored", 0),
-                    alert.get("followed", 0),
-                    alert.get("alerted_at"),
-                    alert.get("score", ""),
-                    alert.get("signal_count", 1),
-                    alert.get("ai_analysis", ""),
-                    final_score,
-                    final_total,
-                    result,
-                ),
-            )
-        return cursor.lastrowid if cursor.rowcount > 0 else 0

@@ -37,9 +37,6 @@ app.config["TEMPLATES_AUTO_RELOAD"] = True
 from upcoming_app import upcoming_bp
 app.register_blueprint(upcoming_bp)
 
-BET_BUILDER_ALERT_WINDOW_MINUTES = 240
-
-
 def _parse_analysis(raw) -> dict:
     if not raw:
         return {}
@@ -376,11 +373,6 @@ def _persist_signal_quality_for_rows(rows: list[dict], *, active_only: bool) -> 
     return updated
 
 
-def _persist_active_signal_quality(match_id: str | None = None) -> int:
-    rows = db.active_alerts_for_match(match_id) if match_id else db.active_alerts(limit=None)
-    return _persist_signal_quality_for_rows(rows, active_only=True)
-
-
 def enrich_alerts_with_analysis(
     alerts: list[dict],
     backtest_profile: dict | None = None,
@@ -388,6 +380,7 @@ def enrich_alerts_with_analysis(
     list_profile: dict | None = None,
     league_quality_profile: dict | None = None,
     persist_signal_quality: bool = False,
+    persist_profile_updates: bool = False,
 ) -> list[dict]:
     previous_map = _previous_directions_by_alert_id(alerts)
     for alert in alerts:
@@ -486,7 +479,7 @@ def enrich_alerts_with_analysis(
                     active_only=True,
                 )
         alert_id = int(alert.get("id") or 0)
-        if alert_id and (
+        if persist_profile_updates and alert_id and (
             stored_hundred != alert["hundred_profile"]
             or stored_hundred_rule != alert["hundred_profile_rule"]
             or stored_claude != alert["claude_ai"]
@@ -503,35 +496,6 @@ def enrich_alerts_with_analysis(
             alert["history_guard"] = _build_alert_history_guard(alert, history_profile)
     return alerts
 
-
-
-def _is_live_basketball_status(status: str) -> bool:
-    status_clean = (status or "").strip().upper()
-    if not status_clean:
-        return False
-
-    if re.match(r"^HT$", status_clean):
-        return True
-
-    if re.search(r"(?:Q[1-4]|[1-4]Q)(?:[-:\s]+\d{1,2}:\d{2})?$", status_clean):
-        return True
-
-    if re.search(r"^[1-4]\s*[-:\s]+\d{1,2}:\d{2}$", status_clean):
-        return True
-
-    return False
-
-
-def _is_recent_alert(alerted_at: str, window_minutes: int = BET_BUILDER_ALERT_WINDOW_MINUTES) -> bool:
-    if not alerted_at:
-        return False
-
-    try:
-        alert_time = datetime.strptime(alerted_at, "%Y-%m-%d %H:%M:%S")
-    except ValueError:
-        return False
-
-    return alert_time >= (datetime.utcnow() - timedelta(minutes=window_minutes))
 
 
 def _safe_float(value, default: float = 0.0) -> float:
@@ -584,24 +548,6 @@ def _apply_canonical_signal_direction(alert: dict, analysis: dict) -> None:
         alert["final_direction"] = final_direction
         analysis["direction"] = final_direction
         analysis["final_direction"] = final_direction
-
-
-def _apply_canonical_deleted_result(alert: dict, stored_direction: str) -> None:
-    """Read old deleted-match results against the final playable direction."""
-    result = str(alert.get("result") or "").strip()
-    if result not in {"Başarılı", "Başarısız"}:
-        return
-    final_direction = _normalize_direction(alert.get("final_direction") or alert.get("direction"))
-    stored_direction = _normalize_direction(stored_direction)
-    alert["raw_result"] = result
-    alert["result_direction"] = final_direction
-    if (
-        stored_direction in {"ALT", "ÜST"}
-        and final_direction in {"ALT", "ÜST"}
-        and stored_direction != final_direction
-    ):
-        alert["result"] = "Başarısız" if result == "Başarılı" else "Başarılı"
-        alert["result_adjusted"] = True
 
 
 def _split_match_teams(match_name: str) -> tuple[str, str]:
@@ -722,205 +668,6 @@ def _build_alert_history_guard(alert: dict, history_profile: dict) -> dict:
     }
 
 
-def build_bet_builder(max_count: int) -> dict:
-    backtest_profile = build_backtest_profile(db.recent_deleted_alerts(limit=None))
-    alerts = [
-        alert
-        for alert in enrich_alerts_with_analysis(db.recent_alerts(limit=500), backtest_profile)
-        if _is_live_basketball_status(alert.get("status", ""))
-        and _is_recent_alert(alert.get("alerted_at", ""))
-    ]
-    saved_match_ids = db.get_saved_bet_match_ids(limit=1000)
-    latest_by_match = {}
-    for alert in alerts:
-        match_id = alert.get("match_id")
-        if not match_id or match_id in latest_by_match:
-            continue
-        latest_by_match[match_id] = alert
-    finished_match_ids = set(
-        db.latest_finished_by_match_ids(list(latest_by_match.keys())).keys()
-    )
-
-    candidates = []
-    excluded_bet = 0
-    excluded_saved = 0
-    excluded_finished = 0
-
-    for alert in latest_by_match.values():
-        match_id = str(alert.get("match_id") or "").strip()
-        if match_id in finished_match_ids:
-            excluded_finished += 1
-            continue
-        if bool(alert.get("bet_placed", 0)):
-            excluded_bet += 1
-            continue
-        if match_id in saved_match_ids:
-            excluded_saved += 1
-            continue
-
-        original_direction = _normalize_direction(alert.get("direction"))
-        direction = _normalize_direction(alert.get("final_direction") or alert.get("direction"))
-        if direction not in {"ALT", "ÜST"}:
-            continue
-
-        opening = _safe_float(alert.get("opening"))
-        live = _safe_float(alert.get("live"))
-        diff = _safe_float(alert.get("diff"))
-        fair_line = alert.get("fair_line")
-        fair_edge = _safe_float(alert.get("fair_edge")) if alert.get("fair_edge") is not None else None
-        projected = alert.get("projected")
-        history_total = alert.get("history_total")
-        opening_gap = round(live - opening, 1)
-        signal_priority = abs(diff)
-        fair_priority = abs(fair_edge) if fair_edge is not None else 0
-        signal_priority += fair_priority / 5
-        candidates.append({
-            "match_id": alert.get("match_id"),
-            "match_name": alert.get("match_name", ""),
-            "tournament": alert.get("tournament", ""),
-            "url": alert.get("url", ""),
-            "direction": direction,
-            "original_direction": original_direction,
-            "signal_tier": "Sinyal",
-            "signal_code": direction,
-            "opening": round(opening, 1),
-            "live": round(live, 1),
-            "projected": round(float(projected), 1) if projected is not None else None,
-            "fair_line": round(float(fair_line), 1) if fair_line is not None else None,
-            "fair_edge": round(fair_edge, 1) if fair_edge is not None else None,
-            "history_total": round(float(history_total), 1) if history_total is not None else None,
-            "recommendation": alert.get("recommendation", ""),
-            "status": alert.get("status", ""),
-            "score": alert.get("score", ""),
-            "opening_gap": opening_gap,
-            "diff": round(diff, 1),
-            "signal_priority": signal_priority,
-            "bet_placed": int(alert.get("bet_placed") or 0),
-            "followed": int(alert.get("followed") or 0),
-            "ignored": int(alert.get("ignored") or 0),
-        })
-
-    candidates.sort(
-        key=lambda item: (item["signal_priority"], item["diff"]),
-        reverse=True,
-    )
-
-    eligible_candidates = candidates
-    leg_count = min(max(max_count, 1), len(eligible_candidates))
-    can_build = leg_count >= 1
-    slip = eligible_candidates[:leg_count] if can_build else []
-
-    if not can_build:
-        message = (
-            f"Kupon oluşturulmadı. En az 1 uygun sinyal gerekiyor; şu an "
-            f"{len(eligible_candidates)} sinyal uygun göründü."
-        )
-    else:
-        message = (
-            f"Kupon hazır. Kalan {len(eligible_candidates)} sinyal içinden "
-            f"en büyük barem farkına sahip {leg_count} seçim alındı."
-        )
-
-    excluded_total = excluded_finished + excluded_bet + excluded_saved
-    if excluded_total > 0:
-        message += (
-            f" {excluded_total} maç otomatik dışlandı "
-            f"(Biten: {excluded_finished}, Bahis oynandı: {excluded_bet}, Eski kupon: {excluded_saved})."
-        )
-
-    return {
-        "created": can_build,
-        "requested_max_count": max(max_count, 1),
-        "selected_count": leg_count if can_build else 0,
-        "eligible_count": len(eligible_candidates),
-        "total_candidates": len(candidates),
-        "excluded_count": excluded_total,
-        "message": message,
-        "slip": slip,
-    }
-
-
-def _normalize_saved_bet_result(value: str) -> str:
-    normalized = str(value or "").strip().lower()
-    if normalized in {"başarılı", "basarili", "success"}:
-        return "Başarılı"
-    if normalized in {"başarısız", "basarisiz", "fail", "failed"}:
-        return "Başarısız"
-    return ""
-
-
-def normalize_bet_builder_payload(raw_payload: dict | None) -> dict | None:
-    if not isinstance(raw_payload, dict):
-        return None
-
-    def safe_int(value, default: int = 0) -> int:
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return default
-
-    raw_slip = raw_payload.get("slip")
-    if not isinstance(raw_slip, list):
-        raw_slip = []
-
-    numeric_float_fields = {
-        "opening", "live", "projected", "fair_line", "fair_edge",
-        "history_total", "opening_gap", "diff", "signal_priority",
-    }
-    numeric_int_fields = set()
-    keep_fields = {
-        "match_id",
-        "match_name",
-        "tournament",
-        "url",
-        "direction",
-        "signal_tier",
-        "signal_code",
-        "status",
-        "score",
-        "recommendation",
-    }
-    bool_fields = {"bet_placed", "followed", "ignored"}
-
-    slip: list[dict] = []
-    for raw_item in raw_slip:
-        if not isinstance(raw_item, dict):
-            continue
-        item: dict = {}
-        for key in keep_fields:
-            item[key] = str(raw_item.get(key) or "")
-        for key in numeric_float_fields:
-            try:
-                item[key] = round(float(raw_item.get(key) or 0), 1)
-            except (TypeError, ValueError):
-                item[key] = 0.0
-        for key in numeric_int_fields:
-            try:
-                item[key] = int(raw_item.get(key) or 0)
-            except (TypeError, ValueError):
-                item[key] = 0
-        for key in bool_fields:
-            item[key] = 1 if bool(raw_item.get(key)) else 0
-        item["result"] = _normalize_saved_bet_result(raw_item.get("result") or "")
-        slip.append(item)
-
-    requested_max_count = safe_int(raw_payload.get("requested_max_count") or len(slip) or 1, 1)
-    selected_count = safe_int(raw_payload.get("selected_count") or len(slip), len(slip))
-    eligible_count = safe_int(raw_payload.get("eligible_count") or len(slip), len(slip))
-    total_candidates = safe_int(raw_payload.get("total_candidates") or eligible_count, eligible_count)
-
-    return {
-        "created": bool(raw_payload.get("created")) and len(slip) > 0,
-        "requested_max_count": max(1, min(requested_max_count, 8)),
-        "selected_count": max(0, selected_count),
-        "eligible_count": max(0, eligible_count),
-        "total_candidates": max(0, total_candidates),
-        "excluded_count": max(0, safe_int(raw_payload.get("excluded_count"), 0)),
-        "message": str(raw_payload.get("message") or ""),
-        "slip": slip,
-    }
-
-
 @app.route("/")
 def index():
     return render_template("dashboard.html")
@@ -931,7 +678,12 @@ def deleted_matches():
     return render_template("deleted_matches.html")
 
 
-def _build_live_dashboard_rows(rows: list[dict]) -> list[dict]:
+def _build_live_dashboard_rows(
+    rows: list[dict],
+    *,
+    persist_signal_quality: bool = False,
+    persist_profile_updates: bool = False,
+) -> list[dict]:
     deleted_rows = db.recent_deleted_alerts(limit=None)
     enriched = enrich_alerts_with_analysis(
         rows,
@@ -939,7 +691,8 @@ def _build_live_dashboard_rows(rows: list[dict]) -> list[dict]:
         _build_history_profile(deleted_rows),
         build_signal_list_profile(db.list_signal_list_entries()),
         _build_league_quality_profile(deleted_rows),
-        persist_signal_quality=True,
+        persist_signal_quality=persist_signal_quality,
+        persist_profile_updates=persist_profile_updates,
     )
     followed_ids = db.upcoming_followed_match_ids([row.get("match_id") for row in enriched])
     for row in enriched:
@@ -959,13 +712,18 @@ def _save_dashboard_snapshots(rows: list[dict]) -> int:
 
 
 def _snapshot_active_rows(rows: list[dict]) -> int:
-    return _save_dashboard_snapshots(_build_live_dashboard_rows(rows))
+    return _save_dashboard_snapshots(
+        _build_live_dashboard_rows(
+            rows,
+            persist_signal_quality=True,
+            persist_profile_updates=True,
+        )
+    )
 
 
 @app.route("/api/alerts")
 def api_alerts():
     alerts = _build_live_dashboard_rows(db.recent_alerts(limit=500))
-    _save_dashboard_snapshots(alerts)
     return jsonify(alerts)
 
 
@@ -2282,70 +2040,6 @@ def api_deleted_matches_insights():
     league_quality_profile = _build_league_quality_profile(signals)
     signals = _lightweight_enrich_deleted_alerts(signals, backtest_profile, league_quality_profile)
     return jsonify(build_deleted_matches_insights(signals))
-
-
-@app.route("/api/bet-builder")
-def api_bet_builder():
-    max_count = request.args.get("max_count", default=4, type=int) or 4
-    max_count = max(1, min(max_count, 8))
-    return jsonify(build_bet_builder(max_count))
-
-
-@app.route("/api/bet-builder/save", methods=["POST"])
-def api_bet_builder_save():
-    data = request.get_json(silent=True) or {}
-    name = str(data.get("name") or "").strip()
-    payload = normalize_bet_builder_payload(data.get("payload"))
-
-    if not name:
-        return jsonify({"error": "Kupon ismi bos olamaz."}), 400
-    if not payload or not payload.get("slip"):
-        return jsonify({"error": "Kaydedilecek gecerli kupon bulunamadi."}), 400
-
-    saved_id = db.save_bet_slip(name=name, payload=payload)
-    return jsonify({"saved": True, "id": saved_id, "name": name})
-
-
-@app.route("/api/bet-builder/saved")
-def api_saved_bet_builder_list():
-    limit = request.args.get("limit", default=30, type=int) or 30
-    limit = max(1, min(limit, 200))
-    return jsonify(db.list_saved_bet_slips(limit=limit))
-
-
-@app.route("/api/bet-builder/saved/<int:slip_id>", methods=["DELETE"])
-def api_saved_bet_builder_delete(slip_id: int):
-    if not db.delete_saved_bet_slip(slip_id):
-        return jsonify({"error": "not found"}), 404
-    return jsonify({"deleted": True, "id": slip_id})
-
-
-@app.route("/api/bet-builder/saved/<int:slip_id>/result", methods=["POST"])
-def api_saved_bet_builder_result(slip_id: int):
-    saved = db.get_saved_bet_slip(slip_id)
-    if not saved:
-        return jsonify({"error": "not found"}), 404
-
-    data = request.get_json(silent=True) or {}
-    match_id = str(data.get("match_id") or "").strip()
-    result = _normalize_saved_bet_result(data.get("result") or "")
-    if not match_id:
-        return jsonify({"error": "match_id is required"}), 400
-    if not result:
-        return jsonify({"error": "invalid result"}), 400
-
-    updated = db.update_saved_bet_slip_result(slip_id, match_id, result)
-    if not updated:
-        return jsonify({"error": "match_not_found"}), 404
-
-    saved = db.get_saved_bet_slip(slip_id)
-    return jsonify({
-        "updated": True,
-        "id": slip_id,
-        "match_id": match_id,
-        "result": result,
-        "payload": saved.get("payload") if saved else {},
-    })
 
 
 @app.route("/api/matches/<path:match_id>/ignore", methods=["POST"])

@@ -679,6 +679,14 @@ def _extract_h2h_metrics(body_text: str, match_name: str, *, include_team_form: 
     }
 
 
+def extract_h2h_metrics(body_text: str, match_name: str, *, include_team_form: bool = True) -> dict:
+    return _extract_h2h_metrics(
+        body_text,
+        match_name,
+        include_team_form=include_team_form,
+    )
+
+
 def _team_profile_label(avg_total: float | None, over_pct: float | None, games: int | None = None) -> str:
     if avg_total is None:
         return "veri yok"
@@ -893,28 +901,6 @@ def _pace_note(
 
     note = f"{base}{sustainability}{context}"
     return f"{note} {anomaly_note}".strip() if anomaly_note else note
-
-
-def _script_pace_adjustment(score: str, status: str, match_name: str, tournament: str) -> float:
-    """Skor farkı ve periyot durumuna göre projeksiyona çarpan döndürür.
-    1.0 = değişiklik yok. 0.85 = pace %15 düşer (blowout). 1.10 = pace %10 artar (faul oyunu)."""
-    clock = game_clock(status, match_name, tournament)
-    period = clock["period"]
-    remaining_min = clock["remaining_min"]
-    home_score, away_score = parse_score(score)
-    if home_score is None or away_score is None or period is None:
-        return 1.0
-    gap = abs(home_score - away_score)
-    if period >= 4 and remaining_min is not None and remaining_min <= 6:
-        if gap >= 18:
-            return 0.85
-        if gap >= 12:
-            return 0.92
-        if gap <= 6:
-            return 1.08
-    elif period >= 3 and gap >= 20:
-        return 0.93
-    return 1.0
 
 
 def _script_warning(score: str, status: str, match_name: str, tournament: str) -> str:
@@ -1191,22 +1177,6 @@ def _backtest_direction_scores(profile: dict | None, keys: list[str]) -> dict:
         rate = round(weighted_sum / weight_sum, 1) if weight_sum > 0 else None
         result[direction] = {"rate": rate, "samples": samples, "buckets": used[:7]}
     return result
-
-
-def _period_number_from_status(status: str = "", alert_moment: str = "") -> int | None:
-    text = f"{alert_moment or ''} {status or ''}".strip()
-    folded = _fold(text)
-    for number in (1, 2, 3, 4):
-        if (
-            re.search(rf"\bq{number}\b", text, re.IGNORECASE)
-            or re.search(rf"\b{number}q\b", text, re.IGNORECASE)
-            or folded.startswith(f"{number}.")
-            or f"{number}. ceyrek" in folded
-        ):
-            return number
-    if folded.startswith("ht") or "devre arasi" in folded:
-        return 2
-    return None
 
 
 def _classify_signal(decision: dict) -> dict:

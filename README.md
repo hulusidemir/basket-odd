@@ -1,11 +1,11 @@
 # Basketball Odds Monitor (AIScore)
 
-This project monitors live basketball matches on AIScore and detects Total Points line anomalies by comparing the latest pre-match total with the live total. If a pre-match line is unavailable, it falls back to the opening line. When the configured threshold is reached, it sends Telegram alerts and stores events in SQLite.
+This project monitors live basketball matches on AIScore and detects Total Points line anomalies by comparing the opening total with the live total. When the configured threshold is reached, it sends Telegram alerts and stores events in SQLite.
 
 ## Current Features
 
 - Live AIScore scraping for basketball totals
-- Pre-match vs live total anomaly detection, with opening-line fallback
+- Opening total vs live total anomaly detection
 - Telegram alerts (single or multiple chat IDs)
 - Per-match signal cap to avoid spam
 - Projection-based review for live total context
@@ -21,7 +21,7 @@ This project monitors live basketball matches on AIScore and detects Total Point
 | Live - Reference >= THRESHOLD | `ALT` candidate |
 | Reference - Live >= THRESHOLD | `UST` candidate |
 
-Reference means pre-match total first, opening total if no pre-match line is available. The app stores the resulting `ALT` or `ÜST` signal with its live context and reason.
+Reference means the opening total. The app stores the resulting `ALT` or `ÜST` signal with its live context and reason.
 
 ## Architecture
 
@@ -110,11 +110,14 @@ Dashboard capabilities:
 | `POLL_INTERVAL_MAX` | Maximum loop delay (seconds) |
 | `MAX_SIGNALS_PER_MATCH` | Maximum stored signals per match |
 | `SAME_DIRECTION_MIN_LIVE_DELTA` | Minimum live-total difference before repeating the same direction (default: 10) |
-| `FINISHED_MATCH_POLL_SECONDS` | Finished match result polling interval |
-| `FINISHED_MATCH_BATCH_SIZE` | Finished match result batch size |
 | `DB_PATH` | SQLite file path |
 | `LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING` |
 | `AISCORE_URL` | AIScore basketball page |
+| `AISCORE_TIMEZONE` | Timezone used for upcoming match date filtering |
+| `UPCOMING_DAYS_AHEAD` | Upcoming date window; `0` means today only |
+| `UPCOMING_MAX_MATCHES` | Maximum upcoming matches to detail per fetch; `0` means no cap |
+| `UPCOMING_FETCH_TIMEOUT_SECONDS` | Total timeout for one upcoming fetch job |
+| `UPCOMING_MATCH_TIMEOUT_SECONDS` | Timeout for one upcoming match detail page |
 | `MAX_MATCHES_PER_CYCLE` | Scan cap per loop |
 | `PAGE_TIMEOUT_MS` | Playwright page timeout |
 | `BLACKLIST` | Comma-separated keywords to skip matches |

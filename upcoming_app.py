@@ -12,6 +12,7 @@ Routes:
 
 import asyncio
 import logging
+import os
 import threading
 from datetime import datetime, timezone
 
@@ -22,9 +23,11 @@ from db import Database
 from upcoming_scraper import UpcomingScraper
 
 log = logging.getLogger("upcoming_app")
+FETCH_TIMEOUT_SECONDS = max(60, int(os.getenv("UPCOMING_FETCH_TIMEOUT_SECONDS", "300")))
 
 _fetch_lock = threading.RLock()
 _fetch_state = {
+    "job_id": 0,
     "running": False,
     "started_at": None,
     "finished_at": None,
@@ -51,11 +54,14 @@ def upcoming_index():
 @upcoming_bp.route("/api/fetch", methods=["POST"])
 def upcoming_api_fetch():
     with _fetch_lock:
+        _expire_stale_fetch_locked()
         if _fetch_state["running"]:
             return jsonify(_public_state()), 202
+        job_id = int(_fetch_state.get("job_id") or 0) + 1
 
         _fetch_state.update(
             {
+                "job_id": job_id,
                 "running": True,
                 "started_at": _now_iso(),
                 "finished_at": None,
@@ -67,13 +73,15 @@ def upcoming_api_fetch():
             }
         )
 
-    thread = threading.Thread(target=_run_fetch_job, daemon=True)
+    thread = threading.Thread(target=_run_fetch_job, args=(job_id,), daemon=True)
     thread.start()
     return jsonify(_public_state()), 202
 
 
 @upcoming_bp.route("/api/status")
 def upcoming_api_status():
+    with _fetch_lock:
+        _expire_stale_fetch_locked()
     return jsonify(_public_state())
 
 
@@ -228,49 +236,108 @@ def upcoming_api_delete_saved_list(list_id: int):
     return jsonify({"deleted": True, "id": list_id})
 
 
-def _run_fetch_job():
+def _run_fetch_job(job_id: int):
     config = Config()
+    try:
+        max_matches = int(os.getenv("UPCOMING_MAX_MATCHES", "12") or 12)
+    except ValueError:
+        max_matches = 12
     scraper = UpcomingScraper(
         aiscore_url=config.AISCORE_URL,
         page_timeout_ms=config.PAGE_TIMEOUT_MS,
-        max_matches=None,
+        max_matches=max_matches if max_matches > 0 else None,
         days_ahead=config.UPCOMING_DAYS_AHEAD,
         timezone_id=config.AISCORE_TIMEZONE,
     )
     try:
-        matches = asyncio.run(scraper.fetch())
+        matches = asyncio.run(
+            asyncio.wait_for(scraper.fetch(), timeout=FETCH_TIMEOUT_SECONDS)
+        )
         db = Database(config.DB_PATH)
         db.init()
         saved = db.save_upcoming_matches_and_signals(matches)
         matches = saved["matches"]
-    except Exception as exc:
-        log.exception("Upcoming fetch failed: %s", exc)
-        with _fetch_lock:
-            _fetch_state.update(
-                {
-                    "running": False,
-                    "finished_at": _now_iso(),
-                    "matches": [],
-                    "count": 0,
-                    "saved_matches": 0,
-                    "saved_signals": 0,
-                    "error": str(exc),
-                }
-            )
-        return
-
-    with _fetch_lock:
-        _fetch_state.update(
+    except TimeoutError:
+        message = f"Upcoming fetch timed out after {FETCH_TIMEOUT_SECONDS} seconds."
+        log.warning(message)
+        _finish_fetch_job(
+            job_id,
             {
                 "running": False,
                 "finished_at": _now_iso(),
-                "matches": matches,
-                "count": len(matches),
-                "saved_matches": saved["saved_matches"],
-                "saved_signals": saved["saved_signals"],
-                "error": None,
-            }
+                "matches": [],
+                "count": 0,
+                "saved_matches": 0,
+                "saved_signals": 0,
+                "error": message,
+            },
         )
+        return
+    except Exception as exc:
+        log.exception("Upcoming fetch failed: %s", exc)
+        _finish_fetch_job(
+            job_id,
+            {
+                "running": False,
+                "finished_at": _now_iso(),
+                "matches": [],
+                "count": 0,
+                "saved_matches": 0,
+                "saved_signals": 0,
+                "error": str(exc),
+            },
+        )
+        return
+
+    _finish_fetch_job(
+        job_id,
+        {
+            "running": False,
+            "finished_at": _now_iso(),
+            "matches": matches,
+            "count": len(matches),
+            "saved_matches": saved["saved_matches"],
+            "saved_signals": saved["saved_signals"],
+            "error": None,
+        },
+    )
+
+
+def _finish_fetch_job(job_id: int, payload: dict) -> None:
+    with _fetch_lock:
+        if int(_fetch_state.get("job_id") or 0) != int(job_id):
+            log.info("Ignoring stale upcoming fetch job result: job_id=%s", job_id)
+            return
+        _fetch_state.update(payload)
+
+
+def _expire_stale_fetch_locked() -> None:
+    if not _fetch_state.get("running"):
+        return
+    started_at = _fetch_state.get("started_at")
+    if not started_at:
+        return
+    try:
+        started = datetime.fromisoformat(str(started_at))
+    except ValueError:
+        return
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    age = (datetime.now(timezone.utc) - started).total_seconds()
+    if age <= FETCH_TIMEOUT_SECONDS:
+        return
+    _fetch_state.update(
+        {
+            "job_id": int(_fetch_state.get("job_id") or 0) + 1,
+            "running": False,
+            "finished_at": _now_iso(),
+            "matches": [],
+            "count": 0,
+            "saved_matches": 0,
+            "saved_signals": 0,
+            "error": f"Onceki gelecek mac cekimi {int(age)} saniye sonra zaman asimina dustu.",
+        }
+    )
 
 
 def _public_state():

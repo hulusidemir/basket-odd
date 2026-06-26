@@ -19,8 +19,6 @@ class Config:
     UPCOMING_DAYS_AHEAD: int = int(os.getenv("UPCOMING_DAYS_AHEAD", "0"))
     MAX_MATCHES_PER_CYCLE: int = int(os.getenv("MAX_MATCHES_PER_CYCLE", "80"))
     PAGE_TIMEOUT_MS: int = int(os.getenv("PAGE_TIMEOUT_MS", "30000"))
-    FINISHED_MATCH_POLL_SECONDS: int = int(os.getenv("FINISHED_MATCH_POLL_SECONDS", "120"))
-    FINISHED_MATCH_BATCH_SIZE: int = int(os.getenv("FINISHED_MATCH_BATCH_SIZE", "40"))
     BLACKLIST: list = [b.strip().lower() for b in os.getenv("BLACKLIST", "").split(",") if b.strip()]
 
     def validate(self):
