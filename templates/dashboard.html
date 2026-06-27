@@ -316,7 +316,7 @@
       margin: 12px;
     }
 
-    table { width: 100%; border-collapse: collapse; min-width: 1420px; }
+    table { width: 100%; border-collapse: collapse; min-width: 1480px; }
 
     th, td {
       padding: 11px 13px;
@@ -353,10 +353,10 @@
     tbody tr.is-followed { background: rgba(251,191,36,0.05); }
     tbody tr.is-followed .match-link,
     tbody tr.is-followed .tournament-cell,
-    tbody tr.is-followed td:nth-child(10),
-    tbody tr.is-followed td:nth-child(11) strong,
-    tbody tr.is-followed td:nth-child(12),
-    tbody tr.is-followed td:nth-child(13) { color: #f5e6b0; }
+    tbody tr.is-followed td:nth-child(11),
+    tbody tr.is-followed td:nth-child(12) strong,
+    tbody tr.is-followed td:nth-child(13),
+    tbody tr.is-followed td:nth-child(14) { color: #f5e6b0; }
     tbody tr.is-followed .match-link:hover { color: #a78bfa; }
     tbody tr.is-ignored { opacity: 0.28; filter: grayscale(0.8); }
     tbody tr.is-ignored td { text-decoration: line-through; text-decoration-color: rgba(255,255,255,0.25); }
@@ -555,24 +555,7 @@
       cursor: pointer; font-weight: 700;
     }
     .quality-info-close:hover { background: rgba(6,182,212,0.32); }
-    .hundred-profile-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      height: 19px;
-      min-width: 27px;
-      padding: 0 5px;
-      border-radius: 5px;
-      color: #111827;
-      background: #facc15;
-      border: 1px solid rgba(254, 240, 138, 0.88);
-      box-shadow: 0 0 0 1px rgba(0,0,0,0.24), 0 0 12px rgba(250, 204, 21, 0.35);
-      font-size: 11px;
-      font-weight: 950;
-      line-height: 1;
-    }
-    .ca-cell { width: 78px; text-align: center; padding: 4px 4px !important; }
-    .ca-stack { display: inline-flex; align-items: center; gap: 5px; }
+    .quality-stack { display: inline-flex; align-items: center; gap: 5px; }
     .sig-score-pill {
       display: inline-flex; align-items: center; justify-content: center;
       min-width: 28px; height: 20px; padding: 0 6px; border-radius: 5px;
@@ -596,20 +579,6 @@
     .league-q-pill.lq-positive { color: #a7f3d0; border-color: rgba(110,231,183,0.40); background: rgba(110,231,183,0.10); }
     .league-q-pill.lq-warning  { color: #fde68a; border-color: rgba(251,191,36,0.45); background: rgba(251,191,36,0.10); }
     .league-q-pill.lq-danger   { color: #fca5a5; border-color: rgba(220,38,38,0.55); background: rgba(220,38,38,0.14); }
-    .ca-star {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 22px; height: 22px; border-radius: 6px;
-      font-size: 15px; line-height: 1; cursor: pointer;
-      background: rgba(250, 204, 21, 0.14);
-      border: 1px solid rgba(250, 204, 21, 0.45);
-      color: #fde68a;
-      text-shadow: 0 0 6px rgba(250, 204, 21, 0.55);
-      padding: 0;
-    }
-    .ca-star:hover { background: rgba(250, 204, 21, 0.28); transform: scale(1.08); }
-    .ca-empty { color: rgba(156,163,175,0.30); font-size: 13px; }
-    .hundred-profile-badge { cursor: pointer; }
-    .hundred-profile-badge:hover { filter: brightness(1.15); }
     .big-verdict {
       display: flex; align-items: center; gap: 14px;
       padding: 18px 18px; border-radius: 14px; margin: 4px 0 14px;
@@ -1280,6 +1249,65 @@
       color: #c4b5fd;
     }
     .row-action.history-action svg { display: block; }
+
+    .history-cell { width: 62px; text-align: center; padding: 4px 5px !important; }
+    .history-symbol {
+      width: 30px; height: 30px; padding: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 8px;
+      border: 1px solid rgba(148,163,184,0.28);
+      background: rgba(148,163,184,0.10);
+      color: #cbd5e1;
+      font-size: 16px;
+      font-weight: 950;
+      line-height: 1;
+      cursor: pointer;
+      transition: transform 120ms, filter 120ms, border-color 120ms;
+    }
+    .history-symbol:hover { transform: scale(1.06); filter: brightness(1.12); }
+    .history-symbol.good {
+      color: #86efac; background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.42);
+      box-shadow: 0 0 12px rgba(34,197,94,0.16);
+    }
+    .history-symbol.bad {
+      color: #fecaca; background: rgba(239,68,68,0.16); border-color: rgba(239,68,68,0.44);
+      box-shadow: 0 0 12px rgba(239,68,68,0.14);
+    }
+    .history-symbol.warn {
+      color: #fde68a; background: rgba(251,191,36,0.14); border-color: rgba(251,191,36,0.42);
+    }
+    .history-symbol.neutral {
+      color: #cbd5e1; background: rgba(148,163,184,0.10); border-color: rgba(148,163,184,0.28);
+    }
+    .history-symbol.thin, .history-symbol.empty {
+      color: #c4b5fd; background: rgba(124,92,246,0.12); border-color: rgba(124,92,246,0.32);
+    }
+    .history-summary-verdict {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(148,163,184,0.20);
+      background: rgba(20,19,34,0.92);
+    }
+    .history-summary-verdict .mark {
+      width: 38px; height: 38px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 10px;
+      font-size: 22px; font-weight: 950;
+      flex: 0 0 auto;
+    }
+    .history-summary-verdict.good { border-color: rgba(34,197,94,0.34); background: rgba(34,197,94,0.08); }
+    .history-summary-verdict.good .mark { color: #86efac; background: rgba(34,197,94,0.15); }
+    .history-summary-verdict.bad { border-color: rgba(239,68,68,0.34); background: rgba(239,68,68,0.08); }
+    .history-summary-verdict.bad .mark { color: #fecaca; background: rgba(239,68,68,0.15); }
+    .history-summary-verdict.warn { border-color: rgba(251,191,36,0.32); background: rgba(251,191,36,0.08); }
+    .history-summary-verdict.warn .mark { color: #fde68a; background: rgba(251,191,36,0.13); }
+    .history-summary-verdict.neutral .mark,
+    .history-summary-verdict.thin .mark,
+    .history-summary-verdict.empty .mark { color: #c4b5fd; background: rgba(124,92,246,0.12); }
+    .history-summary-verdict h4 { margin: 0 0 2px; font-size: 14px; }
+    .history-summary-verdict p { margin: 0; color: var(--text-soft); font-size: 12px; line-height: 1.4; }
 
     /* ── Mobil Sinyal Kartı (cards-wrap sadece mobilde görünür) ──────── */
     .cards-wrap { display: none; gap: 12px; flex-direction: column; }
@@ -2123,8 +2151,6 @@
           <button class="btn" data-filter="ignored">Pas Geçilen</button>
           <button class="btn" data-filter="alt">ALT</button>
           <button class="btn" data-filter="ust">ÜST</button>
-          <button class="btn warning" data-filter="hundred_profile">100 Profil</button>
-          <button class="btn warning" data-filter="claude_ai">C_A ⭐</button>
         </div>
       </section>
 
@@ -2155,7 +2181,7 @@
                 <th data-sort="fair_line">Adil</th>
                 <th data-sort="projected">Proj.</th>
                 <th data-sort="signal_quality_score">S.K.</th>
-                <th class="ca-cell" data-sort="claude_ai">C_A</th>
+                <th class="history-cell" data-sort="history_guard">History</th>
                 <th data-sort="match_name">Maç</th>
                 <th data-sort="tournament">Turnuva</th>
                 <th data-sort="status">Durum</th>
@@ -2259,6 +2285,16 @@
       <div class="modal-body" id="teamHistoryBody">
         <div class="th-loading">Geçmiş yükleniyor…</div>
       </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="historyGuardModal" onclick="if(event.target===this)closeHistoryGuardModal()">
+    <div class="modal-box wide">
+      <div class="modal-header">
+        <h3 id="historyGuardTitle">History</h3>
+        <button class="modal-close" onclick="closeHistoryGuardModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="historyGuardBody"></div>
     </div>
   </div>
 
@@ -2465,18 +2501,7 @@
       const score = num(alert.signal_quality_score ?? quality.quality_score);
       const label = String(alert.signal_quality_label || quality.quality_label || '-');
       const text = score === null ? '-' : String(Math.round(score));
-      const hundred = Number(alert.hundred_profile || 0) === 1
-        ? `<button type="button" class="hundred-profile-badge" onclick="event.stopPropagation();openSignalModal(${Number(alert.id || 0)})" title="${escapeHtml(alert.hundred_profile_rule || '100 Profili')}">100</button>`
-        : '';
-      return `<span class="ca-stack"><button type="button" class="badge small-badge quality-badge ${signalQualityTone(score)}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(label)}">${escapeHtml(text)}</button>${hundred}</span>`;
-    }
-
-    function claudeAiHtml(alert) {
-      const code = String(alert.claude_ai || '').trim();
-      if (!code) return '<span class="ca-empty" aria-hidden="true">·</span>';
-      const label = String(alert.claude_ai_label || code);
-      const title = String(alert.claude_ai_tooltip || alert.claude_ai_rule || label);
-      return `<button type="button" class="ca-star" onclick="event.stopPropagation();openSignalModal(${Number(alert.id || 0)})" title="${escapeHtml(title)}" aria-label="${escapeHtml(label)}">⭐</button>`;
+      return `<span class="quality-stack"><button type="button" class="badge small-badge quality-badge ${signalQualityTone(score)}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(label)}">${escapeHtml(text)}</button></span>`;
     }
 
     function scoreButtonHtml(alert, extraClass = '') {
@@ -2487,20 +2512,6 @@
     }
 
     function bigVerdictHtml(alert) {
-      const caCode = String(alert.claude_ai || '').trim();
-      if (caCode) {
-        const play = String(alert.claude_ai_play || alert.direction || '-');
-        const label = String(alert.claude_ai_label || 'C_A');
-        const rule = String(alert.claude_ai_rule || 'Geçmiş profil eşleşmesi');
-        return `
-          <div class="big-verdict gold">
-            <div class="big-verdict-icon">⭐</div>
-            <div class="big-verdict-text">
-              <div class="big-verdict-play">${escapeHtml(play)} oyna <span class="badge small-badge">${escapeHtml(label)}</span></div>
-              <div class="big-verdict-desc">C_A: ${escapeHtml(rule)}</div>
-            </div>
-          </div>`;
-      }
       const dir = String(alert.direction || '');
       const dirArrow = dir === 'ALT' ? '▼' : (dir === 'ÜST' ? '▲' : '·');
       return `
@@ -2588,10 +2599,84 @@
       `;
     }
 
+    function historyGuardSummary(alert) {
+      const guard = alert && alert.history_guard && typeof alert.history_guard === 'object' ? alert.history_guard : null;
+      if (!guard) {
+        return { level: 'empty', symbol: '?', title: 'Geçmiş yok', score: -1, rate: null, resolved: 0, reason: 'Bu sinyal için lig/takım geçmişi hesaplanamadı.' };
+      }
+      const league = guard.league || {};
+      const teams = Array.isArray(guard.teams) ? guard.teams : [];
+      const evidence = [];
+      const add = (label, stat, weight, minResolved) => {
+        const s = stat && typeof stat === 'object' ? stat : {};
+        const resolved = Number(s.resolved || 0);
+        const rate = num(s.rate);
+        if (resolved >= minResolved && rate !== null) {
+          evidence.push({ label, stat: s, weight, resolved, rate });
+        }
+      };
+      add('Lig / yön', league.direction, 3.2, 8);
+      add('Lig genel', league.overall, 2.1, 10);
+      teams.forEach(team => {
+        add(`${team.name || 'Takım'} / yön`, team.direction, 1.6, 5);
+        add(`${team.name || 'Takım'} genel`, team.overall, 0.9, 8);
+      });
+
+      if (!evidence.length) {
+        return { level: 'thin', symbol: '?', title: 'Veri az', score: -1, rate: null, resolved: 0, reason: 'Lig/takım geçmişinde karar verecek kadar sonuçlanmış sinyal yok.' };
+      }
+
+      const weightSum = evidence.reduce((sum, item) => sum + item.weight, 0);
+      const weightedRate = evidence.reduce((sum, item) => sum + item.rate * item.weight, 0) / Math.max(0.1, weightSum);
+      const resolved = evidence.reduce((sum, item) => sum + item.resolved, 0);
+      const badFlags = evidence.filter(item => item.rate <= 42).length;
+      const goodFlags = evidence.filter(item => item.rate >= 70).length;
+
+      let level = 'neutral';
+      let symbol = '=';
+      let title = 'Nötr';
+      let score = 0;
+      if (badFlags >= 2 || weightedRate <= 42) {
+        level = 'bad'; symbol = '-'; title = 'Negatif geçmiş'; score = -3;
+      } else if (weightedRate <= 47 || (badFlags >= 1 && goodFlags === 0)) {
+        level = 'warn'; symbol = '-'; title = 'Riskli geçmiş'; score = -2;
+      } else if (weightedRate >= 70 && goodFlags >= 1 && badFlags === 0) {
+        level = 'good'; symbol = '+'; title = 'Pozitif geçmiş'; score = 3;
+      }
+
+      const strongestBad = evidence.slice().sort((a, b) => a.rate - b.rate)[0];
+      const strongestGood = evidence.slice().sort((a, b) => b.rate - a.rate)[0];
+      const reason = level === 'good'
+        ? `${strongestGood.label}: %${strongestGood.rate.toFixed(1)} (${strongestGood.stat.success}/${strongestGood.resolved}).`
+        : level === 'bad' || level === 'warn'
+          ? `${strongestBad.label}: %${strongestBad.rate.toFixed(1)} (${strongestBad.stat.success}/${strongestBad.resolved}).`
+          : `Ağırlıklı geçmiş %${weightedRate.toFixed(1)}; net ayrışma yok.`;
+      return {
+        level, symbol, title, score,
+        rate: weightedRate,
+        resolved,
+        reason,
+      };
+    }
+
+    function historySymbolHtml(alert) {
+      const id = Number(alert.id || 0);
+      const summary = historyGuardSummary(alert);
+      const rateText = summary.rate === null ? '' : ` · %${summary.rate.toFixed(1)}`;
+      const title = `${summary.title}${rateText} · ${summary.reason}`;
+      return `
+        <button type="button" class="history-symbol ${escapeHtml(summary.level)}"
+          onclick="openHistoryGuardModal(${id})"
+          aria-label="History"
+          title="${escapeHtml(title)}">${escapeHtml(summary.symbol)}</button>
+      `;
+    }
+
     function sortValue(alert, field) {
 	      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count', 'signal_quality_score'].includes(field)) {
 	        return num(alert[field]) ?? Number.NEGATIVE_INFINITY;
 	      }
+      if (field === 'history_guard') return historyGuardSummary(alert).score;
       if (field === 'alerted_at') return alert.alerted_at ? new Date(`${String(alert.alerted_at).replace(' ', 'T')}Z`).getTime() : 0;
       return String(alert[field] || '').toLocaleLowerCase('tr-TR');
     }
@@ -2630,8 +2715,6 @@
       if (currentFilter === 'ignored') list = list.filter(a => a.ignored);
       if (currentFilter === 'alt') list = list.filter(a => a.direction === 'ALT');
       if (currentFilter === 'ust') list = list.filter(a => a.direction === 'ÜST');
-      if (currentFilter === 'hundred_profile') list = list.filter(a => Number(a.hundred_profile || 0) === 1);
-      if (currentFilter === 'claude_ai') list = list.filter(a => String(a.claude_ai || '').trim() !== '');
       if (activePeriods.size) {
         list = list.filter(a => activePeriods.has(`${a.direction}-${a.alert_period}`));
       }
@@ -2704,7 +2787,7 @@
             <td>${fairHtml(a)}</td>
             <td>${projectedHtml(a)}</td>
             <td>${signalQualityHtml(a)}</td>
-            <td class="ca-cell">${claudeAiHtml(a)}</td>
+            <td class="history-cell">${historySymbolHtml(a)}</td>
             <td><div class="match-cell-wrap">${focusButton(a)}${matchLink(a)}${listMarkersHtml(a, 'team')}${noteInfoButton(a)}</div></td>
             <td><div class="tournament-row"><span class="subline tournament-cell">${tournament}</span>${listMarkersHtml(a, 'league')}</div></td>
             <td>${escapeHtml(a.status || '-')}</td>
@@ -2756,7 +2839,7 @@
                 ${directionBadge(a)}
                 ${signalCount > 1 ? `<span class="card-signal-count">${signalCount}. sinyal</span>` : ''}
                 ${signalQualityHtml(a)}
-                ${claudeAiHtml(a)}
+                ${historySymbolHtml(a)}
               </div>
               <div class="card-strip-right">
                 <span class="card-status">${escapeHtml(status)}</span>
@@ -3453,6 +3536,78 @@
             </div>
           </div>
         </details>`;
+    }
+
+    function historyGuardModalBody(alert) {
+      const guard = alert.history_guard;
+      if (!guard || typeof guard !== 'object') {
+        return '<div class="history-guard-note">Bu sinyal için geçmiş profili hesaplanamadı.</div>';
+      }
+      const summary = historyGuardSummary(alert);
+      const league = guard.league || {};
+      const direction = guard.direction || alert.direction || '-';
+      const leagueName = league.name || alert.tournament || '-';
+      const teams = Array.isArray(guard.teams) ? guard.teams : [];
+      const notes = Array.isArray(guard.notes) ? guard.notes.filter(Boolean) : [];
+      const rateText = summary.rate === null ? 'Veri az' : `Ağırlıklı geçmiş %${summary.rate.toFixed(1)}`;
+      const verdictText = summary.level === 'good'
+        ? 'Bu sinyal geçmiş profilden destek alıyor. Yine de canlı tempo, skor farkı ve adil barem ile birlikte değerlendir.'
+        : summary.level === 'bad'
+          ? 'Bu sinyal geçmiş profilde zayıf bölgede. Bahis yerine pas/takip daha mantıklı olabilir.'
+          : summary.level === 'warn'
+            ? 'Geçmiş profil riskli. Sinyali ancak başka güçlü teyit varsa değerlendir.'
+            : summary.level === 'thin'
+              ? 'Örneklem yetersiz. Bu sembol karar değil, sadece veri eksikliği uyarısıdır.'
+              : 'Geçmiş profil nötr. Kararı adil barem, projeksiyon ve maç bağlamı versin.';
+      const teamRows = teams.length
+        ? teams.map(team => `
+            <div class="sig-card">
+              <h4>${escapeHtml(team.role || 'Takım')} · ${escapeHtml(team.name || '-')}</h4>
+              <div class="history-guard-list">
+                ${historyGuardStatHtml('Takım genel', team.overall)}
+                ${historyGuardStatHtml(`Bu yön (${direction})`, team.direction)}
+              </div>
+              ${historyDirectionBreakdownHtml(team.directions)}
+            </div>
+          `).join('')
+        : '<div class="history-guard-note">Takım adı ayrıştırılamadı.</div>';
+      return `
+        <div class="history-summary-verdict ${escapeHtml(summary.level)}">
+          <span class="mark">${escapeHtml(summary.symbol)}</span>
+          <div>
+            <h4>${escapeHtml(summary.title)} · ${escapeHtml(rateText)}</h4>
+            <p>${escapeHtml(verdictText)}</p>
+            <p>${escapeHtml(summary.reason)}</p>
+          </div>
+        </div>
+        <div class="history-guard-grid">
+          <div class="sig-card">
+            <h4>Lig Profili</h4>
+            <div class="sig-help">Bu ligden gelen eski silinen sinyallerin sonuçlarına göre.</div>
+            <div class="history-guard-list">
+              ${historyGuardStatHtml(leagueName, league.overall)}
+              ${historyGuardStatHtml(`${leagueName} / ${direction}`, league.direction)}
+            </div>
+            ${historyDirectionBreakdownHtml(league.directions)}
+            ${notes.map(note => `<div class="history-guard-note">${escapeHtml(note)}</div>`).join('')}
+          </div>
+          <div class="history-guard-list">
+            ${teamRows}
+          </div>
+        </div>
+      `;
+    }
+
+    function openHistoryGuardModal(id) {
+      const alert = allAlerts.find(a => Number(a.id) === Number(id));
+      if (!alert) return;
+      $('historyGuardTitle').textContent = `History — ${cleanMatchName(alert.match_name || '')}`;
+      $('historyGuardBody').innerHTML = historyGuardModalBody(alert);
+      $('historyGuardModal').classList.add('active');
+    }
+
+    function closeHistoryGuardModal() {
+      $('historyGuardModal').classList.remove('active');
     }
 
     function openSignalModal(id) {

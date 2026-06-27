@@ -10,7 +10,6 @@ import os
 import re
 import time
 
-from claude_ai_filter import scenario_play_direction
 from signal_quality import calculate_signal_quality
 
 try:
@@ -111,10 +110,7 @@ def canonical_alert_direction(alert: dict) -> str:
     except Exception:
         analysis = {}
     return (
-        scenario_play_direction(alert.get("claude_ai"))
-        or _normalize_direction(alert.get("claude_ai_play"))
-        or _normalize_direction(analysis.get("claude_ai_play"))
-        or _normalize_direction(analysis.get("final_direction") or analysis.get("direction") or alert.get("direction"))
+        _normalize_direction(analysis.get("final_direction") or analysis.get("direction") or alert.get("direction"))
         or _normalize_direction(alert.get("direction"))
     )
 

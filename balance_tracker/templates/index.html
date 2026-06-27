@@ -561,6 +561,73 @@
       line-height: 1.5;
     }
 
+    .projection-detail {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0d1521;
+      overflow: hidden;
+    }
+
+    .projection-detail summary {
+      min-height: 46px;
+      padding: 0 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 800;
+      user-select: none;
+    }
+
+    .projection-detail summary::marker {
+      color: var(--green);
+    }
+
+    .projection-detail-meta {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .projection-day-list {
+      max-height: 340px;
+      overflow: auto;
+      border-top: 1px solid var(--line);
+    }
+
+    .projection-day-table {
+      width: 100%;
+      min-width: 0;
+      border-collapse: collapse;
+    }
+
+    .projection-day-table th,
+    .projection-day-table td {
+      height: 42px;
+      padding: 9px 12px;
+      border-bottom: 1px solid rgba(202, 213, 226, 0.07);
+      white-space: nowrap;
+      font-size: 13px;
+    }
+
+    .projection-day-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #111925;
+      color: var(--muted);
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+    }
+
+    .projection-day-table td:last-child,
+    .projection-day-table th:last-child {
+      text-align: right;
+    }
+
     .calc-result-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1361,6 +1428,26 @@
         <div class="form-row full">
           <div class="result-box" id="projectionResult">Projeksiyon sonucu burada görünecek.</div>
         </div>
+        <div class="form-row full" id="projectionDailyWrap" hidden>
+          <details class="projection-detail" id="projectionDailyDetails">
+            <summary>
+              <span>Gün gün projeksiyon</span>
+              <span class="projection-detail-meta" id="projectionDailyMeta"></span>
+            </summary>
+            <div class="projection-day-list">
+              <table class="projection-day-table">
+                <thead>
+                  <tr>
+                    <th>Gün</th>
+                    <th>Günlük Kar</th>
+                    <th>Gün Sonu Bakiye</th>
+                  </tr>
+                </thead>
+                <tbody id="projectionDailyRows"></tbody>
+              </table>
+            </div>
+          </details>
+        </div>
       </div>
     </div>
   </div>
@@ -1758,6 +1845,26 @@
         message += `<br>Hedef bakiyeye ulaşmak için yaklaşık <strong>${requiredDays} gün</strong> gerekir.`;
       }
       el('projectionResult').innerHTML = message;
+
+      let runningBalance = balance;
+      const rows = [];
+      for (let day = 1; day <= days; day += 1) {
+        const startOfDay = runningBalance;
+        const dailyProfit = startOfDay * rate / 100;
+        runningBalance = startOfDay + dailyProfit;
+        rows.push(`
+          <tr>
+            <td>${day}. gün</td>
+            <td class="${dailyProfit >= 0 ? 'positive' : 'negative'}">${money(dailyProfit, currency)}</td>
+            <td class="${runningBalance >= balance ? 'positive' : 'negative'}">${money(runningBalance, currency)}</td>
+          </tr>
+        `);
+      }
+      el('projectionDailyRows').innerHTML = rows.join('');
+      el('projectionDailyMeta').textContent = `${days} gün · ${percent(rate)}`;
+      el('projectionDailyWrap').hidden = false;
+      el('projectionDailyDetails').open = days <= 45;
+      renderIcons();
     }
 
     function fillProjectionDefaults() {
@@ -1767,6 +1874,10 @@
       el('projectionRate').value = state.activePlan.settings.dailyTargetPercent;
       el('projectionTarget').value = '';
       el('projectionResult').textContent = 'Projeksiyon sonucu burada görünecek.';
+      el('projectionDailyWrap').hidden = true;
+      el('projectionDailyRows').innerHTML = '';
+      el('projectionDailyMeta').textContent = '';
+      el('projectionDailyDetails').open = false;
     }
 
     function nextOpenRow() {

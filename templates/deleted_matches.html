@@ -350,11 +350,6 @@
       letter-spacing: 0;
     }
 
-    .stat-chip strong.profile-metrics {
-      font-size: 17px;
-      white-space: nowrap;
-    }
-
     .stat-chip.success strong { color: var(--accent-green); }
     .stat-chip.fail strong { color: var(--accent-red); }
     .stat-chip.rate strong { color: var(--accent-yellow); }
@@ -554,7 +549,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 1360px;
+      min-width: 1420px;
     }
 
     th,
@@ -834,39 +829,113 @@
 	      cursor: pointer; font-weight: 700;
 	    }
 	    .quality-info-close:hover { background: rgba(6,182,212,0.32); }
-	    .hundred-profile-badge {
-	      display: inline-flex;
-	      align-items: center;
-	      justify-content: center;
-	      height: 19px;
-	      min-width: 27px;
-	      padding: 0 5px;
-	      border-radius: 5px;
-	      color: #111827;
-	      background: #facc15;
-	      border: 1px solid rgba(254, 240, 138, 0.88);
-	      box-shadow: 0 0 0 1px rgba(0,0,0,0.24), 0 0 12px rgba(250, 204, 21, 0.35);
-	      font-size: 11px;
+	    .history-cell { width: 62px; text-align: center; padding: 4px 5px !important; }
+	    .history-symbol {
+	      width: 30px; height: 30px; padding: 0;
+	      display: inline-flex; align-items: center; justify-content: center;
+	      border-radius: 8px;
+	      border: 1px solid rgba(148,163,184,0.28);
+	      background: rgba(148,163,184,0.10);
+	      color: #cbd5e1;
+	      font-size: 16px;
 	      font-weight: 950;
 	      line-height: 1;
+	      cursor: pointer;
+	      transition: transform 120ms, filter 120ms, border-color 120ms;
 	    }
-	    .ca-cell { width: 30px; text-align: center; padding: 4px 2px !important; }
-	    .ca-star {
+	    .history-symbol:hover { transform: scale(1.06); filter: brightness(1.12); }
+	    .history-symbol.good {
+	      color: #86efac; background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.42);
+	      box-shadow: 0 0 12px rgba(34,197,94,0.16);
+	    }
+	    .history-symbol.bad {
+	      color: #fecaca; background: rgba(239,68,68,0.16); border-color: rgba(239,68,68,0.44);
+	      box-shadow: 0 0 12px rgba(239,68,68,0.14);
+	    }
+	    .history-symbol.warn {
+	      color: #fde68a; background: rgba(251,191,36,0.14); border-color: rgba(251,191,36,0.42);
+	    }
+	    .history-symbol.neutral {
+	      color: #cbd5e1; background: rgba(148,163,184,0.10); border-color: rgba(148,163,184,0.28);
+	    }
+	    .history-symbol.thin, .history-symbol.empty {
+	      color: #c4b5fd; background: rgba(124,92,246,0.12); border-color: rgba(124,92,246,0.32);
+	    }
+	    .sig-card {
+	      padding: 13px 14px; border-radius: 11px;
+	      background: rgba(13,18,30,0.78); border: 1px solid rgba(148,163,184,0.16);
+	    }
+	    .sig-card h4 {
+	      margin: 0 0 9px; font-size: 11px; font-weight: 900; letter-spacing: 0.04em;
+	      text-transform: uppercase; color: #bfdbfe;
+	    }
+	    .sig-help {
+	      font-size: 11.5px;
+	      color: var(--text-soft);
+	      margin: -2px 0 8px;
+	      line-height: 1.45;
+	    }
+	    .history-summary-verdict {
+	      display: flex; align-items: center; gap: 12px;
+	      margin-bottom: 12px;
+	      padding: 12px 14px;
+	      border-radius: 12px;
+	      border: 1px solid rgba(148,163,184,0.20);
+	      background: rgba(20,19,34,0.92);
+	    }
+	    .history-summary-verdict .mark {
+	      width: 38px; height: 38px;
 	      display: inline-flex; align-items: center; justify-content: center;
-	      width: 22px; height: 22px; border-radius: 6px;
-	      font-size: 15px; line-height: 1; cursor: pointer;
-	      background: rgba(250, 204, 21, 0.14);
-	      border: 1px solid rgba(250, 204, 21, 0.45);
-	      color: #fde68a;
-	      text-shadow: 0 0 6px rgba(250, 204, 21, 0.55);
-	      padding: 0;
+	      border-radius: 10px;
+	      font-size: 22px; font-weight: 950;
+	      flex: 0 0 auto;
 	    }
-	    .ca-star:hover { background: rgba(250, 204, 21, 0.28); transform: scale(1.08); }
-	    .ca-star.win { box-shadow: 0 0 0 1px rgba(34,197,94,0.55); }
-	    .ca-star.loss { box-shadow: 0 0 0 1px rgba(239,68,68,0.55); }
-	    .ca-empty { color: rgba(156,163,175,0.30); font-size: 13px; }
-	    .hundred-profile-badge { cursor: pointer; }
-	    .hundred-profile-badge:hover { filter: brightness(1.15); }
+	    .history-summary-verdict.good { border-color: rgba(34,197,94,0.34); background: rgba(34,197,94,0.08); }
+	    .history-summary-verdict.good .mark { color: #86efac; background: rgba(34,197,94,0.15); }
+	    .history-summary-verdict.bad { border-color: rgba(239,68,68,0.34); background: rgba(239,68,68,0.08); }
+	    .history-summary-verdict.bad .mark { color: #fecaca; background: rgba(239,68,68,0.15); }
+	    .history-summary-verdict.warn { border-color: rgba(251,191,36,0.32); background: rgba(251,191,36,0.08); }
+	    .history-summary-verdict.warn .mark { color: #fde68a; background: rgba(251,191,36,0.13); }
+	    .history-summary-verdict.neutral .mark,
+	    .history-summary-verdict.thin .mark,
+	    .history-summary-verdict.empty .mark { color: #c4b5fd; background: rgba(124,92,246,0.12); }
+	    .history-summary-verdict h4 { margin: 0 0 2px; font-size: 14px; }
+	    .history-summary-verdict p { margin: 0; color: var(--text-soft); font-size: 12px; line-height: 1.4; }
+	    .history-guard-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+	    .history-guard-list { display: grid; gap: 7px; }
+	    .history-guard-row {
+	      display: grid; grid-template-columns: minmax(110px,1fr) auto; align-items: center; gap: 8px;
+	      padding: 8px 9px; border-radius: 9px;
+	      background: rgba(8,8,16,0.62); border: 1px solid rgba(148,163,184,0.10);
+	      font-size: 12px;
+	    }
+	    .history-guard-name { color: var(--text); font-weight: 850; overflow-wrap: anywhere; }
+	    .history-guard-sub { color: var(--text-soft); font-size: 11px; margin-top: 2px; line-height: 1.35; }
+	    .history-pill {
+	      display: inline-flex; align-items: center; justify-content: center; min-width: 92px;
+	      padding: 5px 8px; border-radius: 999px; font-size: 11px; font-weight: 900;
+	      border: 1px solid rgba(148,163,184,0.20);
+	    }
+	    .history-pill.good { color: #86efac; background: rgba(34,197,94,0.14); border-color: rgba(34,197,94,0.34); }
+	    .history-pill.bad { color: #fecaca; background: rgba(239,68,68,0.16); border-color: rgba(239,68,68,0.38); }
+	    .history-pill.warn { color: #fde68a; background: rgba(251,191,36,0.14); border-color: rgba(251,191,36,0.35); }
+	    .history-pill.neutral { color: #cbd5e1; background: rgba(148,163,184,0.10); }
+	    .history-pill.thin, .history-pill.empty { color: #c4b5fd; background: rgba(124,92,246,0.12); border-color: rgba(124,92,246,0.28); }
+	    .history-guard-note {
+	      margin-top: 8px; padding: 8px 10px; border-radius: 9px;
+	      background: rgba(251,191,36,0.08); border-left: 3px solid #fbbf24;
+	      color: #fde68a; font-size: 12px; line-height: 1.45;
+	    }
+	    .history-direction-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; margin-top: 8px; }
+	    .history-direction-row {
+	      padding: 8px 9px; border-radius: 9px;
+	      background: rgba(8,8,16,0.48); border: 1px solid rgba(148,163,184,0.10);
+	      font-size: 12px; line-height: 1.45;
+	    }
+	    .history-direction-row .dir { display: block; font-weight: 900; margin-bottom: 2px; }
+	    .history-direction-row .dir.alt { color: #6ee7b7; }
+	    .history-direction-row .dir.ust { color: #fca5a5; }
+	    .history-direction-row .counts { color: var(--text-soft); font-size: 11px; }
 	    .big-verdict {
 	      display: flex; align-items: center; gap: 14px;
 	      padding: 18px 18px; border-radius: 14px; margin: 4px 0 14px;
@@ -1677,6 +1746,8 @@
       .signal-breakdown { grid-template-columns: 1fr; }
       .direction-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .signal-metrics-list { grid-template-columns: 1fr; }
+      .history-guard-grid,
+      .history-direction-grid { grid-template-columns: 1fr; }
     }
 
     .brand-title {
@@ -1774,14 +1845,6 @@
           <span>ÜST</span>
           <strong id="statUst">0</strong>
         </div>
-        <div class="stat-chip clickable" id="chipHundred" onclick="toggleStatFilter('hundred_profile',1)" title="Toplam / Başarısız / Başarı %">
-          <span>100 Profil</span>
-          <strong class="profile-metrics" id="statHundred">0 / 0 / -</strong>
-        </div>
-        <div class="stat-chip clickable" id="chipClaude" onclick="toggleStatFilter('claude_ai',1)" title="Toplam / Başarısız / Başarı %">
-          <span>C_A ⭐</span>
-          <strong class="profile-metrics" id="statClaude">0 / 0 / -</strong>
-        </div>
         <div class="stat-chip success clickable" id="chipSuccess" onclick="toggleStatFilter('result','Başarılı')" title="Sadece başarılı sinyalleri göster">
           <span>Başarılı</span>
           <strong id="statSuccess">0</strong>
@@ -1838,7 +1901,7 @@
               <th data-sort="live">Canlı</th>
               <th data-sort="projected">Proj.</th>
               <th data-sort="signal_quality_score">S.K.</th>
-              <th class="ca-cell" data-sort="claude_ai">C_A</th>
+              <th class="history-cell" data-sort="history_guard">History</th>
               <th data-sort="diff">Fark</th>
               <th data-sort="fair_line">Adil Barem</th>
               <th data-sort="result">Sonuç</th>
@@ -1897,6 +1960,16 @@
 	        <button class="modal-close" onclick="closeSignalQualityModal()">Kapat</button>
 	      </div>
 	      <div id="signalQualityContent" class="signal-quality-body"></div>
+	    </div>
+	  </div>
+
+	  <div class="modal-overlay" id="historyGuardModal" onclick="if(event.target===this)closeHistoryGuardModal()">
+	    <div class="modal-box signal-quality-box">
+	      <div class="modal-header">
+	        <h2 id="historyGuardTitle">History</h2>
+	        <button class="modal-close" onclick="closeHistoryGuardModal()">Kapat</button>
+	      </div>
+	      <div id="historyGuardContent" class="modal-body"></div>
 	    </div>
 	  </div>
 
@@ -1963,6 +2036,11 @@
       return Number.isFinite(num) ? num.toFixed(1) : '-';
     }
 
+    function numValue(value) {
+      const num = Number(value);
+      return Number.isFinite(num) ? num : null;
+    }
+
     function calculateScoreTotal(score) {
       if (!score || typeof score !== 'string') return null;
       const parts = score.split('-').map(s => Number(s.trim()));
@@ -2015,20 +2093,6 @@
     }
 
     function bigVerdictHtml(alert) {
-      const caCode = String(alert.claude_ai || '').trim();
-      if (caCode) {
-        const play = String(alert.claude_ai_play || alert.direction || '-');
-        const label = String(alert.claude_ai_label || 'C_A');
-        const rule = String(alert.claude_ai_rule || 'Canlıdayken kaydedilen profil eşleşmesi');
-        return `
-          <div class="big-verdict gold">
-            <div class="big-verdict-icon">⭐</div>
-            <div class="big-verdict-text">
-              <div class="big-verdict-play">${escapeHtml(play)} oyna <span class="badge small-badge">${escapeHtml(label)}</span></div>
-              <div class="big-verdict-desc">Canlı C_A kaydı: ${escapeHtml(rule)}</div>
-            </div>
-          </div>`;
-      }
       const dir = String(alert.direction || '');
       const dirArrow = dir === 'ALT' ? '▼' : (dir === 'ÜST' ? '▲' : '·');
       const result = String(alert.result || '');
@@ -2160,18 +2224,194 @@
 	      const label = alert.signal_quality_label || quality.quality_label || '-';
 	      const text = Number.isFinite(score) ? String(Math.round(score)) : '-';
 	      const reason = quality.risk_note || label;
-	      const hundred = Number(alert.hundred_profile || 0) === 1
-	        ? `<button type="button" class="hundred-profile-badge" onclick="event.stopPropagation();openSignalInfo(${Number(alert.id || 0)})" title="${escapeHtml(alert.hundred_profile_rule || '100 Profili')}">100</button>`
-	        : '';
-	      return `<span class="quality-cell"><button type="button" class="badge quality-badge ${signalQualityTone(score)}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(reason)}" aria-label="Sinyal kalitesi detayını aç">${escapeHtml(text)}</button>${hundred}</span>`;
+	      return `<span class="quality-cell"><button type="button" class="badge quality-badge ${signalQualityTone(score)}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(reason)}" aria-label="Sinyal kalitesi detayını aç">${escapeHtml(text)}</button></span>`;
 	    }
 
-    function claudeAiHtml(alert) {
-      const code = String(alert.claude_ai || '').trim();
-      if (!code) return '<span class="ca-empty" aria-hidden="true">·</span>';
-      const label = String(alert.claude_ai_label || code);
-      const title = String(alert.claude_ai_tooltip || alert.claude_ai_rule || label);
-      return `<button type="button" class="ca-star" onclick="event.stopPropagation();openSignalInfo(${Number(alert.id || 0)})" title="${escapeHtml(title)}" aria-label="${escapeHtml(label)}">⭐</button>`;
+    function historyGuardSummary(alert) {
+      const guard = alert && alert.history_guard && typeof alert.history_guard === 'object' ? alert.history_guard : null;
+      if (!guard) {
+        return { level: 'empty', symbol: '?', title: 'Geçmiş yok', score: -1, rate: null, resolved: 0, reason: 'Bu sinyal için lig/takım geçmişi hesaplanamadı.' };
+      }
+      const league = guard.league || {};
+      const teams = Array.isArray(guard.teams) ? guard.teams : [];
+      const evidence = [];
+      const add = (label, stat, weight, minResolved) => {
+        const s = stat && typeof stat === 'object' ? stat : {};
+        const resolved = Number(s.resolved || 0);
+        const rate = numValue(s.rate);
+        if (resolved >= minResolved && rate !== null) {
+          evidence.push({ label, stat: s, weight, resolved, rate });
+        }
+      };
+      add('Lig / yön', league.direction, 3.2, 8);
+      add('Lig genel', league.overall, 2.1, 10);
+      teams.forEach(team => {
+        add(`${team.name || 'Takım'} / yön`, team.direction, 1.6, 5);
+        add(`${team.name || 'Takım'} genel`, team.overall, 0.9, 8);
+      });
+
+      if (!evidence.length) {
+        return { level: 'thin', symbol: '?', title: 'Veri az', score: -1, rate: null, resolved: 0, reason: 'Lig/takım geçmişinde karar verecek kadar sonuçlanmış sinyal yok.' };
+      }
+
+      const weightSum = evidence.reduce((sum, item) => sum + item.weight, 0);
+      const weightedRate = evidence.reduce((sum, item) => sum + item.rate * item.weight, 0) / Math.max(0.1, weightSum);
+      const resolved = evidence.reduce((sum, item) => sum + item.resolved, 0);
+      const badFlags = evidence.filter(item => item.rate <= 42).length;
+      const goodFlags = evidence.filter(item => item.rate >= 70).length;
+
+      let level = 'neutral';
+      let symbol = '=';
+      let title = 'Nötr';
+      let score = 0;
+      if (badFlags >= 2 || weightedRate <= 42) {
+        level = 'bad'; symbol = '-'; title = 'Negatif geçmiş'; score = -3;
+      } else if (weightedRate <= 47 || (badFlags >= 1 && goodFlags === 0)) {
+        level = 'warn'; symbol = '-'; title = 'Riskli geçmiş'; score = -2;
+      } else if (weightedRate >= 70 && goodFlags >= 1 && badFlags === 0) {
+        level = 'good'; symbol = '+'; title = 'Pozitif geçmiş'; score = 3;
+      }
+
+      const strongestBad = evidence.slice().sort((a, b) => a.rate - b.rate)[0];
+      const strongestGood = evidence.slice().sort((a, b) => b.rate - a.rate)[0];
+      const reason = level === 'good'
+        ? `${strongestGood.label}: %${strongestGood.rate.toFixed(1)} (${strongestGood.stat.success}/${strongestGood.resolved}).`
+        : level === 'bad' || level === 'warn'
+          ? `${strongestBad.label}: %${strongestBad.rate.toFixed(1)} (${strongestBad.stat.success}/${strongestBad.resolved}).`
+          : `Ağırlıklı geçmiş %${weightedRate.toFixed(1)}; net ayrışma yok.`;
+      return { level, symbol, title, score, rate: weightedRate, resolved, reason };
+    }
+
+    function historySymbolHtml(alert) {
+      const id = Number(alert.id || 0);
+      const summary = historyGuardSummary(alert);
+      const rateText = summary.rate === null ? '' : ` · %${summary.rate.toFixed(1)}`;
+      const title = `${summary.title}${rateText} · ${summary.reason}`;
+      return `
+        <button type="button" class="history-symbol ${escapeHtml(summary.level)}"
+          onclick="openHistoryGuardModal(${id})"
+          aria-label="History"
+          title="${escapeHtml(title)}">${escapeHtml(summary.symbol)}</button>
+      `;
+    }
+
+    function historyGuardStatHtml(title, stat) {
+      const s = stat && typeof stat === 'object' ? stat : {};
+      const resolved = Number(s.resolved || 0);
+      const success = Number(s.success || 0);
+      const fail = Number(s.fail || 0);
+      const rate = numValue(s.rate);
+      const label = s.label || 'Geçmiş yok';
+      const level = s.level || 'empty';
+      const matches = Number(s.unique_matches || 0);
+      const rateText = resolved ? `%${(rate ?? 0).toFixed(1)}` : '-';
+      const detail = resolved
+        ? `${success}/${resolved} başarılı · ${fail} başarısız · ${matches} maç`
+        : 'Sonuçlanmış geçmiş kayıt yok';
+      return `
+        <div class="history-guard-row">
+          <div>
+            <div class="history-guard-name">${escapeHtml(title)}</div>
+            <div class="history-guard-sub">${escapeHtml(rateText)} · ${escapeHtml(detail)}</div>
+          </div>
+          <span class="history-pill ${escapeHtml(level)}">${escapeHtml(label)}</span>
+        </div>`;
+    }
+
+    function historyDirectionBreakdownHtml(directions) {
+      const stats = directions && typeof directions === 'object' ? directions : {};
+      return `
+        <div class="history-direction-grid">
+          ${['ALT', 'ÜST'].map(dir => {
+            const s = stats[dir] && typeof stats[dir] === 'object' ? stats[dir] : {};
+            const resolved = Number(s.resolved || 0);
+            const success = Number(s.success || 0);
+            const fail = Number(s.fail || 0);
+            const rate = numValue(s.rate);
+            const rateText = resolved ? ` · %${(rate ?? 0).toFixed(1)}` : '';
+            const cls = dir === 'ALT' ? 'alt' : 'ust';
+            return `
+              <div class="history-direction-row">
+                <span class="dir ${cls}">${dir}</span>
+                <span class="counts">Başarılı ${success} · Başarısız ${fail}${rateText}</span>
+              </div>`;
+          }).join('')}
+        </div>`;
+    }
+
+    function historyGuardModalBody(alert) {
+      const guard = alert.history_guard;
+      if (!guard || typeof guard !== 'object') {
+        return '<div class="history-guard-note">Bu sinyal için geçmiş profili hesaplanamadı.</div>';
+      }
+      const summary = historyGuardSummary(alert);
+      const league = guard.league || {};
+      const direction = guard.direction || alert.direction || '-';
+      const leagueName = league.name || alert.tournament || '-';
+      const teams = Array.isArray(guard.teams) ? guard.teams : [];
+      const notes = Array.isArray(guard.notes) ? guard.notes.filter(Boolean) : [];
+      const rateText = summary.rate === null ? 'Veri az' : `Ağırlıklı geçmiş %${summary.rate.toFixed(1)}`;
+      const verdictText = summary.level === 'good'
+        ? 'Bu sinyal geçmiş profilden destek alıyor. Yine de canlı tempo, skor farkı ve adil barem ile birlikte değerlendir.'
+        : summary.level === 'bad'
+          ? 'Bu sinyal geçmiş profilde zayıf bölgede. Bahis yerine pas/takip daha mantıklı olabilir.'
+          : summary.level === 'warn'
+            ? 'Geçmiş profil riskli. Sinyali ancak başka güçlü teyit varsa değerlendir.'
+            : summary.level === 'thin'
+              ? 'Örneklem yetersiz. Bu sembol karar değil, sadece veri eksikliği uyarısıdır.'
+              : 'Geçmiş profil nötr. Kararı adil barem, projeksiyon ve maç bağlamı versin.';
+      const teamRows = teams.length
+        ? teams.map(team => `
+            <div class="sig-card">
+              <h4>${escapeHtml(team.role || 'Takım')} · ${escapeHtml(team.name || '-')}</h4>
+              <div class="history-guard-list">
+                ${historyGuardStatHtml('Takım genel', team.overall)}
+                ${historyGuardStatHtml(`Bu yön (${direction})`, team.direction)}
+              </div>
+              ${historyDirectionBreakdownHtml(team.directions)}
+            </div>
+          `).join('')
+        : '<div class="history-guard-note">Takım adı ayrıştırılamadı.</div>';
+      return `
+        <div class="history-summary-verdict ${escapeHtml(summary.level)}">
+          <span class="mark">${escapeHtml(summary.symbol)}</span>
+          <div>
+            <h4>${escapeHtml(summary.title)} · ${escapeHtml(rateText)}</h4>
+            <p>${escapeHtml(verdictText)}</p>
+            <p>${escapeHtml(summary.reason)}</p>
+          </div>
+        </div>
+        <div class="history-guard-grid">
+          <div class="sig-card">
+            <h4>Lig Profili</h4>
+            <div class="sig-help">Bu ligden gelen eski silinen sinyallerin sonuçlarına göre.</div>
+            <div class="history-guard-list">
+              ${historyGuardStatHtml(leagueName, league.overall)}
+              ${historyGuardStatHtml(`${leagueName} / ${direction}`, league.direction)}
+            </div>
+            ${historyDirectionBreakdownHtml(league.directions)}
+            ${notes.map(note => `<div class="history-guard-note">${escapeHtml(note)}</div>`).join('')}
+          </div>
+          <div class="history-guard-list">
+            ${teamRows}
+          </div>
+        </div>
+      `;
+    }
+
+    function openHistoryGuardModal(alertId) {
+      const alert = deletedAlerts.find(item => Number(item.id || 0) === Number(alertId || 0));
+      const modal = document.getElementById('historyGuardModal');
+      const content = document.getElementById('historyGuardContent');
+      if (!alert || !modal || !content) return;
+      document.getElementById('historyGuardTitle').textContent = `History - ${cleanMatchName(alert.match_name || '-')}`;
+      content.innerHTML = historyGuardModalBody(alert);
+      modal.classList.add('open');
+    }
+
+    function closeHistoryGuardModal() {
+      const modal = document.getElementById('historyGuardModal');
+      if (modal) modal.classList.remove('open');
     }
 
 	    function qualityValue(value, digits = 1) {
@@ -2523,8 +2763,6 @@
 	          if (activeFilter.direction && alert.direction !== activeFilter.direction) return false;
 	          if (activeFilter.result && alert.result !== activeFilter.result) return false;
 	          if (activeFilter.matchKey && matchKey(alert) !== activeFilter.matchKey) return false;
-	          if (activeFilter.hundred_profile && Number(alert.hundred_profile || 0) !== 1) return false;
-	          if (activeFilter.claude_ai && !String(alert.claude_ai || '').trim()) return false;
 	          return true;
 	        });
 	      }
@@ -2559,6 +2797,7 @@
         const num = Number(alert[field]);
         return Number.isFinite(num) ? num : -Infinity;
       }
+      if (field === 'history_guard') return historyGuardSummary(alert).score;
       if (field === 'match_name') return cleanMatchName(alert.match_name || '').toLocaleLowerCase('tr-TR');
       return String(alert[field] || '').toLocaleLowerCase('tr-TR');
     }
@@ -2594,17 +2833,6 @@
       document.getElementById('statMatches').textContent = matchIds.size;
       document.getElementById('statAlt').textContent = deletedAlerts.filter(item => item.direction === 'ALT').length;
       document.getElementById('statUst').textContent = deletedAlerts.filter(item => item.direction === 'ÜST').length;
-      const compactProfileStats = rows => {
-        const failed = rows.filter(item => item.result === 'Başarısız').length;
-        const succeeded = rows.filter(item => item.result === 'Başarılı').length;
-        const resolvedCount = succeeded + failed;
-        const successRate = resolvedCount > 0 ? (succeeded / resolvedCount) * 100 : null;
-        return `${rows.length} / ${failed} / ${successRate !== null ? '%' + successRate.toFixed(1) : '-'}`;
-      };
-      const hundredRows = deletedAlerts.filter(item => Number(item.hundred_profile || 0) === 1);
-      const claudeRows = deletedAlerts.filter(item => String(item.claude_ai || '').trim());
-      document.getElementById('statHundred').textContent = compactProfileStats(hundredRows);
-      document.getElementById('statClaude').textContent = compactProfileStats(claudeRows);
       document.getElementById('statSuccess').textContent = successList.length;
       document.getElementById('statFail').textContent = failList.length;
       document.getElementById('statRate').textContent = rate !== null ? `%${rate.toFixed(1)}` : '-';
@@ -2689,16 +2917,12 @@
       const chipUst = document.getElementById('chipUst');
       const chipSuccess = document.getElementById('chipSuccess');
       const chipFail = document.getElementById('chipFail');
-      const chipHundred = document.getElementById('chipHundred');
-      const chipClaude = document.getElementById('chipClaude');
       const isDir = activeFilter && !activeFilter.result && !activeFilter.matchKey;
       const isRes = activeFilter && !activeFilter.direction && !activeFilter.matchKey;
       if (chipAlt) chipAlt.classList.toggle('active', isDir && activeFilter.direction === 'ALT');
       if (chipUst) chipUst.classList.toggle('active', isDir && activeFilter.direction === 'ÜST');
 	      if (chipSuccess) chipSuccess.classList.toggle('active', isRes && activeFilter.result === 'Başarılı');
 	      if (chipFail) chipFail.classList.toggle('active', isRes && activeFilter.result === 'Başarısız');
-	      if (chipHundred) chipHundred.classList.toggle('active', !!activeFilter?.hundred_profile);
-	      if (chipClaude) chipClaude.classList.toggle('active', !!activeFilter?.claude_ai);
 	    }
 
 	    function updatePeriodButtons() {
@@ -2849,7 +3073,7 @@
             <td class="mono">${formatNumber(alert.live)}</td>
             <td class="mono">${formatNumber(alert.projected)}</td>
             <td>${signalQualityHtml(alert)}</td>
-            <td class="ca-cell">${claudeAiHtml(alert)}</td>
+            <td class="history-cell">${historySymbolHtml(alert)}</td>
             <td class="mono">${formatNumber(alert.diff)}</td>
             <td>${fairLineCell(alert)}</td>
             <td>${resultCell(alert)}</td>

@@ -20,7 +20,6 @@ from notifier import TelegramNotifier
 from pace_tracker import PaceTracker
 from projection import game_clock, parse_score
 from signal_analysis import build_backtest_profile, build_signal_analysis
-from signal_profiles import evaluate_telegram_profiles
 from signal_repeat import live_total_delta
 
 
@@ -184,38 +183,17 @@ async def process_match(
         alert_moment=" | ".join(p for p in (status, score) if p),
     )
 
-    profiles = evaluate_telegram_profiles(
-        {
-            **match,
-            "opening": opening_total,
-            "live": inplay_total,
-            "direction": direction,
-            "diff": abs_diff,
-            "alert_period": period,
-        },
-        analysis,
-    )
-    db.update_active_alert_profiles(alert_id, **profiles)
-
     followed_upcoming = db.is_upcoming_followed(match_id)
 
-    telegram_sent = profiles["hundred_profile"] and bool(profiles["claude_ai"])
-    if telegram_sent:
-        await notifier.send_alert(
-            match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
-            score=score, signal_count=signal_count, prematch=prematch_total, analysis=analysis,
-            period=period,
-            followed_upcoming=followed_upcoming,
-        )
-    else:
-        log.info(
-            "Telegram skipped (requires C_A + 100 Profile): alert_id=%s match_id=%s | hundred=%s | C_A=%s",
-            alert_id, match_id, profiles["hundred_profile"], profiles["claude_ai"] or "-",
-        )
+    await notifier.send_alert(
+        match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
+        score=score, signal_count=signal_count, prematch=prematch_total, analysis=analysis,
+        period=period,
+        followed_upcoming=followed_upcoming,
+    )
 
     log.info(
-        "Signal saved (telegram=%s%s): alert_id=%s match_id=%s | %s | %s | diff=%.2f | fair_line=%s",
-        "sent" if telegram_sent else "filtered",
+        "Signal saved (telegram=sent%s): alert_id=%s match_id=%s | %s | %s | diff=%.2f | fair_line=%s",
         " · followed" if followed_upcoming else "",
         alert_id, match_id, match_name, direction, abs_diff, analysis.get("fair_line"),
     )

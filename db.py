@@ -40,10 +40,6 @@ class Database:
                     score        TEXT NOT NULL DEFAULT '',
                     signal_count INTEGER NOT NULL DEFAULT 1,
                     ai_analysis  TEXT NOT NULL DEFAULT '',
-                    hundred_profile INTEGER NOT NULL DEFAULT 0,
-                    hundred_profile_rule TEXT NOT NULL DEFAULT '',
-                    claude_ai    TEXT NOT NULL DEFAULT '',
-                    claude_ai_rule TEXT NOT NULL DEFAULT '',
                     display_snapshot TEXT NOT NULL DEFAULT '',
                     bet_placed   INTEGER NOT NULL DEFAULT 0,
                     ignored      INTEGER NOT NULL DEFAULT 0,
@@ -130,10 +126,6 @@ class Database:
                 "ALTER TABLE alerts ADD COLUMN score TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE alerts ADD COLUMN signal_count INTEGER NOT NULL DEFAULT 1",
                 "ALTER TABLE alerts ADD COLUMN ai_analysis TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN hundred_profile INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE alerts ADD COLUMN hundred_profile_rule TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN claude_ai TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN claude_ai_rule TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE alerts ADD COLUMN display_snapshot TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE alerts ADD COLUMN deleted_at TIMESTAMP",
                 "ALTER TABLE alerts ADD COLUMN prematch REAL",
@@ -147,9 +139,19 @@ class Database:
                     conn.execute(alter)
                 except Exception:
                     pass
+            conn.execute("DROP INDEX IF EXISTS idx_alerts_hundred_profile")
+            conn.execute("DROP INDEX IF EXISTS idx_alerts_claude_ai")
+            for alter in (
+                "ALTER TABLE alerts DROP COLUMN hundred_profile",
+                "ALTER TABLE alerts DROP COLUMN hundred_profile_rule",
+                "ALTER TABLE alerts DROP COLUMN claude_ai",
+                "ALTER TABLE alerts DROP COLUMN claude_ai_rule",
+            ):
+                try:
+                    conn.execute(alter)
+                except Exception:
+                    pass
             conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_deleted_at ON alerts(deleted_at)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_hundred_profile ON alerts(hundred_profile)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_claude_ai ON alerts(claude_ai)")
             conn.execute("DROP TABLE IF EXISTS opening_lines")
             conn.execute("DROP TABLE IF EXISTS finished_matches")
             conn.execute("DROP TABLE IF EXISTS saved_bet_slips")
@@ -481,34 +483,6 @@ class Database:
             cursor = conn.execute(
                 f"UPDATE alerts SET ai_analysis = ? WHERE {where}",
                 (ai_analysis, int(alert_id)),
-            )
-        return cursor.rowcount > 0
-
-    def update_active_alert_profiles(
-        self,
-        alert_id: int,
-        *,
-        hundred_profile: bool,
-        hundred_profile_rule: str = "",
-        claude_ai: str = "",
-        claude_ai_rule: str = "",
-    ) -> bool:
-        with self._conn() as conn:
-            cursor = conn.execute(
-                """
-                UPDATE alerts
-                SET hundred_profile = ?, hundred_profile_rule = ?,
-                    claude_ai = ?, claude_ai_rule = ?
-                WHERE id = ?
-                  AND (deleted_at IS NULL OR deleted_at = '')
-                """,
-                (
-                    1 if hundred_profile else 0,
-                    str(hundred_profile_rule or "")[:120],
-                    str(claude_ai or "")[:32],
-                    str(claude_ai_rule or "")[:200],
-                    int(alert_id),
-                ),
             )
         return cursor.rowcount > 0
 
