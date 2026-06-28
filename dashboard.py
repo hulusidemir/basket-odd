@@ -10,6 +10,7 @@ import asyncio
 import csv
 import io
 import json
+import logging
 import os
 import re
 from datetime import datetime, timedelta
@@ -18,6 +19,7 @@ from db import Database
 from config import Config
 from finished_match_service import (
     evaluate_signal_result,
+    is_final_status,
     run_active_match_finished_scan,
     run_deleted_match_result_cycle,
     run_single_deleted_match_result_check,
@@ -26,6 +28,8 @@ from aiscore_scraper import AiscoreScraper
 from signal_analysis import build_backtest_profile, build_signal_analysis, enrich_analysis_with_backtest
 from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
 from signal_quality import calculate_signal_quality
+
+logger = logging.getLogger(__name__)
 
 config = Config()
 db = Database(config.DB_PATH)
@@ -665,6 +669,16 @@ def _snapshot_active_rows(rows: list[dict]) -> int:
     )
 
 
+def _run_async_dashboard_job(name: str, coro_factory, failure_message: str, before_run=None):
+    try:
+        if before_run is not None:
+            before_run()
+        return jsonify(asyncio.run(coro_factory()))
+    except Exception as exc:
+        logger.exception("Dashboard async job failed (%s): %s", name, exc)
+        return jsonify({"error": failure_message}), 500
+
+
 @app.route("/api/alerts")
 def api_alerts():
     alerts = _build_live_dashboard_rows(db.recent_alerts(limit=500))
@@ -754,6 +768,8 @@ def _float_or_none(value) -> float | None:
 
 
 def _apply_current_deleted_result(result: dict) -> None:
+    if not is_final_status(result.get("status", "")):
+        return
     final_total = _score_total_from_text(result.get("score"))
     live_line = _float_or_none(result.get("live"))
     if final_total is None or live_line is None:
@@ -903,21 +919,30 @@ def api_purge_deleted_alert(alert_id: int):
 
 @app.route("/api/alerts/check-finished", methods=["POST"])
 def api_check_active_match_finished():
-    _snapshot_active_rows(db.active_alerts(limit=None))
-    summary = asyncio.run(run_active_match_finished_scan(db, config))
-    return jsonify(summary)
+    return _run_async_dashboard_job(
+        "active-match-finished-scan",
+        lambda: run_active_match_finished_scan(db, config),
+        "Biten maçlar kontrol edilemedi. Sunucu loglarını kontrol edin.",
+        before_run=lambda: _snapshot_active_rows(db.active_alerts(limit=None)),
+    )
 
 
 @app.route("/api/deleted-matches/check-results", methods=["POST"])
 def api_check_deleted_match_results():
-    summary = asyncio.run(run_deleted_match_result_cycle(db, config))
-    return jsonify(summary)
+    return _run_async_dashboard_job(
+        "deleted-match-result-cycle",
+        lambda: run_deleted_match_result_cycle(db, config),
+        "Bitmiş maç sonuçları kontrol edilemedi. Sunucu loglarını kontrol edin.",
+    )
 
 
 @app.route("/api/deleted-matches/<int:alert_id>/check-result", methods=["POST"])
 def api_check_single_deleted_match_result(alert_id: int):
-    summary = asyncio.run(run_single_deleted_match_result_check(db, config, alert_id))
-    return jsonify(summary)
+    return _run_async_dashboard_job(
+        "single-deleted-match-result-check",
+        lambda: run_single_deleted_match_result_check(db, config, alert_id),
+        "Maç sonucu kontrol edilemedi. Sunucu loglarını kontrol edin.",
+    )
 
 
 def _normalize_deleted_result(value: str) -> str:

@@ -3165,25 +3165,25 @@
 
     async function checkFinishedResults() {
       const button = document.getElementById('checkResultsBtn');
-      const oldText = button.textContent;
-      button.disabled = true;
-      button.textContent = 'Kontrol ediliyor...';
+      const oldText = button ? button.textContent : '';
+      if (button) button.disabled = true;
+      if (button) button.textContent = 'Kontrol ediliyor...';
 
       try {
         const response = await fetch('/api/deleted-matches/check-results', { method: 'POST' });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload?.error || 'Bitmiş maçlar kontrol edilemedi.');
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload?.message || payload?.error || 'Bitmiş maçlar kontrol edilemedi.');
 
         await loadDeletedMatches();
-        showBanner(
+        showBanner(payload.message ||
           `${payload.checked_count || 0} maç kontrol edildi, ${payload.finished_match_count || 0} maç bitmiş bulundu, ${payload.updated_count || 0} sinyal güncellendi, ${payload.in_progress_count || 0} sinyal Devam Ediyor yapıldı.`
         );
       } catch (error) {
         console.error(error);
         showBanner(error.message || 'Bitmiş maçlar kontrol edilemedi.', 'error');
       } finally {
-        button.disabled = false;
-        button.textContent = oldText;
+        if (button) button.disabled = false;
+        if (button) button.textContent = oldText || 'Bitmişleri Kontrol Et';
       }
     }
 

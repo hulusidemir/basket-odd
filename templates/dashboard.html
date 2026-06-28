@@ -3175,17 +3175,20 @@
     }
 
     async function checkFinishedMatches(button) {
+      const originalText = button ? button.textContent : '';
       if (button) button.disabled = true;
+      if (button) button.textContent = 'Kontrol ediliyor...';
       try {
         const res = await fetch('/api/alerts/check-finished', { method: 'POST' });
         const payload = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(payload?.error || 'Biten maçlar kontrol edilemedi.');
+        if (!res.ok) throw new Error(payload?.message || payload?.error || 'Biten maçlar kontrol edilemedi.');
         await fetchAlerts();
         showBanner(payload.message || `${payload.moved_count || 0} maç taşındı.`);
       } catch (error) {
         showBanner(error.message || 'Biten maçlar kontrol edilemedi.', 'error');
       } finally {
         if (button) button.disabled = false;
+        if (button) button.textContent = originalText || 'Bitenleri Kontrol Et';
       }
     }
 

@@ -29,8 +29,8 @@ Yakın dönemde legacy `C_A` ve `100 Profil` profil mantığı runtime, UI, scor
 
 ## Bilinen Hatalar
 
-Şu an doğrulanmış açık bug bu dosyada kayıtlı değil. En olası hata sınıfları scraper kırılmaları, sonuçlandırma yön uyumsuzlukları ve dashboard render regresyonlarıdır.
+Güncel hata/risk listesi `docs/KNOWN_ISSUES.md` dosyasına kaydedildi. En öncelikli başlıklar Telegram gönderim durumunun yanlış loglanması, silinen maçlarda final olmayan skordan sonuç hesaplanması, DB migration riski ve geçersiz yönün sessizce `ALT` kabul edilmesidir.
 
 ## Sonraki Oturumlarda Nereden Devam Edilmeli
 
-`AGENTS.md`, ardından bu dosya ve `PROJECT_MAP.md` ile başla. Yeni buglarda önce özellik alanını belirle ve sadece haritada işaretlenen dosyaları incele. Davranış değişikliklerinde mümkünse `tests/` altında odaklı test ekle/güncelle ve kalıcı kararları `docs/DECISIONS.md` içine işle.
+`AGENTS.md`, ardından bu dosya, `PROJECT_MAP.md` ve `docs/KNOWN_ISSUES.md` ile başla. Yeni buglarda önce özellik alanını belirle ve sadece haritada işaretlenen dosyaları incele. Davranış değişikliklerinde mümkünse `tests/` altında odaklı test ekle/güncelle ve kalıcı kararları `docs/DECISIONS.md` içine işle.

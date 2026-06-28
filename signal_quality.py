@@ -310,7 +310,7 @@ def calculate_signal_quality(match_data: dict) -> dict:
     if caps:
         final_score = min(final_score, min(caps))
 
-    label = f"DENEYSEL / {_quality_label(final_score)}"
+    label = _quality_label(final_score)
     risk_note = "; ".join(dict.fromkeys(risk_notes)) if risk_notes else ""
     if not risk_note:
         risk_note = "Belirgin ek risk notu yok."
@@ -326,9 +326,6 @@ def calculate_signal_quality(match_data: dict) -> dict:
     )
 
     return {
-        "score_version": "sk-v2.0-expert",
-        "score_type": "expert_evidence",
-        "validation_status": "shadow",
         "quality_score": final_score,
         "quality_label": label,
         "components": components,

@@ -23,13 +23,10 @@ def quality(**overrides):
     return calculate_signal_quality(payload)
 
 
-class SignalQualityV2Tests(unittest.TestCase):
+class SignalQualityTests(unittest.TestCase):
     def test_high_quality_requires_complete_basketball_evidence(self):
         result = quality()
-        self.assertEqual(result["score_version"], "sk-v2.0-expert")
-        self.assertEqual(result["score_type"], "expert_evidence")
-        self.assertEqual(result["validation_status"], "shadow")
-        self.assertTrue(result["quality_label"].startswith("DENEYSEL / "))
+        self.assertEqual(result["quality_label"], "YÜKSEK KALİTE")
         self.assertGreaterEqual(result["quality_score"], 80)
 
     def test_missing_clock_is_capped_below_watch(self):

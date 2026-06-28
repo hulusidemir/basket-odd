@@ -96,6 +96,13 @@ def evaluate_signal_result(direction: str, live_line: float, final_total: float)
     return ""
 
 
+def _float_or_none(value) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _normalize_direction(direction: str) -> str:
     direction_key = (direction or "").strip().upper().replace("UST", "ÜST")
     if direction_key in {"ALT", "ÜST"}:
@@ -112,6 +119,99 @@ def canonical_alert_direction(alert: dict) -> str:
     return (
         _normalize_direction(analysis.get("final_direction") or analysis.get("direction") or alert.get("direction"))
         or _normalize_direction(alert.get("direction"))
+    )
+
+
+def _empty_result_summary(tracked_count: int = 0) -> dict:
+    return {
+        "tracked_count": tracked_count,
+        "checked_count": 0,
+        "finished_match_count": 0,
+        "updated_count": 0,
+        "successful_count": 0,
+        "failed_count": 0,
+        "push_count": 0,
+        "in_progress_count": 0,
+        "details": [],
+    }
+
+
+def _settle_deleted_match_from_final_score(
+    db,
+    summary: dict,
+    match_id: str,
+    final_score: str,
+    final_status: str,
+    *,
+    count_checked: bool = True,
+) -> bool:
+    if not match_id or not is_final_status(final_status):
+        return False
+    final_total = parse_score_total(final_score)
+    if final_total is None:
+        return False
+
+    alerts = db.get_deleted_alerts_for_result_check(match_id)
+    if not alerts:
+        return False
+
+    if count_checked:
+        summary["checked_count"] += 1
+    summary["finished_match_count"] += 1
+
+    for alert in alerts:
+        playable_direction = canonical_alert_direction(alert)
+        live_line = _float_or_none(alert.get("live"))
+        if live_line is None:
+            continue
+        signal_result = evaluate_signal_result(playable_direction, live_line, final_total)
+        if not signal_result:
+            continue
+
+        updated = db.update_deleted_alert_final_result(
+            alert["id"],
+            result=signal_result,
+            final_score=final_score,
+            final_status=final_status_label(final_status),
+            direction=playable_direction,
+        )
+        if not updated:
+            continue
+
+        summary["updated_count"] += 1
+        if signal_result == "Başarılı":
+            summary["successful_count"] += 1
+        elif signal_result == "Başarısız":
+            summary["failed_count"] += 1
+        elif signal_result == "İade":
+            summary["push_count"] += 1
+
+        summary["details"].append({
+            "id": alert["id"],
+            "match_id": alert["match_id"],
+            "match_name": alert["match_name"],
+            "direction": playable_direction,
+            "live_line": live_line,
+            "final_score": final_score,
+            "final_total": final_total,
+            "result": signal_result,
+        })
+
+    return True
+
+
+def _deleted_result_message(summary: dict) -> str:
+    if summary["tracked_count"] == 0:
+        return "Kontrol edilecek silinen maç bulunamadı."
+    if summary["checked_count"] == 0:
+        return (
+            f"{summary['tracked_count']} maç kontrol listesinde, ancak maç sayfasına ulaşılamadı "
+            "ve kayıtlı final skor bulunamadı. Biraz sonra tekrar deneyin."
+        )
+    return (
+        f"{summary['checked_count']} maç kontrol edildi, "
+        f"{summary['finished_match_count']} maç bitmiş bulundu, "
+        f"{summary['updated_count']} sinyal güncellendi."
     )
 
 
@@ -313,9 +413,14 @@ class AiscoreFinishedMatchChecker:
 
                   if (!status) {
                     const live = mainLeafs.find(o => liveRe.test(o.txt) || clockRe.test(o.txt));
+                    const final = mainLeafs.find(o => finishedRe.test(o.txt) && o.rect.top < 360);
                     if (live) {
                       statusEl = live.el;
                       status = live.txt;
+                    } else if (final) {
+                      statusEl = final.el;
+                      status = 'Full Time';
+                      isFinished = true;
                     }
                   }
 
@@ -426,17 +531,7 @@ async def run_deleted_match_result_cycle(db, config) -> dict:
     logger.info("Checking %s deleted matches for final results.", len(tracked_matches))
 
     if not tracked_matches:
-        return {
-            "tracked_count": 0,
-            "checked_count": 0,
-            "finished_match_count": 0,
-            "updated_count": 0,
-            "successful_count": 0,
-            "failed_count": 0,
-            "push_count": 0,
-            "in_progress_count": 0,
-            "details": [],
-        }
+        return {**_empty_result_summary(), "message": "Kontrol edilecek silinen maç bulunamadı."}
 
     return await _run_deleted_match_result_check_for_matches(db, config, tracked_matches)
 
@@ -445,17 +540,7 @@ async def run_single_deleted_match_result_check(db, config, alert_id: int) -> di
     # Unlike the bulk cycle, a user-triggered single recheck must re-evaluate the
     # alert regardless of its current `result` — otherwise pre-fix records stuck
     # with absurd scores (e.g. "8-12") can never be corrected via the UI button.
-    empty_summary = {
-        "tracked_count": 0,
-        "checked_count": 0,
-        "finished_match_count": 0,
-        "updated_count": 0,
-        "successful_count": 0,
-        "failed_count": 0,
-        "push_count": 0,
-        "in_progress_count": 0,
-        "details": [],
-    }
+    empty_summary = _empty_result_summary()
 
     alert = db.get_deleted_alert_by_id(alert_id)
     tracked_match = db.get_deleted_match_for_result_check_by_alert_id(alert_id)
@@ -465,16 +550,23 @@ async def run_single_deleted_match_result_check(db, config, alert_id: int) -> di
     if not match_alerts:
         match_alerts = [alert]
 
+    summary = _empty_result_summary(tracked_count=1)
+    if _settle_deleted_match_from_final_score(
+        db,
+        summary,
+        alert["match_id"],
+        tracked_match.get("score", ""),
+        tracked_match.get("status", ""),
+    ):
+        summary["message"] = _deleted_result_message(summary)
+        return summary
+
     checker = AiscoreFinishedMatchChecker(
         page_timeout_ms=config.PAGE_TIMEOUT_MS,
         concurrency=1,
     )
     results = await checker.check_matches([tracked_match])
-    summary = {
-        **empty_summary,
-        "tracked_count": 1,
-        "checked_count": len(results),
-    }
+    summary["checked_count"] = len(results)
 
     if not results:
         summary["message"] = "Maç sayfasına ulaşılamadı."
@@ -498,68 +590,42 @@ async def run_single_deleted_match_result_check(db, config, alert_id: int) -> di
         )
         return summary
 
-    summary["finished_match_count"] = 1
-    for item in match_alerts:
-        playable_direction = canonical_alert_direction(item)
-        signal_result = evaluate_signal_result(
-            playable_direction,
-            float(item.get("live") or 0),
-            final_total,
-        )
-        if not signal_result:
-            continue
-
-        updated = db.update_deleted_alert_final_result(
-            item["id"],
-            result=signal_result,
-            final_score=final_score,
-            final_status=final_status_label(result.get("status", "")),
-            direction=playable_direction,
-        )
-        if not updated:
-            continue
-
-        summary["updated_count"] += 1
-        if signal_result == "Başarılı":
-            summary["successful_count"] += 1
-        elif signal_result == "Başarısız":
-            summary["failed_count"] += 1
-        elif signal_result == "İade":
-            summary["push_count"] += 1
-        summary["details"].append({
-            "id": item["id"],
-            "match_id": item["match_id"],
-            "match_name": item["match_name"],
-            "direction": playable_direction,
-            "live_line": float(item["live"]),
-            "final_score": final_score,
-            "final_total": final_total,
-            "result": signal_result,
-        })
-    summary["message"] = (
-        f"Maç sayfası yeniden kontrol edildi: {summary['updated_count']} sinyal güncellendi "
-        f"({final_score})."
+    _settle_deleted_match_from_final_score(
+        db,
+        summary,
+        alert["match_id"],
+        final_score,
+        result.get("status", ""),
+        count_checked=False,
     )
+    summary["message"] = _deleted_result_message(summary)
     return summary
 
 
 async def _run_deleted_match_result_check_for_matches(db, config, tracked_matches: list[dict]) -> dict:
+    summary = _empty_result_summary(tracked_count=len(tracked_matches))
+    remaining_matches = []
+    for match in tracked_matches:
+        settled = _settle_deleted_match_from_final_score(
+            db,
+            summary,
+            match.get("match_id", ""),
+            match.get("score", ""),
+            match.get("status", ""),
+        )
+        if not settled:
+            remaining_matches.append(match)
+
+    if not remaining_matches:
+        summary["message"] = _deleted_result_message(summary)
+        return summary
+
     checker = AiscoreFinishedMatchChecker(
         page_timeout_ms=config.PAGE_TIMEOUT_MS,
         concurrency=4,
     )
-    results = await checker.check_matches(tracked_matches)
-    summary = {
-        "tracked_count": len(tracked_matches),
-        "checked_count": len(results),
-        "finished_match_count": 0,
-        "updated_count": 0,
-        "successful_count": 0,
-        "failed_count": 0,
-        "push_count": 0,
-        "in_progress_count": 0,
-        "details": [],
-    }
+    results = await checker.check_matches(remaining_matches)
+    summary["checked_count"] += len(results)
 
     for result in results:
         if not result.get("is_finished"):
@@ -574,45 +640,14 @@ async def _run_deleted_match_result_check_for_matches(db, config, tracked_matche
             logger.debug("Deleted match is finished but score is not parseable: %s", result.get("match_id"))
             continue
 
-        summary["finished_match_count"] += 1
-        alerts = db.get_deleted_alerts_for_result_check(result["match_id"])
-        for alert in alerts:
-            playable_direction = canonical_alert_direction(alert)
-            signal_result = evaluate_signal_result(
-                playable_direction,
-                float(alert.get("live") or 0),
-                final_total,
-            )
-            if not signal_result:
-                continue
+        _settle_deleted_match_from_final_score(
+            db,
+            summary,
+            result["match_id"],
+            final_score,
+            result.get("status", ""),
+            count_checked=False,
+        )
 
-            updated = db.update_deleted_alert_final_result(
-                alert["id"],
-                result=signal_result,
-                final_score=final_score,
-                final_status=final_status_label(result.get("status", "")),
-                direction=playable_direction,
-            )
-            if not updated:
-                continue
-
-            summary["updated_count"] += 1
-            if signal_result == "Başarılı":
-                summary["successful_count"] += 1
-            elif signal_result == "Başarısız":
-                summary["failed_count"] += 1
-            elif signal_result == "İade":
-                summary["push_count"] += 1
-
-            summary["details"].append({
-                "id": alert["id"],
-                "match_id": alert["match_id"],
-                "match_name": alert["match_name"],
-                "direction": playable_direction,
-                "live_line": float(alert["live"]),
-                "final_score": final_score,
-                "final_total": final_total,
-                "result": signal_result,
-            })
-
+    summary["message"] = _deleted_result_message(summary)
     return summary
