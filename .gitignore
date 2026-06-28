@@ -15,3 +15,11 @@ discovery_output.json
 CLAUDE.md
 *.service
 *.db.*
+
+# Codex/local agent context
+.codex/
+AGENTS.md
+CODEX.md
+docs/PROJECT_MAP.md
+docs/CURRENT_STATE.md
+docs/DECISIONS.md
