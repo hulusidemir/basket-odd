@@ -523,6 +523,33 @@
       background: rgba(6,182,212,0.28);
       transform: scale(1.06);
     }
+    .bucket-star {
+      min-width: 32px;
+      padding-inline: 8px;
+      color: #facc15;
+      border-color: rgba(250,204,21,0.55);
+      background: rgba(250,204,21,0.14);
+      font-size: 14px;
+      font-weight: 950;
+    }
+    .bucket-star:hover {
+      background: rgba(250,204,21,0.26);
+      transform: scale(1.06);
+    }
+    .bucket-history-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 9px;
+      margin-top: 10px;
+    }
+    .bucket-history-box {
+      border: 1px solid rgba(250,204,21,0.22);
+      background: rgba(250,204,21,0.08);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .bucket-history-box span { display: block; color: var(--text-soft); font-size: 11px; font-weight: 800; }
+    .bucket-history-box strong { display: block; margin-top: 3px; color: var(--text); font-size: 16px; }
     .quality-info-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.55);
       display: flex; align-items: center; justify-content: center;
@@ -2501,7 +2528,17 @@
       const score = num(alert.signal_quality_score ?? quality.quality_score);
       const label = String(alert.signal_quality_label || quality.quality_label || '-');
       const text = score === null ? '-' : String(Math.round(score));
-      return `<span class="quality-stack"><button type="button" class="badge small-badge quality-badge ${signalQualityTone(score)}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(label)}">${escapeHtml(text)}</button></span>`;
+      return `<span class="quality-stack"><button type="button" class="badge small-badge quality-badge ${signalQualityTone(score)}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(label)}">${escapeHtml(text)}</button>${bucketStarsHtml(alert)}</span>`;
+    }
+
+    function bucketStarsHtml(alert) {
+      const stars = Array.isArray(alert.bucket_stars) ? alert.bucket_stars : [];
+      if (!stars.length) return '';
+      return stars.map(star => {
+        const id = String(star.id || '');
+        const title = `${star.label || 'Yıldızlı kova'} · geçmiş kovayı aç`;
+        return `<button type="button" class="badge small-badge quality-badge bucket-star" onclick="event.stopPropagation();openBucketStarModal(${Number(alert.id || 0)}, '${escapeHtml(id)}')" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">★</button>`;
+      }).join('');
     }
 
     function scoreButtonHtml(alert, extraClass = '') {
@@ -3426,6 +3463,64 @@
           <div class="sig-section-title">Kalite Gerekçesi</div>
           <div class="sig-card"><div class="sig-help">${escapeHtml(quality.reason || alert.signal_quality_reason || '-')}</div></div>
           <div class="sig-help" style="margin-top:10px;">Sinyal Kalitesi yalnızca veri kalitesi ve model güven puanıdır; kesinlik veya finansal karar anlamı taşımaz.</div>
+        </div>
+      `;
+      $('signalModal').classList.add('active');
+    }
+
+    function bucketRateText(history) {
+      if (!history || !Number.isFinite(Number(history.resolved)) || Number(history.resolved) <= 0) return '-';
+      const rate = Number(history.rate);
+      const success = Number(history.success || 0);
+      const resolved = Number(history.resolved || 0);
+      return `${success}/${resolved}${Number.isFinite(rate) ? ` · %${rate.toFixed(1)}` : ''}`;
+    }
+
+    function bucketSplitText(split) {
+      if (!split || !Number.isFinite(Number(split.resolved)) || Number(split.resolved) <= 0) return '-';
+      const rate = Number(split.rate);
+      return `${Number(split.success || 0)}/${Number(split.resolved || 0)}${Number.isFinite(rate) ? ` · %${rate.toFixed(1)}` : ''}`;
+    }
+
+    function openBucketStarModal(id, bucketId) {
+      const alert = allAlerts.find(a => Number(a.id) === Number(id));
+      if (!alert) return;
+      const stars = Array.isArray(alert.bucket_stars) ? alert.bucket_stars : [];
+      const star = stars.find(item => String(item.id || '') === String(bucketId || '')) || stars[0];
+      if (!star) return;
+      const history = star.history && typeof star.history === 'object' ? star.history : {};
+      const values = star.values && typeof star.values === 'object' ? star.values : {};
+      const wilson = Number(history.wilson_low);
+      $('signalModalTitle').textContent = `Yıldızlı Kova - ${cleanMatchName(alert.match_name)}`;
+      $('signalModalBody').innerHTML = `
+        <div style="padding:16px 18px;line-height:1.5;">
+          <div class="sig-card">
+            <div class="row"><span>Kova</span><strong>${escapeHtml(star.label || '-')}</strong></div>
+            <div class="row"><span>Yön</span><strong>${escapeHtml(star.direction || '-')}</strong></div>
+            <div class="row"><span>Durum</span><strong>${escapeHtml(star.headline || '-')}</strong></div>
+          </div>
+          <div class="bucket-history-grid">
+            <div class="bucket-history-box"><span>Geçmiş Başarı</span><strong>${escapeHtml(bucketRateText(history))}</strong></div>
+            <div class="bucket-history-box"><span>İlk Yarı</span><strong>${escapeHtml(bucketSplitText(history.first_half))}</strong></div>
+            <div class="bucket-history-box"><span>Son Yarı</span><strong>${escapeHtml(bucketSplitText(history.second_half))}</strong></div>
+          </div>
+          <div class="sig-section-title">Kova Kuralı</div>
+          <div class="sig-card"><div class="sig-help">${escapeHtml(star.rule || '-')}</div></div>
+          <div class="sig-section-title">Bu Sinyaldeki Değerler</div>
+          <div class="sig-card">
+            <div class="row"><span>Canlı Barem</span><strong>${qualityValue(values.live)}</strong></div>
+            <div class="row"><span>Adil Barem</span><strong>${qualityValue(values.fair)}</strong></div>
+            <div class="row"><span>Projeksiyon</span><strong>${qualityValue(values.projected)}</strong></div>
+            <div class="row"><span>Adil - Canlı</span><strong>${qualityValue(values.fair_edge)}</strong></div>
+            <div class="row"><span>Projeksiyon - Canlı</span><strong>${qualityValue(values.projected_gap)}</strong></div>
+            <div class="row"><span>Adil - Projeksiyon</span><strong>${qualityValue(values.fair_projected_gap)}</strong></div>
+          </div>
+          <div class="sig-section-title">Analist Notu</div>
+          <div class="sig-card"><div class="sig-help">${escapeHtml(star.analysis_note || '-')}</div></div>
+          <div class="sig-help" style="margin-top:10px;">
+            Wilson alt sınırı: ${Number.isFinite(wilson) ? `%${wilson.toFixed(1)}` : '-'}.
+            ${escapeHtml(star.warning || 'Bu etiket tek başına kesinlik anlamı taşımaz.')}
+          </div>
         </div>
       `;
       $('signalModal').classList.add('active');

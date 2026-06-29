@@ -26,6 +26,7 @@ from finished_match_service import (
 )
 from aiscore_scraper import AiscoreScraper
 from signal_analysis import build_backtest_profile, build_signal_analysis, enrich_analysis_with_backtest
+from signal_buckets import build_signal_bucket_profile, matching_signal_buckets
 from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
 from signal_quality import calculate_signal_quality
 
@@ -382,6 +383,7 @@ def enrich_alerts_with_analysis(
     history_profile: dict | None = None,
     list_profile: dict | None = None,
     league_quality_profile: dict | None = None,
+    bucket_profile: dict | None = None,
     persist_signal_quality: bool = False,
 ) -> list[dict]:
     previous_map = _previous_directions_by_alert_id(alerts)
@@ -453,6 +455,7 @@ def enrich_alerts_with_analysis(
         alert["projection_quality"] = analysis.get("projection_quality")
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
         _apply_canonical_signal_direction(alert, analysis)
+        alert["bucket_stars"] = matching_signal_buckets(alert, analysis, bucket_profile)
         legacy_quality = build_quality_tag(alert, list_profile)
         alert["quality_label"] = legacy_quality["label"]
         alert["quality_tone"] = legacy_quality["tone"]
@@ -635,12 +638,14 @@ def _build_live_dashboard_rows(
     persist_signal_quality: bool = False,
 ) -> list[dict]:
     deleted_rows = db.recent_deleted_alerts(limit=None)
+    bucket_profile = build_signal_bucket_profile(deleted_rows)
     enriched = enrich_alerts_with_analysis(
         rows,
         build_backtest_profile(deleted_rows),
         _build_history_profile(deleted_rows),
         build_signal_list_profile(db.list_signal_list_entries()),
         _build_league_quality_profile(deleted_rows),
+        bucket_profile,
         persist_signal_quality=persist_signal_quality,
     )
     followed_ids = db.upcoming_followed_match_ids([row.get("match_id") for row in enriched])
@@ -788,6 +793,7 @@ def _enrich_deleted_alert(
     history_profile: dict | None = None,
     league_quality_profile: dict | None = None,
     previous_directions: list[str] | None = None,
+    bucket_profile: dict | None = None,
 ) -> dict:
     """Read frozen display state, then evaluate today's profile labels for reports."""
     raw = dict(alert)
@@ -814,6 +820,7 @@ def _enrich_deleted_alert(
             result[key] = raw[key]
     analysis = result.get("analysis") if isinstance(result.get("analysis"), dict) else _parse_analysis(raw.get("ai_analysis"))
     _apply_canonical_signal_direction(result, analysis)
+    result["bucket_stars"] = matching_signal_buckets(result, analysis, bucket_profile)
     _apply_current_deleted_result(result)
     if history_profile is not None and not isinstance(result.get("history_guard"), dict):
         result["history_guard"] = _build_alert_history_guard(result, history_profile)
@@ -827,9 +834,10 @@ def _lightweight_enrich_deleted_alerts(
     backtest_profile: dict | None = None,
     league_quality_profile: dict | None = None,
     history_profile: dict | None = None,
+    bucket_profile: dict | None = None,
 ) -> list[dict]:
     return [
-        _enrich_deleted_alert(alert, full=False, history_profile=history_profile)
+        _enrich_deleted_alert(alert, full=False, history_profile=history_profile, bucket_profile=bucket_profile)
         for alert in alerts
     ]
 
@@ -839,7 +847,11 @@ def api_deleted_matches():
     raw_limit = request.args.get("limit", type=int)
     all_rows = db.recent_deleted_alerts(limit=None)
     rows = all_rows if raw_limit is None or raw_limit <= 0 else all_rows[:raw_limit]
-    return jsonify(_lightweight_enrich_deleted_alerts(rows, history_profile=_build_history_profile(all_rows)))
+    return jsonify(_lightweight_enrich_deleted_alerts(
+        rows,
+        history_profile=_build_history_profile(all_rows),
+        bucket_profile=build_signal_bucket_profile(all_rows),
+    ))
 
 
 @app.route("/api/deleted-matches/<int:alert_id>/details")
@@ -848,14 +860,22 @@ def api_deleted_match_details(alert_id: int):
     target = next((row for row in all_rows if int(row.get("id") or 0) == alert_id), None)
     if not target:
         return jsonify({"error": "not_found"}), 404
-    return jsonify(_enrich_deleted_alert(target, full=True, history_profile=_build_history_profile(all_rows)))
+    return jsonify(_enrich_deleted_alert(
+        target,
+        full=True,
+        history_profile=_build_history_profile(all_rows),
+        bucket_profile=build_signal_bucket_profile(all_rows),
+    ))
 
 
 @app.route("/api/deleted-matches/export.csv")
 def api_export_finished_deleted_matches_csv():
     deleted_rows = db.recent_deleted_alerts(limit=None)
     rows = [
-        row for row in _lightweight_enrich_deleted_alerts(deleted_rows)
+        row for row in _lightweight_enrich_deleted_alerts(
+            deleted_rows,
+            bucket_profile=build_signal_bucket_profile(deleted_rows),
+        )
         if str(row.get("result") or "").strip()
     ]
 
@@ -1561,7 +1581,12 @@ def api_deleted_matches_report():
     signals = db.recent_deleted_alerts(limit=None)
     backtest_profile = build_backtest_profile(signals)
     league_quality_profile = _build_league_quality_profile(signals)
-    signals = _lightweight_enrich_deleted_alerts(signals, backtest_profile, league_quality_profile)
+    signals = _lightweight_enrich_deleted_alerts(
+        signals,
+        backtest_profile,
+        league_quality_profile,
+        bucket_profile=build_signal_bucket_profile(signals),
+    )
     return jsonify(build_deleted_matches_report(signals))
 
 
@@ -2047,7 +2072,12 @@ def api_deleted_matches_insights():
     signals = db.recent_deleted_alerts(limit=None)
     backtest_profile = build_backtest_profile(signals)
     league_quality_profile = _build_league_quality_profile(signals)
-    signals = _lightweight_enrich_deleted_alerts(signals, backtest_profile, league_quality_profile)
+    signals = _lightweight_enrich_deleted_alerts(
+        signals,
+        backtest_profile,
+        league_quality_profile,
+        bucket_profile=build_signal_bucket_profile(signals),
+    )
     return jsonify(build_deleted_matches_insights(signals))
 
 
