@@ -969,18 +969,26 @@
 	      display: grid; grid-template-columns: repeat(4, 1fr);
 	      gap: 10px; margin: 14px 0 8px;
 	    }
+	    .simple-stats.context-stats {
+	      grid-template-columns: repeat(4, 1fr);
+	      margin-top: 0;
+	      margin-bottom: 14px;
+	    }
 	    .simple-stats > div {
 	      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
 	      border-radius: 10px; padding: 12px 10px; text-align: center;
 	    }
 	    .simple-stats .stat-num { font-size: 20px; font-weight: 900; line-height: 1.1; }
+	    .simple-stats.context-stats .stat-num { font-size: 19px; }
 	    .simple-stats .stat-num.live { color: #fde68a; }
 	    .simple-stats .stat-label { font-size: 10px; color: var(--text-soft); margin-top: 5px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
 	    .simple-stats .stat-sub { font-size: 11.5px; font-weight: 800; margin-top: 4px; }
 	    .simple-stats .stat-sub.alt { color: #93c5fd; }
 	    .simple-stats .stat-sub.ust { color: #fca5a5; }
+	    .simple-stats .stat-sub.muted { color: var(--text-soft); font-weight: 700; }
 	    @media (max-width: 720px) {
 	      .simple-stats { grid-template-columns: repeat(2, 1fr); }
+	      .simple-stats.context-stats { grid-template-columns: repeat(2, 1fr); }
 	    }
 	    .ppm-row {
 	      display: grid;
@@ -2643,6 +2651,36 @@
       const projectedGap = (Number.isFinite(projectedNum) && Number.isFinite(live)) ? (projectedNum - live) : null;
       const projectedGapStr = projectedGap === null ? '' : (projectedGap >= 0 ? '+' : '') + projectedGap.toFixed(1);
       const projectedGapCls = projectedGap === null ? '' : (projectedGap < 0 ? 'alt' : (projectedGap > 0 ? 'ust' : ''));
+      const teamContext = analysis.team_context || alert.team_context || {};
+      const h2hNum = Number(alert.h2h_total ?? analysis.h2h_total);
+      const h2hStr = Number.isFinite(h2hNum) ? h2hNum.toFixed(1) : '–';
+      const h2hGamesNum = Number(alert.h2h_games ?? analysis.h2h_games ?? teamContext.h2h_games);
+      const h2hSub = Number.isFinite(h2hGamesNum) ? `${Math.round(h2hGamesNum)} maç` : '';
+      const sfNum = Number(alert.team_recent_total ?? analysis.team_recent_total ?? teamContext.expected_total);
+      const sfStr = Number.isFinite(sfNum) ? sfNum.toFixed(1) : '–';
+      const firstProfile = (...profiles) => {
+        for (const profile of profiles) {
+          if (profile && typeof profile === 'object') {
+            const value = Number(profile.avg_total);
+            if (Number.isFinite(value)) return profile;
+          }
+        }
+        return null;
+      };
+      const homeSfProfile = firstProfile(alert.home_last6, analysis.home_last6, teamContext.home_last6_profile, teamContext.home_profile);
+      const awaySfProfile = firstProfile(alert.away_last6, analysis.away_last6, teamContext.away_last6_profile, teamContext.away_profile);
+      const sfStatHtml = (profile, label) => {
+        const avg = Number(profile && profile.avg_total);
+        if (!Number.isFinite(avg)) {
+          return `<div class="stat-num">–</div><div class="stat-label">${escapeHtml(label)}</div>`;
+        }
+        const ppg = Number(profile.ppg);
+        const oppg = Number(profile.oppg);
+        const games = profile.games || (Array.isArray(profile.scores) ? profile.scores.length : null) || '-';
+        const source = profile.source_label || `Son ${games} maç`;
+        const parts = `${Number.isFinite(ppg) ? ppg.toFixed(1) : '-'} + ${Number.isFinite(oppg) ? oppg.toFixed(1) : '-'} · ${games} maç`;
+        return `<div class="stat-num">${avg.toFixed(1)}</div><div class="stat-label">${escapeHtml(label)}</div><div class="stat-sub muted">${escapeHtml(parts)}</div><div class="stat-sub muted">${escapeHtml(source)}</div>`;
+      };
       const matchPpmNum = Number(analysis.match_ppm);
       const matchPpmStr = Number.isFinite(matchPpmNum) ? matchPpmNum.toFixed(2) : '–';
       const quarterPpmArr = Array.isArray(analysis.quarter_ppm) ? analysis.quarter_ppm : [];
@@ -2693,6 +2731,25 @@
               <div class="stat-num">${projectedStr}</div>
               <div class="stat-label">Projeksiyon</div>
               ${projectedGapStr ? `<div class="stat-sub ${projectedGapCls}">${projectedGapStr} fark</div>` : ''}
+            </div>
+          </div>
+
+          <!-- H2H / SF -->
+          <div class="simple-stats context-stats">
+            <div>
+              <div class="stat-num">${h2hStr}</div>
+              <div class="stat-label">H2H</div>
+              ${h2hSub ? `<div class="stat-sub muted">${escapeHtml(h2hSub)}</div>` : ''}
+            </div>
+            <div>
+              ${sfStatHtml(homeSfProfile, 'Ev SF')}
+            </div>
+            <div>
+              ${sfStatHtml(awaySfProfile, 'Dep SF')}
+            </div>
+            <div>
+              <div class="stat-num">${sfStr}</div>
+              <div class="stat-label">SF Ort.</div>
             </div>
           </div>
 

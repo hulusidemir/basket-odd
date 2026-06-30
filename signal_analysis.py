@@ -1562,7 +1562,7 @@ def build_signal_analysis(
     direction = legacy_direction
     line_delta_open = round(live - opening, 1)
     h2h_body = (context.get("h2h") or {}).get("body_text", "") if isinstance(context, dict) else ""
-    h2h_metrics = _extract_h2h_metrics(h2h_body, match_name, include_team_form=False)
+    h2h_metrics = _extract_h2h_metrics(h2h_body, match_name, include_team_form=True)
     clock = game_clock(status, match_name, tournament)
     market_total = _market_total(match, opening)
     live_projection = calculate_live_projection(
@@ -1592,8 +1592,7 @@ def build_signal_analysis(
     else:
         elapsed_minutes = None
 
-    # H2H verisini görünürlük için tutuyoruz; son form/SF canlı sinyal
-    # taramasından çıkarıldı. H2H adil barem hesabına ağırlık vermez.
+    # H2H/SF verisini görünürlük için tutuyoruz; adil barem hesabına ağırlık vermez.
     team_recent_total = h2h_metrics.get("expected_total")
     h2h_total = h2h_metrics.get("h2h_avg_total")
     h2h_games = h2h_metrics.get("h2h_games")
@@ -1669,7 +1668,7 @@ def build_signal_analysis(
         if "son 3-4-5 maç" in note.lower() or "son 6 yerine" in note.lower()
     ]
     other_h2h_quality_notes = [note for note in h2h_quality_notes if note not in form_quality_notes]
-    warnings = [h2h_note, history_note, *form_quality_notes, pace, script]
+    warnings = [h2h_note, history_note, pace, script]
     warnings.extend(live_projection.get("notes") or [])
     warnings.extend(other_h2h_quality_notes[:3])
     if pace_anomaly_note:

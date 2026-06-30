@@ -623,17 +623,42 @@
     .big-verdict-desc { font-size: 13.5px; color: var(--text-soft); margin-top: 5px; line-height: 1.5; }
     .big-verdict-rule { font-size: 12px; color: var(--text-soft); margin-top: 6px; font-style: italic; opacity: 0.85; }
     .simple-stats {
-      display: grid; grid-template-columns: repeat(3, 1fr);
+      display: grid; grid-template-columns: repeat(4, 1fr);
       gap: 10px; margin: 14px 0;
+    }
+    .simple-stats.context-stats {
+      grid-template-columns: repeat(4, 1fr);
+      margin-top: -4px;
     }
     .simple-stats > div {
       background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
       border-radius: 10px; padding: 12px 10px; text-align: center;
     }
     .simple-stats .stat-num { font-size: 22px; font-weight: 900; line-height: 1.1; }
+    .simple-stats.context-stats .stat-num { font-size: 20px; }
     .simple-stats .stat-num.live { color: #fde68a; }
     .simple-stats .stat-label { font-size: 10.5px; color: var(--text-soft); margin-top: 5px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
     .simple-stats .stat-sub { font-size: 12px; font-weight: 800; margin-top: 4px; }
+    .simple-stats .stat-sub.muted { color: var(--text-soft); font-weight: 700; }
+    .simple-stats .retry-btn {
+      margin-top: 7px;
+      padding: 5px 9px;
+      border-radius: 8px;
+      border: 1px solid rgba(147,197,253,0.34);
+      background: rgba(96,165,250,0.10);
+      color: #bfdbfe;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .simple-stats .retry-btn:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+    @media (max-width: 720px) {
+      .simple-stats { grid-template-columns: repeat(2, 1fr); }
+      .simple-stats.context-stats { grid-template-columns: repeat(2, 1fr); }
+    }
     .simple-warn {
       background: rgba(239,68,68,0.10); border: 1px solid rgba(239,68,68,0.34);
       border-radius: 10px; padding: 10px 14px; margin: 12px 0;
@@ -3552,6 +3577,40 @@
       }
     }
 
+    async function refreshH2hSf(alertId, button) {
+      if (!alertId) return;
+      const oldText = button ? button.textContent : '';
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Deneniyor...';
+      }
+      try {
+        const res = await fetch(`/api/alerts/${Number(alertId)}/h2h/refresh`, { method: 'POST' });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.detail || payload?.error || 'H2H/SF yenilenemedi.');
+        if (payload.alert) {
+          allAlerts = allAlerts.map(a => Number(a.id) === Number(alertId) ? payload.alert : a);
+          render();
+          openSignalModal(alertId);
+        }
+        const analysis = payload.analysis || {};
+        const hasH2h = num(analysis.h2h_total) !== null;
+        const hasSf = num(analysis.team_recent_total) !== null || num((analysis.team_context || {}).expected_total) !== null;
+        showBanner(
+          hasH2h || hasSf
+            ? `H2H/SF tekrar denendi${hasH2h ? ' · H2H geldi' : ''}${hasSf ? ' · SF geldi' : ''}.`
+            : 'Tekrar denendi ama H2H/SF hâlâ okunamadı.',
+          hasH2h || hasSf ? 'success' : 'error'
+        );
+      } catch (error) {
+        showBanner(error.message || 'H2H/SF yenilenemedi.', 'error');
+        if (button) {
+          button.disabled = false;
+          button.textContent = oldText || 'Tekrar dene';
+        }
+      }
+    }
+
     function historyGuardStatHtml(title, stat) {
       const s = stat && typeof stat === 'object' ? stat : {};
       const resolved = Number(s.resolved || 0);
@@ -3726,8 +3785,39 @@
       const fairEdge = num(alert.fair_edge ?? analysis.fair_edge);
       const projected = num(alert.projected ?? analysis.projected_total);
       const projectionQuality = num(alert.projection_quality ?? analysis.projection_quality);
-	      const h2h = num(alert.h2h_total ?? analysis.h2h_total);
-	      const selectionReason = alert.selection_reason || analysis.selection_reason || '';
+      const h2h = num(alert.h2h_total ?? analysis.h2h_total);
+      const teamContext = analysis.team_context || alert.team_context || {};
+      const sfTotal = num(alert.team_recent_total ?? analysis.team_recent_total ?? teamContext.expected_total);
+      const firstProfile = (...profiles) => {
+        for (const profile of profiles) {
+          if (profile && typeof profile === 'object') {
+            const value = num(profile.avg_total);
+            if (value !== null) return profile;
+          }
+        }
+        return null;
+      };
+      const homeSfProfile = firstProfile(alert.home_last6, analysis.home_last6, teamContext.home_last6_profile, teamContext.home_profile);
+      const awaySfProfile = firstProfile(alert.away_last6, analysis.away_last6, teamContext.away_last6_profile, teamContext.away_profile);
+      const sfStatHtml = (profile, label) => {
+        const avg = num(profile && profile.avg_total);
+        if (avg === null) {
+          return `<div class="stat-num">–</div><div class="stat-label">${escapeHtml(label)}</div><button class="retry-btn" onclick="refreshH2hSf(${Number(alert.id || 0)}, this)">Tekrar dene</button>`;
+        }
+        const ppg = num(profile.ppg);
+        const oppg = num(profile.oppg);
+        const games = profile.games || (Array.isArray(profile.scores) ? profile.scores.length : null) || '-';
+        const source = profile.source_label || `Son ${games} maç`;
+        const parts = `${ppg === null ? '-' : ppg.toFixed(1)} + ${oppg === null ? '-' : oppg.toFixed(1)} · ${games} maç`;
+        return `<div class="stat-num">${avg.toFixed(1)}</div><div class="stat-label">${escapeHtml(label)}</div><div class="stat-sub muted">${escapeHtml(parts)}</div><div class="stat-sub muted">${escapeHtml(source)}</div>`;
+      };
+      const h2hGames = num(alert.h2h_games ?? analysis.h2h_games ?? teamContext.h2h_games);
+      const h2hSub = h2hGames !== null ? `${Math.round(h2hGames)} maç` : '';
+      const projectedGap = projected !== null && live !== null ? projected - live : null;
+      const projectedGapStr = projectedGap === null ? '' : (projectedGap >= 0 ? '+' : '') + projectedGap.toFixed(1);
+      const projectedGapCls = projectedGap === null ? '' : (projectedGap < 0 ? 'alt-tag' : (projectedGap > 0 ? 'ust-tag' : ''));
+      const retryButton = '<button class="retry-btn" onclick="refreshH2hSf(' + Number(alert.id || 0) + ', this)">Tekrar dene</button>';
+      const selectionReason = alert.selection_reason || analysis.selection_reason || '';
 
       let edgeText = 'Adil barem hesaplanamadı. Bu sinyali sadece hat hareketi olarak izle.';
       let edgeClass = 'neutral';
@@ -3838,7 +3928,7 @@
           <!-- ANA CEVAP: ne oynayacağım? -->
           ${bigVerdictHtml(alert)}
 
-          <!-- 3 BASIT SAYI -->
+          <!-- ANA SAYILAR -->
           <div class="simple-stats">
             <div>
               <div class="stat-num">${fmt(alert.opening)}</div>
@@ -3851,8 +3941,34 @@
             </div>
             <div>
               <div class="stat-num">${fairNum !== null ? fairNum.toFixed(1) : '–'}</div>
-              <div class="stat-label">Sistem Hesabı</div>
+              <div class="stat-label">Adil Barem</div>
               ${fairEdge !== null ? `<div class="stat-sub ${fairEdgeCls}">${fairEdgeStr} fark</div>` : ''}
+            </div>
+            <div>
+              <div class="stat-num">${projected !== null ? projected.toFixed(1) : '–'}</div>
+              <div class="stat-label">Projeksiyon</div>
+              ${projectedGapStr ? `<div class="stat-sub ${projectedGapCls}">${projectedGapStr} fark</div>` : ''}
+            </div>
+          </div>
+
+          <!-- H2H / SF -->
+          <div class="simple-stats context-stats">
+            <div>
+              <div class="stat-num">${h2h !== null ? h2h.toFixed(1) : '–'}</div>
+              <div class="stat-label">H2H</div>
+              ${h2hSub ? `<div class="stat-sub muted">${escapeHtml(h2hSub)}</div>` : ''}
+              ${h2h === null ? retryButton : ''}
+            </div>
+            <div>
+              ${sfStatHtml(homeSfProfile, 'Ev SF')}
+            </div>
+            <div>
+              ${sfStatHtml(awaySfProfile, 'Dep SF')}
+            </div>
+            <div>
+              <div class="stat-num">${sfTotal !== null ? sfTotal.toFixed(1) : '–'}</div>
+              <div class="stat-label">SF Ort.</div>
+              ${sfTotal === null ? retryButton : ''}
             </div>
           </div>
 

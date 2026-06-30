@@ -398,7 +398,7 @@ def enrich_alerts_with_analysis(
             analysis = {}
         if backtest_profile is not None:
             analysis = enrich_analysis_with_backtest(alert, analysis, backtest_profile, config.THRESHOLD)
-        analysis = _sanitize_h2h_analysis(_drop_recent_form_analysis(_sanitize_recent_form_analysis(analysis)))
+        analysis = _sanitize_h2h_analysis(_sanitize_recent_form_analysis(analysis))
         if analysis.get("projected_total") is None:
             analysis = {**analysis}
             analysis["fair_line"] = None
@@ -427,9 +427,9 @@ def enrich_alerts_with_analysis(
         alert["fair_edge"] = analysis.get("fair_edge")
         alert["projected"] = analysis.get("projected_total")
         alert["market_total"] = analysis.get("market_total")
-        alert["team_recent_total"] = None
-        alert["home_last6"] = {}
-        alert["away_last6"] = {}
+        alert["team_recent_total"] = analysis.get("team_recent_total")
+        alert["home_last6"] = analysis.get("home_last6") if isinstance(analysis.get("home_last6"), dict) else {}
+        alert["away_last6"] = analysis.get("away_last6") if isinstance(analysis.get("away_last6"), dict) else {}
         alert["h2h_total"] = analysis.get("h2h_total")
         alert["history_total"] = analysis.get("history_total")
         alert["h2h_games"] = analysis.get("h2h_games")

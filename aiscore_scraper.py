@@ -1153,37 +1153,15 @@ class AiscoreScraper:
             except Exception:
                 pass
             await page.wait_for_timeout(1000)
+            for _ in range(2):
+                await page.evaluate("window.scrollBy(0, document.body.scrollHeight / 3)")
+                await page.wait_for_timeout(600)
 
             body = await page.evaluate(r"""
                 () => {
-                    const keyHits = (txt) => {
-                        const t = (txt || '').toLowerCase();
-                        let score = 0;
-                        if (/per game/.test(t)) score += 2;
-                        if (/points per match/.test(t)) score += 2;
-                        if (/opponent points/.test(t)) score += 2;
-                        if (/\bh2h\b/.test(t)) score += 1;
-                        if (/total points over%/.test(t)) score += 2;
-                        return score;
-                    };
                     const fullBody = (document.body.innerText || '').replace(/\s+/g, ' ').trim();
-                    const candidates = Array.from(document.querySelectorAll(
-                        'main, [class*="matchDetail"], [class*="match-detail"], ' +
-                        '[class*="h2h"], [class*="H2H"], [class*="head-to-head"], ' +
-                        '[class*="statistics"], [class*="stats"], article, #main, ' +
-                        '[class*="content"]'
-                    )).map(el => ({
-                        el,
-                        len: (el.innerText || '').trim().length,
-                        hits: keyHits(el.innerText || '')
-                    })).filter(c => c.len > 200);
-                    // Prefer narrow blocks with H2H keywords. We no longer need
-                    // last-match/SF sections for live signal analysis.
-                    candidates.sort((a, b) => (b.hits - a.hits) || (b.len - a.len));
-                    if (candidates.length > 0 && candidates[0].hits > 0) {
-                        return candidates[0].el.innerText.replace(/\s+/g, ' ').trim();
-                    }
-                    // If no candidate has relevant keywords, use whole body
+                    // SF/son-form rows can live outside the narrow H2H stats block.
+                    // Return the full page text so the parser can extract both.
                     return fullBody;
                 }
             """)
