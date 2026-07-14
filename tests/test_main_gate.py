@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from main import (
+    _ConsecutiveFailureAlertLatch,
     _normalize_match_payload,
     _scraper_health_summary,
     process_match,
@@ -65,6 +66,20 @@ def match_payload():
 
 
 class MainGateTests(unittest.IsolatedAsyncioTestCase):
+    def test_failure_alert_is_latched_until_a_healthy_cycle(self):
+        latch = _ConsecutiveFailureAlertLatch(threshold=5)
+
+        outcomes = [latch.record_failure() for _ in range(8)]
+
+        self.assertEqual([count for count, _alert in outcomes], list(range(1, 9)))
+        self.assertEqual(
+            [count for count, alert in outcomes if alert],
+            [5],
+        )
+        self.assertEqual(latch.record_success(), 8)
+        rearmed = [latch.record_failure() for _ in range(5)]
+        self.assertTrue(rearmed[-1][1])
+
     def test_transport_request_logs_are_suppressed_to_protect_tokens(self):
         setup_logging("INFO")
 

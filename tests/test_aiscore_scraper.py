@@ -10,6 +10,7 @@ from aiscore_scraper import (
     _redact_proxy_url,
     _safe_env_int,
     _select_market_line,
+    _status_from_play_by_play_hint,
 )
 
 
@@ -136,6 +137,26 @@ class _DetailPage:
 
 
 class AiscoreScraperTests(unittest.TestCase):
+    def test_play_by_play_status_recovers_period_clock(self):
+        self.assertEqual(
+            _status_from_play_by_play_hint({"period": 4, "clock": "02:48"}),
+            {"status": "Q4 02:48", "period_ended": False},
+        )
+        self.assertEqual(
+            _status_from_play_by_play_hint({"period": 4, "clock": "25.0"}),
+            {"status": "Q4 00:25", "period_ended": False},
+        )
+
+    def test_play_by_play_period_end_is_explicit(self):
+        self.assertEqual(
+            _status_from_play_by_play_hint({
+                "period": 4,
+                "clock": "0.0",
+                "period_ended": True,
+            }),
+            {"status": "Q4-Ended", "period_ended": True},
+        )
+
     def test_first_readable_bookmaker_line_is_used_without_median_selection(self):
         parsed = {"inplay": 142.5}
         snapshot = {
@@ -466,6 +487,89 @@ class AiscoreScraperTests(unittest.TestCase):
         self.assertEqual(result.reason, "totals_missing")
         self.assertFalse(result.degraded)
         self.assertTrue(result.retryable)
+
+    def test_overview_last_period_end_is_an_expected_finished_skip(self):
+        parsed = {
+            "opening": 160.5,
+            "prematch": 161.5,
+            "inplay": 175.5,
+            "matchName": "Home - Away",
+            "tournament": "FIBA",
+            "status": "",
+            "score": "90 - 64",
+            "isFinished": False,
+            "isQ4": False,
+            "remainingMinutes": None,
+            "hasLockedRows": False,
+            "quarterScores": {},
+            "oddsSnapshot": {},
+        }
+        page = _DetailPage(parsed)
+        scraper = AiscoreScraper(
+            "https://www.aiscore.com/basketball",
+            skip_h2h=True,
+        )
+        scraper._fetch_overview_data = AsyncMock(return_value={
+            "status": "Q4-Ended",
+            "score": "90 - 64",
+            "periodEnded": True,
+            "quarterScores": {
+                "home": [17, 24, 24, 25],
+                "away": [8, 17, 19, 20],
+            },
+        })
+
+        result = asyncio.run(
+            scraper._extract_match(
+                page,
+                "https://www.aiscore.com/basketball/match-home-away/abc123",
+            )
+        )
+
+        self.assertIsInstance(result, _MatchSkip)
+        self.assertEqual(result.reason, "finished")
+        self.assertFalse(result.degraded)
+
+    def test_overview_nuxt_finished_state_is_an_expected_skip(self):
+        parsed = {
+            "opening": 160.5,
+            "prematch": 161.5,
+            "inplay": 175.5,
+            "matchName": "Home - Away",
+            "tournament": "FIBA",
+            "status": "",
+            "score": "86 - 67",
+            "isFinished": False,
+            "isQ4": False,
+            "remainingMinutes": None,
+            "hasLockedRows": False,
+            "quarterScores": {},
+            "oddsSnapshot": {},
+        }
+        page = _DetailPage(parsed)
+        scraper = AiscoreScraper(
+            "https://www.aiscore.com/basketball",
+            skip_h2h=True,
+        )
+        scraper._fetch_overview_data = AsyncMock(return_value={
+            "score": "86 - 67",
+            "isFinished": True,
+            "quarterScores": {
+                "home": [24, 19, 21, 22],
+                "away": [18, 15, 16, 18],
+            },
+        })
+
+        result = asyncio.run(
+            scraper._extract_match(
+                page,
+                "https://www.aiscore.com/basketball/match-home-away/abc123",
+            )
+        )
+
+        self.assertIsInstance(result, _MatchSkip)
+        self.assertEqual(result.reason, "finished")
+        self.assertFalse(result.degraded)
 
 
 if __name__ == "__main__":

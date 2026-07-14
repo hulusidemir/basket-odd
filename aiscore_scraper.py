@@ -82,6 +82,44 @@ def _safe_env_int(name: str, default: int, *, minimum: int, maximum: int) -> int
     return value
 
 
+def _status_from_play_by_play_hint(value) -> dict:
+    """Build a real clock status from AiScore's latest play-by-play row."""
+    hint = value if isinstance(value, dict) else {}
+    try:
+        period = int(hint.get("period"))
+    except (TypeError, ValueError):
+        period = 0
+    if period < 1 or period > 4:
+        return {"status": "", "period_ended": False}
+
+    period_ended = bool(hint.get("period_ended"))
+    if period_ended:
+        return {"status": f"Q{period}-Ended", "period_ended": True}
+
+    raw_clock = str(hint.get("clock") or "").strip()
+    clock_match = re.fullmatch(r"(\d{1,2}):(\d{2})", raw_clock)
+    if clock_match:
+        minutes = int(clock_match.group(1))
+        seconds = int(clock_match.group(2))
+        if minutes <= 20 and seconds < 60:
+            return {
+                "status": f"Q{period} {minutes:02d}:{seconds:02d}",
+                "period_ended": False,
+            }
+
+    seconds_match = re.fullmatch(r"(\d{1,3})(?:\.\d+)?", raw_clock)
+    if seconds_match:
+        total_seconds = int(seconds_match.group(1))
+        if total_seconds <= 20 * 60:
+            minutes, seconds = divmod(total_seconds, 60)
+            return {
+                "status": f"Q{period} {minutes:02d}:{seconds:02d}",
+                "period_ended": False,
+            }
+
+    return {"status": "", "period_ended": False}
+
+
 def _valid_market_lines(values) -> list[float]:
     lines: list[float] = []
     if not isinstance(values, (list, tuple)):
@@ -1492,6 +1530,42 @@ class AiscoreScraper:
 
         match_id = self._extract_match_id(url)
 
+        if overview_data.get("isFinished"):
+            logger.debug("Skipping finished match from Nuxt state: %s", url)
+            return _MatchSkip("finished")
+
+        tournament = self._sanitize_tournament(parsed.get("tournament") or "", url)
+        status_text = str(parsed.get("status") or "").strip()
+        score_text = str(parsed.get("score") or "").strip()
+        match_name = str(parsed.get("matchName") or f"Match {match_id}").strip()
+        clock = game_clock(status_text, match_name, tournament)
+        home_score, away_score = parse_score(score_text)
+
+        if overview_data.get("periodEnded"):
+            last_regulation_period = (
+                clock.get("period") is not None
+                and clock.get("period") == clock.get("period_count")
+            )
+            if last_regulation_period:
+                if home_score is not None and home_score == away_score:
+                    logger.debug("Skipping regulation tie awaiting overtime: %s", url)
+                    return _MatchSkip("overtime")
+                logger.debug("Skipping finished match from play-by-play: %s", url)
+                return _MatchSkip("finished")
+
+        if (
+            not self.skip_h2h
+            and clock.get("period") == 4
+            and clock.get("remaining_min") is not None
+            and clock.get("remaining_min") <= 4.0
+        ):
+            logger.debug(
+                "Q4 <=4min remaining from overview, skipping: %s (%.1f min)",
+                url,
+                clock["remaining_min"],
+            )
+            return _MatchSkip("late_q4")
+
         h2h_body = ""
         if not self.skip_h2h:
             cached = self._h2h_cache.get(match_id)
@@ -1504,12 +1578,6 @@ class AiscoreScraper:
                         self._h2h_cache.pop(next(iter(self._h2h_cache)), None)
                     self._h2h_cache[match_id] = h2h_body
 
-        tournament = self._sanitize_tournament(parsed.get("tournament") or "", url)
-        status_text = str(parsed.get("status") or "").strip()
-        score_text = str(parsed.get("score") or "").strip()
-        match_name = str(parsed.get("matchName") or f"Match {match_id}").strip()
-        clock = game_clock(status_text, match_name, tournament)
-        home_score, away_score = parse_score(score_text)
         if (
             clock.get("period") is None
             or clock.get("remaining_min") is None
@@ -1550,7 +1618,7 @@ class AiscoreScraper:
                 timeout=self.page_timeout_ms,
             )
             await self._wait_for_match_page_ready(page)
-            return await page.evaluate(r"""
+            result = await page.evaluate(r"""
                 () => {
                   const text = s => (s || '').replace(/\s+/g, ' ').trim();
 
@@ -1626,9 +1694,63 @@ class AiscoreScraper:
                     }
                   }
 
-                  return { status, score, quarterScores };
+                  const arrivedPeriods = Array.from(document.querySelectorAll(
+                    '.Qn button.matchArrive, .Qn .matchArrive'
+                  ))
+                    .map(el => text(el.innerText).match(/^Q([1-4])$/i))
+                    .filter(Boolean)
+                    .map(match => parseInt(match[1], 10));
+                  const scorePeriodCount = Math.max(
+                    (quarterScores.home || []).length,
+                    (quarterScores.away || []).length,
+                  );
+                  const period = Math.max(0, scorePeriodCount, ...arrivedPeriods);
+                  const latestPbpRow = document.querySelector(
+                    '.pbp .dataList, [class*="pbp"] [class~="dataList"]'
+                  );
+                  const clockEl = latestPbpRow
+                    ? latestPbpRow.querySelector('.time, [class~="time"]')
+                    : null;
+                  const latestEvent = latestPbpRow ? text(latestPbpRow.innerText) : '';
+                  const playByPlayStatus = {
+                    period,
+                    clock: clockEl ? text(clockEl.innerText) : '',
+                    period_ended: /\bperiod\s+end(?:ed)?\b/i.test(latestEvent),
+                  };
+
+                  const nuxtMatch = window.__NUXT__
+                    && window.__NUXT__.state
+                    && window.__NUXT__.state.basketball
+                    && window.__NUXT__.state.basketball.basketballDetailMatchData
+                    && window.__NUXT__.state.basketball.basketballDetailMatchData.match;
+                  const nuxtFinished = Boolean(nuxtMatch) && (
+                    Number(nuxtMatch.matchStatus) === 3
+                    || Number(nuxtMatch.statusId) === 10
+                  );
+
+                  return {
+                    status,
+                    score,
+                    quarterScores,
+                    playByPlayStatus,
+                    isFinished: nuxtFinished,
+                  };
                 }
             """)
+            if not result.get("status"):
+                fallback = _status_from_play_by_play_hint(
+                    result.get("playByPlayStatus")
+                )
+                if fallback["status"]:
+                    result["status"] = fallback["status"]
+                    result["periodEnded"] = fallback["period_ended"]
+                    logger.debug(
+                        "Recovered live status from play-by-play for %s: %s",
+                        url,
+                        fallback["status"],
+                    )
+            result.pop("playByPlayStatus", None)
+            return result
         except Exception as exc:
             logger.debug("Overview data fetch failed for %s: %s", url, exc)
             return {}

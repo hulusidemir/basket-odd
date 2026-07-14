@@ -26,6 +26,28 @@ from signal_quality import calculate_signal_quality
 from signal_repeat import live_total_delta
 
 
+class _ConsecutiveFailureAlertLatch:
+    """Send one alert per outage and re-arm only after a healthy cycle."""
+
+    def __init__(self, threshold: int = 5):
+        self.threshold = max(1, int(threshold))
+        self.count = 0
+        self.alert_sent = False
+
+    def record_failure(self) -> tuple[int, bool]:
+        self.count += 1
+        should_alert = self.count >= self.threshold and not self.alert_sent
+        if should_alert:
+            self.alert_sent = True
+        return self.count, should_alert
+
+    def record_success(self) -> int:
+        previous_count = self.count
+        self.count = 0
+        self.alert_sent = False
+        return previous_count
+
+
 def setup_logging(level: str):
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
@@ -528,7 +550,7 @@ async def run():
         config.MAX_SIGNALS_PER_MATCH, config.SAME_DIRECTION_MIN_LIVE_DELTA,
     )
 
-    consecutive_errors = 0
+    failure_alert = _ConsecutiveFailureAlertLatch(threshold=5)
 
     while True:
         try:
@@ -587,7 +609,7 @@ async def run():
                 or health_status in {"partial", "error", "failed", "degraded"}
             )
             if degraded:
-                consecutive_errors += 1
+                consecutive_errors, should_alert = failure_alert.record_failure()
                 log.warning(
                     "Degraded scrape cycle (#%s): health=%s failed_rows=%s/%s",
                     consecutive_errors,
@@ -595,23 +617,26 @@ async def run():
                     cycle_summary["failed"],
                     cycle_summary["received"],
                 )
-                if consecutive_errors >= 5:
+                if should_alert:
                     await notifier.send_error(
                         "5 consecutive degraded scrape cycles; check scraper health logs."
                     )
-                    consecutive_errors = 0
             else:
-                consecutive_errors = 0
+                previous_failures = failure_alert.record_success()
+                if previous_failures:
+                    log.info(
+                        "Scraper health recovered after %s degraded/error cycle(s).",
+                        previous_failures,
+                    )
 
         except KeyboardInterrupt:
             log.info("Bot stopped.")
             break
         except Exception as e:
-            consecutive_errors += 1
+            consecutive_errors, should_alert = failure_alert.record_failure()
             log.error(f"Loop error (#{consecutive_errors}): {e}", exc_info=True)
-            if consecutive_errors >= 5:
+            if should_alert:
                 await notifier.send_error(f"{consecutive_errors} consecutive errors: {e}")
-                consecutive_errors = 0
 
         delay = random.uniform(config.POLL_INTERVAL_MIN, config.POLL_INTERVAL_MAX)
         log.debug(f"Next check in {delay:.0f}s")
