@@ -12,12 +12,12 @@ class GatePolicy:
 
     policy_id: str = "trusted_70_v2"
     strategy_id: str = "calibrated_projection_q2q3"
-    strategy_version: int = 2
+    strategy_version: int = 3
     strategy_fingerprint: str = (
         "projection=shadow_projection_v1|fair=calibrated_fair_v1|"
-        "candidate=projection_edge_6_q2q3_v2|market=paired_consensus_v1|format=4x10_v1"
+        "candidate=projection_edge_6_q2q3_v2|market=single_bookmaker_v1|format=4x10_v1"
     )
-    evidence_epoch: str = "2026-07-13T00:00:00+00:00"
+    evidence_epoch: str = "2026-07-14T00:00:00+00:00"
     min_data_reliability: int = 85
     min_model_support: int = 80
     min_unique_resolved: int = 100
@@ -303,7 +303,9 @@ def evaluate_signal_gate(
         "match_id": match_id,
         "trial_eligible": trial_eligible,
         "state": state,
-        "telegram_allowed": state == "TRUSTED",
+        # Gate state describes playability/evidence. Delivery is intentionally
+        # broader: every threshold signal is sent with its PAS/TEST/ONAY label.
+        "telegram_allowed": True,
         "evidence": evidence,
         "reason_codes": reason_codes,
         "policy": asdict(policy),

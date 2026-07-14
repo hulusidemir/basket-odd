@@ -2152,10 +2152,10 @@
         };
       }
       if (state === 'SHADOW') {
-        return { state, tone: 'watch', text: 'TEST', label: `ARAŞTIRMA · Telegram kapalı · ${resolved}/100 sonuçlanmış benzersiz maç` };
+        return { state, tone: 'watch', text: 'TEST', label: `ARAŞTIRMA · ${resolved}/100 sonuçlanmış benzersiz maç` };
       }
       if (state === 'BLOCKED') {
-	        return { state, tone: 'pass', text: 'PAS', label: `${gatePrimaryReason(alert)} · Telegram kapalı` };
+	        return { state, tone: 'pass', text: 'PAS', label: gatePrimaryReason(alert) };
       }
       return { state, tone: 'neutral', text: 'ESKİ', label: 'Yeni güven politikasıyla doğrulanmamış eski kayıt' };
     }

@@ -4,6 +4,7 @@ import math
 import os
 import re
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from statistics import median
 from urllib.parse import urljoin, urlsplit, urlunsplit
@@ -12,6 +13,15 @@ from playwright.async_api import async_playwright
 from projection import game_clock, parse_score
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _MatchSkip:
+    """A deliberately omitted listing row, with explicit health semantics."""
+
+    reason: str
+    degraded: bool = False
+    retryable: bool = False
 
 
 def _redact_proxy_url(value: str) -> str:
@@ -129,6 +139,28 @@ def _normalize_market_snapshot(value) -> dict:
         "bookmaker_count": bookmaker_count,
         "paired_bookmaker_count": paired_bookmaker_count,
     }
+
+
+def _select_market_line(parsed: dict, snapshot: dict, name: str) -> float | None:
+    """Use the first readable bookmaker line; keep median only as a fallback."""
+    lines = _valid_market_lines(snapshot.get(f"{name}_lines"))
+    median_value = snapshot.get(f"{name}_median")
+    raw_value = parsed.get(name)
+    try:
+        median_line = float(median_value) if median_value is not None else None
+    except (TypeError, ValueError):
+        median_line = None
+    try:
+        raw_line = float(raw_value) if raw_value is not None else None
+    except (TypeError, ValueError):
+        raw_line = None
+
+    selected_line = lines[0] if lines else median_line
+    # A large conflict with the explicit DOM row indicates that positional
+    # parsing selected a neighbouring pre-match/odds row.
+    if selected_line is not None and raw_line is not None and abs(selected_line - raw_line) > 12:
+        return raw_line
+    return selected_line if selected_line is not None else raw_line
 
 
 class AiscoreScraper:
@@ -259,6 +291,7 @@ class AiscoreScraper:
             "attempted_count": 0,
             "unattempted_count": 0,
             "parsed_count": 0,
+            "skipped_count": 0,
             "failed_count": 0,
             "coverage_pct": None,
             "parse_coverage_pct": None,
@@ -333,9 +366,11 @@ class AiscoreScraper:
                         report["listing_parse_errors"]
                     )
                     if listing_failures >= report["listing_attempts"]:
-                        logger.warning("AIScore listing could not be loaded after 3 attempts. Assuming empty.")
-                        report["status"] = "empty"
-                        return []
+                        report["status"] = "error"
+                        raise RuntimeError(
+                            "AIScore listing could not be verified after "
+                            f"{report['listing_attempts']} attempts"
+                        )
                     reported_live_count = int(
                         (report.get("listing") or {}).get("live_tab_reported_count") or 0
                     )
@@ -418,16 +453,26 @@ class AiscoreScraper:
                     for r in results:
                         if isinstance(r, dict):
                             out.append(r)
+                        elif isinstance(r, _MatchSkip):
+                            if r.degraded:
+                                report["failed_count"] += 1
+                                report["errors"].append(f"{r.reason}: match data incomplete")
+                            else:
+                                report["skipped_count"] += 1
                         elif isinstance(r, Exception):
+                            report["failed_count"] += 1
                             error = f"{type(r).__name__}: {r}"
                             report["errors"].append(error)
                             logger.warning("Parallel match error: %s", r)
+                        else:
+                            report["failed_count"] += 1
+                            report["errors"].append("unexpected extraction result")
 
                 report["parsed_count"] = len(out)
-                report["failed_count"] = max(0, len(batch_links) - len(out))
                 expected_live_count = max(len(links), reported_live_count)
+                resolved_count = len(out) + report["skipped_count"]
                 report["coverage_pct"] = (
-                    round((len(out) / expected_live_count) * 100, 1)
+                    round((resolved_count / expected_live_count) * 100, 1)
                     if expected_live_count
                     else None
                 )
@@ -436,22 +481,28 @@ class AiscoreScraper:
                     if batch_links
                     else None
                 )
-                if links and not out:
+                if links and not out and report["failed_count"] and not report["skipped_count"]:
                     report["status"] = "error"
                     raise RuntimeError(
                         f"AIScore discovered {len(links)} live matches but parsed none"
                     )
-                if len(out) < len(links) or report["unverified_count"] > 0:
+                if (
+                    report["failed_count"] > 0
+                    or report["unattempted_count"] > 0
+                    or report["unverified_count"] > 0
+                ):
                     report["status"] = "partial"
                     logger.warning(
                         "AIScore live scrape was partial: reported=%s verified=%s "
-                        "unverified=%s attempted=%s parsed=%s coverage=%.1f%% "
+                        "unverified=%s attempted=%s parsed=%s skipped=%s failed=%s coverage=%.1f%% "
                         "parse_coverage=%.1f%%",
                         reported_live_count or "unknown",
                         len(links),
                         report["unverified_count"],
                         len(batch_links),
                         len(out),
+                        report["skipped_count"],
+                        report["failed_count"],
                         report["coverage_pct"],
                         report["parse_coverage_pct"] or 0.0,
                     )
@@ -478,7 +529,7 @@ class AiscoreScraper:
                 except Exception as exc:
                     logger.warning("AIScore browser cleanup failed: %s", exc)
 
-    async def _extract_single(self, context, link: str) -> dict | None:
+    async def _extract_single(self, context, link: str) -> dict | _MatchSkip:
         """Open a single match in a new tab, read data, and close.
         Retries up to 2 times if odds are temporarily locked/unavailable."""
         detail = await context.new_page()
@@ -486,21 +537,32 @@ class AiscoreScraper:
         max_retries = 2
         try:
             logger.debug("Checking match link: %s", link)
+            last_skip = _MatchSkip("unexpected_empty_result", degraded=True)
             for attempt in range(1, max_retries + 1):
                 logger.debug("Attempt %s/%s for %s", attempt, max_retries, link)
                 row = await self._extract_match(detail, link)
-                if row is not None:
+                if isinstance(row, dict):
                     return row
+                if isinstance(row, _MatchSkip):
+                    last_skip = row
+                    if not row.retryable:
+                        return row
                 if attempt < max_retries:
                     logger.debug(
-                        "Retry %s/%s for %s (odds possibly locked/loading)",
-                        attempt, max_retries - 1, link,
+                        "Retry %s/%s for %s after %s",
+                        attempt, max_retries - 1, link, last_skip.reason,
                     )
                     # _extract_match navigates to the canonical odds URL on every
                     # attempt, so a separate reload only duplicates network work.
                     await detail.wait_for_timeout(500)
-            logger.debug("All %s attempts failed for %s", max_retries, link)
-            return None
+            logger.debug(
+                "Extraction omitted after %s attempts for %s: reason=%s degraded=%s",
+                max_retries,
+                link,
+                last_skip.reason,
+                last_skip.degraded,
+            )
+            return last_skip
         except Exception as exc:
             logger.warning("Could not read match (%s): %s", link, exc)
             raise
@@ -724,14 +786,14 @@ class AiscoreScraper:
         }
 
         if not links and not authoritative_empty:
-            logger.warning(
-                "AIScore Live tab did not provide a verified zero count or any live links. Assuming empty."
+            raise RuntimeError(
+                "AIScore Live tab did not provide a verified zero count or any live links"
             )
 
         logger.info("Collected %s live match links (live_max=%s).", len(links), live_max)
         return links
 
-    async def _extract_match(self, page, url: str) -> dict | None:
+    async def _extract_match(self, page, url: str) -> dict | _MatchSkip:
         clean_url = url.rstrip("/")
         odds_url = clean_url if clean_url.endswith("/odds") else clean_url + "/odds"
         await page.goto(
@@ -925,6 +987,32 @@ class AiscoreScraper:
                 const prematchLines = [];
                 const inplayLines = [];
                 for (const content of contentDivs_snapshot) {
+                  // AiScore may render extra numeric rows inside a bookmaker
+                  // block. Explicit opening/in-play classes are authoritative;
+                  // positional 1st/2nd/3rd fallback must not override them.
+                  const explicitOpening = Array.from(
+                    content.querySelectorAll('[class*="openingBg"]')
+                  ).find(el => !isLocked(el) && findLine(text(el.innerText)) !== null);
+                  const explicitInplay = Array.from(
+                    content.querySelectorAll('[class*="inPlayBg"]')
+                  ).find(el => !isLocked(el) && findLine(text(el.innerText)) !== null);
+                  if (explicitOpening && explicitInplay) {
+                    openingLines.push(findLine(text(explicitOpening.innerText)));
+                    inplayLines.push(findLine(text(explicitInplay.innerText)));
+
+                    const prematchRow = Array.from(content.children).find(el => {
+                      const cls = (el.className || '').toString();
+                      return !isLocked(el)
+                        && !cls.includes('openingBg')
+                        && !cls.includes('inPlayBg')
+                        && findLine(text(el.innerText)) !== null;
+                    });
+                    if (prematchRow) {
+                      prematchLines.push(findLine(text(prematchRow.innerText)));
+                    }
+                    continue;
+                  }
+
                   const rows = Array.from(content.children).filter(el => !isLocked(el));
                   const lineRows = rows
                     .map(el => ({ el, value: findLine(text(el.innerText)), cls: (el.className || '').toString() }))
@@ -1251,6 +1339,11 @@ class AiscoreScraper:
               if (!oddsSnapshot.bookmaker_count && (
                 oddsSnapshot.opening_lines.length || oddsSnapshot.inplay_lines.length
               )) oddsSnapshot.bookmaker_count = 1;
+              if (!oddsSnapshot.paired_bookmaker_count
+                  && oddsSnapshot.opening_lines.length
+                  && oddsSnapshot.inplay_lines.length) {
+                oddsSnapshot.paired_bookmaker_count = 1;
+              }
 
               let quarterScores = { home: [], away: [], source: '', quality: 0 };
               if (score) {
@@ -1350,20 +1443,12 @@ class AiscoreScraper:
         status = parsed.get("status", "")
         if is_finished:
             logger.debug("Skipping finished match: %s (status=%s)", url, status)
-            return None
+            return _MatchSkip("finished")
 
         odds_snapshot = _normalize_market_snapshot(parsed.get("oddsSnapshot"))
         parsed["oddsSnapshot"] = odds_snapshot
-        opening = (
-            odds_snapshot.get("opening_median")
-            if odds_snapshot.get("opening_median") is not None
-            else parsed.get("opening")
-        )
-        inplay = (
-            odds_snapshot.get("inplay_median")
-            if odds_snapshot.get("inplay_median") is not None
-            else parsed.get("inplay")
-        )
+        opening = _select_market_line(parsed, odds_snapshot, "opening")
+        inplay = _select_market_line(parsed, odds_snapshot, "inplay")
         prematch = (
             odds_snapshot.get("prematch_median")
             if odds_snapshot.get("prematch_median") is not None
@@ -1373,15 +1458,19 @@ class AiscoreScraper:
         if opening is None or inplay is None:
             if locked:
                 logger.debug("Odds locked/suspended for %s (bookmaker updating)", url)
+                return _MatchSkip("odds_locked", retryable=True)
             else:
                 logger.debug("Could not find opening/inplay totals for %s", url)
-            return None
+                # A live fixture can legitimately have no totals market on
+                # AIScore. Retry once in case the market is still loading, but
+                # do not treat a persistently absent market as scraper damage.
+                return _MatchSkip("totals_missing", retryable=True)
 
         is_q4 = parsed.get("isQ4", False)
         remaining = parsed.get("remainingMinutes")
         if not self.skip_h2h and is_q4 and remaining is not None and remaining <= 4.0:
             logger.debug("Q4 <=4min remaining, skipping: %s (%.1f min)", url, remaining)
-            return None
+            return _MatchSkip("late_q4")
 
         parsed_quarter_scores = parsed.get("quarterScores") or {}
         needs_overview = (
@@ -1434,7 +1523,7 @@ class AiscoreScraper:
                 status_text,
                 score_text,
             )
-            return None
+            return _MatchSkip("incomplete_live_core", degraded=True, retryable=True)
 
         return {
             "match_id": match_id,

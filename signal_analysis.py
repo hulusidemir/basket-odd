@@ -1145,8 +1145,8 @@ def _classify_signal(decision: dict) -> dict:
     """
     Sabit araştırma aday kuralını ve insan-okunur açıklamayı döndürür.
 
-    Bu fonksiyon Telegram izni vermez. Telegram yalnız signal_gate içindeki
-    ileri tarihli benzersiz-maç kanıtı TRUSTED olduğunda açılır.
+    Bu fonksiyon oynanabilirlik sınıfını hazırlar. Telegram teslimatı PAS,
+    TEST ve ONAY kayıtlarının tamamı için açıktır.
     """
     final_direction = _normalize_direction(decision.get("direction"))
     fair_edge = _safe_float(decision.get("fair_edge"))
@@ -1200,8 +1200,7 @@ def _classify_signal(decision: dict) -> dict:
     return {
         "candidate_eligible": candidate_eligible,
         "candidate_rule_id": "projection_edge_6_q2q3_v2",
-        # Telegram izni yalnız prospective signal_gate tarafından verilir.
-        "send_allowed": False,
+        "send_allowed": True,
         "selection_reason": reason,
     }
 

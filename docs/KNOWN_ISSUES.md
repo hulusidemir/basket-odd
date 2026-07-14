@@ -7,8 +7,8 @@ Bu dosya aktif hata, operasyonel risk ve kanıt eksiklerini listeler. Yeni oturu
 ### 1. V2 stratejisinin %70 başarısı henüz kanıtlanmadı
 
 - İlgili dosyalar: `signal_gate.py`, `signal_analysis.py`, `signal_quality.py`, `projection.py`, `db.py`
-- Durum: `trusted_70_v2` bir hedef/evidence kapısıdır; isim veya eşikler gerçekleşmiş başarı oranı değildir. Kanıt yalnız `2026-07-13T00:00:00+00:00` epoch'undan sonra, sabit fingerprint ile oluşan ve otomatik final skorla sonuçlanan benzersiz `signal_trials` kayıtlarından gelir.
-- Etki: Veri/model önkoşulunu sağlayan sinyaller yeterli kanıt oluşana kadar `SHADOW`, sağlam veri/aday koşulunu sağlayamayanlar `BLOCKED` kalır. Bu dönemde Telegram sayısının çok düşük veya sıfır olması güvenlik politikasının beklenen sonucudur.
+- Durum: `trusted_70_v2` bir hedef/evidence kapısıdır; isim veya eşikler gerçekleşmiş başarı oranı değildir. Aktif tek-bookmaker sürüm 3 kanıtı yalnız `2026-07-14T00:00:00+00:00` epoch'undan sonra, sabit fingerprint ile oluşan ve otomatik final skorla sonuçlanan benzersiz `signal_trials` kayıtlarından gelir.
+- Etki: Veri/model önkoşulunu sağlayan sinyaller yeterli kanıt oluşana kadar `SHADOW`, sağlam veri/aday koşulunu sağlayamayanlar `BLOCKED` kalır. Tüm etiketler Telegram'a gönderilir; bu ayrım oynanabilirlik bilgisidir.
 - Sonraki adım: En az 100 benzersiz sonuçlanmış trial ve kapının tüm Wilson/blok/kapsam koşullarını bekle. Dashboard genel başarı yüzdesini veya silinen kayıt istatistiğini bu kanıtın yerine kullanma.
 
 ### 2. Adil barem ve projeksiyonun piyasa üstünlüğü kanıtlanmış değil
@@ -26,12 +26,12 @@ Bu dosya aktif hata, operasyonel risk ve kanıt eksiklerini listeler. Yeni oturu
 - Etki: Discovered/parsed sayısı düşebilir, market alanları kaybolabilir veya upcoming akışı kısmi duruma geçebilir.
 - Sonraki adım: `last_report` kapsam ve hata trendlerini izle. Upstream değişiklikte debug artifact'i hassas veri içermeden inceleyip parser fixture'larını güncelle.
 
-### 4. Eşleşmiş bookmaker koşulu sinyal sayısını azaltabilir
+### 4. Tek bookmaker verisi kaynak hatasına daha duyarlıdır
 
 - İlgili dosyalar: `aiscore_scraper.py`, `signal_quality.py`
-- Durum: Güvenilir veri için aynı bookmaker bloğunda opening ve in-play total bulunan en az iki çift gerekir. Bazı lig/maçlarda AIScore bu ayrıntıyı sunmayabilir.
-- Etki: Ham barem farkı görünse bile sinyal veri güveninden geçmez. Bu, yanlış kitaplar arası karşılaştırmayı engelleyen bilinçli bir güvenlik davranışıdır.
-- Sonraki adım: Kapsamı bookmaker/lig bazında ölç. Başarı kanıtı olmadan çift sayısı veya spread sınırlarını gevşetme.
+- Durum: Aynı bookmaker bloğunda opening ve in-play total okunması yeterlidir; ikinci bookmaker veya spread karşılaştırması aranmaz.
+- Etki: Daha fazla sinyal veri kapısından geçebilir, fakat seçilen tek kaynaktaki yanlış/stale satırın etkisi artar.
+- Sonraki adım: Tek bookmaker rejiminin sonuçlarını sürüm 3 fingerprint'i altında ayrı izle; eski iki-bookmaker kanıtıyla karıştırma.
 
 ### 5. Güven rejimi yalnız 4x10 formatında tanımlı
 
@@ -84,7 +84,7 @@ Bu dosya aktif hata, operasyonel risk ve kanıt eksiklerini listeler. Yeni oturu
 
 ## Çözülen Başlıklar
 
-- Telegram başarı logu ve teslimat: Kalıcı outbox, alıcı bazlı mesaj ID'si ve sınırlı retry ile izlenir; yalnız `TRUSTED` gönderim gerektirir.
+- Telegram başarı logu ve teslimat: Kalıcı outbox, alıcı bazlı mesaj ID'si ve sınırlı retry ile izlenir; eşiği geçen PAS/TEST/ONAY kayıtların tamamı gönderim gerektirir.
 - Final olmayan skordan sonuç üretme: Settlement yalnız açık final etiketi ve makul otomatik final skorla yapılır.
 - Silinen sinyallerde yeniden hesaplama: Silme anındaki `display_snapshot` kullanılır; model/yıldız/projeksiyon/fair tekrar hesaplanmaz.
 - Final ile silme anı skorunun karışması: `status/score` ve `final_status/final_score` ayrılmıştır.

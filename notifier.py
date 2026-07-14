@@ -100,6 +100,15 @@ def _build_alert_text(
 
     proj_text = f"{float(projected):.1f}" if projected is not None else "-"
     h2h_text = f"{float(h2h_total):.1f}" if h2h_total is not None else "-"
+    quality = analysis.get("signal_quality") if isinstance(analysis.get("signal_quality"), dict) else {}
+    confidence_value = quality.get("quality_score")
+    try:
+        confidence_text = f"{int(round(float(confidence_value)))}/100"
+    except (TypeError, ValueError):
+        confidence_text = "-"
+    confidence_label = str(quality.get("quality_label") or "").strip()
+    if confidence_label and confidence_text != "-":
+        confidence_text += f" · {confidence_label}"
     quarter_score_text = _quarter_score_text(analysis)
     match_ppm_text = _match_ppm_text(analysis)
     quarter_ppm_text = _quarter_ppm_text(analysis)
@@ -121,7 +130,15 @@ def _build_alert_text(
         if confidence_floor is not None
         else "İleri tarihli güven kanıtı yok"
     )
-    signal_headline = f"✅ <b>ONAYLI · {final_direction} oynanabilir</b>{repeat}"
+    gate_state = str(gate.get("state") or "LEGACY_UNVERIFIED").upper()
+    if gate_state == "TRUSTED":
+        signal_headline = f"✅ <b>ONAYLI · {final_direction} oynanabilir</b>{repeat}"
+    elif gate_state == "SHADOW":
+        signal_headline = f"🧪 <b>TEST · {final_direction} araştırma sinyali</b>{repeat}"
+    elif gate_state == "BLOCKED":
+        signal_headline = f"⛔ <b>PAS · {final_direction}</b>{repeat}"
+    else:
+        signal_headline = f"⚠️ <b>SİNYAL · {final_direction}</b>{repeat}"
 
     reason_text = str(analysis.get("selection_reason") or "").strip()
     if not reason_text:
@@ -133,6 +150,7 @@ def _build_alert_text(
         f"🏆 {escape(tournament or '-')}\n\n"
         f"<b>Gerekçe:</b> {escape(reason_text)}\n"
         f"<b>Kanıt:</b> {escape(evidence_text)}\n"
+        f"<b>Güven skoru:</b> {escape(confidence_text)}\n"
         f"<b>Skor:</b> {escape(score or '-')}\n"
         f"<b>Ne zaman geldi:</b> {when}\n"
         f"<b>Çeyrek Skorları:</b> {escape(quarter_score_text)}\n"
@@ -205,10 +223,6 @@ class TelegramNotifier:
         pending_recipient_keys: set[str] | None = None,
     ) -> dict:
         analysis = analysis or {}
-        gate = analysis.get("signal_gate") if isinstance(analysis.get("signal_gate"), dict) else {}
-        if not gate.get("telegram_allowed") or gate.get("state") != "TRUSTED":
-            logger.info("Telegram skipped by prospective gate: %s", match_name)
-            return {}
         text = _build_alert_text(
             match_name=match_name,
             tournament=tournament,
@@ -246,8 +260,8 @@ class TelegramNotifier:
         try:
             await self._send_to_all(
                 "🤖 <b>Basket Tahmin Botu başlatıldı.</b>\n"
-                "Canlı barem hareketleri araştırma modunda izleniyor. "
-                "Yalnız ileri tarihli %70 güven kapısını geçen sinyaller gönderilir."
+                "Canlı barem hareketleri izleniyor. Eşiği geçen tüm sinyaller "
+                "PAS, TEST veya ONAY etiketiyle gönderilir."
             )
         except TelegramError as e:
             logger.error(f"Failed to send startup message: {e}")

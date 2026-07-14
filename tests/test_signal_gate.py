@@ -71,7 +71,7 @@ class SignalGateTests(unittest.TestCase):
             },
         )
         self.assertEqual(gate["state"], "SHADOW")
-        self.assertFalse(gate["telegram_allowed"])
+        self.assertTrue(gate["telegram_allowed"])
 
     def test_stable_79_percent_prospective_sample_is_trusted(self):
         # 40/50 + 39/50: both blocks >=70%, Wilson >=60%, gap <=10%.
@@ -131,6 +131,7 @@ class SignalGateTests(unittest.TestCase):
             },
         )
         self.assertEqual(gate["state"], "BLOCKED")
+        self.assertTrue(gate["telegram_allowed"])
         self.assertIn("BLOCKED_DUPLICATE", gate["reason_codes"])
 
     def test_manual_and_future_settlements_do_not_enter_historical_evidence(self):

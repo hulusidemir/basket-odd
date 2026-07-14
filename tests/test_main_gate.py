@@ -118,13 +118,13 @@ class MainGateTests(unittest.IsolatedAsyncioTestCase):
             await process_match(match_payload(), db, notifier, config)
         return db, notifier
 
-    async def test_shadow_is_saved_but_not_sent(self):
+    async def test_shadow_is_saved_and_sent(self):
         db, notifier = await self.run_case("SHADOW", False)
         self.assertEqual(db.saved_analysis["signal_gate"]["state"], "SHADOW")
-        self.assertFalse(db.telegram_required)
-        self.assertIsNone(db.telegram_sent)
+        self.assertTrue(db.telegram_required)
+        self.assertEqual(db.telegram_sent, (1, {"chat": 1}))
         self.assertIsNone(db.telegram_failed)
-        notifier.send_alert.assert_not_awaited()
+        notifier.send_alert.assert_awaited_once()
 
     async def test_trusted_is_saved_and_sent(self):
         db, notifier = await self.run_case("TRUSTED", True)
@@ -132,6 +132,14 @@ class MainGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(db.telegram_required)
         self.assertEqual(db.telegram_sent, (1, {"chat": 1}))
         self.assertIsNone(db.telegram_failed)
+        notifier.send_alert.assert_awaited_once()
+
+    async def test_blocked_pass_is_saved_and_sent(self):
+        db, notifier = await self.run_case("BLOCKED", False)
+
+        self.assertEqual(db.saved_analysis["signal_gate"]["state"], "BLOCKED")
+        self.assertTrue(db.telegram_required)
+        self.assertEqual(db.telegram_sent, (1, {"chat": 1}))
         notifier.send_alert.assert_awaited_once()
 
     async def test_empty_delivery_is_marked_for_retry(self):

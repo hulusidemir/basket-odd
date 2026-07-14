@@ -105,6 +105,7 @@ def _scraper_health_summary(scraper) -> dict | None:
         "attempted_count",
         "unattempted_count",
         "parsed_count",
+        "skipped_count",
         "failed_count",
         "coverage_pct",
         "parse_coverage_pct",
@@ -256,6 +257,14 @@ async def process_match(
         backtest_profile=backtest_profile,
     )
     direction = analysis.get("direction") or legacy_direction
+    previous_directions = []
+    active_alerts_for_match = getattr(db, "active_alerts_for_match", None)
+    if callable(active_alerts_for_match):
+        previous_directions = [
+            row.get("direction")
+            for row in active_alerts_for_match(match_id)
+            if row.get("direction")
+        ]
     quality = calculate_signal_quality(
         {
             **match,
@@ -265,6 +274,7 @@ async def process_match(
             "live": inplay_total,
             "direction": direction,
             "signal_count": signal_count,
+            "previous_directions": previous_directions,
         }
     )
     gate = evaluate_signal_gate(
@@ -309,35 +319,34 @@ async def process_match(
         ai_analysis=json.dumps(analysis, ensure_ascii=False),
         alert_period=period,
         alert_moment=" | ".join(p for p in (status, score) if p),
-        telegram_required=bool(gate.get("telegram_allowed")),
+        telegram_required=True,
     )
 
     followed_upcoming = db.is_upcoming_followed(match_id)
 
     message_ids = {}
-    if gate.get("telegram_allowed"):
-        try:
-            delivered = await notifier.send_alert(
-                match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
-                score=score, signal_count=signal_count, prematch=prematch_total, analysis=analysis,
-                period=period,
-                followed_upcoming=followed_upcoming,
-            )
-        except Exception as exc:
-            db.mark_telegram_delivery_failed(
-                alert_id,
-                f"{type(exc).__name__}: notifier delivery failed",
-            )
-            raise
-        if isinstance(delivered, dict) and _telegram_delivery_complete(notifier, delivered):
-            message_ids = delivered
-            db.mark_telegram_delivery_sent(alert_id, message_ids)
-        else:
-            db.mark_telegram_delivery_failed(
-                alert_id,
-                "Notifier did not deliver to every configured recipient.",
-                **({"message_ids": delivered} if isinstance(delivered, dict) and delivered else {}),
-            )
+    try:
+        delivered = await notifier.send_alert(
+            match_name, tournament, opening_total, inplay_total, direction, diff, status,
+            score=score, signal_count=signal_count, prematch=prematch_total, analysis=analysis,
+            period=period,
+            followed_upcoming=followed_upcoming,
+        )
+    except Exception as exc:
+        db.mark_telegram_delivery_failed(
+            alert_id,
+            f"{type(exc).__name__}: notifier delivery failed",
+        )
+        raise
+    if isinstance(delivered, dict) and _telegram_delivery_complete(notifier, delivered):
+        message_ids = delivered
+        db.mark_telegram_delivery_sent(alert_id, message_ids)
+    else:
+        db.mark_telegram_delivery_failed(
+            alert_id,
+            "Notifier did not deliver to every configured recipient.",
+            **({"message_ids": delivered} if isinstance(delivered, dict) and delivered else {}),
+        )
 
     log.info(
         "Signal saved (gate=%s telegram=%s%s): alert_id=%s match_id=%s | %s | %s | diff=%.2f | fair_line=%s",
@@ -407,7 +416,7 @@ async def retry_pending_telegram_deliveries(
     *,
     limit: int = 20,
 ) -> dict:
-    """Retry durable TRUSTED alert deliveries without blocking other rows."""
+    """Retry durable alert deliveries without blocking other rows."""
     log = logging.getLogger("main")
     rows = db.pending_telegram_alerts(limit=limit)
     sent = 0
@@ -424,9 +433,6 @@ async def retry_pending_telegram_deliveries(
             analysis = json.loads(row.get("ai_analysis") or "{}")
             if not isinstance(analysis, dict):
                 raise ValueError("stored analysis is not an object")
-            gate = analysis.get("signal_gate")
-            if not isinstance(gate, dict) or gate.get("state") != "TRUSTED" or not gate.get("telegram_allowed"):
-                raise ValueError("stored alert is not TRUSTED")
             direction = str(
                 analysis.get("final_direction")
                 or analysis.get("direction")
@@ -453,7 +459,7 @@ async def retry_pending_telegram_deliveries(
                 float(row.get("opening")),
                 float(row.get("live")),
                 direction,
-                float(row.get("diff")),
+                float(row.get("live")) - float(row.get("opening")),
                 str(row.get("status") or ""),
                 score=str(row.get("score") or ""),
                 signal_count=int(row.get("signal_count") or 1),

@@ -5,6 +5,9 @@ import math
 from projection import game_clock, parse_score
 
 
+CONFIDENCE_SCORE_VERSION = "basketball_expert_v1"
+
+
 def _safe_float(value) -> float | None:
     if value is None:
         return None
@@ -32,13 +35,15 @@ def _clamp_score(value: float) -> int:
 
 
 def _quality_label(score: int) -> str:
-    if score >= 80:
-        return "GÜÇLÜ MODEL UYUMU"
-    if score >= 60:
-        return "ORTA MODEL UYUMU"
-    if score >= 50:
-        return "ZAYIF MODEL UYUMU"
-    return "PAS"
+    if score >= 85:
+        return "ÇOK GÜÇLÜ"
+    if score >= 70:
+        return "GÜÇLÜ"
+    if score >= 55:
+        return "ORTA"
+    if score >= 40:
+        return "ZAYIF"
+    return "ÇOK ZAYIF"
 
 
 def _fmt(value, digits: int = 1) -> str:
@@ -100,20 +105,6 @@ def _assess_data_reliability(
     paired_bookmakers = _safe_int(
         odds_snapshot.get("paired_bookmaker_count")
     ) or 0
-    opening_min = _safe_float(odds_snapshot.get("opening_min"))
-    opening_max = _safe_float(odds_snapshot.get("opening_max"))
-    inplay_min = _safe_float(odds_snapshot.get("inplay_min"))
-    inplay_max = _safe_float(odds_snapshot.get("inplay_max"))
-    opening_spread = (
-        opening_max - opening_min
-        if opening_min is not None and opening_max is not None
-        else None
-    )
-    inplay_spread = (
-        inplay_max - inplay_min
-        if inplay_min is not None and inplay_max is not None
-        else None
-    )
 
     checks = {
         "direction_valid": direction in {"ALT", "ÜST"},
@@ -137,13 +128,9 @@ def _assess_data_reliability(
             live is not None and total_score is not None and live >= total_score
         ),
         "not_overtime": not status.startswith("OT") and "UZATMA" not in status,
-        "paired_market_consensus": paired_bookmakers >= 2,
-        "market_dispersion_valid": bool(
-            opening_spread is not None
-            and inplay_spread is not None
-            and opening_spread <= 12
-            and inplay_spread <= 12
-        ),
+        # One bookmaker with both opening and in-play total is sufficient.
+        # Cross-bookmaker count/spread comparison is intentionally not a gate.
+        "readable_bookmaker_available": paired_bookmakers >= 1,
         "market_not_locked": not bool(match_data.get("market_locked")),
     }
     hard_fail = not all(checks.values())
@@ -414,10 +401,6 @@ def calculate_signal_quality(match_data: dict) -> dict:
             risk_notes.append("yön değişimi var")
             reasons.append("Aynı maçta önceki sinyal yönüyle çelişki var (-12 ve güven tavanı).")
 
-    expert_heuristic_score = _clamp_score(score_value)
-    if caps:
-        expert_heuristic_score = min(expert_heuristic_score, min(caps))
-
     # Fixed support score for one calibrated projection signal. Fair edge is a
     # deterministic transformation of this gap, so it must not earn a second
     # independent block of points.
@@ -448,7 +431,90 @@ def calculate_signal_quality(match_data: dict) -> dict:
     if caps:
         model_support_score = min(model_support_score, min(caps))
 
-    label = _quality_label(model_support_score)
+    # User-facing expert confidence score. These six blocks total 100 points.
+    # It ranks signals by evidence quality; it is not a claimed win chance.
+    data_points = max(0, min(20, int(round(reliability["score"] * 0.20))))
+
+    if signed_projection_edge is None or signed_projection_edge < 0:
+        model_edge_points = 0
+    elif signed_projection_edge < 3:
+        model_edge_points = 5
+    elif signed_projection_edge < 5:
+        model_edge_points = 12
+    elif signed_projection_edge < 6:
+        model_edge_points = 17
+    elif signed_projection_edge < 8:
+        model_edge_points = 24
+    else:
+        model_edge_points = 30
+
+    phase_points = 0
+    if period == 1 and remaining_min is not None:
+        phase_points = 0 if played is not None and played < 4 else 3
+    elif period == 2 and remaining_min is not None:
+        elapsed_in_period = quarter_length - remaining_min
+        if elapsed_in_period < quarter_length * 0.35:
+            phase_points = 6
+        elif remaining_min <= quarter_length * 0.35:
+            phase_points = 9
+        else:
+            phase_points = 8
+    elif period == 3 and remaining_min is not None:
+        phase_points = 9 if remaining_min > quarter_length * 0.65 else 10
+    elif period == 4 and remaining_min is not None:
+        phase_points = 6 if remaining_min > 5 else 2
+
+    pace_points = 4
+    if current_pace is not None and sustainable_pace is not None and sustainable_pace > 0 and direction:
+        pace_deviation = (current_pace - sustainable_pace) / sustainable_pace
+        regression_direction = "ALT" if pace_deviation > 0 else "ÜST"
+        pace_magnitude = abs(pace_deviation)
+        if pace_magnitude < 0.10:
+            pace_points = 10
+        elif regression_direction == direction:
+            pace_points = 20 if pace_magnitude >= 0.20 else 16
+        else:
+            pace_points = 0 if pace_magnitude >= 0.20 else 4
+
+    game_script_points = 4
+    if score_gap is not None and period is not None and remaining_min is not None:
+        game_script_points = 6
+        remaining_game = max(0.1, total_game_min - float(played or 0))
+        if period >= 3 and score_gap / remaining_game >= 2.0:
+            game_script_points = 10 if direction == "ALT" else 0
+        elif period == 4 and 5 < remaining_min <= 8 and score_gap <= 7:
+            game_script_points = 10 if direction == "ÜST" else 2
+
+    if market_move is None:
+        market_points = 3
+    else:
+        abs_market_move = abs(market_move)
+        if 10 <= abs_market_move <= 16:
+            market_points = 10
+        elif abs_market_move < 10:
+            market_points = 6
+        elif abs_market_move <= 22:
+            market_points = 8
+        elif abs_market_move <= 30:
+            market_points = 4
+        else:
+            market_points = 1
+
+    confidence_components = {
+        "data_reliability": {"score": data_points, "max": 20},
+        "model_edge": {"score": model_edge_points, "max": 30},
+        "pace_stability": {"score": pace_points, "max": 20},
+        "match_phase": {"score": phase_points, "max": 10},
+        "game_script": {"score": game_script_points, "max": 10},
+        "market_context": {"score": market_points, "max": 10},
+    }
+    expert_heuristic_score = _clamp_score(
+        sum(item["score"] for item in confidence_components.values())
+    )
+    if caps:
+        expert_heuristic_score = min(expert_heuristic_score, min(caps))
+
+    label = _quality_label(expert_heuristic_score)
     risk_note = "; ".join(dict.fromkeys(risk_notes)) if risk_notes else ""
     if not risk_note:
         risk_note = "Belirgin ek risk notu yok."
@@ -460,13 +526,15 @@ def calculate_signal_quality(match_data: dict) -> dict:
         f"Projeksiyon canlı baremden {_fmt(projection_diff)} farklı. "
         f"Mevcut tempo {_fmt(current_pace, 2)}, gereken tempo {_fmt(required_pace, 2)}. "
         f"Skor farkı {score_gap if score_gap is not None else '-'}. "
-        f"Bu nedenle model uyum etiketi {label}."
+        f"Bu nedenle uzman güven etiketi {label}."
     )
 
     return {
-        "quality_score": model_support_score,
+        "quality_score": expert_heuristic_score,
         "quality_label": label,
-        "score_kind": "heuristic_not_probability",
+        "score_kind": "expert_heuristic_not_probability",
+        "confidence_score_version": CONFIDENCE_SCORE_VERSION,
+        "confidence_components": confidence_components,
         "model_support_score": model_support_score,
         "expert_heuristic_score": expert_heuristic_score,
         "data_reliability_score": reliability["score"],

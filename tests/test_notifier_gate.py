@@ -23,24 +23,40 @@ class NotifierGateTests(unittest.IsolatedAsyncioTestCase):
             "analysis": {
                 "final_direction": "ALT",
                 "selection_reason": "test",
+                "signal_quality": {
+                    "quality_score": 82,
+                    "quality_label": "GÜÇLÜ",
+                },
                 "signal_gate": gate,
             },
             "period": 2,
         }
 
-    async def test_shadow_signal_never_calls_telegram(self):
+    async def test_shadow_signal_is_sent_with_test_label(self):
         notifier = self.notifier()
         result = await notifier.send_alert(
             **self.kwargs({"state": "SHADOW", "telegram_allowed": False})
         )
-        self.assertEqual(result, {})
-        notifier._send_to_all.assert_not_awaited()
+        self.assertEqual(result, {"chat": 1})
+        text = notifier._send_to_all.await_args.args[0]
+        self.assertIn("TEST", text)
 
-    async def test_missing_gate_never_calls_telegram(self):
+    async def test_missing_gate_is_sent_with_generic_label(self):
         notifier = self.notifier()
         result = await notifier.send_alert(**self.kwargs({}))
-        self.assertEqual(result, {})
-        notifier._send_to_all.assert_not_awaited()
+        self.assertEqual(result, {"chat": 1})
+        text = notifier._send_to_all.await_args.args[0]
+        self.assertIn("SİNYAL", text)
+
+    async def test_blocked_signal_is_sent_with_pass_label(self):
+        notifier = self.notifier()
+        result = await notifier.send_alert(
+            **self.kwargs({"state": "BLOCKED", "telegram_allowed": False})
+        )
+        self.assertEqual(result, {"chat": 1})
+        text = notifier._send_to_all.await_args.args[0]
+        self.assertIn("PAS", text)
+        self.assertIn("Güven skoru:</b> 82/100 · GÜÇLÜ", text)
 
     async def test_trusted_signal_is_sent(self):
         notifier = self.notifier()

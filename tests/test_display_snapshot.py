@@ -217,6 +217,24 @@ class DisplaySnapshotTests(unittest.TestCase):
             self.assertNotIn(key, enriched)
             self.assertNotIn(key, snapshot)
 
+    def test_current_confidence_score_is_frozen_at_signal_time(self):
+        row = self.db.get_alert(self.alert_id)
+        row["ai_analysis"] = json.dumps({
+            "projected_total": 168,
+            "pure_projected_total": 168,
+            "fair_line": 166,
+            "signal_quality": {
+                "quality_score": 77,
+                "quality_label": "GÜÇLÜ",
+                "confidence_score_version": self.dashboard.CONFIDENCE_SCORE_VERSION,
+            },
+        })
+
+        enriched = self.dashboard.enrich_alerts_with_analysis([row])[0]
+
+        self.assertEqual(enriched["signal_quality_score"], 77)
+        self.assertEqual(enriched["signal_quality_label"], "GÜÇLÜ")
+
     def test_deleted_enrichment_does_not_recalculate_bucket_stars(self):
         row = {
             "id": 10,

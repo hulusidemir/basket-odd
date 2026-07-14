@@ -35,9 +35,14 @@ def quality(**overrides):
 class SignalQualityTests(unittest.TestCase):
     def test_high_quality_requires_complete_basketball_evidence(self):
         result = quality()
-        self.assertEqual(result["quality_label"], "GÜÇLÜ MODEL UYUMU")
-        self.assertGreaterEqual(result["quality_score"], 80)
-        self.assertEqual(result["score_kind"], "heuristic_not_probability")
+        self.assertEqual(result["quality_label"], "ÇOK GÜÇLÜ")
+        self.assertGreaterEqual(result["quality_score"], 85)
+        self.assertEqual(result["score_kind"], "expert_heuristic_not_probability")
+        self.assertEqual(result["confidence_score_version"], "basketball_expert_v1")
+        self.assertEqual(
+            result["quality_score"],
+            sum(item["score"] for item in result["confidence_components"].values()),
+        )
 
     def test_missing_clock_is_capped_below_watch(self):
         result = quality(status="Live")
@@ -71,7 +76,7 @@ class SignalQualityTests(unittest.TestCase):
         repeated = quality(previous_directions=["ALT"])
         self.assertEqual(first["quality_score"], repeated["quality_score"])
 
-    def test_model_support_does_not_count_fair_edge_as_a_second_signal(self):
+    def test_confidence_does_not_count_fair_edge_as_a_second_signal(self):
         strong_fair = quality(fair_line=155.0)
         weak_fair = quality(fair_line=168.0)
 
@@ -79,7 +84,7 @@ class SignalQualityTests(unittest.TestCase):
             strong_fair["model_support_score"],
             weak_fair["model_support_score"],
         )
-        self.assertNotEqual(
+        self.assertEqual(
             strong_fair["expert_heuristic_score"],
             weak_fair["expert_heuristic_score"],
         )
@@ -96,7 +101,7 @@ class SignalQualityTests(unittest.TestCase):
         }
         self.assertEqual(_market_total(match, 150), 164.0)
 
-    def test_single_bookmaker_or_wide_market_is_a_hard_data_failure(self):
+    def test_single_bookmaker_is_enough_without_cross_bookmaker_comparison(self):
         single = quality(odds_snapshot={
             "bookmaker_count": 1,
             "paired_bookmaker_count": 1,
@@ -105,8 +110,8 @@ class SignalQualityTests(unittest.TestCase):
             "inplay_min": 170,
             "inplay_max": 170,
         })
-        self.assertTrue(single["data_hard_fail"])
-        self.assertFalse(single["data_checks"]["paired_market_consensus"])
+        self.assertFalse(single["data_hard_fail"])
+        self.assertTrue(single["data_checks"]["readable_bookmaker_available"])
 
         wide = quality(odds_snapshot={
             "bookmaker_count": 2,
@@ -116,8 +121,8 @@ class SignalQualityTests(unittest.TestCase):
             "inplay_min": 155,
             "inplay_max": 180,
         })
-        self.assertTrue(wide["data_hard_fail"])
-        self.assertFalse(wide["data_checks"]["market_dispersion_valid"])
+        self.assertFalse(wide["data_hard_fail"])
+        self.assertNotIn("market_dispersion_valid", wide["data_checks"])
 
     def test_missing_result_source_url_cannot_enter_prospective_evidence(self):
         result = quality(url="")

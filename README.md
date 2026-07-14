@@ -1,18 +1,18 @@
 # Basketball Odds Monitor (AIScore)
 
-This Python/Flask application monitors AIScore basketball totals, stores opening-vs-live line anomalies in SQLite, and evaluates them with versioned projection, fair-line, data-quality, and prospective evidence rules. Crossing `THRESHOLD` creates a stored alert; it does **not** by itself authorize a betting notification. Only a `TRUSTED` gate decision can be sent to Telegram.
+This Python/Flask application monitors AIScore basketball totals, stores opening-vs-live line anomalies in SQLite, and evaluates them with versioned projection, fair-line, data-quality, and prospective evidence rules. Crossing `THRESHOLD` creates a stored alert and sends it to Telegram with a `PAS`, `TEST`, or `ONAY` label; the label, not delivery, communicates playability.
 
 The current `trusted_70_v2` policy treats 70% as a validation target, not as a proven or guaranteed win rate. Until the fixed strategy has enough automatically settled forward trials, eligible signals remain `SHADOW`; signals that fail candidate or data requirements are `BLOCKED`.
 
 ## Current Features
 
 - Live AIScore scraping with bounded retries, concurrency, per-match failure isolation, and coverage reports
-- Opening/live total consensus built only from paired values in the same bookmaker block
+- Opening/live totals taken from the first readable bookmaker block
 - Opening-vs-live anomaly storage with per-match, per-period, and repeat-signal protection
 - Versioned `shadow_projection_v1` projection and `calibrated_fair_v1` fair line
 - Fixed `projection_edge_6_q2q3_v2` research-candidate rule
 - Prospective `BLOCKED` / `SHADOW` / `TRUSTED` evidence gate and durable trial ledger
-- Telegram outbox with per-recipient delivery IDs and bounded retries; only `TRUSTED` alerts require delivery
+- Telegram outbox with per-recipient delivery IDs and bounded retries; every threshold alert is delivered with its `PAS`, `TEST`, or `ONAY` label
 - Flask dashboard for live review, actions, notes, reports, and CSV export
 - Deletion-time `display_snapshot`; deleted signals are displayed without recalculating model, star, projection, or fair-line fields
 - Separate final-score settlement that requires an explicit final status
@@ -40,20 +40,20 @@ The raw threshold controls which opening/live anomalies are stored. Lowering it 
 - Fair calibration aligned with the projection direction
 - Projection data quality of at least 85
 
-Data reliability is assessed separately. It includes valid score/clock/lines, a supported format, no overtime or locked market, live line above the current score, a durable source URL for final settlement, and at least two paired bookmaker observations with controlled dispersion.
+Data reliability is assessed separately. It includes valid score/clock/lines, a supported format, no overtime or locked market, live line above the current score, a durable source URL for final settlement, and one bookmaker block with readable opening and in-play totals.
 
 ### 3. Prospective trust gate
 
-The active policy is `trusted_70_v2`, strategy version `2`. A trial-eligible alert is stored in `signal_trials` once per match and is settled only from an automatic final score. Evidence never mixes another strategy fingerprint or evidence epoch and never uses results that occurred after the alert decision.
+The active policy is `trusted_70_v2`, strategy version `3`. One bookmaker with readable opening and in-play totals is sufficient; cross-bookmaker count/spread comparison is not a gate. A trial-eligible alert is stored in `signal_trials` once per match and is settled only from an automatic final score. Evidence never mixes another strategy fingerprint or evidence epoch and never uses results that occurred after the alert decision.
 
-`TRUSTED` requires at least 100 unique resolved trials, at least 90% resolution coverage, an overall 95% Wilson lower bound of at least 70%, and two stable 50-match blocks. Until every condition passes, an otherwise eligible candidate is `SHADOW`. Stars and `quality_score` are research/model-support labels, not win probabilities and not Telegram permission.
+`TRUSTED` requires at least 100 unique resolved trials, at least 90% resolution coverage, an overall 95% Wilson lower bound of at least 70%, and two stable 50-match blocks. Until every condition passes, an otherwise eligible candidate is `SHADOW`. `quality_score` is the frozen `basketball_expert_v1` ranking score (data 20, projection edge 30, pace 20, phase 10, game script 10, market context 10); it is not a win probability, gate decision, or Telegram permission.
 
 ## Architecture
 
 - `main.py`: live loop, raw anomaly evaluation, alert persistence, and Telegram orchestration
 - `aiscore_scraper.py`: live AIScore parsing, paired bookmaker consensus, and scrape health report
 - `signal_analysis.py`: projection/fair context, direction, and fixed candidate selection
-- `signal_quality.py`: input reliability and heuristic/model-support scores
+- `signal_quality.py`: input reliability, frozen expert confidence ranking, and gate-specific model-support score
 - `signal_gate.py`: immutable strategy identity and prospective evidence decision
 - `projection.py`, `pace_tracker.py`: clock/format-aware projection and pace lifecycle
 - `db.py`: SQLite schema, alerts, snapshots, trial ledger, and Telegram outbox

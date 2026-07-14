@@ -26,7 +26,7 @@ from aiscore_scraper import AiscoreScraper
 from signal_analysis import build_backtest_profile, build_signal_analysis, enrich_analysis_with_backtest
 from signal_buckets import build_signal_bucket_profile, matching_signal_buckets
 from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
-from signal_quality import calculate_signal_quality
+from signal_quality import CONFIDENCE_SCORE_VERSION, calculate_signal_quality
 
 logger = logging.getLogger(__name__)
 
@@ -447,8 +447,20 @@ def enrich_alerts_with_analysis(
         alert["quality_title"] = legacy_quality["title"]
         alert["quality_rank"] = legacy_quality["rank"]
         alert["list_markers"] = build_signal_list_markers(alert, list_profile)
-        quality = _apply_signal_quality(alert, league_quality_profile, previous_map.get(int(alert.get("id") or 0), []))
-        if analysis.get("signal_quality") != quality:
+        stored_quality = (
+            analysis.get("signal_quality")
+            if isinstance(analysis.get("signal_quality"), dict)
+            else {}
+        )
+        if stored_quality.get("confidence_score_version") == CONFIDENCE_SCORE_VERSION:
+            quality = _apply_stored_signal_quality(alert, analysis)
+        else:
+            quality = _apply_signal_quality(
+                alert,
+                league_quality_profile,
+                previous_map.get(int(alert.get("id") or 0), []),
+            )
+        if stored_quality != quality:
             analysis = {**analysis, "signal_quality": quality}
             alert["analysis"] = analysis
             if persist_signal_quality and int(alert.get("id") or 0):
@@ -710,7 +722,10 @@ def _run_async_dashboard_job(name: str, coro_factory, failure_message: str):
 
 @app.route("/api/alerts")
 def api_alerts():
-    alerts = _build_live_dashboard_rows(db.recent_alerts(limit=500))
+    alerts = _build_live_dashboard_rows(
+        db.recent_alerts(limit=500),
+        persist_signal_quality=True,
+    )
     return jsonify(alerts)
 
 

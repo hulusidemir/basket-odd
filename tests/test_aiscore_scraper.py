@@ -5,9 +5,11 @@ from unittest.mock import AsyncMock, patch
 
 from aiscore_scraper import (
     AiscoreScraper,
+    _MatchSkip,
     _normalize_market_snapshot,
     _redact_proxy_url,
     _safe_env_int,
+    _select_market_line,
 )
 
 
@@ -134,6 +136,21 @@ class _DetailPage:
 
 
 class AiscoreScraperTests(unittest.TestCase):
+    def test_first_readable_bookmaker_line_is_used_without_median_selection(self):
+        parsed = {"inplay": 142.5}
+        snapshot = {
+            "inplay_lines": [142.5, 146.5, 148.5],
+            "inplay_median": 146.5,
+        }
+
+        self.assertEqual(_select_market_line(parsed, snapshot, "inplay"), 142.5)
+
+    def test_explicit_inplay_row_wins_over_wrong_positional_consensus(self):
+        parsed = {"inplay": 142.5}
+        snapshot = {"inplay_median": 157.5}
+
+        self.assertEqual(_select_market_line(parsed, snapshot, "inplay"), 142.5)
+
     def test_proxy_credentials_are_redacted(self):
         redacted = _redact_proxy_url("http://alice:secret@example.test:8080")
         self.assertEqual(redacted, "http://***:***@example.test:8080")
@@ -307,6 +324,23 @@ class AiscoreScraperTests(unittest.TestCase):
         self.assertEqual(scraper.last_report["parsed_count"], 1)
         self.assertEqual(scraper.last_report["coverage_pct"], 50.0)
 
+    def test_expected_match_skip_does_not_degrade_cycle_health(self):
+        scraper, result, _page = self._run_cycle(
+            links=[
+                "https://www.aiscore.com/basketball/match-a/1",
+                "https://www.aiscore.com/basketball/match-b/2",
+            ],
+            extracted=[{"match_id": "1"}, _MatchSkip("late_q4")],
+        )
+
+        self.assertEqual(result, [{"match_id": "1"}])
+        self.assertEqual(scraper.last_report["status"], "ok")
+        self.assertEqual(scraper.last_report["parsed_count"], 1)
+        self.assertEqual(scraper.last_report["skipped_count"], 1)
+        self.assertEqual(scraper.last_report["failed_count"], 0)
+        self.assertEqual(scraper.last_report["coverage_pct"], 100.0)
+        self.assertEqual(scraper.last_report["parse_coverage_pct"], 50.0)
+
     def test_unverified_reported_link_makes_complete_parses_partial(self):
         scraper, result, _page = self._run_cycle(
             links=[
@@ -356,7 +390,7 @@ class AiscoreScraperTests(unittest.TestCase):
         self.assertEqual(scraper.last_report["parsed_count"], 0)
         self.assertEqual(scraper.last_report["failed_count"], 2)
 
-    def test_primary_lines_use_consensus_and_complete_page_skips_overview(self):
+    def test_primary_lines_use_first_readable_bookmaker_and_skip_overview(self):
         parsed = {
             "opening": 170.5,
             "prematch": 171.5,
@@ -398,6 +432,40 @@ class AiscoreScraperTests(unittest.TestCase):
         self.assertEqual(result["prematch_total"], 161.5)
         self.assertEqual(result["inplay_total"], 175.5)
         scraper._fetch_overview_data.assert_not_awaited()
+
+    def test_missing_totals_market_is_an_expected_skip(self):
+        parsed = {
+            "opening": None,
+            "prematch": None,
+            "inplay": None,
+            "matchName": "Home - Away",
+            "tournament": "FIBA",
+            "status": "Q2 05:00",
+            "score": "40 - 35",
+            "isFinished": False,
+            "isQ4": False,
+            "remainingMinutes": 5.0,
+            "hasLockedRows": False,
+            "quarterScores": {},
+            "oddsSnapshot": {},
+        }
+        page = _DetailPage(parsed)
+        scraper = AiscoreScraper(
+            "https://www.aiscore.com/basketball",
+            skip_h2h=True,
+        )
+
+        result = asyncio.run(
+            scraper._extract_match(
+                page,
+                "https://www.aiscore.com/basketball/match-home-away/abc123",
+            )
+        )
+
+        self.assertIsInstance(result, _MatchSkip)
+        self.assertEqual(result.reason, "totals_missing")
+        self.assertFalse(result.degraded)
+        self.assertTrue(result.retryable)
 
 
 if __name__ == "__main__":

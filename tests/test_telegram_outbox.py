@@ -18,8 +18,8 @@ class TelegramOutboxTests(unittest.TestCase):
             "direction": "ALT",
             "final_direction": "ALT",
             "signal_gate": {
-                "state": "TRUSTED",
-                "telegram_allowed": True,
+                "state": "BLOCKED",
+                "telegram_allowed": False,
             },
         }
         self.alert_id = self.db.save_alert(
