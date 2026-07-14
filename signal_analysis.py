@@ -1,9 +1,17 @@
 import json
-import math
 import re
 from statistics import mean
 
 from projection import calculate_live_projection, calculate_quarter_ppm, game_clock, parse_score
+
+
+FAIR_MODEL_VERSION = "calibrated_fair_v1"
+_FAIR_CALIBRATION = {
+    1: (0.51, 0.002),
+    2: (0.34, -0.110),
+    3: (0.11, 0.280),
+    4: (0.12, 1.143),
+}
 
 
 def calculate_fair_line(
@@ -13,63 +21,69 @@ def calculate_fair_line(
     elapsed_minutes: float | None,
     total_game_minutes: int = 40,
     data_quality: float = 50.0,
+    live_line: float | None = None,
+    period: int | None = None,
+    current_total: float | None = None,
 ) -> tuple[float | None, dict]:
+    """Apply the fixed v1 period calibration against the live market.
+
+    The live line remains the main anchor. The coefficients are research
+    parameters, not a probability estimate or proof of market advantage.
     """
-    İki bileşenli adil barem: açılış baremi + saf canlı tempo projeksiyonu
-    (market_anchor IÇERMEYEN). H2H ve son form veriler buraya girmez — bookmaker'ın
-    açılış çizgisi onları zaten büyük ölçüde fiyatlamıştır (double-counting önlenir).
-
-    Mekanizma:
-      - Sigmoidal time-decay: maç ilerledikçe live ağırlığı doğal S-eğrisiyle artar.
-      - Data quality modülasyonu: 0-100 → 0.5-1.0 arası çarpan; düşük kaliteli
-        canlı projeksiyonlarda açılış baremine geri sığınılır.
-      - Minimum açılış sığınağı %15: maçın en sonunda bile bookmaker'ın çizgisi
-        bir miktar ağırlığını korur (garbage-time / blowout savrulmalarına karşı).
-
-    Profesyonel basket analisti mantığı:
-      - Açılış baremi piyasanın ilk ana referans noktasıdır.
-      - Saf canlı projeksiyon = pace_blend + shot/foul düzeltmeleri + script
-        düzeltmesi (close-game / blowout). Tempo regresyonu içeride uygulanır.
-      - Bu iki sinyal birbirinden bağımsız ve aralarındaki ağırlık dengelenmesi
-        maçın kendi gelişimine göre yapılır.
-    """
-    if prematch is None:
-        return (pure_pace_projection, {
-            "prematch_weight": 0.0, "opening_weight": 0.0, "live_weight": 1.0,
-            "progress": 0.0, "data_quality": data_quality, "anchor": "live_only",
-        }) if pure_pace_projection is not None else (None, {
-            "prematch_weight": 0.0, "opening_weight": 0.0, "live_weight": 0.0,
-            "progress": 0.0, "data_quality": data_quality, "anchor": "none",
-        })
-    if pure_pace_projection is None or elapsed_minutes is None:
-        return (float(prematch), {
-            "prematch_weight": 1.0, "live_weight": 0.0,
-            "opening_weight": 1.0, "progress": 0.0, "data_quality": data_quality, "anchor": "opening_only",
-        })
-
     total = max(20, int(total_game_minutes or 40))
-    progress = max(0.0, min(1.0, float(elapsed_minutes) / total))
-
-    # Sigmoidal: progress 0.0→%3, 0.25→%15, 0.5→%50, 0.75→%85, 1.0→%97
-    sigmoid_live = 1.0 / (1.0 + math.exp(-7.0 * (progress - 0.5)))
-
-    # Data quality modülasyonu: kalite=30 → 0.65, kalite=70 → 0.85, kalite=100 → 1.0
-    quality_factor = 0.5 + 0.5 * max(0.0, min(1.0, float(data_quality) / 100.0))
-    live_weight = sigmoid_live * quality_factor
-
-    # Minimum prematch sığınağı %15 — Q4 sonunda bile bookmaker anchor'ı korunur.
-    live_weight = max(0.0, min(0.85, live_weight))
-    prematch_weight = 1.0 - live_weight
-
-    fair = float(prematch) * prematch_weight + float(pure_pace_projection) * live_weight
-    return round(fair, 1), {
-        "prematch_weight": round(prematch_weight, 3),
-        "opening_weight": round(prematch_weight, 3),
-        "live_weight": round(live_weight, 3),
+    progress = (
+        max(0.0, min(1.0, float(elapsed_minutes) / total))
+        if elapsed_minutes is not None
+        else 0.0
+    )
+    meta = {
+        "model_version": FAIR_MODEL_VERSION,
+        "prematch_weight": 0.0,
+        "opening_weight": 0.0,
+        "live_weight": 0.0,
+        "live_market_weight": 0.0,
+        "model_weight": 0.0,
+        "calibration_intercept": 0.0,
         "progress": round(progress, 3),
         "data_quality": round(float(data_quality), 1),
-        "anchor": "blended",
+        "anchor": "none",
     }
+    if pure_pace_projection is None:
+        fallback = live_line if live_line is not None else prematch
+        if fallback is None:
+            return None, meta
+        meta["anchor"] = "market_only"
+        meta["live_market_weight"] = 1.0 if live_line is not None else 0.0
+        meta["opening_weight"] = 0.0 if live_line is not None else 1.0
+        return round(float(fallback), 1), meta
+
+    if elapsed_minutes is not None and float(elapsed_minutes) >= total:
+        fair = float(pure_pace_projection)
+        if current_total is not None:
+            fair = max(fair, float(current_total))
+        meta.update({"model_weight": 1.0, "live_weight": 1.0, "anchor": "final_score"})
+        return round(fair, 1), meta
+
+    if live_line is None:
+        meta.update({"model_weight": 1.0, "live_weight": 1.0, "anchor": "projection_only"})
+        fair = float(pure_pace_projection)
+    else:
+        beta, intercept = _FAIR_CALIBRATION.get(int(period or 0), (0.0, 0.0))
+        fair = float(live_line) + beta * (
+            float(pure_pace_projection) - float(live_line)
+        ) + intercept
+        meta.update(
+            {
+                "live_market_weight": round(1.0 - beta, 3),
+                "model_weight": round(beta, 3),
+                "live_weight": round(beta, 3),
+                "calibration_intercept": round(intercept, 3),
+                "anchor": "live_market_calibrated",
+            }
+        )
+    if current_total is not None:
+        fair = max(float(current_total), fair)
+    return round(fair, 1), meta
 
 
 def _safe_float(value) -> float | None:
@@ -102,11 +116,7 @@ def _fold(value) -> str:
 
 def _normalize_direction(value) -> str:
     text = str(value or "").strip().upper().replace("UST", "ÜST")
-    return "ÜST" if text == "ÜST" else "ALT"
-
-
-def _opposite_direction(direction: str) -> str:
-    return "ALT" if _normalize_direction(direction) == "ÜST" else "ÜST"
+    return text if text in {"ALT", "ÜST"} else ""
 
 
 def _canonical_backtest_outcome(row: dict, analysis: dict, direction: str, success: bool) -> tuple[str, bool]:
@@ -920,56 +930,6 @@ def _script_warning(score: str, status: str, match_name: str, tournament: str) -
     return "Maç scriptinde belirgin ekstra risk yok."
 
 
-def _script_signal(
-    score: str,
-    status: str,
-    match_name: str,
-    tournament: str,
-    projected_gap: float | None = None,
-) -> dict | None:
-    clock = game_clock(status, match_name, tournament)
-    period = clock["period"]
-    remaining_min = clock["remaining_min"]
-    home_score, away_score = parse_score(score)
-    if home_score is None or away_score is None or period is None:
-        return None
-
-    gap = abs(home_score - away_score)
-    if period >= 4 and remaining_min is not None and remaining_min <= 5 and gap >= 16:
-        return {
-            "direction": "ALT",
-            "strength": 16,
-            "confidence": 82,
-            "reason": f"Q4 son bölüm blowout: fark {gap}; rotasyon ve hücum kalitesi düşebilir.",
-            "pace_state": "tempo_drop",
-        }
-    if period >= 4 and remaining_min is not None and remaining_min <= 6 and gap <= 7:
-        return {
-            "direction": "ÜST",
-            "strength": 14,
-            "confidence": 76,
-            "reason": f"Q4 yakın maç: fark {gap}; faul oyunu/erken hücumlar toplamı yukarı iter.",
-            "pace_state": "tempo_rise",
-        }
-    if period >= 3 and gap >= 16:
-        if projected_gap is not None and projected_gap >= 6 and not (period >= 4 and remaining_min is not None and remaining_min <= 6):
-            return {
-                "direction": "ÜST",
-                "strength": 15,
-                "confidence": 74,
-                "reason": f"Maç kopuyor ama tempo yukarıda: fark {gap}, projeksiyon canlıdan {projected_gap:.1f} yüksek.",
-                "pace_state": "runaway_rise",
-            }
-        return {
-            "direction": "ALT",
-            "strength": 11,
-            "confidence": 68,
-            "reason": f"Kopma riski: fark {gap}; öndeki takım set hücumuna ve süre eritmeye dönebilir.",
-            "pace_state": "blowout_risk",
-        }
-    return None
-
-
 def _period_key(status: str, alert_moment: str = "") -> str:
     source = alert_moment or status or ""
     s = _fold(source)
@@ -1103,7 +1063,6 @@ def build_backtest_profile(rows: list[dict] | None) -> dict:
         result = _fold(row.get("result"))
         if result not in {"basarili", "basarisiz"}:
             continue
-        resolved += 1
         direction = _normalize_direction(row.get("direction"))
         success = result == "basarili"
         analysis = row.get("analysis")
@@ -1115,6 +1074,9 @@ def build_backtest_profile(rows: list[dict] | None) -> dict:
         fair_edge = analysis.get("fair_edge", row.get("fair_edge"))
         projected = analysis.get("projected_total", row.get("projected"))
         direction, success = _canonical_backtest_outcome(row, analysis, direction, success)
+        if not direction:
+            continue
+        resolved += 1
         keys = _backtest_keys_from_values(
             legacy_direction=analysis.get("legacy_direction") or direction,
             diff=row.get("diff"),
@@ -1181,92 +1143,66 @@ def _backtest_direction_scores(profile: dict | None, keys: list[str]) -> dict:
 
 def _classify_signal(decision: dict) -> dict:
     """
-    Telegram gönderim filtresi + insan-okunur açıklama döndürür.
-    Sinyal kalite puanı _decision_from_components içinde üretilir.
+    Sabit araştırma aday kuralını ve insan-okunur açıklamayı döndürür.
 
-    Filtre mantığı: Adil baremin canlıya göre net farkı (|fair_edge| >= 5) ve
-    yön kararıyla uyumlu olduğunda Telegram'a uygun. Diğer durumlarda dashboard'da
-    görünür kalır ama mesaj atılmaz.
+    Bu fonksiyon Telegram izni vermez. Telegram yalnız signal_gate içindeki
+    ileri tarihli benzersiz-maç kanıtı TRUSTED olduğunda açılır.
     """
-    scores = decision.get("direction_totals") or {}
-    margin = abs(float(scores.get("ALT", 0) or 0) - float(scores.get("ÜST", 0) or 0))
     final_direction = _normalize_direction(decision.get("direction"))
-    legacy_direction = _normalize_direction(decision.get("legacy_direction") or final_direction)
     fair_edge = _safe_float(decision.get("fair_edge"))
     projected_gap = _safe_float(decision.get("projected_gap"))
-
-    fair_direction = None
-    if fair_edge is not None and abs(fair_edge) >= 3:
-        fair_direction = "ÜST" if fair_edge > 0 else "ALT"
     projection_direction = None
-    if projected_gap is not None and abs(projected_gap) >= 4:
+    if projected_gap is not None and abs(projected_gap) >= 6:
         projection_direction = "ÜST" if projected_gap > 0 else "ALT"
+    calibrated_direction = None
+    if fair_edge is not None and abs(fair_edge) >= 0.05:
+        calibrated_direction = "ÜST" if fair_edge > 0 else "ALT"
 
-    fair_edge_abs = abs(fair_edge) if fair_edge is not None else 0.0
-    fair_aligned = fair_direction == final_direction
+    projected_gap_abs = abs(projected_gap) if projected_gap is not None else 0.0
     projection_aligned = projection_direction == final_direction
-
-    # Yön-bazlı eşik: ÜST sistematik zayıf (~%45 vs ALT ~%56), daha sıkı kapı.
-    fair_edge_threshold = 6.0 if final_direction == "ÜST" else 4.5
-    opening_val = _safe_float(decision.get("opening")) or 0.0
-
-    send_allowed = (
-        fair_edge_abs >= fair_edge_threshold
-        and fair_aligned
-        and (projection_aligned or projection_direction is None)
-        and margin >= 3.0
+    calibration_aligned = calibrated_direction == projection_direction
+    projection_quality = _safe_float(decision.get("projection_quality"))
+    period = decision.get("period")
+    model_validated = bool(decision.get("model_validated"))
+    candidate_eligible = (
+        projected_gap_abs >= 6.0
+        and projection_aligned
+        and calibration_aligned
+        and projection_quality is not None
+        and projection_quality >= 85
+        and period in {2, 3}
+        and model_validated
     )
 
-    # Düşük totalli ÜST için ek kapı (veri: <150 toplam ÜST ~%18-30 başarı).
-    low_total_ust_block = False
-    if send_allowed and final_direction == "ÜST" and 0 < opening_val < 155:
-        if not projection_aligned or fair_edge_abs < 7.0:
-            send_allowed = False
-            low_total_ust_block = True
-
-    if send_allowed:
+    if candidate_eligible:
         reason = (
-            f"Adil barem canlıdan {fair_edge_abs:.1f} puan {'yüksek' if fair_edge > 0 else 'düşük'}; "
-            f"yön {final_direction} ile uyumlu."
+            f"Kalibre projeksiyon canlı baremden {projected_gap_abs:.1f} puan "
+            f"{'yüksek' if projected_gap > 0 else 'düşük'}; Q{period} veri kalitesi "
+            f"{projection_quality:.0f}/100. Bu yalnız ileri tarihli araştırma adayıdır."
         )
     else:
-        if fair_edge is None:
-            reason = "Adil barem hesaplanamadı; gönderim için yeterli güven yok."
-        elif low_total_ust_block:
+        if projected_gap is None or fair_edge is None:
+            reason = "Projeksiyon/adil barem hesaplanamadı; araştırma adaylığı için veri yok."
+        elif projected_gap_abs < 6.0:
             reason = (
-                f"Düşük totalli lig (<155) ÜST için ek kapı: projeksiyon teyidi "
-                f"ve adil fark ≥7 gerekli."
+                f"Projeksiyon canlıya çok yakın ({projected_gap_abs:.1f} puan; "
+                "araştırma eşiği 6.0); PAS."
             )
-        elif fair_edge_abs < fair_edge_threshold:
-            reason = (
-                f"Adil barem canlıya çok yakın ({fair_edge_abs:.1f} puan, "
-                f"{final_direction} eşik {fair_edge_threshold:.1f}); net değer alanı zayıf."
-            )
-        elif not fair_aligned:
-            reason = (
-                "Adil barem yönü ile karar yönü uyumsuz; sinyal güvenilir değil."
-            )
+        elif not calibration_aligned:
+            reason = "Kalibrasyon ile projeksiyon yönü uyumsuz; PAS."
+        elif period not in {2, 3}:
+            reason = "Yalnız doğrulanan Q2/Q3 araştırma pencereleri aday kabul edilir; PAS."
+        elif not model_validated or projection_quality is None or projection_quality < 85:
+            reason = "Projeksiyon veri kalitesi/maç formatı araştırma adaylığına yeterli değil; PAS."
         else:
-            reason = (
-                f"Taraf ayrışması zayıf ({margin:.1f}); gönderim için kademe eksik."
-            )
+            reason = "Projeksiyon yönü ile nihai yön uyumsuz; PAS."
 
     return {
+        "candidate_eligible": candidate_eligible,
+        "candidate_rule_id": "projection_edge_6_q2q3_v2",
+        # Telegram izni yalnız prospective signal_gate tarafından verilir.
+        "send_allowed": False,
         "selection_reason": reason,
-    }
-
-
-def _vote(name: str, direction: str, strength: float, confidence: float, reason: str) -> dict:
-    direction = _normalize_direction(direction)
-    strength = round(_clamp(float(strength), 0, 30), 1)
-    confidence = round(_clamp(float(confidence), 0, 100), 1)
-    return {
-        "name": name,
-        "direction": direction,
-        "strength": strength,
-        "confidence": confidence,
-        "score": round(strength * (confidence / 100), 1),
-        "reason": reason,
     }
 
 
@@ -1276,161 +1212,29 @@ def _decision_from_components(
     live: float,
     opening: float,
     diff: float,
-    threshold: float,
     status: str,
     alert_moment: str = "",
-    score: str = "",
-    match_name: str = "",
     tournament: str = "",
     projected_total: float | None = None,
     fair_edge: float | None = None,
-    team_recent_total: float | None = None,
-    h2h_total: float | None = None,
-    history_total: float | None = None,
-    h2h_over_pct: float | None = None,
-    h2h_quality_score: float | None = None,
-    pace_anomaly_direction: str | None = None,
-    pace_anomaly_pct: float | None = None,
     projection_quality: float | None = None,
     signal_count: int = 1,
     backtest_profile: dict | None = None,
 ) -> dict:
-    legacy_direction = _normalize_direction(legacy_direction)
-    votes: list[dict] = []
+    """Choose direction from the only production inputs that can affect it.
 
+    The previous vote graph calculated H2H, script, pace and market scores but
+    then unconditionally overwrote their result with this fair/projection rule.
+    Keeping that dead graph made diagnostics look influential when they were
+    not. Historical buckets remain descriptive evidence only.
+    """
+    legacy_direction = _normalize_direction(legacy_direction) or (
+        "ALT" if float(live) - float(opening) > 0 else "ÜST"
+    )
     abs_diff = abs(float(diff or 0))
-    # Piyasa-zekası ayarı: küçük-orta hareket sinyal için daha anlamlıdır (sweet spot 11-16),
-    # ama büyük hareket (>=22) genelde gerçek bilgi taşır.
-    # Backtest verisi: diff 12-15 → %67 başarı; diff 25+ → %27 başarı.
-    if abs_diff <= 16:
-        legacy_strength = _clamp(8 + (abs_diff - float(threshold or 0)) * 0.6, 7, 13)
-        legacy_confidence = 66
-    elif abs_diff <= 20:
-        legacy_strength = 6
-        legacy_confidence = 50
-    else:
-        legacy_strength = 4
-        legacy_confidence = 35
-    votes.append(_vote(
-        "Eski barem sinyali",
-        legacy_direction,
-        legacy_strength,
-        legacy_confidence,
-        f"Eski mantık: canlı-açılış farkı {diff:+.1f}, eşik {float(threshold or 0):.1f}."
-        + (" Büyük hareket — güven düşük tutuldu." if abs_diff > 20 else ""),
-    ))
-
-    # Çok büyük hareketlerde (>=22) sadece "uyarı oyu" olarak çelişki ekle.
-    # Bu oy yön kararını belirsizleştirip flip kararını gerçek
-    # ayrışma varsa verir.
-    if abs_diff >= 25:
-        market_direction = _opposite_direction(legacy_direction)
-        votes.append(_vote(
-            "Piyasa direnci uyarısı",
-            market_direction,
-            _clamp(5 + (abs_diff - 25) * 0.3, 5, 10),
-            45,
-            f"Çizgi {abs_diff:.0f} puan kaydı; piyasa bu kadar net hareket ettiğinde "
-            f"genelde haklı — karşı yön güveni düşük tutuldu.",
-        ))
-
-    # Adil barem oyu — çok büyük edge'leri sınırla (genelde H2H/team_recent
-    # parazitinden geliyor, gerçek değer değil).
-    if fair_edge is not None:
-        edge = float(fair_edge)
-        edge_capped = _clamp(abs(edge), 0, 10)  # >10 üzerinde ek katkı yok
-        if edge >= 3:
-            confidence = 70 if abs(edge) >= 6 else 60
-            if abs(edge) > 12:
-                confidence -= 12  # aşırı edge şüpheli
-            votes.append(_vote(
-                "Adil barem değeri",
-                "ÜST",
-                _clamp(7 + edge_capped * 0.7, 7, 16),
-                confidence,
-                f"Adil barem canlıdan {edge:.1f} yüksek; piyasa aşağıda kalmış."
-                + (" Edge çok büyük, ihtiyatla değerlendir." if abs(edge) > 12 else ""),
-            ))
-        elif edge <= -3:
-            confidence = 70 if abs(edge) >= 6 else 60
-            if abs(edge) > 12:
-                confidence -= 12
-            votes.append(_vote(
-                "Adil barem değeri",
-                "ALT",
-                _clamp(7 + edge_capped * 0.7, 7, 16),
-                confidence,
-                f"Adil barem canlıdan {abs(edge):.1f} düşük; piyasa fazla şişmiş."
-                + (" Edge çok büyük, ihtiyatla değerlendir." if abs(edge) > 12 else ""),
-            ))
-
     projected_gap = None
     if projected_total is not None:
         projected_gap = round(float(projected_total) - float(live), 1)
-        gap_capped = _clamp(abs(projected_gap), 0, 12)
-        if projected_gap >= 4:
-            votes.append(_vote(
-                "Canlı tempo/projeksiyon",
-                "ÜST",
-                _clamp(6 + gap_capped * 0.6, 6, 16),
-                70 if projected_gap >= 8 else 60,
-                f"Regresyonlu projeksiyon canlı baremin {projected_gap:.1f} üstünde.",
-            ))
-        elif projected_gap <= -4:
-            votes.append(_vote(
-                "Canlı tempo/projeksiyon",
-                "ALT",
-                _clamp(6 + gap_capped * 0.6, 6, 16),
-                70 if projected_gap <= -8 else 60,
-                f"Regresyonlu projeksiyon canlı baremin {abs(projected_gap):.1f} altında.",
-            ))
-
-    if history_total is not None:
-        history_gap = round(float(history_total) - float(live), 1)
-        quality = _clamp((float(h2h_quality_score or 65) + 35) / 100, 0.45, 1.0)
-        if history_gap >= 4:
-            votes.append(_vote(
-                "Takım/H2H regresyonu",
-                "ÜST",
-                _clamp((6 + history_gap * 0.55) * quality, 4, 16),
-                58 + quality * 20,
-                f"Tarihsel/H2H toplamı canlıdan {history_gap:.1f} yüksek.",
-            ))
-        elif history_gap <= -4:
-            votes.append(_vote(
-                "Takım/H2H regresyonu",
-                "ALT",
-                _clamp((6 + abs(history_gap) * 0.55) * quality, 4, 16),
-                58 + quality * 20,
-                f"Tarihsel/H2H toplamı canlıdan {abs(history_gap):.1f} düşük.",
-            ))
-
-    if h2h_over_pct is not None:
-        over = float(h2h_over_pct)
-        if over >= 62:
-            votes.append(_vote("H2H over eğilimi", "ÜST", _clamp((over - 50) * 0.55, 5, 12), 58, f"H2H over oranı %{over:.0f}."))
-        elif over <= 38:
-            votes.append(_vote("H2H under eğilimi", "ALT", _clamp((50 - over) * 0.55, 5, 12), 58, f"H2H under tarafı güçlü; over oranı %{over:.0f}."))
-
-    if pace_anomaly_direction:
-        pct = abs(float(pace_anomaly_pct or 0))
-        votes.append(_vote(
-            "Çeyrek hız anomalisi",
-            pace_anomaly_direction,
-            _clamp(7 + pct * 0.15, 7, 15),
-            64,
-            f"Çeyrek hızı ortalamadan %{pct:.0f} saptı; regresyon {_normalize_direction(pace_anomaly_direction)} tarafında.",
-        ))
-
-    script_vote = _script_signal(score, status, match_name, tournament, projected_gap)
-    if script_vote:
-        votes.append(_vote(
-            "Maç scripti",
-            script_vote["direction"],
-            script_vote["strength"],
-            script_vote["confidence"],
-            script_vote["reason"],
-        ))
 
     backtest_keys = _backtest_keys_from_values(
         legacy_direction=legacy_direction,
@@ -1444,16 +1248,19 @@ def _decision_from_components(
         tournament=tournament,
     )
     backtest_scores = _backtest_direction_scores(backtest_profile, backtest_keys)
+    clock = game_clock(status, "", tournament)
 
-    totals = {"ALT": 0.0, "ÜST": 0.0}
-    for item in votes:
-        totals[item["direction"]] += float(item["score"])
-
-    final_direction = "ALT" if totals["ALT"] > totals["ÜST"] else "ÜST"
-    # Yön değişimleri tarihsel olarak güçlü; ama yönsüz/sıkı durumda
-    # legacy'yi koru. Flip için net üstünlük gerekir.
-    raw_margin = abs(totals["ALT"] - totals["ÜST"])
-    if raw_margin < 2.5:
+    # Fair değer projeksiyonun kalibre edilmiş dönüşümüdür; bağımsız bir oy
+    # değildir. Yönü yalnız güçlü projeksiyon sapması kalibrasyonla aynı yönü
+    # gösterdiğinde değiştirir. Böylece Q4 intercept tek başına yön çeviremez.
+    calibrated_alignment = bool(
+        fair_edge is not None
+        and projected_gap is not None
+        and float(fair_edge) * float(projected_gap) > 0
+    )
+    if projected_gap is not None and abs(float(projected_gap)) >= 6.0 and calibrated_alignment:
+        final_direction = "ÜST" if float(projected_gap) > 0 else "ALT"
+    else:
         final_direction = legacy_direction
 
     best_rate = backtest_scores.get(final_direction, {}).get("rate")
@@ -1462,8 +1269,6 @@ def _decision_from_components(
     return {
         "direction": final_direction,
         "legacy_direction": legacy_direction,
-        "direction_totals": {key: round(value, 1) for key, value in totals.items()},
-        "vote_details": sorted(votes, key=lambda item: item["score"], reverse=True),
         "projection_quality": projection_quality,
         "fair_edge": fair_edge,
         "fair_edge_abs": round(fair_abs, 1),
@@ -1473,6 +1278,8 @@ def _decision_from_components(
         "live": float(live) if live is not None else None,
         "abs_diff": round(abs_diff, 1),
         "signal_count": signal_count,
+        "period": clock.get("period"),
+        "model_validated": bool(clock.get("model_validated")),
         "backtest": {
             "sample_size": (backtest_profile or {}).get("sample_size", 0),
             "keys": backtest_keys,
@@ -1480,7 +1287,6 @@ def _decision_from_components(
             "chosen_rate": best_rate,
             "chosen_samples": backtest_scores.get(final_direction, {}).get("samples", 0),
         },
-        "flip_reason": "",
     }
 
 
@@ -1504,30 +1310,16 @@ def enrich_analysis_with_backtest(
         live=live,
         opening=opening,
         diff=diff,
-        threshold=threshold,
         status=alert.get("status") or "",
         alert_moment=alert.get("alert_moment") or "",
-        score=alert.get("score") or "",
-        match_name=alert.get("match_name") or "",
         tournament=alert.get("tournament") or "",
         projected_total=analysis.get("projected_total"),
         fair_edge=analysis.get("fair_edge"),
-        team_recent_total=analysis.get("team_recent_total"),
-        h2h_total=analysis.get("h2h_total"),
-        history_total=analysis.get("history_total"),
-        h2h_over_pct=(analysis.get("team_context") or {}).get("h2h_over_pct") if isinstance(analysis.get("team_context"), dict) else None,
-        h2h_quality_score=analysis.get("h2h_quality_score"),
-        pace_anomaly_direction=analysis.get("pace_anomaly_direction"),
-        pace_anomaly_pct=analysis.get("pace_anomaly_pct"),
         projection_quality=analysis.get("projection_quality"),
         signal_count=alert.get("signal_count") or 1,
         backtest_profile=backtest_profile,
     )
     selection = _classify_signal(decision)
-    decision = {
-        key: value for key, value in decision.items()
-        if key not in {"direction_totals", "vote_details", "flip_reason"}
-    }
     warnings = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
     selection_reason = selection.get("selection_reason")
     if selection_reason and selection_reason not in warnings:
@@ -1536,6 +1328,8 @@ def enrich_analysis_with_backtest(
         **analysis,
         **decision,
         "final_direction": decision.get("direction"),
+        "candidate_eligible": selection.get("candidate_eligible", False),
+        "candidate_rule_id": selection.get("candidate_rule_id"),
         "selection_reason": selection.get("selection_reason"),
         "warnings": warnings,
     }
@@ -1605,20 +1399,31 @@ def build_signal_analysis(
     components = {
         "opening": market_total,
         "market": market_total,
+        "live_market": live,
         "live_projection": pure_projected_total,
         "projection": pure_projected_total,
         "h2h": h2h_total,
     }
+    parsed_home, parsed_away = parse_score(score)
+    current_total = (
+        parsed_home + parsed_away
+        if parsed_home is not None and parsed_away is not None
+        else None
+    )
     fair_line, fair_meta = calculate_fair_line(
         prematch=market_total,
         pure_pace_projection=pure_projected_total,
         elapsed_minutes=elapsed_minutes,
         total_game_minutes=total_game_min,
         data_quality=projection_quality if projection_quality is not None else 50.0,
+        live_line=live,
+        period=period,
+        current_total=current_total,
     )
     weights = {
-        "opening": int(round(fair_meta.get("opening_weight", fair_meta.get("prematch_weight", 0)) * 100)),
-        "live_projection": int(round(fair_meta.get("live_weight", 0) * 100)),
+        "opening": int(round(fair_meta.get("opening_weight", 0) * 100)),
+        "live_market": int(round(fair_meta.get("live_market_weight", 0) * 100)),
+        "live_projection": int(round(fair_meta.get("model_weight", 0) * 100)),
         "h2h": 0,
     }
     base_weights = weights  # Geriye uyumluluk için aynı yapıyı koru.
@@ -1685,21 +1490,11 @@ def build_signal_analysis(
         live=live,
         opening=opening,
         diff=line_delta_open,
-        threshold=threshold,
         status=status,
         alert_moment=match.get("alert_moment") or "",
-        score=score,
-        match_name=match_name,
         tournament=tournament,
         projected_total=projected_total,
         fair_edge=fair_edge,
-        team_recent_total=team_recent_total,
-        h2h_total=h2h_total,
-        history_total=history_total,
-        h2h_over_pct=h2h_metrics.get("h2h_over_pct"),
-        h2h_quality_score=h2h_quality_score,
-        pace_anomaly_direction=pace_anomaly_direction,
-        pace_anomaly_pct=pace_anomaly_pct,
         projection_quality=projection_quality,
         signal_count=match.get("signal_count") or 1,
         backtest_profile=backtest_profile,
@@ -1756,6 +1551,10 @@ def build_signal_analysis(
         "elapsed_minutes": _safe_round(elapsed_minutes) if elapsed_minutes is not None else None,
         "projection_quality": projection_quality,
         "projection_components": projection_components,
+        "projection_model_version": live_projection.get("model_version"),
+        "fair_model_version": fair_meta.get("model_version"),
+        "game_format": projection_components.get("game_format"),
+        "model_validated": projection_components.get("model_validated"),
         "projection_notes": live_projection.get("notes") or [],
         "raw_projected_total": live_projection.get("raw_projected_total"),
         "quarter_scores": quarter_scores,
@@ -1780,6 +1579,9 @@ def build_signal_analysis(
         "quarter_paces": quarter_paces,
         "pace_anomaly_note": pace_anomaly_note,
         "backtest": decision.get("backtest"),
+        "projected_gap": decision.get("projected_gap"),
+        "candidate_eligible": selection.get("candidate_eligible", False),
+        "candidate_rule_id": selection.get("candidate_rule_id"),
         "selection_reason": selection.get("selection_reason"),
     }
     return result

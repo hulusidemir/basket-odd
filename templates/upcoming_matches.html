@@ -206,6 +206,12 @@
       border-color: rgba(248,113,113,0.32);
       color: #fecaca;
     }
+    .status.warning {
+      background: rgba(251,191,36,0.1);
+      border-color: rgba(251,191,36,0.32);
+      color: #fde68a;
+    }
+    .meta.stale { color: var(--warn); }
     .summary .chip {
       padding: 7px 10px;
       border-radius: 10px;
@@ -704,6 +710,8 @@
           <div class="chip">Barem <strong id="chipWithOdds">0</strong></div>
           <div class="chip">SF <strong id="chipWithSf">0</strong></div>
           <div class="chip">Sinyal <strong id="chipSignals">0</strong></div>
+          <div class="chip">Tarama <strong id="chipFetchStatus">-</strong></div>
+          <div class="chip">Kapsama <strong id="chipCoverage">-</strong></div>
         </div>
       </section>
 
@@ -765,6 +773,8 @@
     const chipOdds = document.getElementById('chipWithOdds');
     const chipSf = document.getElementById('chipWithSf');
     const chipSignals = document.getElementById('chipSignals');
+    const chipFetchStatus = document.getElementById('chipFetchStatus');
+    const chipCoverage = document.getElementById('chipCoverage');
     const pageInfo = document.getElementById('pageInfo');
     const prevPage = document.getElementById('prevPage');
     const nextPage = document.getElementById('nextPage');
@@ -829,9 +839,10 @@
       statusEl.textContent = msg;
       statusEl.classList.add('show');
       statusEl.classList.toggle('error', kind === 'error');
+      statusEl.classList.toggle('warning', kind === 'warning');
     }
     function hideStatus() {
-      statusEl.classList.remove('show', 'error');
+      statusEl.classList.remove('show', 'error', 'warning');
       statusEl.textContent = '';
     }
     function escapeHtml(s) {
@@ -1059,7 +1070,15 @@
     function fmtMatch(row) {
       const name = escapeHtml(row.match_name || '');
       const link = row.url ? `<a href="${escapeHtml(row.url)}" target="_blank" rel="noopener">${name}</a>` : name;
-      return `<div class="match-name">${link}</div>`;
+      const warnings = Array.isArray(row.data_warnings) ? row.data_warnings : [];
+      const warningLabels = warnings.map(value => ({
+        odds_detail_unavailable_listing_fallback: 'odds detayı listing verisiyle tamamlandı',
+        h2h_unavailable: 'H2H verisi alınamadı',
+      })[value] || value);
+      const warningHtml = warningLabels.length
+        ? `<div class="subline" title="${escapeHtml(warningLabels.join(' · '))}">⚠ ${escapeHtml(warningLabels.join(' · '))}</div>`
+        : '';
+      return `<div class="match-name">${link}</div>${warningHtml}`;
     }
     function offenseTotal(row) {
       const home = num(row.home_last6 && row.home_last6.ppg);
@@ -1168,13 +1187,85 @@
     function sleep(ms) {
       return new Promise(resolve => setTimeout(resolve, ms));
     }
+    function formatAge(seconds) {
+      const value = Number(seconds);
+      if (!Number.isFinite(value) || value < 0) return '';
+      if (value < 60) return `${Math.floor(value)} sn önce`;
+      if (value < 3600) return `${Math.floor(value / 60)} dk önce`;
+      if (value < 86400) return `${Math.floor(value / 3600)} sa önce`;
+      return `${Math.floor(value / 86400)} gün önce`;
+    }
+    function fetchStatusLabel(status) {
+      return ({
+        running: 'Çekiliyor',
+        complete: 'Tam',
+        partial: 'Kısmi',
+        failed: 'Başarısız',
+        empty: 'Boş',
+        idle: 'Bekliyor',
+      })[String(status || '').toLowerCase()] || '-';
+    }
+    function applyFetchMeta(data) {
+      const report = data && typeof data.report === 'object' ? data.report : null;
+      const hasCoverage = Boolean(report && report.coverage !== null && report.coverage !== undefined);
+      const coverage = hasCoverage ? Number(report.coverage) : NaN;
+      chipFetchStatus.textContent = fetchStatusLabel(report && report.status);
+      chipCoverage.textContent = Number.isFinite(coverage)
+        ? `${Math.round(coverage * 100)}% (${Number(report.parsed || 0)}/${Number(report.attempted || 0)})`
+        : '-';
+
+      const ageText = formatAge(data && data.data_age_seconds);
+      const fetchedAt = data && data.fetched_at ? new Date(data.fetched_at) : null;
+      const validDate = fetchedAt && !Number.isNaN(fetchedAt.getTime());
+      if (validDate) {
+        const stamp = fetchedAt.toLocaleString('tr-TR', {
+          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        });
+        const oldestAge = data.stale ? formatAge(data.oldest_data_age_seconds) : '';
+        const staleSuffix = data.stale
+          ? ` · ${Number(data.stale_row_count || 0)} bayat kayıt${oldestAge ? ` (en eski ${oldestAge})` : ''}`
+          : '';
+        lastEl.textContent = `${data.stale ? '⚠ Karma veri' : 'Son veri'}: ${stamp}${ageText ? ` · ${ageText}` : ''}${staleSuffix}`;
+      } else {
+        lastEl.textContent = 'Henüz zaman damgalı veri yok';
+      }
+      lastEl.classList.toggle('stale', Boolean(data && data.stale));
+
+      if (report && report.listing_sources) {
+        lastEl.title = Object.entries(report.listing_sources)
+          .map(([name, source]) => {
+            const verified = source.verified_totals === null || source.verified_totals === undefined
+              ? ''
+              : `, doğrulanmış total ${Number(source.verified_totals || 0)}`;
+            return `${name}: ${source.status || '-'} (${Number(source.count || 0)}${verified})`;
+          })
+          .join(' · ');
+      } else {
+        lastEl.title = '';
+      }
+    }
+    function fetchReportMessage(data) {
+      const report = data && typeof data.report === 'object' ? data.report : {};
+      const status = String(report.status || '');
+      const discovered = Number(report.discovered || 0);
+      const parsed = Number(report.parsed || 0);
+      const failed = Number(report.failed || 0);
+      const partialRows = Number(report.partial_rows || 0);
+      const coverage = Number(report.coverage);
+      const coverageText = Number.isFinite(coverage) ? `%${Math.round(coverage * 100)}` : '-';
+      const base = `${discovered} maç bulundu; ${parsed} satır okundu, ${partialRows} satır eksik verili, ${failed} detay başarısız (kapsama ${coverageText}).`;
+      if (status === 'partial') return { text: `Kısmi çekim: ${base} Eski sağlam kayıtlar korundu.`, kind: 'warning' };
+      if (status === 'failed') return { text: `Çekim tamamlanamadı: ${base} Mevcut kayıtlar korundu.`, kind: 'error' };
+      if (status === 'empty') return { text: 'Listing sağlıklı açıldı ancak yaklaşan maç bulunmadı; mevcut kayıtlar otomatik silinmedi.', kind: 'warning' };
+      return { text: `${base} ${Number(data.saved_signals || 0)} sinyal üretildi.`, kind: undefined };
+    }
     async function pollFetch() {
       for (;;) {
         const res = await fetch('api/status', { cache: 'no-store' });
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || res.statusText);
         if (!data.running) return data;
-        showStatus('Çekim devam ediyor; maçlar arka planda kaydediliyor.');
+        showStatus('Çekim devam ediyor; doğrulanan maçlar arka planda kaydedilecek.');
         await sleep(2500);
       }
     }
@@ -1182,9 +1273,14 @@
       try {
         const res = await fetch('api/list', { cache: 'no-store' });
         const data = await res.json();
-        if (!res.ok || data.error) throw new Error(data.error || res.statusText);
+        if (!res.ok) throw new Error(data.error || res.statusText);
         setMatches(data.matches || []);
-        if (data.count) lastEl.textContent = `Kayıtlı: ${data.count} maç`;
+        applyFetchMeta(data);
+        if (data.last_fetch_error) {
+          showStatus(`Son çekim hatası: ${data.last_fetch_error}. Kayıtlı veriler gösteriliyor.`, 'warning');
+        } else if (data.stale && data.count) {
+          showStatus('Kayıtlı gelecek maç verisi bayat; yeni çekim önerilir.', 'warning');
+        }
       } catch (err) {
         showStatus('Kayıtlı maçlar okunamadı: ' + err.message, 'error');
       }
@@ -1199,8 +1295,9 @@
         if (!res.ok && res.status !== 202) throw new Error(data.error || res.statusText);
         const finalData = data.running ? await pollFetch() : data;
         setMatches(finalData.matches || []);
-        lastEl.textContent = 'Son çekim: ' + new Date().toLocaleTimeString('tr-TR');
-        showStatus(`${finalData.count || 0} maç kaydedildi, ${finalData.saved_signals || 0} sinyal üretildi.`);
+        applyFetchMeta(finalData);
+        const message = fetchReportMessage(finalData);
+        showStatus(message.text, message.kind);
       } catch (err) {
         showStatus('Çekim başarısız: ' + err.message, 'error');
       } finally {

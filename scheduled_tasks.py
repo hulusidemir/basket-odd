@@ -24,6 +24,7 @@ log = logging.getLogger("scheduled_tasks")
 
 _started = False
 _start_lock = threading.Lock()
+_before_active_delete = None
 
 
 def _next_at_minute(now: datetime, minute: int, second: int = 5) -> datetime:
@@ -42,21 +43,13 @@ def _run_safe(name: str, coro_factory) -> None:
         log.exception("Scheduled task başarısız (%s): %s", name, exc)
 
 
-def _loop() -> None:
+def _task_loop(task: str, minute: int) -> None:
     config = Config()
     db = Database(config.DB_PATH)
     db.init()
 
     while True:
-        now = datetime.now()
-        next_00 = _next_at_minute(now, 0)
-        next_10 = _next_at_minute(now, 10)
-
-        if next_00 <= next_10:
-            target, task = next_00, "active"
-        else:
-            target, task = next_10, "deleted"
-
+        target = _next_at_minute(datetime.now(), minute)
         sleep_s = max(1.0, (target - datetime.now()).total_seconds())
         log.info(
             "Sıradaki otomatik kontrol: %s | %.0f sn sonra (%s)",
@@ -67,7 +60,11 @@ def _loop() -> None:
         if task == "active":
             _run_safe(
                 "active-match-finished-scan (saat başı)",
-                lambda: run_active_match_finished_scan(db, config),
+                lambda: run_active_match_finished_scan(
+                    db,
+                    config,
+                    before_delete=_before_active_delete,
+                ),
             )
         else:
             _run_safe(
@@ -76,12 +73,25 @@ def _loop() -> None:
             )
 
 
-def start() -> None:
-    global _started
+def start(before_active_delete=None) -> None:
+    global _before_active_delete, _started
     with _start_lock:
         if _started:
             return
         _started = True
-    thread = threading.Thread(target=_loop, name="scheduled-tasks", daemon=True)
-    thread.start()
-    log.info("Scheduled tasks thread başlatıldı (her saat :00 ve :10).")
+        _before_active_delete = before_active_delete
+    active_thread = threading.Thread(
+        target=_task_loop,
+        args=("active", 0),
+        name="scheduled-active-finished",
+        daemon=True,
+    )
+    result_thread = threading.Thread(
+        target=_task_loop,
+        args=("deleted", 10),
+        name="scheduled-deleted-results",
+        daemon=True,
+    )
+    active_thread.start()
+    result_thread.start()
+    log.info("Scheduled task threads başlatıldı (her saat :00 ve :10).")

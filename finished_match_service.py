@@ -10,8 +10,6 @@ import os
 import re
 import time
 
-from signal_quality import calculate_signal_quality
-
 try:
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
     from playwright.async_api import async_playwright
@@ -38,30 +36,6 @@ def _parse_analysis(raw) -> dict:
 def _normalize_direction(value) -> str:
     text = str(value or "").strip().upper().replace("UST", "ÜST")
     return text if text in {"ALT", "ÜST"} else ""
-
-
-def _persist_signal_quality_before_delete(db, match_id: str) -> int:
-    rows = db.active_alerts_for_match(match_id)
-    history: list[str] = []
-    updated = 0
-    for row in rows:
-        analysis = _parse_analysis(row.get("ai_analysis"))
-        if not isinstance(analysis.get("signal_quality"), dict):
-            quality = calculate_signal_quality({
-                **analysis,
-                **row,
-                "direction": analysis.get("final_direction") or analysis.get("direction") or row.get("direction"),
-                "previous_directions": history,
-            })
-            analysis = {**analysis, "signal_quality": quality}
-            if db.update_alert_ai_analysis(int(row.get("id") or 0), json.dumps(analysis, ensure_ascii=False), active_only=True):
-                updated += 1
-        direction = _normalize_direction(
-            analysis.get("final_direction") or analysis.get("direction") or row.get("direction")
-        )
-        if direction:
-            history.append(direction)
-    return updated
 
 
 def is_final_status(status: str) -> bool:
@@ -103,21 +77,13 @@ def _float_or_none(value) -> float | None:
         return None
 
 
-def _normalize_direction(direction: str) -> str:
-    direction_key = (direction or "").strip().upper().replace("UST", "ÜST")
-    if direction_key in {"ALT", "ÜST"}:
-        return direction_key
-    return ""
-
-
 def canonical_alert_direction(alert: dict) -> str:
     """Return the stored playable direction for result settlement."""
-    try:
-        analysis = json.loads(alert.get("ai_analysis") or "{}")
-    except Exception:
-        analysis = {}
+    snapshot = _parse_analysis(alert.get("display_snapshot"))
+    analysis = _parse_analysis(alert.get("ai_analysis"))
     return (
-        _normalize_direction(analysis.get("final_direction") or analysis.get("direction") or alert.get("direction"))
+        _normalize_direction(snapshot.get("final_direction") or snapshot.get("direction"))
+        or _normalize_direction(analysis.get("final_direction") or analysis.get("direction"))
         or _normalize_direction(alert.get("direction"))
     )
 
@@ -128,6 +94,7 @@ def _empty_result_summary(tracked_count: int = 0) -> dict:
         "checked_count": 0,
         "finished_match_count": 0,
         "updated_count": 0,
+        "trial_updated_count": 0,
         "successful_count": 0,
         "failed_count": 0,
         "push_count": 0,
@@ -144,6 +111,7 @@ def _settle_deleted_match_from_final_score(
     final_status: str,
     *,
     count_checked: bool = True,
+    force: bool = False,
 ) -> bool:
     if not match_id or not is_final_status(final_status):
         return False
@@ -151,13 +119,31 @@ def _settle_deleted_match_from_final_score(
     if final_total is None:
         return False
 
-    alerts = db.get_deleted_alerts_for_result_check(match_id)
-    if not alerts:
+    alerts = (
+        db.get_deleted_alerts_for_match(match_id)
+        if force
+        else db.get_deleted_alerts_for_result_check(match_id)
+    )
+    trials = db.signal_trials_for_match(match_id, unresolved_only=not force)
+    if not alerts and not trials:
         return False
 
-    if count_checked:
-        summary["checked_count"] += 1
-    summary["finished_match_count"] += 1
+    final_label = final_status_label(final_status)
+    db.update_deleted_match_final_observation(
+        match_id,
+        final_score=final_score,
+        final_status=final_label,
+    )
+    updated_any = False
+
+    def mark_match_updated() -> None:
+        nonlocal updated_any
+        if updated_any:
+            return
+        if count_checked:
+            summary["checked_count"] += 1
+        summary["finished_match_count"] += 1
+        updated_any = True
 
     for alert in alerts:
         playable_direction = canonical_alert_direction(alert)
@@ -172,12 +158,13 @@ def _settle_deleted_match_from_final_score(
             alert["id"],
             result=signal_result,
             final_score=final_score,
-            final_status=final_status_label(final_status),
-            direction=playable_direction,
+            final_status=final_label,
+            force=force,
         )
         if not updated:
             continue
 
+        mark_match_updated()
         summary["updated_count"] += 1
         if signal_result == "Başarılı":
             summary["successful_count"] += 1
@@ -197,7 +184,38 @@ def _settle_deleted_match_from_final_score(
             "result": signal_result,
         })
 
-    return True
+    # A manual dashboard label must not become model evidence, but it must not
+    # prevent the scheduled checker from settling the separate trial ledger.
+    # Reload after alert updates because those settle their linked trial in the
+    # same DB transaction.
+    remaining_trials = db.signal_trials_for_match(
+        match_id,
+        unresolved_only=not force,
+    )
+    for trial in remaining_trials:
+        playable_direction = _normalize_direction(trial.get("direction"))
+        live_line = _float_or_none(trial.get("live_line"))
+        if live_line is None:
+            continue
+        trial_result = evaluate_signal_result(
+            playable_direction,
+            live_line,
+            final_total,
+        )
+        if not trial_result:
+            continue
+        if not db.update_signal_trial_final_result(
+            trial["id"],
+            result=trial_result,
+            final_score=final_score,
+            final_status=final_label,
+            force=force,
+        ):
+            continue
+        mark_match_updated()
+        summary["trial_updated_count"] += 1
+
+    return updated_any
 
 
 def _deleted_result_message(summary: dict) -> str:
@@ -208,10 +226,15 @@ def _deleted_result_message(summary: dict) -> str:
             f"{summary['tracked_count']} maç kontrol listesinde, ancak maç sayfasına ulaşılamadı "
             "ve kayıtlı final skor bulunamadı. Biraz sonra tekrar deneyin."
         )
+    trial_note = (
+        f" {summary.get('trial_updated_count', 0)} kanıt denemesi sonuçlandı."
+        if summary.get("trial_updated_count")
+        else ""
+    )
     return (
         f"{summary['checked_count']} maç kontrol edildi, "
         f"{summary['finished_match_count']} maç bitmiş bulundu, "
-        f"{summary['updated_count']} sinyal güncellendi."
+        f"{summary['updated_count']} sinyal güncellendi.{trial_note}"
     )
 
 
@@ -239,7 +262,7 @@ class AiscoreFinishedMatchChecker:
             }
             if proxy_server:
                 launch_kwargs["proxy"] = {"server": proxy_server}
-                logger.info("Using proxy: %s", proxy_server)
+                logger.info("Finished-match checker proxy enabled.")
             browser = await playwright.chromium.launch(**launch_kwargs)
             context = await browser.new_context(
                 user_agent=(
@@ -473,7 +496,7 @@ class AiscoreFinishedMatchChecker:
             await page.close()
 
 
-async def run_active_match_finished_scan(db, config) -> dict:
+async def run_active_match_finished_scan(db, config, before_delete=None) -> dict:
     """Scan active (not-yet-deleted) alerts for matches that have ended, and
     soft-delete them so they flow into the finished-match result pipeline."""
     tracked_matches = db.get_active_matches_with_urls()
@@ -482,6 +505,11 @@ async def run_active_match_finished_scan(db, config) -> dict:
         "checked_count": 0,
         "finished_match_count": 0,
         "moved_count": 0,
+        "updated_count": 0,
+        "successful_count": 0,
+        "failed_count": 0,
+        "push_count": 0,
+        "archive_failed_count": 0,
         "details": [],
     }
     if not tracked_matches:
@@ -502,17 +530,57 @@ async def run_active_match_finished_scan(db, config) -> dict:
         match_id = result.get("match_id")
         if not match_id:
             continue
-        _persist_signal_quality_before_delete(db, match_id)
-        affected = db.delete_match_data(match_id)
-        if affected > 0:
-            summary["moved_count"] += 1
+        try:
+            archive_result = None
+            if before_delete is not None:
+                archive_result = before_delete(match_id)
+
+            # The production callback captures the enriched live-dashboard rows
+            # and archives them atomically. None retains legacy snapshot-only
+            # callback compatibility.
+            if isinstance(archive_result, int):
+                affected = archive_result
+            else:
+                affected = db.delete_match_data(
+                    match_id,
+                    require_display_snapshot=before_delete is not None,
+                )
+            if affected > 0:
+                summary["moved_count"] += 1
+                settlement = _empty_result_summary(tracked_count=1)
+                _settle_deleted_match_from_final_score(
+                    db,
+                    settlement,
+                    match_id,
+                    result.get("score", ""),
+                    result.get("status", ""),
+                    count_checked=False,
+                )
+                for key in ("updated_count", "successful_count", "failed_count", "push_count"):
+                    summary[key] += settlement[key]
+                detail = {
+                    "match_id": match_id,
+                    "match_name": result.get("match_name", ""),
+                    "status": result.get("status", ""),
+                    "final_score": result.get("score", ""),
+                    "affected_alerts": affected,
+                    "settled_alerts": settlement["updated_count"],
+                }
+                if settlement["details"]:
+                    detail["results"] = settlement["details"]
+                summary["details"].append(detail)
+        except Exception as exc:
+            summary["archive_failed_count"] += 1
             summary["details"].append({
                 "match_id": match_id,
                 "match_name": result.get("match_name", ""),
-                "status": result.get("status", ""),
-                "final_score": result.get("score", ""),
-                "affected_alerts": affected,
+                "error_code": "ARCHIVE_FAILED",
             })
+            logger.exception(
+                "Finished match archive failed; remaining matches continue: match_id=%s error=%s",
+                match_id,
+                exc,
+            )
 
     if summary["moved_count"] == 0 and summary["finished_match_count"] == 0:
         summary["message"] = (
@@ -546,20 +614,21 @@ async def run_single_deleted_match_result_check(db, config, alert_id: int) -> di
     tracked_match = db.get_deleted_match_for_result_check_by_alert_id(alert_id)
     if not alert or not tracked_match:
         return {**empty_summary, "message": "Kontrol edilecek maç bulunamadı."}
-    match_alerts = db.get_deleted_alerts_for_match(alert["match_id"])
-    if not match_alerts:
-        match_alerts = [alert]
-
     summary = _empty_result_summary(tracked_count=1)
-    if _settle_deleted_match_from_final_score(
-        db,
-        summary,
-        alert["match_id"],
-        tracked_match.get("score", ""),
-        tracked_match.get("status", ""),
-    ):
-        summary["message"] = _deleted_result_message(summary)
-        return summary
+    # An unresolved legacy row may already carry a trustworthy final score. A
+    # resolved row, however, was explicitly rechecked by the user and must be
+    # fetched again; reusing its old final fields would only reproduce a stale
+    # or previously misparsed result.
+    if not str(alert.get("result") or "").strip():
+        if _settle_deleted_match_from_final_score(
+            db,
+            summary,
+            alert["match_id"],
+            tracked_match.get("score", ""),
+            tracked_match.get("status", ""),
+        ):
+            summary["message"] = _deleted_result_message(summary)
+            return summary
 
     checker = AiscoreFinishedMatchChecker(
         page_timeout_ms=config.PAGE_TIMEOUT_MS,
@@ -597,6 +666,7 @@ async def run_single_deleted_match_result_check(db, config, alert_id: int) -> di
         final_score,
         result.get("status", ""),
         count_checked=False,
+        force=True,
     )
     summary["message"] = _deleted_result_message(summary)
     return summary

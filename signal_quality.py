@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from projection import game_clock, parse_score
 
 
@@ -7,9 +9,10 @@ def _safe_float(value) -> float | None:
     if value is None:
         return None
     try:
-        return float(str(value).replace(",", ".").strip())
+        parsed = float(str(value).replace(",", ".").strip())
     except (TypeError, ValueError):
         return None
+    return parsed if math.isfinite(parsed) else None
 
 
 def _safe_int(value) -> int | None:
@@ -30,11 +33,11 @@ def _clamp_score(value: float) -> int:
 
 def _quality_label(score: int) -> str:
     if score >= 80:
-        return "YÜKSEK KALİTE"
+        return "GÜÇLÜ MODEL UYUMU"
     if score >= 60:
-        return "İZLE"
+        return "ORTA MODEL UYUMU"
     if score >= 50:
-        return "BELİRSİZ"
+        return "ZAYIF MODEL UYUMU"
     return "PAS"
 
 
@@ -65,6 +68,111 @@ def _played_minutes(match_data: dict, total_score: int | None) -> tuple[float | 
     if total_score is not None and str(match_data.get("status") or "").strip().lower() == "live":
         return None, clock
     return None, clock
+
+
+def _assess_data_reliability(
+    match_data: dict,
+    *,
+    direction: str,
+    opening: float | None,
+    prematch: float | None,
+    live: float | None,
+    total_score: int | None,
+    clock: dict,
+) -> dict:
+    """Score only input integrity; this is deliberately not a win estimate."""
+    period = clock.get("period")
+    remaining = _safe_float(clock.get("remaining_min"))
+    period_count = _safe_int(clock.get("period_count"))
+    quarter_length = _safe_float(clock.get("quarter_length"))
+    projection = _safe_float(
+        match_data.get("pure_projected_total")
+        or match_data.get("projected_total")
+        or match_data.get("projected")
+    )
+    fair_line = _safe_float(match_data.get("fair_line"))
+    status = str(match_data.get("status") or "").strip().upper()
+    odds_snapshot = (
+        match_data.get("odds_snapshot")
+        if isinstance(match_data.get("odds_snapshot"), dict)
+        else {}
+    )
+    paired_bookmakers = _safe_int(
+        odds_snapshot.get("paired_bookmaker_count")
+    ) or 0
+    opening_min = _safe_float(odds_snapshot.get("opening_min"))
+    opening_max = _safe_float(odds_snapshot.get("opening_max"))
+    inplay_min = _safe_float(odds_snapshot.get("inplay_min"))
+    inplay_max = _safe_float(odds_snapshot.get("inplay_max"))
+    opening_spread = (
+        opening_max - opening_min
+        if opening_min is not None and opening_max is not None
+        else None
+    )
+    inplay_spread = (
+        inplay_max - inplay_min
+        if inplay_min is not None and inplay_max is not None
+        else None
+    )
+
+    checks = {
+        "direction_valid": direction in {"ALT", "ÜST"},
+        "lines_valid": opening is not None and live is not None,
+        "score_valid": total_score is not None,
+        "clock_explicit": period is not None and remaining is not None,
+        "clock_range_valid": bool(
+            period is not None
+            and period_count is not None
+            and 1 <= int(period) <= period_count
+            and remaining is not None
+            and quarter_length is not None
+            and 0 <= remaining <= quarter_length
+        ),
+        "format_supported": bool(clock.get("model_validated")),
+        "projection_available": projection is not None and fair_line is not None,
+        # Prospective trials need a durable route to the final score. A model
+        # candidate without its source URL cannot ever become valid evidence.
+        "result_source_present": bool(str(match_data.get("url") or "").strip()),
+        "live_line_above_score": bool(
+            live is not None and total_score is not None and live >= total_score
+        ),
+        "not_overtime": not status.startswith("OT") and "UZATMA" not in status,
+        "paired_market_consensus": paired_bookmakers >= 2,
+        "market_dispersion_valid": bool(
+            opening_spread is not None
+            and inplay_spread is not None
+            and opening_spread <= 12
+            and inplay_spread <= 12
+        ),
+        "market_not_locked": not bool(match_data.get("market_locked")),
+    }
+    hard_fail = not all(checks.values())
+    score = 100
+    projection_quality = _safe_float(match_data.get("projection_quality"))
+    if projection_quality is None:
+        score -= 60
+    elif projection_quality < 70:
+        score -= 40
+    elif projection_quality < 85:
+        score -= 20
+    if prematch is None:
+        score -= 10
+
+    quarter_totals = match_data.get("quarter_totals")
+    if not isinstance(quarter_totals, list) or not quarter_totals:
+        score -= 10
+    completed_needed = max(0, int(period or 1) - 1)
+    if completed_needed and (
+        not isinstance(quarter_totals, list) or len(quarter_totals) < completed_needed
+    ):
+        score -= 15
+    if hard_fail:
+        score = min(score, 49)
+    return {
+        "score": _clamp_score(score),
+        "hard_fail": hard_fail,
+        "checks": checks,
+    }
 
 
 def _minute_phase_delta(clock: dict, played: float | None) -> tuple[int, str | None]:
@@ -120,6 +228,15 @@ def calculate_signal_quality(match_data: dict) -> dict:
     total_score = home_score + away_score if home_score is not None and away_score is not None else None
     played, clock = _played_minutes(match_data, total_score)
     total_game_min = _safe_float(match_data.get("total_game_min")) or float(clock.get("total_game_min") or 40)
+    reliability = _assess_data_reliability(
+        match_data,
+        direction=direction,
+        opening=opening,
+        prematch=prematch,
+        live=live,
+        total_score=total_score,
+        clock=clock,
+    )
 
     missing = []
     if not direction:
@@ -206,7 +323,7 @@ def calculate_signal_quality(match_data: dict) -> dict:
     fair_line = _safe_float(match_data.get("fair_line"))
     model_line = fair_line if fair_line is not None else projection
     if model_line is not None and live is not None and direction:
-        projection_diff = projection - live
+        projection_diff = projection - live if projection is not None else None
         signed_model_edge = model_line - live if direction == "ÜST" else live - model_line
         if signed_model_edge < 0:
             model_delta = -20
@@ -282,15 +399,8 @@ def calculate_signal_quality(match_data: dict) -> dict:
         caps.append(69)
         risk_notes.append("tamamlanmış periyot temposu yok")
 
-    league_rate = _safe_float(match_data.get("league_success_rate"))
-    league_samples = _safe_int(match_data.get("league_success_samples")) or 0
-    if league_rate is not None and league_samples >= 30:
-        weight = league_samples / (league_samples + 50.0)
-        shrunk_rate = 51.0 + weight * (league_rate - 51.0)
-        history_delta = 5 if shrunk_rate >= 60 else -5 if shrunk_rate < 45 else 0
-        components["history_prior"] = history_delta
-        score_value += history_delta
-        reasons.append(f"Geçmişe doğru küçültülmüş lig oranı %{shrunk_rate:.1f} ({history_delta:+d}).")
+    # Outcome history is intentionally excluded from this heuristic. It is
+    # evaluated once, prospectively and with unique matches, by signal_gate.
 
     previous_directions = [
         _normalize_direction(item)
@@ -304,13 +414,41 @@ def calculate_signal_quality(match_data: dict) -> dict:
             risk_notes.append("yön değişimi var")
             reasons.append("Aynı maçta önceki sinyal yönüyle çelişki var (-12 ve güven tavanı).")
 
-    if signed_model_edge is None or signed_model_edge < 5:
-        caps.append(79)
-    final_score = _clamp_score(score_value)
+    expert_heuristic_score = _clamp_score(score_value)
     if caps:
-        final_score = min(final_score, min(caps))
+        expert_heuristic_score = min(expert_heuristic_score, min(caps))
 
-    label = _quality_label(final_score)
+    # Fixed support score for one calibrated projection signal. Fair edge is a
+    # deterministic transformation of this gap, so it must not earn a second
+    # independent block of points.
+    model_support = 0.0
+    signed_projection_edge = None
+    if projection is not None and live is not None and direction:
+        signed_projection_edge = (
+            projection - live if direction == "ÜST" else live - projection
+        )
+        if signed_projection_edge >= 8:
+            model_support += 65
+        elif signed_projection_edge >= 6:
+            model_support += 55
+        elif signed_projection_edge >= 4:
+            model_support += 35
+        elif signed_projection_edge >= 0:
+            model_support += 15
+    if projection_quality is not None:
+        if projection_quality >= 85:
+            model_support += 10
+        elif projection_quality >= 70:
+            model_support += 5
+    if period in {2, 3}:
+        model_support += 10
+    if int(match_data.get("signal_count") or 1) == 1:
+        model_support += 10
+    model_support_score = _clamp_score(model_support)
+    if caps:
+        model_support_score = min(model_support_score, min(caps))
+
+    label = _quality_label(model_support_score)
     risk_note = "; ".join(dict.fromkeys(risk_notes)) if risk_notes else ""
     if not risk_note:
         risk_note = "Belirgin ek risk notu yok."
@@ -322,12 +460,18 @@ def calculate_signal_quality(match_data: dict) -> dict:
         f"Projeksiyon canlı baremden {_fmt(projection_diff)} farklı. "
         f"Mevcut tempo {_fmt(current_pace, 2)}, gereken tempo {_fmt(required_pace, 2)}. "
         f"Skor farkı {score_gap if score_gap is not None else '-'}. "
-        f"Bu nedenle sinyal kalitesi etiketi {label}."
+        f"Bu nedenle model uyum etiketi {label}."
     )
 
     return {
-        "quality_score": final_score,
+        "quality_score": model_support_score,
         "quality_label": label,
+        "score_kind": "heuristic_not_probability",
+        "model_support_score": model_support_score,
+        "expert_heuristic_score": expert_heuristic_score,
+        "data_reliability_score": reliability["score"],
+        "data_hard_fail": reliability["hard_fail"],
+        "data_checks": reliability["checks"],
         "components": components,
         "quality_cap": min(caps) if caps else 100,
         "projection": round(projection, 1) if projection is not None else None,

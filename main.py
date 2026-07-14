@@ -8,6 +8,7 @@ Usage:
 import asyncio
 import json
 import logging
+import math
 import random
 import re
 import sys
@@ -19,7 +20,9 @@ from db import Database
 from notifier import TelegramNotifier
 from pace_tracker import PaceTracker
 from projection import game_clock, parse_score
-from signal_analysis import build_backtest_profile, build_signal_analysis
+from signal_analysis import build_signal_analysis
+from signal_gate import DEFAULT_GATE_POLICY, build_gate_evidence, evaluate_signal_gate
+from signal_quality import calculate_signal_quality
 from signal_repeat import live_total_delta
 
 
@@ -29,6 +32,107 @@ def setup_logging(level: str):
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    # python-telegram-bot uses httpx; its INFO request log contains the bot
+    # token in the URL path. Keep transport internals below WARNING and rely on
+    # our credential-safe notifier outcome logs instead.
+    for logger_name in ("httpx", "httpcore", "telegram.request"):
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+
+def _normalize_match_payload(match: dict) -> dict:
+    """Validate one scraper record without letting it poison the whole cycle."""
+    if not isinstance(match, dict):
+        raise ValueError("match payload must be a dictionary")
+
+    normalized = dict(match)
+    for key in ("match_id", "match_name"):
+        value = str(match.get(key) or "").strip()
+        if not value:
+            raise ValueError(f"missing required field: {key}")
+        normalized[key] = value
+
+    for key in ("tournament", "status", "url", "score"):
+        normalized[key] = str(match.get(key) or "").strip()
+
+    for key in ("opening_total", "inplay_total"):
+        raw = match.get(key)
+        if isinstance(raw, bool):
+            raise ValueError(f"invalid numeric field: {key}")
+        try:
+            value = float(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"invalid numeric field: {key}") from exc
+        if not math.isfinite(value) or value <= 0 or value > 1000:
+            raise ValueError(f"out-of-range numeric field: {key}")
+        normalized[key] = value
+
+    prematch = match.get("prematch_total")
+    if prematch is not None and str(prematch).strip() != "":
+        try:
+            parsed_prematch = float(prematch)
+        except (TypeError, ValueError):
+            parsed_prematch = None
+        normalized["prematch_total"] = (
+            parsed_prematch
+            if parsed_prematch is not None
+            and math.isfinite(parsed_prematch)
+            and 0 < parsed_prematch <= 1000
+            else None
+        )
+
+    return normalized
+
+
+def _scraper_health_summary(scraper) -> dict | None:
+    """Expose a bounded, credential-safe scraper report when supported."""
+    report = getattr(scraper, "last_report", None)
+    if report is None:
+        return None
+    report_type = type(report).__name__
+    if not isinstance(report, dict):
+        report = getattr(report, "__dict__", None)
+    if not isinstance(report, dict):
+        return {"available": True, "type": report_type}
+
+    safe_fields = {
+        "status",
+        "links_found",
+        "matches_found",
+        "listing_attempts",
+        "discovered_count",
+        "reported_live_count",
+        "unverified_count",
+        "attempted_count",
+        "unattempted_count",
+        "parsed_count",
+        "failed_count",
+        "coverage_pct",
+        "parse_coverage_pct",
+        "matches_checked",
+        "matches_parsed",
+        "matches_succeeded",
+        "matches_skipped",
+        "matches_failed",
+        "success_count",
+        "error_count",
+        "duration_seconds",
+        "elapsed_seconds",
+    }
+    summary = {
+        key: value
+        for key, value in report.items()
+        if key in safe_fields and isinstance(value, (str, int, float, bool, type(None)))
+    }
+    return summary or {"available": True, "field_count": len(report)}
+
+
+def _telegram_delivery_complete(notifier, message_ids: dict) -> bool:
+    checker = getattr(notifier, "delivery_complete", None)
+    if callable(checker):
+        return bool(checker(message_ids or {}))
+    # Lightweight test/custom notifiers historically represented a complete
+    # delivery with any non-empty mapping.
+    return bool(message_ids)
 
 
 async def process_match(
@@ -38,7 +142,9 @@ async def process_match(
     config: Config,
     pace_tracker: PaceTracker | None = None,
     backtest_profile: dict | None = None,
+    gate_evidence: dict | None = None,
 ) -> None:
+    match = _normalize_match_payload(match)
     match_id = match["match_id"]
     match_name = match["match_name"]
     tournament = match.get("tournament", "")
@@ -150,10 +256,32 @@ async def process_match(
         backtest_profile=backtest_profile,
     )
     direction = analysis.get("direction") or legacy_direction
+    quality = calculate_signal_quality(
+        {
+            **match,
+            **analysis,
+            "opening": opening_total,
+            "prematch": prematch_total,
+            "live": inplay_total,
+            "direction": direction,
+            "signal_count": signal_count,
+        }
+    )
+    gate = evaluate_signal_gate(
+        {
+            **match,
+            "signal_count": signal_count,
+        },
+        analysis,
+        quality,
+        gate_evidence,
+    )
     analysis = {
         **analysis,
         "direction": direction,
         "final_direction": direction,
+        "signal_quality": quality,
+        "signal_gate": gate,
     }
 
     previous_same_direction = db.latest_match_alert_in_direction(match_id, direction)
@@ -181,22 +309,187 @@ async def process_match(
         ai_analysis=json.dumps(analysis, ensure_ascii=False),
         alert_period=period,
         alert_moment=" | ".join(p for p in (status, score) if p),
+        telegram_required=bool(gate.get("telegram_allowed")),
     )
 
     followed_upcoming = db.is_upcoming_followed(match_id)
 
-    await notifier.send_alert(
-        match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
-        score=score, signal_count=signal_count, prematch=prematch_total, analysis=analysis,
-        period=period,
-        followed_upcoming=followed_upcoming,
-    )
+    message_ids = {}
+    if gate.get("telegram_allowed"):
+        try:
+            delivered = await notifier.send_alert(
+                match_name, tournament, opening_total, inplay_total, direction, abs_diff, status,
+                score=score, signal_count=signal_count, prematch=prematch_total, analysis=analysis,
+                period=period,
+                followed_upcoming=followed_upcoming,
+            )
+        except Exception as exc:
+            db.mark_telegram_delivery_failed(
+                alert_id,
+                f"{type(exc).__name__}: notifier delivery failed",
+            )
+            raise
+        if isinstance(delivered, dict) and _telegram_delivery_complete(notifier, delivered):
+            message_ids = delivered
+            db.mark_telegram_delivery_sent(alert_id, message_ids)
+        else:
+            db.mark_telegram_delivery_failed(
+                alert_id,
+                "Notifier did not deliver to every configured recipient.",
+                **({"message_ids": delivered} if isinstance(delivered, dict) and delivered else {}),
+            )
 
     log.info(
-        "Signal saved (telegram=sent%s): alert_id=%s match_id=%s | %s | %s | diff=%.2f | fair_line=%s",
+        "Signal saved (gate=%s telegram=%s%s): alert_id=%s match_id=%s | %s | %s | diff=%.2f | fair_line=%s",
+        gate.get("state"),
+        "sent" if message_ids else "not-sent",
         " · followed" if followed_upcoming else "",
         alert_id, match_id, match_name, direction, abs_diff, analysis.get("fair_line"),
     )
+
+
+async def process_match_batch(
+    matches: list,
+    db: Database,
+    notifier: TelegramNotifier,
+    config: Config,
+    pace_tracker: PaceTracker,
+    backtest_profile: dict | None = None,
+    gate_evidence: dict | None = None,
+) -> dict:
+    """Process every scraper item independently and return cycle health counts."""
+    log = logging.getLogger("main")
+    processed_count = 0
+    failed_count = 0
+    for index, match in enumerate(matches):
+        try:
+            await process_match(
+                match,
+                db,
+                notifier,
+                config,
+                pace_tracker,
+                backtest_profile,
+                gate_evidence,
+            )
+            processed_count += 1
+        except Exception as exc:
+            failed_count += 1
+            match_id = match.get("match_id") if isinstance(match, dict) else None
+            match_name = match.get("match_name") if isinstance(match, dict) else None
+            log.exception(
+                "Match processing failed; cycle continues: index=%s match_id=%r match_name=%r error=%s",
+                index,
+                str(match_id or "")[:120],
+                str(match_name or "")[:160],
+                exc,
+            )
+
+    active_match_ids = {
+        str(match.get("match_id") or "").strip()
+        for match in matches
+        if isinstance(match, dict) and str(match.get("match_id") or "").strip()
+    }
+    pruned_count = pace_tracker.prune(
+        active_match_ids=active_match_ids if matches else None
+    )
+    return {
+        "received": len(matches),
+        "processed": processed_count,
+        "failed": failed_count,
+        "pace_states_pruned": pruned_count,
+    }
+
+
+async def retry_pending_telegram_deliveries(
+    db: Database,
+    notifier: TelegramNotifier,
+    *,
+    limit: int = 20,
+) -> dict:
+    """Retry durable TRUSTED alert deliveries without blocking other rows."""
+    log = logging.getLogger("main")
+    rows = db.pending_telegram_alerts(limit=limit)
+    sent = 0
+    failed = 0
+    for row in rows:
+        alert_id = int(row.get("id") or 0)
+        try:
+            stored_message_ids = json.loads(row.get("telegram_message_ids") or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            stored_message_ids = {}
+        if not isinstance(stored_message_ids, dict):
+            stored_message_ids = {}
+        try:
+            analysis = json.loads(row.get("ai_analysis") or "{}")
+            if not isinstance(analysis, dict):
+                raise ValueError("stored analysis is not an object")
+            gate = analysis.get("signal_gate")
+            if not isinstance(gate, dict) or gate.get("state") != "TRUSTED" or not gate.get("telegram_allowed"):
+                raise ValueError("stored alert is not TRUSTED")
+            direction = str(
+                analysis.get("final_direction")
+                or analysis.get("direction")
+                or row.get("direction")
+                or ""
+            )
+            clock = game_clock(
+                str(row.get("status") or ""),
+                str(row.get("match_name") or ""),
+                str(row.get("tournament") or ""),
+            )
+            send_kwargs = {}
+            recipient_keys = getattr(notifier, "recipient_keys", None)
+            if isinstance(recipient_keys, set):
+                stored_message_ids = {
+                    key: value
+                    for key, value in stored_message_ids.items()
+                    if key in recipient_keys
+                }
+                send_kwargs["pending_recipient_keys"] = recipient_keys - set(stored_message_ids)
+            delivered = await notifier.send_alert(
+                str(row.get("match_name") or ""),
+                str(row.get("tournament") or ""),
+                float(row.get("opening")),
+                float(row.get("live")),
+                direction,
+                float(row.get("diff")),
+                str(row.get("status") or ""),
+                score=str(row.get("score") or ""),
+                signal_count=int(row.get("signal_count") or 1),
+                prematch=row.get("prematch"),
+                analysis=analysis,
+                period=clock.get("period"),
+                followed_upcoming=db.is_upcoming_followed(str(row.get("match_id") or "")),
+                **send_kwargs,
+            )
+            if not isinstance(delivered, dict):
+                delivered = {}
+            combined_message_ids = {**stored_message_ids, **delivered}
+            if not _telegram_delivery_complete(notifier, combined_message_ids):
+                db.mark_telegram_delivery_failed(
+                    alert_id,
+                    "delivery retry did not reach every configured recipient",
+                    message_ids=combined_message_ids,
+                )
+                failed += 1
+                continue
+            db.mark_telegram_delivery_sent(alert_id, combined_message_ids)
+            sent += 1
+        except Exception as exc:
+            db.mark_telegram_delivery_failed(
+                alert_id,
+                f"{type(exc).__name__}: delivery retry failed",
+                message_ids=stored_message_ids,
+            )
+            failed += 1
+            log.warning(
+                "Pending Telegram delivery failed: alert_id=%s match_id=%s error_type=%s",
+                alert_id,
+                str(row.get("match_id") or "")[:120],
+                type(exc).__name__,
+            )
+    return {"pending": len(rows), "sent": sent, "failed": failed}
 
 
 async def run():
@@ -218,6 +511,7 @@ async def run():
         aiscore_url=config.AISCORE_URL,
         max_matches_per_cycle=config.MAX_MATCHES_PER_CYCLE,
         page_timeout_ms=config.PAGE_TIMEOUT_MS,
+        concurrency=config.AISCORE_CONCURRENCY,
     )
     pace_tracker = PaceTracker()
 
@@ -232,6 +526,14 @@ async def run():
 
     while True:
         try:
+            delivery_summary = await retry_pending_telegram_deliveries(db, notifier)
+            if delivery_summary["pending"]:
+                log.info(
+                    "Telegram outbox: pending=%s sent=%s failed=%s",
+                    delivery_summary["pending"],
+                    delivery_summary["sent"],
+                    delivery_summary["failed"],
+                )
             cycle_started = time.monotonic()
             matches = await scraper.get_live_basketball_totals()
             scrape_seconds = time.monotonic() - cycle_started
@@ -240,12 +542,60 @@ async def run():
                 len(matches),
                 scrape_seconds,
             )
-            backtest_profile = build_backtest_profile(db.recent_deleted_alerts(limit=None))
+            policy = DEFAULT_GATE_POLICY
+            gate_evidence = build_gate_evidence(db.signal_trial_rows(
+                policy_id=policy.policy_id,
+                strategy_id=policy.strategy_id,
+                strategy_version=policy.strategy_version,
+                evidence_epoch=policy.evidence_epoch,
+                limit=policy.evidence_window,
+            ))
 
-            for match in matches:
-                await process_match(match, db, notifier, config, pace_tracker, backtest_profile)
+            cycle_summary = await process_match_batch(
+                matches,
+                db,
+                notifier,
+                config,
+                pace_tracker,
+                None,
+                gate_evidence,
+            )
+            if cycle_summary["pace_states_pruned"]:
+                log.info(
+                    "Pruned %s stale pace-tracker state(s).",
+                    cycle_summary["pace_states_pruned"],
+                )
 
-            consecutive_errors = 0
+            health = _scraper_health_summary(scraper)
+            if health is not None:
+                log.info("Scraper health: %s", health)
+            log.info(
+                "Cycle processing summary: received=%s processed=%s failed=%s",
+                cycle_summary["received"],
+                cycle_summary["processed"],
+                cycle_summary["failed"],
+            )
+            health_status = str((health or {}).get("status") or "").lower()
+            degraded = (
+                cycle_summary["failed"] > 0
+                or health_status in {"partial", "error", "failed", "degraded"}
+            )
+            if degraded:
+                consecutive_errors += 1
+                log.warning(
+                    "Degraded scrape cycle (#%s): health=%s failed_rows=%s/%s",
+                    consecutive_errors,
+                    health_status or "unknown",
+                    cycle_summary["failed"],
+                    cycle_summary["received"],
+                )
+                if consecutive_errors >= 5:
+                    await notifier.send_error(
+                        "5 consecutive degraded scrape cycles; check scraper health logs."
+                    )
+                    consecutive_errors = 0
+            else:
+                consecutive_errors = 0
 
         except KeyboardInterrupt:
             log.info("Bot stopped.")

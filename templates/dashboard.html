@@ -148,6 +148,18 @@
       color: #fca5a5;
     }
 
+    .star-filter-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 42px;
+      padding-inline: 12px;
+      color: #facc15;
+      font-size: 15px;
+      line-height: 1;
+      font-weight: 900;
+    }
+
     .btn.warning {
       background: rgba(251,191,36,0.12);
       border-color: rgba(251,191,36,0.32);
@@ -1635,6 +1647,16 @@
       border-radius: 999px; font-size: 12px; font-weight: 850;
     }
     .card-chip .fair-alert { font-size: 14px; margin-left: 2px; }
+    .card-gate-note {
+      margin: -4px 0 12px;
+      padding: 8px 10px;
+      border: 1px solid rgba(248,113,113,0.2);
+      border-radius: 9px;
+      background: rgba(248,113,113,0.07);
+      color: #fecaca;
+      font-size: 11px;
+      line-height: 1.4;
+    }
 
     /* Aksiyon butonları satırı */
     .card-actions {
@@ -2201,6 +2223,7 @@
           <button class="btn" data-filter="bet">Bahis</button>
           <button class="btn" data-filter="follow">Takip</button>
           <button class="btn" data-filter="ignored">Pas Geçilen</button>
+          <button class="btn star-filter-btn" data-filter="starred" id="starFilterBtn" title="Sinyal Kalitesi yanında yıldız olan sinyalleri göster" aria-label="Yıldızlı sinyaller">★</button>
           <button class="btn" data-filter="alt">ALT</button>
           <button class="btn" data-filter="ust">ÜST</button>
         </div>
@@ -2232,8 +2255,7 @@
                 <th data-sort="direction">Sinyal</th>
                 <th data-sort="fair_line">Adil</th>
                 <th data-sort="projected">Proj.</th>
-                <th data-sort="signal_quality_score">S.K.</th>
-                <th class="history-cell" data-sort="history_guard">History</th>
+                <th data-sort="signal_quality_score">Güven</th>
                 <th data-sort="match_name">Maç</th>
                 <th data-sort="tournament">Turnuva</th>
                 <th data-sort="status">Durum</th>
@@ -2417,6 +2439,8 @@
     let selectedMatchIds = new Set();
     let noteAlertId = null;
     let signalListEntries = [];
+    let alertsFetchSequence = 0;
+    let alertsFetchController = null;
 
     const $ = id => document.getElementById(id);
 
@@ -2439,6 +2463,8 @@
     }
 
     function num(value) {
+      if (value === null || value === undefined) return null;
+      if (typeof value === 'string' && value.trim() === '') return null;
       const n = Number(value);
       return Number.isFinite(n) ? n : null;
     }
@@ -2449,7 +2475,8 @@
     }
 
     function signed(value) {
-      const n = num(value) || 0;
+      const n = num(value);
+      if (n === null) return '-';
       return `${n >= 0 ? '+' : ''}${n.toFixed(1)}`;
     }
 
@@ -2499,6 +2526,36 @@
       return '';
     }
 
+    const gateReasonLabels = {
+      CANDIDATE_RULE_NOT_MET: 'Araştırma adayı için gereken model farkı oluşmadı.',
+      BLOCKED_DUPLICATE: 'Bu maçtaki ilk sinyal değil; tekrar sinyali güven havuzuna alınmıyor.',
+      CRITICAL_DATA_FAILURE: 'Skor, saat, barem veya oyun formatında kritik veri eksikliği var.',
+      DATA_RELIABILITY_BELOW_THRESHOLD: 'Canlı veri güvenilirliği gereken eşiğin altında.',
+      MODEL_SUPPORT_BELOW_THRESHOLD: 'Model uyum puanı gereken eşiğin altında.',
+      INSUFFICIENT_PROSPECTIVE_SAMPLE: 'İleri tarihli benzersiz sonuç örneklemi henüz yetersiz.',
+      LOW_RESOLUTION_COVERAGE: 'Adayların sonuçlanma kapsamı henüz yetersiz.',
+      OVERALL_WILSON_BELOW_70: '%95 alt güven sınırı %70 hedefinin altında.',
+      TIME_BLOCKS_INCOMPLETE: 'İki ayrı zaman bloğu henüz tamamlanmadı.',
+      TIME_BLOCK_RATE_BELOW_70: 'Zaman bloklarından en az biri %70 hedefinin altında.',
+      TIME_BLOCK_WILSON_TOO_LOW: 'Zaman bloklarının güven sınırı yetersiz.',
+      TIME_BLOCKS_UNSTABLE: 'Ardışık zaman bloklarının başarısı istikrarlı değil.',
+    };
+
+    function gateReasonTexts(alert) {
+      const gate = alert && alert.signal_gate && typeof alert.signal_gate === 'object'
+        ? alert.signal_gate
+        : {};
+      const codes = Array.isArray(gate.reason_codes) ? gate.reason_codes : [];
+      const reasons = codes.map(code => gateReasonLabels[code] || String(code || '')).filter(Boolean);
+      const selectionReason = String(alert?.selection_reason || alert?.analysis?.selection_reason || '').trim();
+      if (selectionReason && !reasons.includes(selectionReason)) reasons.unshift(selectionReason);
+      return [...new Set(reasons)];
+    }
+
+    function gatePrimaryReason(alert) {
+      return gateReasonTexts(alert)[0] || 'Güven kapısının teknik/model şartları sağlanmadı.';
+    }
+
     function fairAlertMarker(alert) {
       const analysis = parseAnalysis(alert);
       const edge = num(alert.fair_edge ?? analysis.fair_edge);
@@ -2539,21 +2596,41 @@
       return `<span class="badge small-badge">${fmt(alert.projected)}</span>`;
     }
 
-    function signalQualityTone(score) {
-      const n = num(score);
-      if (n === null) return 'neutral';
-      if (n >= 80) return 'strong';
-      if (n >= 60) return 'playable';
-      if (n >= 50) return 'watch';
-      return 'pass';
+    function gatePresentation(alert) {
+      const gate = alert && alert.signal_gate && typeof alert.signal_gate === 'object'
+        ? alert.signal_gate
+        : {};
+      const evidence = gate.evidence && typeof gate.evidence === 'object' ? gate.evidence : {};
+      const state = String(gate.state || alert?.gate_state || 'LEGACY_UNVERIFIED');
+      const lower = num(evidence.wilson_low_95);
+      const resolved = Number(evidence.resolved_unique || 0);
+      if (state === 'TRUSTED') {
+        return {
+          state, tone: 'strong', text: lower === null ? 'ONAY' : `≥${Math.floor(lower)}`,
+          label: `ONAYLI · ${resolved} benzersiz maç · %95 alt sınır ${lower === null ? '-' : '%' + lower.toFixed(1)}`,
+        };
+      }
+      if (state === 'SHADOW') {
+        return {
+          state, tone: 'watch', text: 'TEST',
+          label: `ARAŞTIRMA · Telegram kapalı · ${resolved}/100 sonuçlanmış benzersiz maç`,
+        };
+      }
+      if (state === 'BLOCKED') {
+        return { state, tone: 'pass', text: 'PAS', label: `${gatePrimaryReason(alert)} · Telegram kapalı` };
+      }
+      return { state, tone: 'neutral', text: 'ESKİ', label: 'Yeni güven politikasıyla doğrulanmamış eski kayıt' };
     }
 
     function signalQualityHtml(alert) {
-      const quality = alert.signal_quality && typeof alert.signal_quality === 'object' ? alert.signal_quality : {};
-      const score = num(alert.signal_quality_score ?? quality.quality_score);
-      const label = String(alert.signal_quality_label || quality.quality_label || '-');
-      const text = score === null ? '-' : String(Math.round(score));
-      return `<span class="quality-stack"><button type="button" class="badge small-badge quality-badge ${signalQualityTone(score)}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(label)}">${escapeHtml(text)}</button>${bucketStarsHtml(alert)}</span>`;
+      const gate = gatePresentation(alert);
+      return `<span class="quality-stack"><button type="button" class="badge small-badge quality-badge ${gate.tone}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(gate.label)}">${escapeHtml(gate.text)}</button>${bucketStarsHtml(alert)}</span>`;
+    }
+
+    function cardGateReasonHtml(alert) {
+      const gate = gatePresentation(alert);
+      if (gate.state !== 'BLOCKED') return '';
+      return `<div class="card-gate-note"><strong>PAS nedeni:</strong> ${escapeHtml(gatePrimaryReason(alert))}</div>`;
     }
 
     function bucketStarsHtml(alert) {
@@ -2576,12 +2653,26 @@
     function bigVerdictHtml(alert) {
       const dir = String(alert.direction || '');
       const dirArrow = dir === 'ALT' ? '▼' : (dir === 'ÜST' ? '▲' : '·');
+      const gate = gatePresentation(alert);
+      let icon = '⛔';
+      let headline = 'PAS · OYNAMA';
+      let description = gate.label;
+      if (gate.state === 'TRUSTED') {
+        icon = '✅';
+        headline = `${dirArrow} ${dir} oynanabilir`;
+      } else if (gate.state === 'SHADOW') {
+        icon = '🧪';
+        headline = `${dirArrow} ${dir} araştırma adayı · OYNAMA`;
+      } else if (gate.state === 'LEGACY_UNVERIFIED') {
+        icon = '⚠️';
+        headline = `${dirArrow} ${dir} eski/doğrulanmamış · OYNAMA`;
+      }
       return `
         <div class="big-verdict gray">
-            <div class="big-verdict-icon">📍</div>
+            <div class="big-verdict-icon">${icon}</div>
             <div class="big-verdict-text">
-            <div class="big-verdict-play"><span class="arrow">${dirArrow}</span> ${escapeHtml(dir)} oyna</div>
-            <div class="big-verdict-desc">Standart sinyal. Net seçim yönü yukarıda gösterilen taraftır.</div>
+            <div class="big-verdict-play">${escapeHtml(headline)}</div>
+            <div class="big-verdict-desc">${escapeHtml(description)}</div>
           </div>
         </div>`;
     }
@@ -2743,29 +2834,8 @@
       return String(alert[field] || '').toLocaleLowerCase('tr-TR');
     }
 
-    function scoreTotalValue(score) {
-      const match = String(score || '').match(/(\d{1,3})\s*[-–]\s*(\d{1,3})/);
-      return match ? Number(match[1]) + Number(match[2]) : null;
-    }
-
-    function scoreMarginValue(score) {
-      const match = String(score || '').match(/(\d{1,3})\s*[-–]\s*(\d{1,3})/);
-      return match ? Math.abs(Number(match[1]) - Number(match[2])) : null;
-    }
-
-    function matchPpmValue(alert) {
-      const analysis = parseAnalysis(alert);
-      const components = analysis.projection_components && typeof analysis.projection_components === 'object'
-        ? analysis.projection_components
-        : {};
-      return num(analysis.match_ppm) ?? num(components.current_pace_per_min);
-    }
-
-    function projectedGapValue(alert) {
-      const analysis = parseAnalysis(alert);
-      const projected = num(alert.projected ?? analysis.projected_total);
-      const live = num(alert.live);
-      return projected !== null && live !== null ? projected - live : null;
+    function hasBucketStar(alert) {
+      return Array.isArray(alert?.bucket_stars) && alert.bucket_stars.length > 0;
     }
 
     function filteredAlerts() {
@@ -2775,6 +2845,7 @@
       if (currentFilter === 'bet') list = list.filter(a => a.bet_placed);
       if (currentFilter === 'follow') list = list.filter(a => a.followed);
       if (currentFilter === 'ignored') list = list.filter(a => a.ignored);
+      if (currentFilter === 'starred') list = list.filter(hasBucketStar);
       if (currentFilter === 'alt') list = list.filter(a => a.direction === 'ALT');
       if (currentFilter === 'ust') list = list.filter(a => a.direction === 'ÜST');
       if (activePeriods.size) {
@@ -2849,7 +2920,6 @@
             <td>${fairHtml(a)}</td>
             <td>${projectedHtml(a)}</td>
             <td>${signalQualityHtml(a)}</td>
-            <td class="history-cell">${historySymbolHtml(a)}</td>
             <td><div class="match-cell-wrap">${focusButton(a)}${matchLink(a)}${listMarkersHtml(a, 'team')}${noteInfoButton(a)}</div></td>
             <td><div class="tournament-row"><span class="subline tournament-cell">${tournament}</span>${listMarkersHtml(a, 'league')}</div></td>
             <td>${escapeHtml(a.status || '-')}</td>
@@ -2937,10 +3007,12 @@
                 <span class="card-chip-value">${projectedHtml(a)}</span>
               </div>
               <div class="card-chip">
-                <span class="card-chip-label">S.K.</span>
+                <span class="card-chip-label">Güven</span>
                 <span class="card-chip-value">${signalQualityHtml(a)}</span>
               </div>
             </div>
+
+            ${cardGateReasonHtml(a)}
 
             <div class="card-actions">
               <button class="icon-btn ${isSelected ? 'active' : ''}" onclick='toggleSelected(${matchIdArg}, !selectedMatchIds.has(${matchIdArg})); render()' aria-label="Seç">${isSelected ? '✓' : 'Seç'}</button>
@@ -2958,10 +3030,15 @@
     }
 
     async function fetchAlerts() {
+      const sequence = ++alertsFetchSequence;
+      if (alertsFetchController) alertsFetchController.abort();
+      const controller = new AbortController();
+      alertsFetchController = controller;
       try {
-        const res = await fetch('/api/alerts', { cache: 'no-store' });
+        const res = await fetch('/api/alerts', { cache: 'no-store', signal: controller.signal });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || 'Sinyaller alınamadı.');
+        if (sequence !== alertsFetchSequence) return;
         allAlerts = Array.isArray(data) ? data : [];
         const activeIds = new Set(allAlerts.map(a => normalizeId(a.match_id)).filter(Boolean));
         selectedMatchIds.forEach(id => { if (!activeIds.has(id)) selectedMatchIds.delete(id); });
@@ -2969,8 +3046,11 @@
         render();
         $('lastUpdate').textContent = new Date().toLocaleTimeString('tr-TR');
       } catch (error) {
+        if (error?.name === 'AbortError' || sequence !== alertsFetchSequence) return;
         console.error(error);
         showBanner(error.message || 'Sinyaller alınamadı.', 'error');
+      } finally {
+        if (sequence === alertsFetchSequence) alertsFetchController = null;
       }
     }
 
@@ -3270,47 +3350,6 @@
       }
     }
 
-    function signalModalListItem(key, value) {
-      return `<li><span class="signal-info-key">${escapeHtml(key)}</span><span class="signal-info-value">${escapeHtml(value ?? '-')}</span></li>`;
-    }
-
-    function signalWeightsText(weights) {
-      const labels = {
-        opening: 'Açılış',
-        live_projection: 'Canlı projeksiyon',
-        projection: 'Projeksiyon',
-        market: 'Piyasa',
-        h2h: 'H2H'
-      };
-      const parts = Object.entries(weights || {})
-        .filter(([k, v]) => labels[k] && Number(v) > 0)
-        .map(([k, v]) => `${labels[k]} %${Number(v).toFixed(0)}`);
-      return parts.length ? parts.join(' / ') : '-';
-    }
-
-    function signalNoteList(items) {
-      const seen = new Set();
-      const clean = (items || []).filter(Boolean).filter(item => {
-        const key = String(item).replace(/\s+/g, ' ').trim().toLowerCase();
-        if (!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      if (!clean.length) return '<div class="empty-state" style="display:block;padding:16px">Bu sinyal için ek uyarı yok.</div>';
-      return `<ul class="signal-note-list">${clean.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
-    }
-
-    function signalTeamContextHtml(context) {
-      if (!context || typeof context !== 'object') return '';
-      const alignCode = context.alignment_code || 'neutral';
-      return `
-        <div class="team-context">
-          <div class="team-context-title">Profil Yorumu</div>
-          <span class="team-context-align ${escapeHtml(alignCode)}">${escapeHtml(context.alignment || 'Nötr')}</span>
-          ${context.h2h_note ? `<div class="team-context-h2h">${escapeHtml(context.h2h_note)}</div>` : ''}
-        </div>`;
-    }
-
     function quarterRowsFromAnalysis(analysis) {
       const qs = analysis?.quarter_scores && typeof analysis.quarter_scores === 'object' ? analysis.quarter_scores : {};
       const home = Array.isArray(qs.home) ? qs.home : [];
@@ -3472,12 +3511,25 @@
       const quality = alert.signal_quality && typeof alert.signal_quality === 'object' ? alert.signal_quality : {};
       const score = quality.quality_score ?? alert.signal_quality_score;
       const label = quality.quality_label ?? alert.signal_quality_label ?? '-';
-      $('signalModalTitle').textContent = `Sinyal Kalitesi - ${cleanMatchName(alert.match_name)}`;
+      const gate = alert.signal_gate && typeof alert.signal_gate === 'object' ? alert.signal_gate : {};
+      const evidence = gate.evidence && typeof gate.evidence === 'object' ? gate.evidence : {};
+      const gateUi = gatePresentation(alert);
+      const rate = num(evidence.rate);
+      const lower = num(evidence.wilson_low_95);
+      const reasons = gateReasonTexts(alert);
+      const reasonsHtml = reasons.length
+        ? `<ul class="signal-note-list">${reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>`
+        : '<div class="sig-help">Ek engel nedeni yok.</div>';
+      $('signalModalTitle').textContent = `Güven Kapısı - ${cleanMatchName(alert.match_name)}`;
       $('signalModalBody').innerHTML = `
         <div style="padding:16px 18px;line-height:1.5;">
           <div class="sig-card">
-            <div class="row"><span>Sinyal Kalitesi Puanı</span><strong>${escapeHtml(score ?? '-')}</strong></div>
-            <div class="row"><span>Sinyal Kalitesi Etiketi</span><strong>${escapeHtml(label)}</strong></div>
+            <div class="row"><span>Güven durumu</span><strong>${escapeHtml(gateUi.text)} · ${escapeHtml(gateUi.label)}</strong></div>
+            <div class="row"><span>İleri tarihli benzersiz sonuç</span><strong>${escapeHtml(evidence.resolved_unique ?? 0)} / 100</strong></div>
+            <div class="row"><span>Gerçekleşen başarı</span><strong>${rate === null ? '-' : '%' + rate.toFixed(1)}</strong></div>
+            <div class="row"><span>%95 alt güven sınırı</span><strong>${lower === null ? '-' : '%' + lower.toFixed(1)}${gate.state === 'TRUSTED' ? ' (hedef ≥%70)' : ''}</strong></div>
+            <div class="row"><span>Veri güvenilirliği</span><strong>${escapeHtml(quality.data_reliability_score ?? '-')} / 100</strong></div>
+            <div class="row"><span>Model uyum puanı</span><strong>${escapeHtml(score ?? '-')} / 100 · ${escapeHtml(label)}</strong></div>
             <div class="row"><span>Projeksiyon</span><strong>${qualityValue(quality.projection)}</strong></div>
             <div class="row"><span>Projeksiyon - Canlı Barem Farkı</span><strong>${qualityValue(quality.projection_diff)}</strong></div>
             <div class="row"><span>Gereken Tempo</span><strong>${qualityValue(quality.required_pace, 2)}</strong></div>
@@ -3485,9 +3537,11 @@
             <div class="row"><span>Skor Farkı</span><strong>${escapeHtml(quality.score_gap ?? '-')}</strong></div>
             <div class="row"><span>Risk Notu</span><strong>${escapeHtml(quality.risk_note || '-')}</strong></div>
           </div>
-          <div class="sig-section-title">Kalite Gerekçesi</div>
+          <div class="sig-section-title">Kararın Açık Nedenleri</div>
+          <div class="sig-card">${reasonsHtml}</div>
+          <div class="sig-section-title">Model Uyum Gerekçesi</div>
           <div class="sig-card"><div class="sig-help">${escapeHtml(quality.reason || alert.signal_quality_reason || '-')}</div></div>
-          <div class="sig-help" style="margin-top:10px;">Sinyal Kalitesi yalnızca veri kalitesi ve model güven puanıdır; kesinlik veya finansal karar anlamı taşımaz.</div>
+          <div class="sig-help" style="margin-top:10px;">Model uyum puanı kazanma olasılığı değildir. Yalnız ONAYLI durumu; değişmeyen kuralla toplanmış en az 100 benzersiz ileri tarihli maç ve %95 alt güven sınırı ≥%70 şartlarını taşır.</div>
         </div>
       `;
       $('signalModal').classList.add('active');
@@ -3495,7 +3549,7 @@
 
     function bucketRateText(history) {
       if (!history || !Number.isFinite(Number(history.resolved)) || Number(history.resolved) <= 0) return '-';
-      const rate = Number(history.rate);
+      const rate = num(history.rate);
       const success = Number(history.success || 0);
       const resolved = Number(history.resolved || 0);
       return `${success}/${resolved}${Number.isFinite(rate) ? ` · %${rate.toFixed(1)}` : ''}`;
@@ -3503,7 +3557,7 @@
 
     function bucketSplitText(split) {
       if (!split || !Number.isFinite(Number(split.resolved)) || Number(split.resolved) <= 0) return '-';
-      const rate = Number(split.rate);
+      const rate = num(split.rate);
       return `${Number(split.success || 0)}/${Number(split.resolved || 0)}${Number.isFinite(rate) ? ` · %${rate.toFixed(1)}` : ''}`;
     }
 
@@ -3515,7 +3569,7 @@
       if (!star) return;
       const history = star.history && typeof star.history === 'object' ? star.history : {};
       const values = star.values && typeof star.values === 'object' ? star.values : {};
-      const wilson = Number(history.wilson_low);
+      const wilson = num(history.wilson_low);
       $('signalModalTitle').textContent = `Yıldızlı Kova - ${cleanMatchName(alert.match_name)}`;
       $('signalModalBody').innerHTML = `
         <div style="padding:16px 18px;line-height:1.5;">
@@ -3898,8 +3952,9 @@
         return `<div class="row"><span>${escapeHtml(label)}</span><strong>${valStr}${weightStr}</strong></div>${hintStr}`;
       };
       const fairBreakdownRows = [
-        compRow('Canlı projeksiyon', ['live_projection', 'live_projection_pure', 'projection'], 'Skor ve süreye göre.'),
-        compRow('Açılış baremi', ['opening', 'market', 'prematch'], 'Ana referans baremi.'),
+        compRow('Canlı piyasa baremi', ['live_market'], 'Holdout testinde en güçlü ana referans.'),
+        compRow('Bağımsız projeksiyon', ['live_projection', 'live_projection_pure', 'projection'], 'Maç önü baremi + skor/süre temposu; piyasa baremi içermez.'),
+        compRow('Maç önü baremi', ['opening', 'market', 'prematch'], 'Bağımsız projeksiyonun tempo önseli içinde kullanılır.'),
       ].join('');
 
       const moveText = lineMove === null ? ''
@@ -4090,13 +4145,13 @@
     }
 
     function teamHistoryFmtNum(value, decimals = 1) {
-      const n = Number(value);
+      const n = num(value);
       if (!Number.isFinite(n)) return '-';
       return n.toFixed(decimals);
     }
 
     function teamHistorySigned(value) {
-      const n = Number(value);
+      const n = num(value);
       if (!Number.isFinite(n)) return '-';
       const sign = n > 0 ? '+' : '';
       return `${sign}${n.toFixed(1)}`;

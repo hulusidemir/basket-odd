@@ -13,8 +13,10 @@ class DashboardFinishedCheckRouteTests(unittest.TestCase):
         cls.previous_db_path = os.environ.get("DB_PATH")
         os.environ["DB_PATH"] = str(Path(cls.temp_dir.name) / "dashboard.db")
 
+        import config
         import dashboard
 
+        importlib.reload(config)
         cls.dashboard = importlib.reload(dashboard)
 
     @classmethod
@@ -30,7 +32,9 @@ class DashboardFinishedCheckRouteTests(unittest.TestCase):
         self.client = self.dashboard.app.test_client()
 
     def test_check_finished_route_returns_scan_summary(self):
-        async def fake_scan(db, config):
+        async def fake_scan(db, config, before_delete=None):
+            if before_delete is not None:
+                before_delete("match-1")
             return {
                 "tracked_count": 1,
                 "checked_count": 1,
@@ -40,8 +44,7 @@ class DashboardFinishedCheckRouteTests(unittest.TestCase):
             }
 
         with (
-            patch.object(self.dashboard.db, "active_alerts", return_value=[]),
-            patch.object(self.dashboard, "_snapshot_active_rows", return_value=0),
+            patch.object(self.dashboard, "_archive_active_match", return_value=1) as archive_match,
             patch.object(self.dashboard, "run_active_match_finished_scan", side_effect=fake_scan),
         ):
             response = self.client.post("/api/alerts/check-finished")
@@ -50,14 +53,13 @@ class DashboardFinishedCheckRouteTests(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload["moved_count"], 1)
         self.assertIn("biten maç", payload["message"])
+        archive_match.assert_called_once_with("match-1")
 
     def test_check_finished_route_returns_json_error_when_scan_fails(self):
-        async def failing_scan(db, config):
+        async def failing_scan(db, config, before_delete=None):
             raise RuntimeError("browser unavailable")
 
         with (
-            patch.object(self.dashboard.db, "active_alerts", return_value=[]),
-            patch.object(self.dashboard, "_snapshot_active_rows", return_value=0),
             patch.object(self.dashboard, "run_active_match_finished_scan", side_effect=failing_scan),
             patch.object(self.dashboard.logger, "exception"),
         ):

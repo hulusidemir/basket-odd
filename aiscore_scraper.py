@@ -1,23 +1,155 @@
 import asyncio
 import logging
+import math
 import os
 import re
-from urllib.parse import urljoin
+import time
+from datetime import datetime, timezone
+from statistics import median
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from playwright.async_api import async_playwright
+from projection import game_clock, parse_score
 
 logger = logging.getLogger(__name__)
 
 
+def _redact_proxy_url(value: str) -> str:
+    """Keep proxy diagnostics useful without logging embedded credentials."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        has_scheme = "://" in text
+        parsed = urlsplit(text if has_scheme else f"//{text}")
+        if parsed.username is None and parsed.password is None:
+            return text
+        host = parsed.hostname or ""
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        if parsed.port is not None:
+            host = f"{host}:{parsed.port}"
+        if has_scheme:
+            return urlunsplit(
+                (
+                    parsed.scheme,
+                    f"***:***@{host}",
+                    parsed.path,
+                    parsed.query,
+                    parsed.fragment,
+                )
+            )
+        suffix = parsed.path or ""
+        if parsed.query:
+            suffix += f"?{parsed.query}"
+        if parsed.fragment:
+            suffix += f"#{parsed.fragment}"
+        return f"***:***@{host}{suffix}"
+    except (TypeError, ValueError):
+        return re.sub(r"^(.*://)?[^/@]+@", r"\1***:***@", text, count=1)
+
+
+def _safe_env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    raw = os.getenv(name)
+    if raw in (None, ""):
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        logger.warning("Invalid %s=%r; using %s.", name, raw, default)
+        return default
+    if value < minimum or value > maximum:
+        clamped = max(minimum, min(maximum, value))
+        logger.warning(
+            "%s=%s is outside %s-%s; using %s.",
+            name,
+            value,
+            minimum,
+            maximum,
+            clamped,
+        )
+        return clamped
+    return value
+
+
+def _valid_market_lines(values) -> list[float]:
+    lines: list[float] = []
+    if not isinstance(values, (list, tuple)):
+        return lines
+    for raw in values:
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(value) and 100 <= value <= 400:
+            lines.append(round(value, 1))
+    return lines
+
+
+def _normalize_market_snapshot(value) -> dict:
+    """Calculate bookmaker consensus without removing duplicate observations."""
+    raw = value if isinstance(value, dict) else {}
+    opening_lines = _valid_market_lines(raw.get("opening_lines"))
+    prematch_lines = _valid_market_lines(raw.get("prematch_lines"))
+    inplay_lines = _valid_market_lines(raw.get("inplay_lines"))
+
+    def _median(lines: list[float]) -> float | None:
+        return round(float(median(lines)), 1) if lines else None
+
+    try:
+        bookmaker_count = max(0, int(raw.get("bookmaker_count") or 0))
+    except (TypeError, ValueError):
+        bookmaker_count = 0
+    try:
+        paired_bookmaker_count = max(
+            0,
+            # A legacy bookmaker_count did not prove opening/in-play values
+            # were observed from the same bookmakers.
+            int(raw.get("paired_bookmaker_count") or 0),
+        )
+    except (TypeError, ValueError):
+        paired_bookmaker_count = 0
+    paired_bookmaker_count = min(
+        paired_bookmaker_count,
+        len(opening_lines),
+        len(inplay_lines),
+    )
+    return {
+        **raw,
+        "opening_lines": opening_lines,
+        "prematch_lines": prematch_lines,
+        "inplay_lines": inplay_lines,
+        "opening_median": _median(opening_lines),
+        "prematch_median": _median(prematch_lines),
+        "inplay_median": _median(inplay_lines),
+        "opening_min": min(opening_lines) if opening_lines else None,
+        "opening_max": max(opening_lines) if opening_lines else None,
+        "inplay_min": min(inplay_lines) if inplay_lines else None,
+        "inplay_max": max(inplay_lines) if inplay_lines else None,
+        "bookmaker_count": bookmaker_count,
+        "paired_bookmaker_count": paired_bookmaker_count,
+    }
+
+
 class AiscoreScraper:
-    def __init__(self, aiscore_url: str, max_matches_per_cycle: int = 40, page_timeout_ms: int = 30000, skip_h2h: bool = False):
+    def __init__(
+        self,
+        aiscore_url: str,
+        max_matches_per_cycle: int = 40,
+        page_timeout_ms: int = 30000,
+        skip_h2h: bool = False,
+        concurrency: int | None = None,
+    ):
         self.aiscore_url = aiscore_url
         self.max_matches_per_cycle = max_matches_per_cycle
         self.page_timeout_ms = page_timeout_ms
         self.skip_h2h = skip_h2h
+        self.concurrency = concurrency
         # Per-match H2H body cache. H2H data does not change during a match, so
         # re-scraping the H2H tab on every poll cycle is wasted work.
         self._h2h_cache: dict[str, str] = {}
+        self.last_report: dict = {}
+        self._last_listing_diagnostics: dict = {}
 
     @staticmethod
     def _sanitize_tournament(value: str, url: str) -> str:
@@ -37,7 +169,7 @@ class AiscoreScraper:
         }
         if proxy_server:
             launch_kwargs["proxy"] = {"server": proxy_server}
-            logger.info("Using proxy: %s", proxy_server)
+            logger.info("Using proxy: %s", _redact_proxy_url(proxy_server))
         browser = await playwright.chromium.launch(**launch_kwargs)
         context = await self._new_desktop_context(browser)
         return browser, context
@@ -54,29 +186,177 @@ class AiscoreScraper:
     async def _close_browser(self, browser):
         await browser.close()
 
+    async def _wait_for_listing_ready(self, page) -> None:
+        try:
+            await page.wait_for_function(
+                r"""
+                () => {
+                    if (!document.body || document.readyState === 'loading') return false;
+                    const body = (document.body.innerText || '').trim();
+                    const match = document.querySelector('a[href*="/basketball/match-"]');
+                    const liveControl = Array.from(document.querySelectorAll('a, button, [role="tab"], li, div'))
+                        .some(el => /^live(?:\s|\(|$)/i.test((el.innerText || '').trim()) && el.children.length <= 5);
+                    return !!match || liveControl || body.length > 500;
+                }
+                """,
+                timeout=min(8000, self.page_timeout_ms),
+            )
+        except Exception as exc:
+            logger.debug("AIScore listing readiness wait ended without a signal: %s", exc)
+        await page.wait_for_timeout(350)
+
+    async def _wait_for_odds_ready(self, page) -> None:
+        try:
+            await page.wait_for_function(
+                r"""
+                () => {
+                    const el = document.querySelector('.newOdds, [class*="newOdds"], [class*="oddsContent"]');
+                    if (!el) return false;
+                    const text = (el.innerText || '').replace(/\s+/g, ' ');
+                    return /\b\d{3}(?:\.\d)?\b/.test(text) || /lock|suspend|unavail/i.test(text);
+                }
+                """,
+                timeout=min(5000, self.page_timeout_ms),
+            )
+        except Exception as exc:
+            logger.debug("AIScore odds readiness wait ended without a signal: %s", exc)
+        await page.wait_for_timeout(250)
+
+    async def _wait_for_match_page_ready(self, page) -> None:
+        try:
+            await page.wait_for_function(
+                r"""
+                () => {
+                    if (!document.body || document.readyState === 'loading') return false;
+                    const score = document.querySelector(
+                        '.score, [class*="matchScore"], [class*="scoresDetails"], [class*="scoreDetail"]'
+                    );
+                    const header = document.querySelector(
+                        '[class*="matchTop"], [class*="matchInfo"], [class*="matchHeader"]'
+                    );
+                    return !!score || !!header || (document.body.innerText || '').length > 800;
+                }
+                """,
+                timeout=min(6000, self.page_timeout_ms),
+            )
+        except Exception as exc:
+            logger.debug("AIScore match-page readiness wait ended without a signal: %s", exc)
+        await page.wait_for_timeout(250)
+
     # ── Ana tarama ────────────────────────────────────────────────────
 
     async def get_live_basketball_totals(self) -> list[dict]:
+        cycle_started = time.monotonic()
+        report = {
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "status": "running",
+            "listing_attempts": 0,
+            "listing_navigation_errors": [],
+            "listing_parse_errors": [],
+            "discovered_count": 0,
+            "reported_live_count": 0,
+            "unverified_count": 0,
+            "attempted_count": 0,
+            "unattempted_count": 0,
+            "parsed_count": 0,
+            "failed_count": 0,
+            "coverage_pct": None,
+            "parse_coverage_pct": None,
+            "listing": {},
+            "errors": [],
+        }
+        self.last_report = report
         async with async_playwright() as p:
-            browser, context = await self._create_browser_context(p)
+            try:
+                browser, context = await self._create_browser_context(p)
+            except Exception as exc:
+                report["status"] = "error"
+                report["error"] = f"{type(exc).__name__}: {exc}"
+                report["duration_seconds"] = round(time.monotonic() - cycle_started, 2)
+                raise
 
-            list_page = await context.new_page()
+            try:
+                list_page = await context.new_page()
+            except Exception as exc:
+                report["status"] = "error"
+                report["error"] = f"{type(exc).__name__}: {exc}"
+                report["duration_seconds"] = round(time.monotonic() - cycle_started, 2)
+                try:
+                    await context.close()
+                finally:
+                    await self._close_browser(browser)
+                raise
             list_page.set_default_timeout(self.page_timeout_ms)
             try:
                 links = []
                 for attempt in range(1, 4):
-                    await list_page.goto(self.aiscore_url, wait_until="domcontentloaded")
-                    await list_page.wait_for_timeout(10 * 1000)
-                    links = await self._collect_match_links(list_page)
+                    report["listing_attempts"] = attempt
+                    try:
+                        await list_page.goto(
+                            self.aiscore_url,
+                            wait_until="domcontentloaded",
+                            timeout=self.page_timeout_ms,
+                        )
+                    except Exception as exc:
+                        error = f"{type(exc).__name__}: {exc}"
+                        report["listing_navigation_errors"].append(error)
+                        logger.warning(
+                            "AIScore listing navigation failed (%s/3): %s",
+                            attempt,
+                            exc,
+                        )
+                        if attempt < 3:
+                            await list_page.wait_for_timeout(500 * attempt)
+                        continue
+                    try:
+                        await self._wait_for_listing_ready(list_page)
+                        links = await self._collect_match_links(list_page)
+                    except Exception as exc:
+                        error = f"{type(exc).__name__}: {exc}"
+                        report["listing_parse_errors"].append(error)
+                        logger.warning(
+                            "AIScore listing parse failed (%s/3): %s",
+                            attempt,
+                            exc,
+                        )
+                        if attempt < 3:
+                            await list_page.wait_for_timeout(500 * attempt)
+                        continue
+                    report["listing"] = dict(self._last_listing_diagnostics)
                     if links:
                         break
                     if attempt < 3:
                         logger.warning("AIScore listing returned 0 links; retrying list load (%s/3).", attempt + 1)
 
                 if not links:
-                    page_title = await list_page.title()
+                    listing_failures = len(report["listing_navigation_errors"]) + len(
+                        report["listing_parse_errors"]
+                    )
+                    if listing_failures >= report["listing_attempts"]:
+                        logger.warning("AIScore listing could not be loaded after 3 attempts. Assuming empty.")
+                        report["status"] = "empty"
+                        return []
+                    reported_live_count = int(
+                        (report.get("listing") or {}).get("live_tab_reported_count") or 0
+                    )
+                    if reported_live_count > 0:
+                        logger.warning(
+                            "AIScore live tab reported "
+                            f"{reported_live_count} matches but no verified links were collected. Assuming empty."
+                        )
+                    elif not bool((report.get("listing") or {}).get("authoritative_empty")):
+                        logger.warning(
+                            "AIScore empty live result was not explicitly verified. Assuming empty."
+                        )
+                    try:
+                        page_title = await list_page.title()
+                    except Exception:
+                        page_title = ""
                     page_url = list_page.url
-                    body_len = await list_page.evaluate("document.body?.innerText?.length || 0")
+                    try:
+                        body_len = await list_page.evaluate("document.body?.innerText?.length || 0")
+                    except Exception:
+                        body_len = 0
                     logger.warning(
                         "No match links found on AIScore listing. "
                         "title=%s, url=%s, body_len=%s",
@@ -89,17 +369,47 @@ class AiscoreScraper:
                             logger.info("Debug screenshot: %s", debug_path)
                         except Exception:
                             pass
+                    report["status"] = "empty"
                     return []
 
                 logger.info("Found %s match links on AIScore.", len(links))
+                report["discovered_count"] = len(links)
+                listing = report.get("listing") or {}
+                reported_live_count = (
+                    int(listing.get("live_tab_reported_count") or 0)
+                    if listing.get("live_tab_count_known")
+                    else 0
+                )
+                report["reported_live_count"] = reported_live_count
+                report["unverified_count"] = max(
+                    0,
+                    reported_live_count - len(links),
+                )
                 out = []
 
                 await list_page.close()
                 await context.close()
                 context = await self._new_desktop_context(browser)
 
-                concurrent_tabs = max(1, int(os.getenv("AISCORE_CONCURRENCY", "1")))
+                if self.concurrency is None:
+                    concurrent_tabs = _safe_env_int(
+                        "AISCORE_CONCURRENCY",
+                        2,
+                        minimum=1,
+                        maximum=8,
+                    )
+                else:
+                    try:
+                        concurrent_tabs = max(1, min(8, int(self.concurrency)))
+                    except (TypeError, ValueError):
+                        logger.warning(
+                            "Invalid scraper concurrency=%r; using 2.",
+                            self.concurrency,
+                        )
+                        concurrent_tabs = 2
                 batch_links = links[: self.max_matches_per_cycle]
+                report["attempted_count"] = len(batch_links)
+                report["unattempted_count"] = max(0, len(links) - len(batch_links))
 
                 for i in range(0, len(batch_links), concurrent_tabs):
                     batch = batch_links[i : i + concurrent_tabs]
@@ -109,14 +419,64 @@ class AiscoreScraper:
                         if isinstance(r, dict):
                             out.append(r)
                         elif isinstance(r, Exception):
-                            logger.debug("Parallel match error: %s", r)
+                            error = f"{type(r).__name__}: {r}"
+                            report["errors"].append(error)
+                            logger.warning("Parallel match error: %s", r)
 
+                report["parsed_count"] = len(out)
+                report["failed_count"] = max(0, len(batch_links) - len(out))
+                expected_live_count = max(len(links), reported_live_count)
+                report["coverage_pct"] = (
+                    round((len(out) / expected_live_count) * 100, 1)
+                    if expected_live_count
+                    else None
+                )
+                report["parse_coverage_pct"] = (
+                    round((len(out) / len(batch_links)) * 100, 1)
+                    if batch_links
+                    else None
+                )
+                if links and not out:
+                    report["status"] = "error"
+                    raise RuntimeError(
+                        f"AIScore discovered {len(links)} live matches but parsed none"
+                    )
+                if len(out) < len(links) or report["unverified_count"] > 0:
+                    report["status"] = "partial"
+                    logger.warning(
+                        "AIScore live scrape was partial: reported=%s verified=%s "
+                        "unverified=%s attempted=%s parsed=%s coverage=%.1f%% "
+                        "parse_coverage=%.1f%%",
+                        reported_live_count or "unknown",
+                        len(links),
+                        report["unverified_count"],
+                        len(batch_links),
+                        len(out),
+                        report["coverage_pct"],
+                        report["parse_coverage_pct"] or 0.0,
+                    )
+                else:
+                    report["status"] = "ok"
                 return out
+            except Exception as exc:
+                report["status"] = "error"
+                report["error"] = f"{type(exc).__name__}: {exc}"
+                raise
             finally:
-                if not list_page.is_closed():
-                    await list_page.close()
-                await context.close()
-                await self._close_browser(browser)
+                report["duration_seconds"] = round(time.monotonic() - cycle_started, 2)
+                try:
+                    if not list_page.is_closed():
+                        await list_page.close()
+                except Exception as exc:
+                    logger.warning("AIScore listing page cleanup failed: %s", exc)
+                try:
+                    await context.close()
+                except Exception as exc:
+                    logger.warning("AIScore browser context cleanup failed: %s", exc)
+                try:
+                    await self._close_browser(browser)
+                except Exception as exc:
+                    logger.warning("AIScore browser cleanup failed: %s", exc)
 
     async def _extract_single(self, context, link: str) -> dict | None:
         """Open a single match in a new tab, read data, and close.
@@ -136,17 +496,14 @@ class AiscoreScraper:
                         "Retry %s/%s for %s (odds possibly locked/loading)",
                         attempt, max_retries - 1, link,
                     )
-                    await detail.wait_for_timeout(3000)
-                    try:
-                        await detail.reload(wait_until="domcontentloaded")
-                        await detail.wait_for_timeout(3000)
-                    except Exception:
-                        pass
+                    # _extract_match navigates to the canonical odds URL on every
+                    # attempt, so a separate reload only duplicates network work.
+                    await detail.wait_for_timeout(500)
             logger.debug("All %s attempts failed for %s", max_retries, link)
             return None
         except Exception as exc:
-            logger.debug("Could not read match (%s): %s", link, exc)
-            return None
+            logger.warning("Could not read match (%s): %s", link, exc)
+            raise
         finally:
             await detail.close()
 
@@ -155,8 +512,6 @@ class AiscoreScraper:
         Navigate to AIScore basketball live page and collect live match links.
         Uses multiple strategies to find and activate the Live tab.
         """
-        await page.wait_for_timeout(3000)
-
         # ── Step 0: Dump page structure for diagnostics ──
         page_diag = await page.evaluate(r"""() => {
             const text = s => (s || '').replace(/\s+/g, ' ').trim();
@@ -220,6 +575,7 @@ class AiscoreScraper:
             }
 
             let count = 0;
+            let countKnown = false;
             let tabText = '';
             let found = false;
             let clicked = false;
@@ -228,7 +584,10 @@ class AiscoreScraper:
                 found = true;
                 tabText = text(tab.innerText);
                 const m = tabText.match(/\((\d+)\)/);
-                if (m) count = parseInt(m[1], 10);
+                if (m) {
+                    count = parseInt(m[1], 10);
+                    countKnown = true;
+                }
 
                 try {
                     tab.click();
@@ -241,28 +600,45 @@ class AiscoreScraper:
                 }
             }
 
-            return { found, tabText, count, clicked };
+            return { found, tabText, count, countKnown, clicked };
         }""")
 
         live_found = live_info.get("found", False)
         live_count = live_info.get("count", 0)
+        live_count_known = bool(live_info.get("countKnown", False))
         tab_text = live_info.get("tabText", "")
         tab_clicked = live_info.get("clicked", False)
+        authoritative_empty = bool(
+            live_found and live_count_known and int(live_count or 0) == 0
+        )
 
         if live_found and live_count > 0:
             live_max = live_count
             logger.info("Live tab found: '%s' (%s matches), clicked=%s.", tab_text, live_max, tab_clicked)
         elif live_found:
             live_max = 50
-            logger.info("Live tab found: '%s' (no count), clicked=%s. Using max=%s.", tab_text, tab_clicked, live_max)
+            if authoritative_empty:
+                logger.info("Live tab explicitly reports 0 matches: '%s'.", tab_text)
+            else:
+                logger.info("Live tab found: '%s' (no count), clicked=%s. Using max=%s.", tab_text, tab_clicked, live_max)
         else:
-            live_max = 30
-            logger.warning("Could not find Live tab! Using max=%s.", live_max)
+            raise RuntimeError(
+                "AIScore Live tab could not be verified; an empty live slate cannot be trusted"
+            )
 
-        await page.wait_for_timeout(4000)
+        try:
+            await page.wait_for_function(
+                r"""
+                () => document.querySelectorAll('a[href*="/basketball/match-"]').length > 0
+                """,
+                timeout=min(2500, self.page_timeout_ms),
+            )
+        except Exception as exc:
+            logger.debug("Live-tab result readiness wait ended without links: %s", exc)
+        await page.wait_for_timeout(300)
 
         # ── Step 2: Collect links — only from rows with a live time indicator ──
-        all_hrefs: set[str] = set()
+        all_hrefs: dict[str, None] = {}
         max_scrolls = 50
         last_count = 0
         stale_rounds = 0
@@ -274,13 +650,22 @@ class AiscoreScraper:
                 for (const a of matchLinks) {
                     let row = a;
                     for (let i = 0; i < 6; i++) {
-                        if (row.parentElement) row = row.parentElement;
-                        else break;
+                        const parent = row.parentElement;
+                        if (!parent) break;
+                        const uniqueLinks = new Set(
+                            Array.from(parent.querySelectorAll('a[href*="/basketball/match-"]'))
+                                .map(link => link.getAttribute('href'))
+                                .filter(Boolean)
+                        );
+                        if (uniqueLinks.size > 1) break;
+                        row = parent;
                     }
                     const rowText = (row.innerText || '').replace(/\s+/g, ' ');
                     const hasLiveTime = /\b(Q[1-4]|[1-4]Q|OT|HT|1st|2nd|3rd|4th)\b/i.test(rowText)
                                      || /\b\d{1,2}[-:]\d{2}[:-]\d{2}\b/.test(rowText);
-                    const timeEl = row.querySelector('[class*="live"], [class*="Live"], [style*="color: red"], [style*="color:#"]');
+                    const timeEl = row.querySelector(
+                        '[class*="liveTime"], [class*="LiveTime"], [class*="live-status"], [style*="color: red"]'
+                    );
                     if (hasLiveTime || timeEl) {
                         const href = a.getAttribute('href');
                         if (href) liveHrefs.push(href);
@@ -288,7 +673,9 @@ class AiscoreScraper:
                 }
                 return liveHrefs;
             }""")
-            all_hrefs.update(hrefs)
+            for href in hrefs:
+                if href:
+                    all_hrefs.setdefault(href, None)
 
             if len(all_hrefs) >= live_max:
                 break
@@ -302,22 +689,44 @@ class AiscoreScraper:
                 last_count = len(all_hrefs)
 
             await page.evaluate("window.scrollBy(0, 600)")
-            await page.wait_for_timeout(800)
+            await page.wait_for_timeout(250)
 
         if not all_hrefs:
-            logger.warning("Live-only filter found 0 links. Falling back to all match links on page.")
-            fallback = await page.evaluate(r"""() => {
-                return Array.from(document.querySelectorAll('a[href*="/basketball/match-"]'))
-                    .map(a => a.getAttribute('href'))
-                    .filter(Boolean);
-            }""")
-            all_hrefs.update(fallback)
+            logger.warning("Live-only filter found 0 verified live match links.")
 
-        links = [urljoin(page.url, href) for href in all_hrefs]
-        links = [u for u in links if "/basketball/match-" in u]
         _suffixes = re.compile(r'/(h2h|odds|stats|lineups|standings|summary)/?$')
-        links = [_suffixes.sub('', u) for u in links]
-        links = sorted(set(links))[:live_max]
+        links: list[str] = []
+        seen_urls: set[str] = set()
+        for href in all_hrefs:
+            normalized = _suffixes.sub('', urljoin(page.url, href))
+            if "/basketball/match-" not in normalized or normalized in seen_urls:
+                continue
+            seen_urls.add(normalized)
+            links.append(normalized)
+            if len(links) >= live_max:
+                break
+
+        self._last_listing_diagnostics = {
+            "page_url": page_diag.get("url"),
+            "page_title": page_diag.get("title"),
+            "dom_match_link_count": page_diag.get("matchLinkCount", 0),
+            "live_tab_found": bool(live_found),
+            "live_tab_text": tab_text,
+            "live_tab_reported_count": int(live_count or 0),
+            "live_tab_count_known": live_count_known,
+            "live_tab_clicked": bool(tab_clicked),
+            "authoritative_empty": authoritative_empty,
+            "verified_live_link_count": len(links),
+            "unverified_live_link_count": max(
+                0,
+                int(live_count or 0) - len(links),
+            ) if live_count_known else 0,
+        }
+
+        if not links and not authoritative_empty:
+            logger.warning(
+                "AIScore Live tab did not provide a verified zero count or any live links. Assuming empty."
+            )
 
         logger.info("Collected %s live match links (live_max=%s).", len(links), live_max)
         return links
@@ -325,8 +734,12 @@ class AiscoreScraper:
     async def _extract_match(self, page, url: str) -> dict | None:
         clean_url = url.rstrip("/")
         odds_url = clean_url if clean_url.endswith("/odds") else clean_url + "/odds"
-        await page.goto(odds_url, wait_until="domcontentloaded")
-        await page.wait_for_timeout(3000)
+        await page.goto(
+            odds_url,
+            wait_until="domcontentloaded",
+            timeout=self.page_timeout_ms,
+        )
+        await self._wait_for_odds_ready(page)
 
         try:
             clicked_total = await page.evaluate(r"""
@@ -334,7 +747,10 @@ class AiscoreScraper:
                     const text = s => (s || '').replace(/\s+/g, ' ').trim();
                     const tabs = Array.from(document.querySelectorAll('*')).filter(el => {
                         const t = text(el.innerText).toLowerCase();
+                        const cls = (el.className || '').toString().toLowerCase();
+                        const role = (el.getAttribute && (el.getAttribute('role') || '').toLowerCase()) || '';
                         return t.length < 30 && el.children.length <= 3
+                            && (role === 'tab' || /tab|market|filter|switch|select/.test(cls))
                             && (/\btotal\b|\bo\/u\b|\bover.*under\b|\büst.*alt\b|\bou\b/i.test(t));
                     });
                     for (const tab of tabs) {
@@ -345,9 +761,9 @@ class AiscoreScraper:
             """)
             if clicked_total:
                 logger.debug("Clicked Total/O-U tab for %s", url)
-                await page.wait_for_timeout(2000)
-        except Exception:
-            pass
+                await self._wait_for_odds_ready(page)
+        except Exception as exc:
+            logger.debug("Total/O-U tab selection failed for %s: %s", url, exc)
 
         parsed = await page.evaluate(
             r"""
@@ -393,15 +809,13 @@ class AiscoreScraper:
                   const mid = Math.floor(xs.length / 2);
                   return xs.length % 2 ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2;
                 };
-                const uniqueRounded = arr => {
+                const roundedLines = arr => {
                   const out = [];
-                  const seen = new Set();
                   for (const v of arr) {
                     if (!Number.isFinite(v) || v < 100 || v > 400) continue;
-                    const key = v.toFixed(1);
-                    if (seen.has(key)) continue;
-                    seen.add(key);
-                    out.push(parseFloat(key));
+                    // One observation per bookmaker must remain one vote. Removing
+                    // duplicate line values biases the median toward outliers.
+                    out.push(parseFloat(v.toFixed(1)));
                   }
                   return out;
                 };
@@ -511,7 +925,6 @@ class AiscoreScraper:
                 const prematchLines = [];
                 const inplayLines = [];
                 for (const content of contentDivs_snapshot) {
-                  if (isLocked(content)) continue;
                   const rows = Array.from(content.children).filter(el => !isLocked(el));
                   const lineRows = rows
                     .map(el => ({ el, value: findLine(text(el.innerText)), cls: (el.className || '').toString() }))
@@ -521,28 +934,43 @@ class AiscoreScraper:
                     prematchLines.push(lineRows[1].value);
                     inplayLines.push(lineRows[2].value);
                   } else {
+                    let pairedOpening = null;
+                    let pairedPrematch = null;
+                    let pairedInplay = null;
                     for (const item of lineRows) {
-                      if (item.cls.includes('openingBg')) openingLines.push(item.value);
-                      else if (item.cls.includes('inPlayBg')) inplayLines.push(item.value);
-                      else prematchLines.push(item.value);
+                      if (item.cls.includes('openingBg')) {
+                        pairedOpening = item.value;
+                      }
+                      else if (item.cls.includes('inPlayBg')) {
+                        pairedInplay = item.value;
+                      }
+                      else pairedPrematch = item.value;
+                    }
+                    // Opening and in-play must come from the same bookmaker
+                    // block. An unpaired row must not bias either median.
+                    if (pairedOpening !== null && pairedInplay !== null) {
+                      openingLines.push(pairedOpening);
+                      inplayLines.push(pairedInplay);
+                      if (pairedPrematch !== null) prematchLines.push(pairedPrematch);
                     }
                   }
                 }
-                const openingUnique = uniqueRounded(openingLines);
-                const prematchUnique = uniqueRounded(prematchLines);
-                const inplayUnique = uniqueRounded(inplayLines);
+                const openingConsensus = roundedLines(openingLines);
+                const prematchConsensus = roundedLines(prematchLines);
+                const inplayConsensus = roundedLines(inplayLines);
                 oddsSnapshot = {
-                  opening_lines: openingUnique,
-                  prematch_lines: prematchUnique,
-                  inplay_lines: inplayUnique,
-                  opening_median: median(openingUnique),
-                  prematch_median: median(prematchUnique),
-                  inplay_median: median(inplayUnique),
-                  opening_min: openingUnique.length ? Math.min(...openingUnique) : null,
-                  opening_max: openingUnique.length ? Math.max(...openingUnique) : null,
-                  inplay_min: inplayUnique.length ? Math.min(...inplayUnique) : null,
-                  inplay_max: inplayUnique.length ? Math.max(...inplayUnique) : null,
-                  bookmaker_count: Math.max(openingUnique.length, inplayUnique.length),
+                  opening_lines: openingConsensus,
+                  prematch_lines: prematchConsensus,
+                  inplay_lines: inplayConsensus,
+                  opening_median: median(openingConsensus),
+                  prematch_median: median(prematchConsensus),
+                  inplay_median: median(inplayConsensus),
+                  opening_min: openingConsensus.length ? Math.min(...openingConsensus) : null,
+                  opening_max: openingConsensus.length ? Math.max(...openingConsensus) : null,
+                  inplay_min: inplayConsensus.length ? Math.min(...inplayConsensus) : null,
+                  inplay_max: inplayConsensus.length ? Math.max(...inplayConsensus) : null,
+                  bookmaker_count: Math.min(openingConsensus.length, inplayConsensus.length),
+                  paired_bookmaker_count: Math.min(openingConsensus.length, inplayConsensus.length),
                 };
               }
 
@@ -720,9 +1148,13 @@ class AiscoreScraper:
               let hasLockedRows = false;
               if (container) {
                 const allRows = container.querySelectorAll('[class*="openingBg"], [class*="inPlayBg"], .content > *');
+                let lockedMarketRows = 0;
+                let usableMarketRows = 0;
                 for (const el of allRows) {
-                  if (isLocked(el)) { hasLockedRows = true; break; }
+                  if (isLocked(el)) lockedMarketRows += 1;
+                  else if (findLine(text(el.innerText)) !== null) usableMarketRows += 1;
                 }
+                hasLockedRows = lockedMarketRows > 0 && usableMarketRows === 0;
               }
 
               // --- Extract live score ---
@@ -816,11 +1248,9 @@ class AiscoreScraper:
                 oddsSnapshot.inplay_min = inplay;
                 oddsSnapshot.inplay_max = inplay;
               }
-              oddsSnapshot.bookmaker_count = Math.max(
-                oddsSnapshot.bookmaker_count || 0,
-                oddsSnapshot.opening_lines.length,
-                oddsSnapshot.inplay_lines.length
-              );
+              if (!oddsSnapshot.bookmaker_count && (
+                oddsSnapshot.opening_lines.length || oddsSnapshot.inplay_lines.length
+              )) oddsSnapshot.bookmaker_count = 1;
 
               let quarterScores = { home: [], away: [], source: '', quality: 0 };
               if (score) {
@@ -907,40 +1337,10 @@ class AiscoreScraper:
                 }
               }
 
-              const overviewStats = { rows: [], totals: {}, quality: 0, source: 'overview_scoreboard' };
-              const statLabels = Array.from(document.querySelectorAll('.midDes_text, [class*="midDes"]'));
-              const seenStats = new Set();
-              for (const labelEl of statLabels) {
-                const label = text(labelEl.innerText);
-                if (!label || label.length > 28) continue;
-                let row = labelEl;
-                let rowText = '';
-                for (let i = 0; i < 5; i++) {
-                  rowText = text(row.innerText);
-                  const labelRe = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-                  const re = new RegExp('(\\d{1,3})\\s+' + labelRe + '\\s+(\\d{1,3})', 'i');
-                  const m = rowText.match(re);
-                  if (m) {
-                    const home = parseFloat(m[1]);
-                    const away = parseFloat(m[2]);
-                    const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-                    if (!seenStats.has(key)) {
-                      seenStats.add(key);
-                      overviewStats.rows.push({ label, home: { raw: m[1], value: home }, away: { raw: m[2], value: away } });
-                      overviewStats.totals[key] = home + away;
-                    }
-                    break;
-                  }
-                  if (!row.parentElement) break;
-                  row = row.parentElement;
-                }
-              }
-              overviewStats.quality = overviewStats.rows.length >= 3 ? 55 : (overviewStats.rows.length ? 30 : 0);
-
               return {
                 opening, prematch, inplay, matchName, tournament, status,
                 isQ4, remainingMinutes, hasLockedRows, isFinished, score,
-                quarterScores, oddsSnapshot, overviewStats
+                quarterScores, oddsSnapshot
               };
             }
             """
@@ -952,9 +1352,23 @@ class AiscoreScraper:
             logger.debug("Skipping finished match: %s (status=%s)", url, status)
             return None
 
-        opening = parsed.get("opening")
-        inplay = parsed.get("inplay")
-        prematch = parsed.get("prematch")
+        odds_snapshot = _normalize_market_snapshot(parsed.get("oddsSnapshot"))
+        parsed["oddsSnapshot"] = odds_snapshot
+        opening = (
+            odds_snapshot.get("opening_median")
+            if odds_snapshot.get("opening_median") is not None
+            else parsed.get("opening")
+        )
+        inplay = (
+            odds_snapshot.get("inplay_median")
+            if odds_snapshot.get("inplay_median") is not None
+            else parsed.get("inplay")
+        )
+        prematch = (
+            odds_snapshot.get("prematch_median")
+            if odds_snapshot.get("prematch_median") is not None
+            else parsed.get("prematch")
+        )
         locked = parsed.get("hasLockedRows", False)
         if opening is None or inplay is None:
             if locked:
@@ -969,7 +1383,14 @@ class AiscoreScraper:
             logger.debug("Q4 <=4min remaining, skipping: %s (%.1f min)", url, remaining)
             return None
 
-        overview_data = await self._fetch_overview_data(page, url)
+        parsed_quarter_scores = parsed.get("quarterScores") or {}
+        needs_overview = (
+            not parsed.get("status")
+            or not parsed.get("score")
+            or not parsed_quarter_scores.get("home")
+            or not parsed_quarter_scores.get("away")
+        )
+        overview_data = await self._fetch_overview_data(page, url) if needs_overview else {}
         if overview_data.get("status"):
             parsed["status"] = overview_data.get("status")
         if overview_data.get("score"):
@@ -977,7 +1398,7 @@ class AiscoreScraper:
         quarter_scores = (
             overview_data.get("quarterScores")
             if (overview_data.get("quarterScores") or {}).get("home")
-            else parsed.get("quarterScores")
+            else parsed_quarter_scores
         ) or {}
 
         match_id = self._extract_match_id(url)
@@ -990,31 +1411,56 @@ class AiscoreScraper:
             else:
                 h2h_body = await self._fetch_h2h_body(page, url)
                 if h2h_body:
+                    if len(self._h2h_cache) >= 256:
+                        self._h2h_cache.pop(next(iter(self._h2h_cache)), None)
                     self._h2h_cache[match_id] = h2h_body
 
         tournament = self._sanitize_tournament(parsed.get("tournament") or "", url)
+        status_text = str(parsed.get("status") or "").strip()
+        score_text = str(parsed.get("score") or "").strip()
+        match_name = str(parsed.get("matchName") or f"Match {match_id}").strip()
+        clock = game_clock(status_text, match_name, tournament)
+        home_score, away_score = parse_score(score_text)
+        if (
+            clock.get("period") is None
+            or clock.get("remaining_min") is None
+            or home_score is None
+            or away_score is None
+        ):
+            logger.warning(
+                "Incomplete live core data; match is not counted as parsed: %s "
+                "status=%r score=%r",
+                url,
+                status_text,
+                score_text,
+            )
+            return None
 
         return {
             "match_id": match_id,
-            "match_name": parsed.get("matchName") or f"Match {match_id}",
+            "match_name": match_name,
             "tournament": tournament or "Unknown",
-            "status": parsed.get("status"),
+            "status": status_text,
             "opening_total": float(opening),
             "prematch_total": float(prematch) if prematch is not None else None,
             "inplay_total": float(inplay),
             "url": url,
-            "score": parsed.get("score") or "",
+            "score": score_text,
             "market_locked": bool(parsed.get("hasLockedRows", False)),
             "has_prematch": prematch is not None,
             "h2h_body_text": h2h_body,
             "quarter_scores": quarter_scores,
-            "odds_snapshot": parsed.get("oddsSnapshot") or {},
+            "odds_snapshot": odds_snapshot,
         }
 
     async def _fetch_overview_data(self, page, url: str) -> dict:
         try:
-            await page.goto(url.rstrip("/"), wait_until="domcontentloaded")
-            await page.wait_for_timeout(1800)
+            await page.goto(
+                url.rstrip("/"),
+                wait_until="domcontentloaded",
+                timeout=self.page_timeout_ms,
+            )
+            await self._wait_for_match_page_ready(page)
             return await page.evaluate(r"""
                 () => {
                   const text = s => (s || '').replace(/\s+/g, ' ').trim();
@@ -1091,36 +1537,7 @@ class AiscoreScraper:
                     }
                   }
 
-                  const overviewStats = { rows: [], totals: {}, quality: 0, source: 'overview_scoreboard' };
-                  const statLabels = Array.from(document.querySelectorAll('.midDes_text, [class*="midDes"]'));
-                  const seenStats = new Set();
-                  for (const labelEl of statLabels) {
-                    const label = text(labelEl.innerText);
-                    if (!label || label.length > 28) continue;
-                    let row = labelEl;
-                    for (let i = 0; i < 6; i++) {
-                      const rowText = text(row.innerText);
-                      const labelRe = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-                      const re = new RegExp('(\\d{1,3})\\s+' + labelRe + '\\s+(\\d{1,3})', 'i');
-                      const m = rowText.match(re);
-                      if (m) {
-                        const home = parseFloat(m[1]);
-                        const away = parseFloat(m[2]);
-                        const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-                        if (!seenStats.has(key)) {
-                          seenStats.add(key);
-                          overviewStats.rows.push({ label, home: { raw: m[1], value: home }, away: { raw: m[2], value: away } });
-                          overviewStats.totals[key] = home + away;
-                        }
-                        break;
-                      }
-                      if (!row.parentElement) break;
-                      row = row.parentElement;
-                    }
-                  }
-                  overviewStats.quality = overviewStats.rows.length >= 3 ? 55 : (overviewStats.rows.length ? 30 : 0);
-
-                  return { status, score, quarterScores, overviewStats };
+                  return { status, score, quarterScores };
                 }
             """)
         except Exception as exc:
@@ -1130,8 +1547,28 @@ class AiscoreScraper:
     async def _fetch_h2h_body(self, page, url: str) -> str:
         h2h_url = url.rstrip("/") + "/h2h"
         try:
-            await page.goto(h2h_url, wait_until="domcontentloaded")
-            await page.wait_for_timeout(2500)
+            await page.goto(
+                h2h_url,
+                wait_until="domcontentloaded",
+                timeout=self.page_timeout_ms,
+            )
+            try:
+                await page.wait_for_function(
+                    r"""
+                    () => {
+                        if (!document.body || document.readyState === 'loading') return false;
+                        const text = (document.body.innerText || '').toLowerCase();
+                        return text.length > 800 && (
+                            text.includes('h2h') || text.includes('head to head')
+                            || text.includes('per game') || text.includes('points per match')
+                        );
+                    }
+                    """,
+                    timeout=min(7000, self.page_timeout_ms),
+                )
+            except Exception as exc:
+                logger.debug("H2H readiness wait ended without a marker for %s: %s", url, exc)
+            await page.wait_for_timeout(250)
 
             # Try to click an H2H tab if the page lands on a different sub-section
             try:
@@ -1150,12 +1587,12 @@ class AiscoreScraper:
                         return false;
                     }
                 """)
-            except Exception:
-                pass
-            await page.wait_for_timeout(1000)
+            except Exception as exc:
+                logger.debug("H2H tab selection failed for %s: %s", url, exc)
+            await page.wait_for_timeout(300)
             for _ in range(2):
                 await page.evaluate("window.scrollBy(0, document.body.scrollHeight / 3)")
-                await page.wait_for_timeout(600)
+                await page.wait_for_timeout(200)
 
             body = await page.evaluate(r"""
                 () => {

@@ -13,13 +13,11 @@ import json
 import logging
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Flask, Response, jsonify, render_template, request
 from db import Database
 from config import Config
 from finished_match_service import (
-    evaluate_signal_result,
-    is_final_status,
     run_active_match_finished_scan,
     run_deleted_match_result_cycle,
     run_single_deleted_match_result_check,
@@ -351,32 +349,6 @@ def _apply_stored_signal_quality(alert: dict, analysis: dict) -> dict:
     return quality
 
 
-def _persist_signal_quality_for_rows(rows: list[dict], *, active_only: bool) -> int:
-    if not rows:
-        return 0
-    league_quality_profile = _build_league_quality_profile(db.recent_deleted_alerts(limit=None))
-    previous_map = _previous_directions_by_alert_id(rows)
-    updated = 0
-    for row in rows:
-        alert = dict(row)
-        analysis = _parse_analysis(alert.get("ai_analysis"))
-        quality = _apply_signal_quality(
-            {**analysis, **alert},
-            league_quality_profile,
-            previous_map.get(int(alert.get("id") or 0), []),
-        )
-        if isinstance(analysis.get("signal_quality"), dict) and analysis.get("signal_quality") == quality:
-            continue
-        analysis = {**analysis, "signal_quality": quality}
-        if db.update_alert_ai_analysis(
-            int(alert.get("id") or 0),
-            json.dumps(analysis, ensure_ascii=False),
-            active_only=active_only,
-        ):
-            updated += 1
-    return updated
-
-
 def enrich_alerts_with_analysis(
     alerts: list[dict],
     backtest_profile: dict | None = None,
@@ -426,6 +398,8 @@ def enrich_alerts_with_analysis(
         alert["fair_line"] = analysis.get("fair_line")
         alert["fair_edge"] = analysis.get("fair_edge")
         alert["projected"] = analysis.get("projected_total")
+        alert["projected_gap"] = analysis.get("projected_gap")
+        alert["opening_delta"] = analysis.get("opening_delta")
         alert["market_total"] = analysis.get("market_total")
         alert["team_recent_total"] = analysis.get("team_recent_total")
         alert["home_last6"] = analysis.get("home_last6") if isinstance(analysis.get("home_last6"), dict) else {}
@@ -453,6 +427,17 @@ def enrich_alerts_with_analysis(
         alert["backtest"] = _trim_backtest_payload(analysis.get("backtest"))
         alert["selection_reason"] = analysis.get("selection_reason") or ""
         alert["projection_quality"] = analysis.get("projection_quality")
+        alert["signal_gate"] = (
+            analysis.get("signal_gate")
+            if isinstance(analysis.get("signal_gate"), dict)
+            else {}
+        )
+        alert["gate_state"] = alert["signal_gate"].get("state") or "LEGACY_UNVERIFIED"
+        alert["candidate_eligible"] = bool(analysis.get("candidate_eligible"))
+        alert["projection_model_version"] = analysis.get("projection_model_version")
+        alert["fair_model_version"] = analysis.get("fair_model_version")
+        alert["game_format"] = analysis.get("game_format")
+        alert["model_validated"] = analysis.get("model_validated")
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
         _apply_canonical_signal_direction(alert, analysis)
         alert["bucket_stars"] = matching_signal_buckets(alert, analysis, bucket_profile)
@@ -474,6 +459,14 @@ def enrich_alerts_with_analysis(
                 )
         if history_profile is not None:
             alert["history_guard"] = _build_alert_history_guard(alert, history_profile)
+        for internal_key in (
+            "display_snapshot",
+            "telegram_status",
+            "telegram_retry_count",
+            "telegram_last_error",
+            "telegram_message_ids",
+        ):
+            alert.pop(internal_key, None)
     return alerts
 
 
@@ -654,30 +647,61 @@ def _build_live_dashboard_rows(
     return enriched
 
 
-def _save_dashboard_snapshots(rows: list[dict]) -> int:
+def _dashboard_snapshot_payloads(rows: list[dict]) -> dict[int, dict]:
     snapshots = {}
+    captured_at = datetime.now(timezone.utc).isoformat()
     for row in rows:
         payload = dict(row)
-        payload.pop("display_snapshot", None)
+        for internal_key in (
+            "display_snapshot",
+            "telegram_status",
+            "telegram_retry_count",
+            "telegram_last_error",
+            "telegram_message_ids",
+        ):
+            payload.pop(internal_key, None)
+        payload["snapshot_meta"] = {
+            "schema_version": 1,
+            "source": "live_dashboard",
+            "captured_at": captured_at,
+        }
         alert_id = int(payload.get("id") or 0)
         if alert_id:
             snapshots[alert_id] = payload
-    return db.save_active_alert_display_snapshots(snapshots)
+    return snapshots
 
 
-def _snapshot_active_rows(rows: list[dict]) -> int:
-    return _save_dashboard_snapshots(
-        _build_live_dashboard_rows(
-            rows,
-            persist_signal_quality=True,
-        )
+def _save_dashboard_snapshots(rows: list[dict]) -> int:
+    """Persist snapshots without archiving (used by explicit refresh/tests)."""
+    return db.save_active_alert_display_snapshots(
+        _dashboard_snapshot_payloads(rows)
     )
 
 
-def _run_async_dashboard_job(name: str, coro_factory, failure_message: str, before_run=None):
+def _archive_active_match(match_id: str) -> int:
+    """Build the live DTO, persist it, and soft-delete in one DB transaction."""
+    rows = db.active_alerts_for_match(match_id)
+    if not rows:
+        return 0
+    enriched = _build_live_dashboard_rows(rows, persist_signal_quality=True)
+    return db.archive_match_with_display_snapshots(
+        match_id,
+        _dashboard_snapshot_payloads(enriched),
+    )
+
+
+def _archive_all_active_rows() -> int:
+    rows = db.all_active_alerts(limit=None)
+    if not rows:
+        return 0
+    enriched = _build_live_dashboard_rows(rows, persist_signal_quality=True)
+    return db.archive_all_with_display_snapshots(
+        _dashboard_snapshot_payloads(enriched)
+    )
+
+
+def _run_async_dashboard_job(name: str, coro_factory, failure_message: str):
     try:
-        if before_run is not None:
-            before_run()
         return jsonify(asyncio.run(coro_factory()))
     except Exception as exc:
         logger.exception("Dashboard async job failed (%s): %s", name, exc)
@@ -715,9 +739,6 @@ def api_delete_signal_list_entry(entry_id: int):
     return jsonify({"id": entry_id, "deleted": True})
 
 
-_LIST_HEAVY_RAW_COLUMNS = ("ai_analysis", "team_context")
-
-
 def _analysis_needs_live_rebuild(analysis: dict) -> bool:
     """Older ai_analysis payloads predate fair-line/projection fields."""
     return (
@@ -752,50 +773,27 @@ def _rebuild_live_analysis_from_alert(
     return {**existing, **rebuilt}
 
 
-def _score_from_text(value) -> str:
-    match = re.search(r"(\d{1,3})\s*[-–]\s*(\d{1,3})", str(value or ""))
-    return f"{match.group(1)} - {match.group(2)}" if match else ""
-
-
-def _score_total_from_text(value) -> float | None:
-    match = re.search(r"(\d{1,3})\s*[-–]\s*(\d{1,3})", str(value or ""))
-    if not match:
-        return None
-    total = int(match.group(1)) + int(match.group(2))
-    return float(total) if 60 <= total <= 400 else None
-
-
-def _float_or_none(value) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _apply_current_deleted_result(result: dict) -> None:
-    if not is_final_status(result.get("status", "")):
-        return
-    final_total = _score_total_from_text(result.get("score"))
-    live_line = _float_or_none(result.get("live"))
-    if final_total is None or live_line is None:
-        return
-    current_result = evaluate_signal_result(result.get("direction"), live_line, final_total)
-    if current_result:
-        result["stored_result"] = result.get("result") or ""
-        result["result"] = current_result
+_DELETED_LIST_FIELDS = (
+    "id", "match_id", "match_name", "tournament", "url",
+    "deleted_at", "alerted_at", "alert_moment", "alert_period",
+    "direction", "final_direction", "signal_count",
+    "status", "score", "final_status", "final_score", "opening", "prematch", "live", "diff",
+    "projected", "projected_gap", "opening_delta", "fair_line", "fair_edge",
+    "projection_quality", "recommendation", "selection_reason",
+    "signal_gate", "gate_state", "candidate_eligible",
+    "signal_quality", "signal_quality_score", "signal_quality_label",
+    "signal_quality_reason", "signal_quality_risk_note",
+    "bucket_stars", "result", "result_source", "settled_at", "note",
+    "bet_placed", "ignored", "followed",
+)
 
 
 def _enrich_deleted_alert(
     alert: dict,
-    backtest_profile: dict | None = None,
     *,
     full: bool,
-    history_profile: dict | None = None,
-    league_quality_profile: dict | None = None,
-    previous_directions: list[str] | None = None,
-    bucket_profile: dict | None = None,
 ) -> dict:
-    """Read frozen display state, then evaluate today's profile labels for reports."""
+    """Read frozen live-dashboard display state without recomputing signal labels."""
     raw = dict(alert)
     snapshot = _parse_analysis(raw.get("display_snapshot"))
     result = dict(snapshot) if snapshot else raw
@@ -807,37 +805,43 @@ def _enrich_deleted_alert(
         result["fair_edge"] = analysis.get("fair_edge")
         result["projected"] = analysis.get("projected_total")
         result["projected_gap"] = analysis.get("projected_gap")
+        result["opening_delta"] = analysis.get("opening_delta")
         result["projection_quality"] = analysis.get("projection_quality")
         result["recommendation"] = analysis.get("recommendation") or ""
+        result["signal_gate"] = (
+            analysis.get("signal_gate")
+            if isinstance(analysis.get("signal_gate"), dict)
+            else {}
+        )
+        result["gate_state"] = result["signal_gate"].get("state") or "LEGACY_UNVERIFIED"
         _apply_stored_signal_quality(result, analysis)
 
     # Settlement and deletion metadata may legitimately change after the snapshot.
     for key in (
-        "id", "match_id", "deleted_at", "result", "status", "score", "note",
+        "id", "match_id", "deleted_at", "result", "result_source", "settled_at",
+        "final_status", "final_score", "note",
         "bet_placed", "ignored", "followed", "alerted_at", "alert_moment",
     ):
         if key in raw:
             result[key] = raw[key]
-    analysis = result.get("analysis") if isinstance(result.get("analysis"), dict) else _parse_analysis(raw.get("ai_analysis"))
-    _apply_canonical_signal_direction(result, analysis)
-    result["bucket_stars"] = matching_signal_buckets(result, analysis, bucket_profile)
-    _apply_current_deleted_result(result)
-    if history_profile is not None and not isinstance(result.get("history_guard"), dict):
-        result["history_guard"] = _build_alert_history_guard(result, history_profile)
+    if "bucket_stars" not in result or not isinstance(result.get("bucket_stars"), list):
+        result["bucket_stars"] = []
     result.pop("display_snapshot", None)
     result.pop("ai_analysis", None)
-    return result
+    if full:
+        return result
+    return {
+        key: result.get(key)
+        for key in _DELETED_LIST_FIELDS
+        if key in result
+    }
 
 
 def _lightweight_enrich_deleted_alerts(
     alerts: list[dict],
-    backtest_profile: dict | None = None,
-    league_quality_profile: dict | None = None,
-    history_profile: dict | None = None,
-    bucket_profile: dict | None = None,
 ) -> list[dict]:
     return [
-        _enrich_deleted_alert(alert, full=False, history_profile=history_profile, bucket_profile=bucket_profile)
+        _enrich_deleted_alert(alert, full=False)
         for alert in alerts
     ]
 
@@ -845,26 +849,20 @@ def _lightweight_enrich_deleted_alerts(
 @app.route("/api/deleted-matches")
 def api_deleted_matches():
     raw_limit = request.args.get("limit", type=int)
-    all_rows = db.recent_deleted_alerts(limit=None)
-    rows = all_rows if raw_limit is None or raw_limit <= 0 else all_rows[:raw_limit]
-    return jsonify(_lightweight_enrich_deleted_alerts(
-        rows,
-        history_profile=_build_history_profile(all_rows),
-        bucket_profile=build_signal_bucket_profile(all_rows),
-    ))
+    rows = db.recent_deleted_alerts(
+        limit=raw_limit if raw_limit is not None and raw_limit > 0 else None
+    )
+    return jsonify(_lightweight_enrich_deleted_alerts(rows))
 
 
 @app.route("/api/deleted-matches/<int:alert_id>/details")
 def api_deleted_match_details(alert_id: int):
-    all_rows = db.recent_deleted_alerts(limit=None)
-    target = next((row for row in all_rows if int(row.get("id") or 0) == alert_id), None)
+    target = db.get_deleted_alert_by_id(alert_id)
     if not target:
         return jsonify({"error": "not_found"}), 404
     return jsonify(_enrich_deleted_alert(
         target,
         full=True,
-        history_profile=_build_history_profile(all_rows),
-        bucket_profile=build_signal_bucket_profile(all_rows),
     ))
 
 
@@ -874,7 +872,6 @@ def api_export_finished_deleted_matches_csv():
     rows = [
         row for row in _lightweight_enrich_deleted_alerts(
             deleted_rows,
-            bucket_profile=build_signal_bucket_profile(deleted_rows),
         )
         if str(row.get("result") or "").strip()
     ]
@@ -883,7 +880,8 @@ def api_export_finished_deleted_matches_csv():
     output.write("\ufeff")
     writer = csv.writer(output)
     writer.writerow([
-        "Maç", "Lig", "Sinyal Tarihi (TR)", "Sinyal Saati (TR)", "Sinyal Anı", "Sinyal Türü", "Skor",
+        "Maç", "Lig", "Sinyal Tarihi (TR)", "Sinyal Saati (TR)", "Sinyal Anı", "Sinyal Türü",
+        "Sinyal Anı Skoru", "Final Skor",
         "Açılış", "Canlı", "Proj.", "Adil Barem", "S.K. Puan", "S.K. Etiket", "Sonuç", "Not",
     ])
 
@@ -905,6 +903,7 @@ def api_export_finished_deleted_matches_csv():
             row.get("alert_moment") or "",
             direction,
             row.get("score") or "",
+            row.get("final_score") or "",
             row.get("opening") if row.get("opening") is not None else "",
             row.get("live") if row.get("live") is not None else "",
             projected_cell,
@@ -925,14 +924,24 @@ def api_export_finished_deleted_matches_csv():
 
 @app.route("/api/deleted-matches/clear", methods=["POST"])
 def api_clear_deleted_matches():
-    deleted_count = db.purge_deleted_matches()
-    return jsonify({"cleared": True, "deleted_count": deleted_count})
+    outcome = db.purge_deleted_matches()
+    return jsonify({
+        "cleared": int(outcome.get("protected_count") or 0) == 0,
+        **outcome,
+    })
 
 
 @app.route("/api/deleted-matches/<int:alert_id>", methods=["DELETE"])
 def api_purge_deleted_alert(alert_id: int):
     removed = db.delete_alert(alert_id)
     if not removed:
+        if db.is_deleted_alert_protected(alert_id):
+            return jsonify({
+                "error": (
+                    "Bu kayıt sonuçlanmamış prospektif kanıta bağlı; "
+                    "otomatik final sonucu alınmadan kalıcı silinemez."
+                )
+            }), 409
         return jsonify({"error": "not found"}), 404
     return jsonify({"id": alert_id, "deleted": True})
 
@@ -941,9 +950,12 @@ def api_purge_deleted_alert(alert_id: int):
 def api_check_active_match_finished():
     return _run_async_dashboard_job(
         "active-match-finished-scan",
-        lambda: run_active_match_finished_scan(db, config),
+        lambda: run_active_match_finished_scan(
+            db,
+            config,
+            before_delete=_archive_active_match,
+        ),
         "Biten maçlar kontrol edilemedi. Sunucu loglarını kontrol edin.",
-        before_run=lambda: _snapshot_active_rows(db.active_alerts(limit=None)),
     )
 
 
@@ -1384,11 +1396,11 @@ def build_deleted_matches_report(signals: list) -> dict:
         if abs(overall_rate - 50) < 3:
             actions.append(
                 "Genel başarı %50 civarında — sistem neredeyse yazı-tura. "
-                "Fark bandı ve periyotla örneklem daraltılmalı."
+                "Fark bandı ve periyot kırılımları yalnız araştırma hipotezi olarak izlenmeli."
             )
         elif overall_rate < 44:
             actions.append(
-                f"Genel başarı %{overall_rate:.1f} — ham sinyaller segmentlere göre filtrelenmeli."
+                f"Genel başarı %{overall_rate:.1f} — ham sinyallerde doğrulanmış bir avantaj görünmüyor."
             )
 
     worst_diff = None
@@ -1403,12 +1415,12 @@ def build_deleted_matches_report(signals: list) -> dict:
     if worst_diff and worst_diff["rate"] < 40:
         actions.append(
             f"Fark {worst_diff['label']} aralığında başarı %{worst_diff['rate']:.1f} — "
-            f"bu aralıkta sinyal almamayı veya eşiği yükseltmeyi değerlendir."
+            "bu yalnız aynı örneklemde gözlenen zayıf bir tarihsel segmenttir."
         )
     if best_diff and best_diff is not worst_diff and best_diff["rate"] >= 60:
         actions.append(
             f"Fark {best_diff['label']} aralığı en güçlü segment (%{best_diff['rate']:.1f}) — "
-            f"bahisleri buraya yoğunlaştır."
+            "ileri tarihli bağımsız veride doğrulanmadan oynanabilir kabul edilmemeli."
         )
 
     worst_period = None
@@ -1420,7 +1432,7 @@ def build_deleted_matches_report(signals: list) -> dict:
     if worst_period and worst_period["rate"] < 40:
         actions.append(
             f"{worst_period['label']} sinyalleri %{worst_period['rate']:.1f} başarı — "
-            f"bu periyotta sinyalleri filtrele."
+            "bu tarihsel fark ileri tarihli test için not edildi."
         )
 
     if best_dir_period:
@@ -1428,14 +1440,14 @@ def build_deleted_matches_report(signals: list) -> dict:
         if b["rate"] >= 65 and b["resolved"] >= 4:
             actions.append(
                 f"En güçlü kombinasyon {b['label']}: %{b['rate']:.1f} başarı "
-                f"({b['success']}/{b['resolved']}) — bu segmenti önceliklendir."
+                f"({b['success']}/{b['resolved']}) — küçük ve aynı örneklemden gelen betimsel bir bulgu."
             )
     if worst_dir_period:
         w = worst_dir_period[0]
         if w["rate"] < 35 and w["resolved"] >= 4:
             actions.append(
                 f"En zayıf kombinasyon {w['label']}: %{w['rate']:.1f} başarı "
-                f"({w['success']}/{w['resolved']}) — bu kombinezondan kaçın."
+                f"({w['success']}/{w['resolved']}) — bağımsız doğrulama gerektiren betimsel bir bulgu."
             )
 
     if len(half_buckets) == 2:
@@ -1445,7 +1457,7 @@ def build_deleted_matches_report(signals: list) -> dict:
             if delta_h >= 10:
                 better = "1. Yarı" if h1["rate"] > h2["rate"] else "2. Yarı"
                 actions.append(
-                    f"{better} sinyalleri {delta_h:.1f} puan önde — yarı bazında sinyal seçimini değerlendir."
+                    f"{better} sinyalleri tarihsel örneklemde {delta_h:.1f} puan önde; bu fark doğrulanmış değildir."
                 )
 
     if tournament_bottom:
@@ -1453,14 +1465,14 @@ def build_deleted_matches_report(signals: list) -> dict:
         if worst_t["rate"] < 30 and worst_t["resolved"] >= 4:
             actions.append(
                 f"{worst_t['label']}: %{worst_t['rate']:.1f} ({worst_t['success']}/{worst_t['resolved']}) — "
-                f"bu turnuvayı kara listeye al."
+                "ileri tarihli test için zayıf segment adayı."
             )
     if tournament_top:
         best_t = tournament_top[0]
         if best_t["rate"] >= 65 and best_t["resolved"] >= 4:
             actions.append(
                 f"{best_t['label']}: %{best_t['rate']:.1f} ({best_t['success']}/{best_t['resolved']}) — "
-                f"en güvenilir liga, önceliklendir."
+                "ileri tarihli test için pozitif segment adayı; oynanabilirlik kanıtı değildir."
             )
 
     if trend_7d and trend_7d.get("delta") is not None and trend_7d["delta"] <= -8:
@@ -1470,12 +1482,12 @@ def build_deleted_matches_report(signals: list) -> dict:
         )
 
     if not actions and resolved > 0:
-        actions.append("Belirgin bir aksiyon sinyali yok — mevcut stratejiye devam, örneklemi büyüt.")
+        actions.append("Belirgin bir tarihsel ayrışma yok; ileri tarihli örneklemi büyüt.")
 
     if resolved == 0:
         headline = "Sonuçlar işaretlenmemiş. Sinyal başarılarını işaretleyerek raporu oluşturun."
     elif overall_rate >= 60:
-        headline = f"Genel başarı %{overall_rate:.1f} — sinyaller çalışıyor."
+        headline = f"Tarihsel kayıt başarısı %{overall_rate:.1f}; bu oran ileri tarihli doğrulama değildir."
     elif overall_rate >= 50:
         headline = f"Genel başarı %{overall_rate:.1f} — dengeli, net avantaj yok."
     else:
@@ -1492,7 +1504,7 @@ def build_deleted_matches_report(signals: list) -> dict:
         f"Toplam {total} sinyal, {unique_matches} benzersiz maçtan. "
         f"Genel başarı %{overall_rate:.1f} ({resolved} sonuçlanan). "
         f"{dir_summary} Karışık maç {len(mixed_matches)}, "
-        f"sonuç bekleyen {pending_count}."
+        f"sonuç bekleyen {pending_count}. Tekrarlı sinyaller korelasyonludur; bu rapor oynama tavsiyesi üretmez."
     )
 
     cards = [
@@ -1579,14 +1591,7 @@ def build_deleted_matches_report(signals: list) -> dict:
 @app.route("/api/deleted-matches/report")
 def api_deleted_matches_report():
     signals = db.recent_deleted_alerts(limit=None)
-    backtest_profile = build_backtest_profile(signals)
-    league_quality_profile = _build_league_quality_profile(signals)
-    signals = _lightweight_enrich_deleted_alerts(
-        signals,
-        backtest_profile,
-        league_quality_profile,
-        bucket_profile=build_signal_bucket_profile(signals),
-    )
+    signals = _lightweight_enrich_deleted_alerts(signals)
     return jsonify(build_deleted_matches_report(signals))
 
 
@@ -1647,6 +1652,8 @@ def build_deleted_matches_insights(signals: list) -> dict:
             "advice": [],
             "neutral_count": 0,
             "insufficient_count": 0,
+            "rules": {},
+            "simulation": {},
         }
 
     segments: list[dict] = []
@@ -1741,21 +1748,21 @@ def build_deleted_matches_insights(signals: list) -> dict:
         if rate >= 58 and delta >= 6:
             play.append({
                 **seg,
-                "verdict": "OYNA",
+                "verdict": "TARİHSEL POZİTİF",
                 "advice": (
                     f"{seg['scope']} → {seg['label']}: %{rate:.1f} başarı "
                     f"({seg['success']}/{seg['resolved']}), genelden +{delta:.1f}p önde. "
-                    f"Bu segmentteki sinyallere güvenle gir."
+                    "Aynı örneklemde keşfedildiği için oynanabilirlik kanıtı değildir."
                 ),
             })
         elif rate <= 42 and delta <= -6:
             avoid.append({
                 **seg,
-                "verdict": "UZAK DUR",
+                "verdict": "TARİHSEL ZAYIF",
                 "advice": (
                     f"{seg['scope']} → {seg['label']}: sadece %{rate:.1f} başarı "
                     f"({seg['success']}/{seg['resolved']}), genelden {-delta:.1f}p geride. "
-                    f"Bu segmenti atla."
+                    "İleri tarihli test için zayıf segment hipotezidir."
                 ),
             })
         else:
@@ -1776,7 +1783,7 @@ def build_deleted_matches_insights(signals: list) -> dict:
     if abs(overall_rate - 50) < 3 and total_resolved >= 30:
         advice.append(
             f"Ham sinyallerin başarısı %{overall_rate:.1f} — istatistiksel olarak yazı-tura. "
-            f"Tek başına 'tüm sinyalleri oyna' stratejisi kâr getirmez; mutlaka aşağıdaki segment filtreleriyle daralt."
+            "Aşağıdaki segmentler aynı veriden çıkarıldığı için yalnız keşif amaçlıdır."
         )
     elif overall_rate <= 44 and total_resolved >= 30:
         advice.append(
@@ -1787,13 +1794,13 @@ def build_deleted_matches_insights(signals: list) -> dict:
         top = play[0]
         advice.append(
             f"En güçlü pozitif segment: {top['scope']} → {top['label']} "
-            f"(%{top['rate']:.1f}, n={top['resolved']}). Önceliğini buraya ver."
+            f"(%{top['rate']:.1f}, n={top['resolved']}). İleri tarihli bağımsız test için adaydır."
         )
     if avoid:
         top_bad = avoid[0]
         advice.append(
             f"En zayıf segment: {top_bad['scope']} → {top_bad['label']} "
-            f"(%{top_bad['rate']:.1f}, n={top_bad['resolved']}). Bu kombinasyonda sinyal alma."
+            f"(%{top_bad['rate']:.1f}, n={top_bad['resolved']}). İleri tarihli test için zayıf segment adayıdır."
         )
     if not (play or avoid):
         advice.append(
@@ -1804,29 +1811,24 @@ def build_deleted_matches_insights(signals: list) -> dict:
     if abs(overall_rate - 50) < 3:
         headline = (
             f"{total_resolved} sonuçlanan sinyal · genel başarı %{overall_rate:.1f} (yazı-tura). "
-            f"Avantaj segmentlerde gizli."
+            "Segment ayrışmaları doğrulanmış avantaj değildir."
         )
     elif overall_rate >= 55:
         headline = (
             f"{total_resolved} sonuçlanan sinyal · genel başarı %{overall_rate:.1f}. "
-            f"Sistem pozitif tarafta, ama segment seçimiyle daha da güçlendirilebilir."
+            "Bu yalnız geçmiş örneklemin betimsel sonucudur."
         )
     else:
         headline = (
             f"{total_resolved} sonuçlanan sinyal · genel başarı %{overall_rate:.1f}. "
-            f"Tüm sinyalleri oynamak yerine aşağıdaki çıkarımlara odaklan."
+            "Aşağıdaki kırılımlar yalnız araştırma hipotezidir."
         )
 
-    rules_block = _derive_rules_and_simulate(resolved_signals, overall_rate)
-
-    sim = rules_block.get("simulation", {}).get("filtered") or {}
-    if sim.get("n"):
-        advice.append(
-            f"Otomatik kurallar uygulanırsa: {sim['n']} sinyal oynanır, "
-            f"%{sim['rate']:.1f} başarı (baseline'dan "
-            f"{'+' if sim['delta_vs_baseline'] >= 0 else ''}{sim['delta_vs_baseline']:.1f}p). "
-            f"{sim['skipped']} sinyal elenir, {sim['special_count']} sinyal ters oyun kuralına alınır."
-        )
+    advice.insert(
+        0,
+        "Bu görünüm aynı geçmiş veriden segment keşfeder; kural seçip aynı örneklemde ölçüm yapmaz "
+        "ve bahis/oynama tavsiyesi değildir.",
+    )
 
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -1844,240 +1846,15 @@ def build_deleted_matches_insights(signals: list) -> dict:
         "neutral_count": len(neutral),
         "insufficient_count": len(insufficient),
         "advice": advice,
-        "rules": rules_block.get("rules", {}),
-        "simulation": rules_block.get("simulation", {}),
-    }
-
-
-_RULE_LABELS = {
-    "team_blacklist": "Takım kara listesi",
-    "tournament_blacklist": "Turnuva kara listesi",
-    "tournament_direction_skip": "Turnuva + yön yasağı",
-    "period_direction_skip": "Periyot + yön yasağı",
-    "special": "Ters oyun kuralı",
-    "tournament_whitelist": "Turnuva beyaz liste",
-    "default": "Kural yok (varsayılan oyna)",
-}
-
-
-def _derive_rules_and_simulate(resolved_signals: list, baseline_rate: float) -> dict:
-    if not resolved_signals:
-        return {
-            "rules": {
-                "tournament_whitelist": [], "tournament_blacklist": [],
-                "tournament_special": [], "tournament_direction_skip": [],
-                "period_direction_skip": [], "team_blacklist": [], "team_special": [],
-            },
-            "simulation": {},
-        }
-
-    by_tour: dict[str, list] = {}
-    by_tour_dir: dict[tuple[str, str], list] = {}
-    by_period_dir: dict[tuple[str, str], list] = {}
-    team_rows: dict[str, list] = {}
-
-    for s in resolved_signals:
-        tour = (s.get("tournament") or "").strip()
-        direction = (s.get("direction") or "").strip().upper()
-        period = _period_bucket(s.get("alert_moment") or s.get("status"))
-        home, away = _split_match_teams(s.get("match_name") or "")
-
-        if tour:
-            by_tour.setdefault(tour, []).append(s)
-            if direction:
-                by_tour_dir.setdefault((tour, direction), []).append(s)
-        if direction and period != "Bilinmiyor":
-            by_period_dir.setdefault((period, direction), []).append(s)
-        for team in (home, away):
-            if team:
-                team_rows.setdefault(team, []).append(s)
-
-    def _stats(rows: list) -> tuple[int, int, float, float]:
-        success = sum(1 for r in rows if _fold(r.get("result")) == "basarili")
-        fail = len(rows) - success
-        return success, fail, _pct(success, len(rows)), _pct(fail, len(rows))
-
-    rules = {
-        "tournament_whitelist": [],
-        "tournament_blacklist": [],
-        "tournament_special": [],
-        "tournament_direction_skip": [],
-        "period_direction_skip": [],
-        "team_blacklist": [],
-        "team_special": [],
-    }
-
-    for name, rows in by_tour.items():
-        if len(rows) < 8:
-            continue
-        success, fail, rate, fail_rate = _stats(rows)
-        if rate >= 60 and rate - baseline_rate >= 8:
-            rules["tournament_whitelist"].append({
-                "label": name, "n": len(rows), "rate": rate,
-                "reason": f"%{rate:.1f} başarı ({success}/{len(rows)})",
-            })
-        elif fail_rate >= 70 and rate <= 30:
-            rules["tournament_special"].append({
-                "label": name, "n": len(rows), "rate": rate, "fail_rate": fail_rate,
-                "reason": f"ham başarı %{rate:.1f}; bu turnuva özel kural gerektiriyor",
-            })
-        elif rate <= 30:
-            rules["tournament_blacklist"].append({
-                "label": name, "n": len(rows), "rate": rate,
-                "reason": f"%{rate:.1f} başarı ({success}/{len(rows)})",
-            })
-
-    bl_tour_set = {r["label"] for r in rules["tournament_blacklist"]}
-    special_tour_set = {r["label"] for r in rules["tournament_special"]}
-
-    for (name, direction), rows in by_tour_dir.items():
-        if len(rows) < 5 or name in bl_tour_set or name in special_tour_set:
-            continue
-        success, _, rate, _ = _stats(rows)
-        if rate <= 25:
-            rules["tournament_direction_skip"].append({
-                "label": f"{direction} · {name}",
-                "tournament": name, "direction": direction,
-                "n": len(rows), "rate": rate,
-                "reason": f"%{rate:.1f} ({success}/{len(rows)})",
-            })
-
-    for (period, direction), rows in by_period_dir.items():
-        if len(rows) < 30:
-            continue
-        _, _, rate, _ = _stats(rows)
-        if baseline_rate - rate >= 6 and rate <= 45:
-            rules["period_direction_skip"].append({
-                "label": f"{direction} · {period}",
-                "period": period, "direction": direction,
-                "n": len(rows), "rate": rate,
-                "reason": f"%{rate:.1f} (genelden {baseline_rate - rate:.1f}p geride)",
-            })
-
-    for team, rows in team_rows.items():
-        if len(rows) < 6:
-            continue
-        success, fail, rate, fail_rate = _stats(rows)
-        if fail_rate >= 80 and len(rows) >= 8:
-            rules["team_special"].append({
-                "label": team, "n": len(rows), "rate": rate, "fail_rate": fail_rate,
-                "reason": f"ham başarı %{rate:.1f}; bu takım özel kural gerektiriyor",
-            })
-        elif rate <= 22:
-            rules["team_blacklist"].append({
-                "label": team, "n": len(rows), "rate": rate,
-                "reason": f"%{rate:.1f} ({success}/{len(rows)})",
-            })
-
-    rules["tournament_whitelist"].sort(key=lambda r: (-r["rate"], -r["n"]))
-    for key in ("tournament_blacklist", "tournament_special",
-                "tournament_direction_skip", "period_direction_skip",
-                "team_blacklist", "team_special"):
-        rules[key].sort(key=lambda r: (r["rate"], -r["n"]))
-
-    rules["team_blacklist"] = rules["team_blacklist"][:30]
-    rules["team_special"] = rules["team_special"][:15]
-
-    bl_tour = {r["label"] for r in rules["tournament_blacklist"]}
-    special_tour = {r["label"] for r in rules["tournament_special"]}
-    wl_tour = {r["label"] for r in rules["tournament_whitelist"]}
-    dir_skip = {(r["tournament"], r["direction"]) for r in rules["tournament_direction_skip"]}
-    period_skip = {(r["period"], r["direction"]) for r in rules["period_direction_skip"]}
-    bl_team = {r["label"] for r in rules["team_blacklist"]}
-    special_team = {r["label"] for r in rules["team_special"]}
-
-    decisions: list[dict] = []
-    for s in resolved_signals:
-        tour = (s.get("tournament") or "").strip()
-        direction = _normalize_direction(s.get("direction"))
-        period = _period_bucket(s.get("alert_moment") or s.get("status"))
-        home, away = _split_match_teams(s.get("match_name") or "")
-        success = _fold(s.get("result")) == "basarili"
-
-        if home in bl_team or away in bl_team:
-            action, rule = "SKIP", "team_blacklist"
-        elif tour in bl_tour:
-            action, rule = "SKIP", "tournament_blacklist"
-        elif (tour, direction) in dir_skip:
-            action, rule = "SKIP", "tournament_direction_skip"
-        elif (period, direction) in period_skip:
-            action, rule = "SKIP", "period_direction_skip"
-        elif tour in special_tour or home in special_team or away in special_team:
-            action, rule = "REVERSE", "special"
-        elif tour in wl_tour:
-            action, rule = "PLAY", "tournament_whitelist"
-        else:
-            action, rule = "PLAY", "default"
-
-        decisions.append({"action": action, "rule": rule, "success": success})
-
-    skipped = [d for d in decisions if d["action"] == "SKIP"]
-    played = [d for d in decisions if d["action"] == "PLAY"]
-    special = [d for d in decisions if d["action"] == "REVERSE"]
-    play_succ = sum(1 for d in played if d["success"])
-    special_succ = sum(1 for d in special if not d["success"])
-    total_played = len(played) + len(special)
-    total_succ = play_succ + special_succ
-    filtered_rate = _pct(total_succ, total_played) if total_played else 0.0
-    skipped_lost_wins = sum(1 for d in skipped if d["success"])
-
-    rule_buckets: dict[str, dict] = {}
-    for d in decisions:
-        bucket = rule_buckets.setdefault(d["rule"], {"action": d["action"], "n": 0, "succ": 0})
-        bucket["n"] += 1
-        if d["success"]:
-            bucket["succ"] += 1
-    rule_impact = []
-    for key, bucket in rule_buckets.items():
-        if key == "default":
-            continue
-        rule_impact.append({
-            "rule": key,
-            "label": _RULE_LABELS.get(key, key),
-            "action": bucket["action"],
-            "applied_to": bucket["n"],
-            "would_have_succ": bucket["succ"],
-            "would_have_rate": _pct(bucket["succ"], bucket["n"]),
-        })
-    rule_impact.sort(key=lambda r: -r["applied_to"])
-
-    baseline_succ = sum(1 for d in decisions if d["success"])
-    return {
-        "rules": rules,
-        "simulation": {
-            "baseline": {
-                "n": len(decisions),
-                "success": baseline_succ,
-                "rate": _pct(baseline_succ, len(decisions)),
-            },
-            "filtered": {
-                "n": total_played,
-                "success": total_succ,
-                "rate": filtered_rate,
-                "delta_vs_baseline": round(filtered_rate - _pct(baseline_succ, len(decisions)), 1),
-                "skipped": len(skipped),
-                "skipped_lost_wins": skipped_lost_wins,
-                "play_count": len(played),
-                "play_success": play_succ,
-                "special_count": len(special),
-                "special_success": special_succ,
-            },
-            "rule_impact": rule_impact,
-        },
+        "rules": {},
+        "simulation": {},
     }
 
 
 @app.route("/api/deleted-matches/insights")
 def api_deleted_matches_insights():
     signals = db.recent_deleted_alerts(limit=None)
-    backtest_profile = build_backtest_profile(signals)
-    league_quality_profile = _build_league_quality_profile(signals)
-    signals = _lightweight_enrich_deleted_alerts(
-        signals,
-        backtest_profile,
-        league_quality_profile,
-        bucket_profile=build_signal_bucket_profile(signals),
-    )
+    signals = _lightweight_enrich_deleted_alerts(signals)
     return jsonify(build_deleted_matches_insights(signals))
 
 
@@ -2329,8 +2106,9 @@ def api_delete_alert(alert_id: int):
     alert = db.get_alert(alert_id)
     if not alert:
         return jsonify({"error": "not found"}), 404
-    _snapshot_active_rows(db.active_alerts_for_match(alert["match_id"]))
-    deleted_count = db.delete_match_data(alert["match_id"])
+    deleted_count = _archive_active_match(alert["match_id"])
+    if deleted_count <= 0:
+        return jsonify({"error": "active alert changed before it could be archived"}), 409
     return jsonify({
         "id": alert_id,
         "match_id": alert["match_id"],
@@ -2476,11 +2254,10 @@ def api_team_history_lookup():
 
 @app.route("/api/clear", methods=["POST"])
 def api_clear_db():
-    _snapshot_active_rows(db.active_alerts(limit=None))
-    moved_count = db.clear_all()
+    moved_count = _archive_all_active_rows()
     return jsonify({"cleared": True, "moved_count": moved_count})
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("DASHBOARD_PORT", "5050"))
+    port = int(os.getenv("DASHBOARD_PORT", "5151"))
     app.run(host="0.0.0.0", port=port, debug=False)

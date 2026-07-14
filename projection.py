@@ -1,14 +1,20 @@
+import math
 import re
 
-# Çeyreğe göre pace regresyon katsayısı.
-# Q1 hızı genellikle abartılıdır (takımlar taze, erken yüksek tempo).
-# Kalan süreye bu katsayı uygulanır; ilerleyen çeyreklerde giderek gerçeğe yaklaşır.
-# Q4'te 1.0 → mevcut hız en güvenilir tahmin kaynağıdır.
-_PACE_REGRESSION = {1: 0.88, 2: 0.93, 3: 0.97, 4: 1.00}
 
-# "Live" statüsünde çeyrek tahmini için kaba ortalama puan/çeyrek
-# (iki takım toplam, 10 dakikalık birim üzerinden)
-_AVG_PTS_PER_QUARTER = {40: 25, 48: 28}
+PROJECTION_MODEL_VERSION = "shadow_projection_v1"
+
+# Fixed v1 research coefficients. They deliberately keep the observed-pace
+# contribution small because raw early-game pace is unstable. These values are
+# not win probabilities and remain subject to prospective validation.
+_OBSERVED_PACE_WEIGHT = {1: 0.06, 2: 0.14, 3: 0.24, 4: 0.02}
+
+# Yalnız maç önü baremi yoksa kullanılan nötr görünürlük fallback'i. Bu
+# fallback ile üretilen kayıt güven kapısından geçmez.
+_DEFAULT_PRIOR_TOTAL = {40: 160.0, 48: 220.0}
+
+_PRIOR_TOTAL_MIN = 80.0
+_PRIOR_TOTAL_MAX = 350.0
 
 
 def parse_score(score: str) -> tuple[int | None, int | None]:
@@ -18,28 +24,20 @@ def parse_score(score: str) -> tuple[int | None, int | None]:
     return int(match.group(1)), int(match.group(2))
 
 
-def estimate_period_from_score(
-    total_pts: int, total_game_min: int, quarter_length: float
-) -> tuple[int, float]:
-    """
-    Çeyrek bilgisi yokken toplam skora göre olası periyot ve kalan süre tahmini.
-    Sadece "Live" statüsünde fallback olarak kullanılır; tahmin kaba.
-    """
-    avg_per_q = _AVG_PTS_PER_QUARTER.get(total_game_min, 25)
-    quarters_played = total_pts / avg_per_q
-    period = min(4, max(1, int(quarters_played) + 1))
-    fractional = max(0.0, min(1.0, quarters_played - (period - 1)))
-    remaining = max(1.0, quarter_length * (1.0 - fractional))
-    return period, remaining
-
-
 def game_clock(status: str, match_name: str = "", tournament: str = "") -> dict:
     status_clean = (status or "").strip()
     total_game_min = game_minutes(match_name, tournament)
 
-    quarter_length = (
-        20 if total_game_min == 40 and _is_ncaa(match_name, tournament)
-        else (12 if total_game_min == 48 else 10)
+    uses_halves = _uses_halves(match_name, tournament)
+    quarter_length = 20 if uses_halves else (12 if total_game_min == 48 else 10)
+    period_count = 2 if uses_halves else 4
+    competition = str(tournament or "").strip().lower()
+    competition_known = bool(competition and competition not in {"unknown", "bilinmiyor", "-"})
+    model_validated = (
+        total_game_min == 40
+        and period_count == 4
+        and not _is_ncaa(match_name, tournament)
+        and competition_known
     )
 
     if not status_clean or re.match(r"^OT", status_clean, re.IGNORECASE):
@@ -48,6 +46,9 @@ def game_clock(status: str, match_name: str = "", tournament: str = "") -> dict:
             "remaining_min": None,
             "quarter_length": quarter_length,
             "total_game_min": total_game_min,
+            "period_count": period_count,
+            "format": _format_name(total_game_min, period_count),
+            "model_validated": model_validated,
         }
 
     period = None
@@ -87,14 +88,11 @@ def game_clock(status: str, match_name: str = "", tournament: str = "") -> dict:
             period = int(ord_match.group(1))
             if ord_match.group(2) and ord_match.group(3):
                 remaining_min = int(ord_match.group(2)) + int(ord_match.group(3)) / 60.0
-            else:
-                remaining_min = quarter_length / 2
 
     if period is None:
         q_only = re.match(r"^(?:Q(\d)|(\d)Q)$", status_clean, re.IGNORECASE)
         if q_only:
             period = int(q_only.group(1) or q_only.group(2))
-            remaining_min = quarter_length / 2
 
     if period is None:
         h_match = re.match(r"^(\d)H(?:[-:\s]+(\d{1,2}):(\d{2}))?$", status_clean, re.IGNORECASE)
@@ -103,14 +101,11 @@ def game_clock(status: str, match_name: str = "", tournament: str = "") -> dict:
             period = half if quarter_length == 20 else (2 if half == 1 else 4)
             if h_match.group(2) and h_match.group(3):
                 remaining_min = int(h_match.group(2)) + int(h_match.group(3)) / 60.0
-            else:
-                remaining_min = quarter_length / 2
 
     if period is None:
         d_match = re.match(r"^([1-4])$", status_clean)
         if d_match:
             period = int(d_match.group(1))
-            remaining_min = quarter_length / 2
 
     if period is None:
         nt_match = re.match(r"([1-4])[-:\s]+(\d{1,2}):(\d{2})", status_clean)
@@ -118,11 +113,23 @@ def game_clock(status: str, match_name: str = "", tournament: str = "") -> dict:
             period = int(nt_match.group(1))
             remaining_min = int(nt_match.group(2)) + int(nt_match.group(3)) / 60.0
 
+    if period is not None and (period < 1 or period > period_count):
+        period = None
+        remaining_min = None
+    elif remaining_min is not None and (
+        remaining_min < 0 or remaining_min > quarter_length
+    ):
+        period = None
+        remaining_min = None
+
     return {
         "period": period,
         "remaining_min": remaining_min,
         "quarter_length": quarter_length,
         "total_game_min": total_game_min,
+        "period_count": period_count,
+        "format": _format_name(total_game_min, period_count),
+        "model_validated": model_validated,
     }
 
 
@@ -142,17 +149,39 @@ def _is_ncaa(match_name: str = "", tournament: str = "") -> bool:
     return "NCAA" in f"{match_name} {tournament}".upper()
 
 
+def _is_womens(match_name: str = "", tournament: str = "") -> bool:
+    text = f"{match_name} {tournament}".upper()
+    return any(
+        token in text
+        for token in ("WNBA", "WOMEN", "WOMEN'S", "WOMAN", "KADIN")
+    )
+
+
+def _uses_halves(match_name: str = "", tournament: str = "") -> bool:
+    return _is_ncaa(match_name, tournament) and not _is_womens(match_name, tournament)
+
+
+def _format_name(total_game_min: int, period_count: int) -> str:
+    if total_game_min == 48 and period_count == 4:
+        return "4x12"
+    if total_game_min == 40 and period_count == 2:
+        return "2x20"
+    if total_game_min == 40 and period_count == 4:
+        return "4x10"
+    return "unsupported"
+
+
 def calculate_projected_total(
-    score: str, status: str, match_name: str = "", tournament: str = ""
+    score: str,
+    status: str,
+    match_name: str = "",
+    tournament: str = "",
+    *,
+    prior_total: float | None = None,
 ) -> float | None:
     """
-    Mevcut skor ve oyun saatine göre tahmini final toplam skorunu hesaplar.
-
-    Formül: toplam_atılan + (mevcut_hız × regresyon × kalan_süre)
-
-    Regresyon: Q1 hızı overestimate eder (takımlar taze), bu nedenle
-    erken çeyreklerde kalan süre hesabına katsayı uygulanır.
-    Q4'te regresyon = 1.0 (mevcut hız en güvenilir bölge).
+    Maç önü sayı/dakika önselini gözlenen canlı tempoya doğru kontrollü
+    günceller. Saat bilinmiyorsa kesinlik icat etmek yerine None döndürür.
     """
     home_score, away_score = parse_score(score)
     if home_score is None or away_score is None:
@@ -164,42 +193,73 @@ def calculate_projected_total(
     remaining_min = clock["remaining_min"]
     quarter_length = clock["quarter_length"]
     total_game_min = clock["total_game_min"]
+    period_count = clock["period_count"]
 
-    # "Live" statüsü: çeyrek bilgisi yoksa skora bakarak tahmin et
-    estimated = False
     if period is None or remaining_min is None:
-        period, remaining_min = estimate_period_from_score(
-            total_pts, total_game_min, quarter_length
-        )
-        estimated = True
+        return None
 
     elapsed_min = (period - 1) * quarter_length + (quarter_length - remaining_min)
     if elapsed_min <= 1:
         return None
 
-    # Kalan toplam süre (mevcut çeyreğin kalanı + ilerleyen çeyrekler)
-    remaining_total_min = (4 - period) * quarter_length + remaining_min
+    remaining_total_min = (period_count - period) * quarter_length + remaining_min
     if remaining_total_min <= 0:
         return float(total_pts)
 
-    raw_pace = total_pts / elapsed_min  # puan/dakika
-
-    # Çeyreğe özgü regresyon; tahmin edildiyse ek -5% belirsizlik marjı
-    regression = _PACE_REGRESSION.get(period, 0.95)
-    if estimated:
-        regression = max(0.82, regression - 0.05)
-
-    expected_remaining = raw_pace * regression * remaining_total_min
-    return round(total_pts + expected_remaining, 1)
+    parsed_prior, _ = _canonical_prior_total(prior_total, total_game_min)
+    prior_ppm = parsed_prior / total_game_min
+    observed_ppm = total_pts / elapsed_min
+    observed_weight = _OBSERVED_PACE_WEIGHT.get(period)
+    if observed_weight is None:
+        return None
+    remaining_ppm = prior_ppm + observed_weight * (observed_ppm - prior_ppm)
+    projected = total_pts + remaining_total_min * max(0.0, remaining_ppm)
+    return round(max(float(total_pts), projected), 1)
 
 
 def _safe_float(value) -> float | None:
     if value is None:
         return None
     try:
-        return float(str(value).replace("%", "").replace(",", ".").strip())
+        parsed = float(str(value).replace("%", "").replace(",", ".").strip())
     except (TypeError, ValueError):
         return None
+    return parsed if math.isfinite(parsed) else None
+
+
+def _canonical_prior_total(value, total_game_min: int) -> tuple[float, bool]:
+    parsed = _safe_float(value)
+    if (
+        parsed is not None
+        and _PRIOR_TOTAL_MIN <= parsed <= _PRIOR_TOTAL_MAX
+    ):
+        return parsed, True
+    return _DEFAULT_PRIOR_TOTAL.get(total_game_min, 160.0), False
+
+
+def _select_prior_total(
+    market_total,
+    opening_total,
+    total_game_min: int,
+) -> tuple[float, str, bool, bool]:
+    """Return one canonical prior and whether supplied values were invalid."""
+    invalid_supplied = False
+    for source, raw in (
+        ("market_total", market_total),
+        ("opening_total", opening_total),
+    ):
+        if raw is None or str(raw).strip() == "":
+            continue
+        parsed = _safe_float(raw)
+        if (
+            parsed is not None
+            and _PRIOR_TOTAL_MIN <= parsed <= _PRIOR_TOTAL_MAX
+        ):
+            return parsed, source, True, invalid_supplied
+        invalid_supplied = True
+
+    fallback, _ = _canonical_prior_total(None, total_game_min)
+    return fallback, "neutral_fallback", False, invalid_supplied
 
 
 def _quarter_totals(quarter_scores: dict | None) -> list[int]:
@@ -262,28 +322,49 @@ def calculate_live_projection(
     market_total: float | None = None,
     opening_total: float | None = None,
 ) -> dict:
-    """
-    Canlı final projeksiyonu.
-
-    Basit skor/süre projeksiyonunu temel alır, sonra AiScore'dan çekilen
-    çeyrek dağılımıyla düzeltir. Amaç tek bir lineer pace hesabı yapmak değil;
-    maçın sürdürülebilir temposunu tahmin etmektir.
-    """
-    base = calculate_projected_total(score, status, match_name, tournament)
-    home_score, away_score = parse_score(score)
+    """Return the versioned, leakage-safe shadow projection and diagnostics."""
     clock = game_clock(status, match_name, tournament)
+    total_game_min = clock["total_game_min"]
+    prior_total, prior_source, prior_valid, invalid_prior = _select_prior_total(
+        market_total,
+        opening_total,
+        total_game_min,
+    )
+    base = calculate_projected_total(
+        score,
+        status,
+        match_name,
+        tournament,
+        prior_total=prior_total,
+    )
+    home_score, away_score = parse_score(score)
     period = clock["period"]
     remaining_min = clock["remaining_min"]
     quarter_length = clock["quarter_length"]
-    total_game_min = clock["total_game_min"]
 
     if base is None or home_score is None or away_score is None:
+        notes = ["Skor/süre güvenilir okunamadı."]
+        if not prior_valid:
+            notes.append(
+                "Maç önü baremi geçersiz."
+                if invalid_prior
+                else "Maç önü baremi yok."
+            )
         return {
             "projected_total": base,
             "raw_projected_total": base,
+            "pure_projected_total": base,
+            "model_version": PROJECTION_MODEL_VERSION,
             "data_quality": 20,
-            "components": {},
-            "notes": ["Skor/süre güvenilir okunamadı."],
+            "components": {
+                "model_version": PROJECTION_MODEL_VERSION,
+                "game_format": clock.get("format"),
+                "model_validated": bool(clock.get("model_validated")),
+                "prior_total": round(prior_total, 1),
+                "prior_source": prior_source,
+                "prior_valid": prior_valid,
+            },
+            "notes": notes,
         }
 
     total_pts = home_score + away_score
@@ -300,85 +381,94 @@ def calculate_live_projection(
     if not completed_q and len(q_totals) >= 2:
         completed_q = q_totals[:-1]
 
-    sustainable_pace = None
+    completed_period_pace = None
     if completed_q:
         completed_paces = [q / quarter_length for q in completed_q if q > 0]
         if completed_paces:
-            sustainable_pace = sum(completed_paces) / len(completed_paces)
+            completed_period_pace = sum(completed_paces) / len(completed_paces)
 
     current_pace = None
     if elapsed and elapsed > 1:
         current_pace = total_pts / elapsed
 
-    pace_blend = current_pace
-    if sustainable_pace and current_pace:
-        # Maç ilerledikçe canlı pace daha güvenilir, ama çeyrek dağılımı
-        # anormal spike/dip'leri yumuşatır.
-        live_weight = 0.55 if period and period <= 2 else 0.68
-        pace_blend = current_pace * live_weight + sustainable_pace * (1 - live_weight)
-
-    projected = base
+    projected = float(base)
     notes: list[str] = []
+    observed_weight = _OBSERVED_PACE_WEIGHT.get(period) if period is not None else None
+    raw_pace_projection = (
+        total_pts / elapsed * total_game_min
+        if elapsed is not None and elapsed > 1
+        else None
+    )
     components = {
-        "base_projection": round(base, 1),
+        "model_version": PROJECTION_MODEL_VERSION,
+        "game_format": clock.get("format"),
+        "model_validated": bool(clock.get("model_validated")),
+        "prior_total": round(prior_total, 1),
+        "prior_source": prior_source,
+        "prior_valid": prior_valid,
+        "prior_pace_per_min": round(prior_total / total_game_min, 3),
+        "observed_pace_weight": observed_weight,
+        "base_projection": round(projected, 1),
         "current_pace_per_min": round(current_pace, 3) if current_pace else None,
-        "sustainable_pace_per_min": round(sustainable_pace, 3) if sustainable_pace else None,
+        "sustainable_pace_per_min": round(
+            (projected - total_pts) / remaining_total, 3
+        ) if remaining_total and remaining_total > 0 else None,
+        "completed_period_pace_per_min": round(completed_period_pace, 3)
+        if completed_period_pace
+        else None,
+        "raw_pace_projection": round(raw_pace_projection, 1)
+        if raw_pace_projection is not None
+        else None,
     }
-    if pace_blend and remaining_total is not None:
-        projected = total_pts + pace_blend * remaining_total
-        components["pace_blend_projection"] = round(projected, 1)
 
-    # "Saf" projeksiyon: market_anchor uygulanmadan önceki değer.
-    # Adil barem hesabı bunu kullanır (gizli double-counting'i önler).
-    pure_pre_anchor = projected
-
-    # Market anchor: canlı line piyasanın injury/rotation haberlerini de içerir.
-    # Erken bölümde daha çok, son bölümde daha az ağırlık verilir.
-    market_anchor = _safe_float(market_total) or _safe_float(opening_total)
-    if market_anchor is not None:
-        if period is None or period <= 1:
-            mw = 0.35
-        elif period == 2:
-            mw = 0.25
-        elif period == 3:
-            mw = 0.16
-        else:
-            mw = 0.08
-        projected = projected * (1 - mw) + market_anchor * mw
-        components["market_anchor"] = round(market_anchor, 1)
-        components["market_weight"] = round(mw, 2)
-
-    # Maç scripti: blowout/close-game etkisi.
+    # Script etkisi doğrulanmış bir katsayı olmadığı için sayıya eklenmez;
+    # yalnız risk notu üretir. Böylece kalan süre sıfırda projeksiyon skora yaklaşır.
     gap = abs(home_score - away_score)
     script_adj = 0.0
     if period and period >= 4 and remaining_min is not None:
         if gap <= 7 and remaining_min <= 6:
-            script_adj += 3.5
-            notes.append("Yakın Q4: faul oyunu ve hızlı hücum riski projeksiyonu yükseltir.")
+            notes.append("Yakın Q4: faul oyunu ve hızlı hücum belirsizliği yüksek.")
         elif gap >= 16 and remaining_min <= 6:
-            script_adj -= 5.0
-            notes.append("Q4 blowout: rotasyon/tempo düşüşü projeksiyonu aşağı çeker.")
+            notes.append("Q4 blowout: rotasyon ve tempo düşüşü riski yüksek.")
     elif period and period >= 3 and gap >= 18:
-        script_adj -= 2.5
-        notes.append("Maç kopma eğiliminde; tempo sürdürülebilirliği düşebilir.")
-    projected += script_adj
-    pure_pre_anchor += script_adj  # saf projeksiyon script düzeltmesini de alır
+        notes.append("Maç kopma eğiliminde; tempo sürdürülebilirliği belirsiz.")
     components["script_adjustment"] = round(script_adj, 1)
 
-    data_quality = 45
+    if not prior_valid:
+        if invalid_prior:
+            notes.append(
+                "Maç önü baremi geçersiz; nötr fallback yalnız görünürlük için kullanıldı."
+            )
+        else:
+            notes.append(
+                "Maç önü baremi yok; nötr fallback yalnız görünürlük için kullanıldı."
+            )
+    if not clock.get("model_validated"):
+        notes.append(
+            f"{clock.get('format') or 'Bilinmeyen'} formatı bu model sürümünde ileri tarihli doğrulanmadı."
+        )
+
+    data_quality = 30
     if elapsed is not None:
+        data_quality += 25
+    if prior_valid:
         data_quality += 20
-    if q_totals:
+    if elapsed is not None and elapsed >= 4:
         data_quality += 15
-    if market_anchor is not None:
-        data_quality += 5
+    if q_totals:
+        data_quality += 10
+    if period and period >= 2 and not completed_q:
+        data_quality -= 10
+    if not clock.get("model_validated"):
+        data_quality = min(data_quality, 69)
 
     return {
         "projected_total": round(projected, 1),
-        "raw_projected_total": round(base, 1),
-        # pure_projected_total = pace_blend + stat_adj + script_adj (market_anchor YOK)
-        # Adil barem bu alanı kullanır, prematch ile "temiz" şekilde harmanlamak için.
-        "pure_projected_total": round(pure_pre_anchor, 1),
+        "raw_projected_total": round(raw_pace_projection, 1)
+        if raw_pace_projection is not None
+        else None,
+        "pure_projected_total": round(projected, 1),
+        "model_version": PROJECTION_MODEL_VERSION,
         "data_quality": max(0, min(100, data_quality)),
         "components": components,
         "notes": notes,
