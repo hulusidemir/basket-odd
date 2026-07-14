@@ -1760,7 +1760,7 @@
 
 	      <section class="panel stats">
 	        <div class="stat-chip">
-	          <span>Silinen Sinyal</span>
+	          <span id="statSignalsLabel">Silinen Sinyal</span>
           <strong id="statSignals">0</strong>
         </div>
         <div class="stat-chip">
@@ -1816,6 +1816,7 @@
 	      <section class="panel toolbar">
         <input class="search-box" id="searchInput" type="text" placeholder="Maç, turnuva veya skor ara">
         <div class="actions">
+          <button class="btn" id="uniqueMatchesBtn" type="button" onclick="toggleUniqueMatchesOnly()" title="Her maçın ilk sinyalini bırakır; sonraki sinyalleri yalnız görünümden gizler">Tekrarlıları Gizle</button>
           <button class="btn" onclick="resetSearch()">Temizle</button>
         </div>
       </section>
@@ -1914,6 +1915,7 @@
 	    let sortAsc = false;
 	    let activeFilter = null;
 	    let activePeriods = new Set();
+	    let uniqueMatchesOnly = false;
 	    let currentPage = 1;
     let pageSize = 100;
 
@@ -2161,8 +2163,24 @@
     }
 
 	    function signalQualityHtml(alert) {
+	      const quality = alert?.signal_quality && typeof alert.signal_quality === 'object'
+	        ? alert.signal_quality
+	        : {};
+	      const score = numValue(quality.quality_score ?? alert?.signal_quality_score);
+	      const label = String(quality.quality_label ?? alert?.signal_quality_label ?? '').trim();
+	      const tone = score === null ? 'neutral'
+	        : score >= 85 ? 'strong'
+	        : score >= 70 ? 'playable'
+	        : score >= 55 ? 'watch'
+	        : score >= 40 ? 'neutral'
+	        : 'pass';
+	      const scoreText = score === null ? '-' : `${Math.round(score)}/100`;
 	      const gate = gatePresentation(alert);
-	      return `<span class="quality-cell"><button type="button" class="badge quality-badge ${gate.tone}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(gate.label)}" aria-label="Güven kapısı detayını aç">${escapeHtml(gate.text)}</button>${bucketStarsHtml(alert)}</span>`;
+	      const title = [
+	        `Silme anındaki uzman güven skoru: ${scoreText}${label ? ` · ${label}` : ''}`,
+	        `${gate.text}: ${gate.label}`,
+	      ].join(' | ');
+	      return `<span class="quality-cell"><button type="button" class="badge quality-badge ${tone}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(title)}" aria-label="Silme anındaki güven puanını aç">${escapeHtml(scoreText)}</button>${bucketStarsHtml(alert)}</span>`;
 	    }
 
     function bucketStarsHtml(alert) {
@@ -2187,7 +2205,9 @@
 	      if (!alert || !modal || !content) return;
 	      const quality = alert.signal_quality && typeof alert.signal_quality === 'object' ? alert.signal_quality : {};
 	      const score = quality.quality_score ?? alert.signal_quality_score;
+	      const scoreNum = numValue(score);
 	      const label = quality.quality_label ?? alert.signal_quality_label ?? '-';
+	      const modelSupport = numValue(quality.model_support_score);
 	      const gate = alert.signal_gate && typeof alert.signal_gate === 'object' ? alert.signal_gate : {};
 	      const evidence = gate.evidence && typeof gate.evidence === 'object' ? gate.evidence : {};
 	      const gateUi = gatePresentation(alert);
@@ -2197,15 +2217,16 @@
 	      const reasonsHtml = reasons.length
 	        ? `<ul class="signal-note-list">${reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>`
 	        : '<div class="signal-quality-note">Ek engel nedeni yok.</div>';
-	      document.getElementById('signalQualityTitle').textContent = `Güven Kapısı - ${cleanMatchName(alert.match_name || '-')}`;
+	      document.getElementById('signalQualityTitle').textContent = `Sinyal Güveni - ${cleanMatchName(alert.match_name || '-')}`;
 	      content.innerHTML = `
 	        <div class="signal-quality-card">
-	          <div class="signal-quality-row"><span>Silme anındaki güven durumu</span><strong>${escapeHtml(gateUi.text)} · ${escapeHtml(gateUi.label)}</strong></div>
+	          <div class="signal-quality-row"><span>Silme anındaki uzman güven skoru</span><strong>${scoreNum === null ? '-' : scoreNum.toFixed(0)} / 100 · ${escapeHtml(label)}</strong></div>
+	          <div class="signal-quality-row"><span>Silme anındaki sistem kararı</span><strong>${escapeHtml(gateUi.text)} · ${escapeHtml(gateUi.label)}</strong></div>
 	          <div class="signal-quality-row"><span>İleri tarihli benzersiz sonuç</span><strong>${escapeHtml(evidence.resolved_unique ?? 0)} / 100</strong></div>
 	          <div class="signal-quality-row"><span>Gerçekleşen başarı</span><strong>${Number.isFinite(rate) ? '%' + rate.toFixed(1) : '-'}</strong></div>
 	          <div class="signal-quality-row"><span>%95 alt güven sınırı</span><strong>${Number.isFinite(lower) ? '%' + lower.toFixed(1) : '-'}</strong></div>
 	          <div class="signal-quality-row"><span>Veri güvenilirliği</span><strong>${escapeHtml(quality.data_reliability_score ?? '-')} / 100</strong></div>
-	          <div class="signal-quality-row"><span>Model uyum puanı</span><strong>${escapeHtml(score ?? '-')} / 100 · ${escapeHtml(label)}</strong></div>
+	          <div class="signal-quality-row"><span>Teknik model desteği</span><strong>${modelSupport === null ? '-' : modelSupport.toFixed(0)} / 100</strong></div>
 	          <div class="signal-quality-row"><span>Projeksiyon</span><strong>${qualityValue(quality.projection)}</strong></div>
 	          <div class="signal-quality-row"><span>Projeksiyon - Canlı Barem Farkı</span><strong>${qualityValue(quality.projection_diff)}</strong></div>
 	          <div class="signal-quality-row"><span>Gereken Tempo</span><strong>${qualityValue(quality.required_pace, 2)}</strong></div>
@@ -2643,8 +2664,51 @@
       return { count: starredRows.length, success, fail, resolved, rate };
     }
 
+    function signalOrder(alert) {
+      const signalCount = Number(alert?.signal_count);
+      const signalRank = Number.isFinite(signalCount) && signalCount > 0
+        ? signalCount
+        : Number.MAX_SAFE_INTEGER;
+      const alertedAt = parseDateValue(alert?.alerted_at);
+      const deletedAt = parseDateValue(alert?.deleted_at);
+      const timeRank = alertedAt || deletedAt || Number.MAX_SAFE_INTEGER;
+      const id = Number(alert?.id);
+      return [signalRank, timeRank, Number.isFinite(id) ? id : Number.MAX_SAFE_INTEGER];
+    }
+
+    function comesBefore(candidate, current) {
+      const candidateOrder = signalOrder(candidate);
+      const currentOrder = signalOrder(current);
+      for (let index = 0; index < candidateOrder.length; index += 1) {
+        if (candidateOrder[index] < currentOrder[index]) return true;
+        if (candidateOrder[index] > currentOrder[index]) return false;
+      }
+      return false;
+    }
+
+    function firstSignalPerMatch(rows) {
+      const firstByMatch = new Map();
+      (rows || []).forEach(alert => {
+        const key = matchKey(alert);
+        const current = firstByMatch.get(key);
+        if (!current || comesBefore(alert, current)) firstByMatch.set(key, alert);
+      });
+      const firstIds = new Set([...firstByMatch.values()].map(alert => Number(alert.id)));
+      return (rows || []).filter(alert => firstIds.has(Number(alert.id)));
+    }
+
+    function summaryRows() {
+      return uniqueMatchesOnly ? firstSignalPerMatch(deletedAlerts) : [...deletedAlerts];
+    }
+
+    function toggleUniqueMatchesOnly() {
+      uniqueMatchesOnly = !uniqueMatchesOnly;
+      currentPage = 1;
+      render();
+    }
+
     function filteredAlerts() {
-      let rows = [...deletedAlerts];
+	      let rows = summaryRows();
 	      if (activeFilter) {
 	        rows = rows.filter(alert => {
 	          if (activeFilter.direction && alert.direction !== activeFilter.direction) return false;
@@ -2712,23 +2776,37 @@
     }
 
     function updateStats() {
-      const matchIds = new Set(deletedAlerts.map(item => matchKey(item)).filter(Boolean));
-      const successList = deletedAlerts.filter(item => item.result === 'Başarılı');
-      const failList = deletedAlerts.filter(item => item.result === 'Başarısız');
+	      const rows = summaryRows();
+	      const matchIds = new Set(rows.map(item => matchKey(item)).filter(Boolean));
+	      const successList = rows.filter(item => item.result === 'Başarılı');
+	      const failList = rows.filter(item => item.result === 'Başarısız');
       const resolved = successList.length + failList.length;
       const rate = resolved > 0 ? Math.round((successList.length / resolved) * 1000) / 10 : null;
 
-      document.getElementById('statSignals').textContent = deletedAlerts.length;
+	      document.getElementById('statSignalsLabel').textContent = uniqueMatchesOnly ? 'İlk Sinyal' : 'Silinen Sinyal';
+	      document.getElementById('statSignals').textContent = rows.length;
       document.getElementById('statMatches').textContent = matchIds.size;
-      document.getElementById('statAlt').textContent = deletedAlerts.filter(item => item.direction === 'ALT').length;
-      document.getElementById('statUst').textContent = deletedAlerts.filter(item => item.direction === 'ÜST').length;
+	      document.getElementById('statAlt').textContent = rows.filter(item => item.direction === 'ALT').length;
+	      document.getElementById('statUst').textContent = rows.filter(item => item.direction === 'ÜST').length;
       document.getElementById('statSuccess').textContent = successList.length;
       document.getElementById('statFail').textContent = failList.length;
       document.getElementById('statRate').textContent = rate !== null ? `%${rate.toFixed(1)}` : '-';
-      const starStats = deletedBucketStarStats(deletedAlerts);
+	      const starStats = deletedBucketStarStats(rows);
       document.getElementById('statStarred').textContent = starStats.count;
       document.getElementById('statStarredMeta').textContent = `${starStats.rate !== null ? '%' + starStats.rate.toFixed(1) : '-'} · ${starStats.success} başarılı / ${starStats.fail} başarısız`;
-      renderSignalBreakdown();
+	      updateUniqueMatchesButton();
+	      renderSignalBreakdown(rows);
+    }
+
+    function updateUniqueMatchesButton() {
+      const button = document.getElementById('uniqueMatchesBtn');
+      if (!button) return;
+      const hiddenCount = Math.max(0, deletedAlerts.length - firstSignalPerMatch(deletedAlerts).length);
+      button.classList.toggle('primary', uniqueMatchesOnly);
+      button.textContent = uniqueMatchesOnly
+        ? `✓ Tek Maç Görünümü · ${hiddenCount} gizli`
+        : `Tekrarlıları Gizle${hiddenCount ? ` (${hiddenCount})` : ''}`;
+      button.setAttribute('aria-pressed', uniqueMatchesOnly ? 'true' : 'false');
     }
 
     function uniqueMatchCount(rows) {
@@ -2751,12 +2829,12 @@
       };
     }
 
-    function directionStats(direction) {
-      const scoped = deletedAlerts.filter(item => item.direction === direction);
+    function directionStats(direction, rows) {
+	      const scoped = rows.filter(item => item.direction === direction);
       return baseStats(scoped);
     }
 
-    function renderSignalBreakdown() {
+    function renderSignalBreakdown(rows = summaryRows()) {
       const target = document.getElementById('signalBreakdown');
       const directions = ['ALT', 'ÜST'];
       const activeKey = activeFilter ? [
@@ -2765,7 +2843,7 @@
         activeFilter.matchKey || '',
       ].join('|') : '';
       const panels = directions.map(direction => {
-        const stats = directionStats(direction);
+	        const stats = directionStats(direction, rows);
         const badgeClass = direction === 'ALT' ? 'badge-alt' : 'badge-ust';
         const rateText = stats.rate !== null ? `%${stats.rate.toFixed(1)}` : '-';
         const directionActive = activeKey === `${direction}||`;
@@ -2777,7 +2855,7 @@
             <button class="direction-summary-head direction-filter-btn ${directionActive ? 'active' : ''}" onclick='setSummaryFilter(${escapeHtml(JSON.stringify({ direction }))})'>
               <div class="direction-summary-title">
                 <span class="badge ${badgeClass}">${direction}</span>
-                <span>Sinyal Özeti</span>
+	                <span>${uniqueMatchesOnly ? 'İlk Sinyal Özeti' : 'Sinyal Özeti'}</span>
               </div>
               <div class="direction-summary-total">${stats.total}</div>
             </button>
@@ -2847,7 +2925,7 @@
 
     function periodSummaryRows() {
       if (!activePeriods.size) return [];
-      return deletedAlerts.filter(alert => activePeriods.has(`${alert.direction}-${alertPeriod(alert)}`));
+	      return summaryRows().filter(alert => activePeriods.has(`${alert.direction}-${alertPeriod(alert)}`));
     }
 
     function renderPeriodSummary() {

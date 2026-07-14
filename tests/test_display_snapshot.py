@@ -321,6 +321,10 @@ class DisplaySnapshotTests(unittest.TestCase):
                     "state": "TRUSTED",
                     "telegram_allowed": True,
                 },
+                "signal_quality": {
+                    "quality_score": 5,
+                    "quality_label": "RAW_ANALYSIS_MUST_NOT_OVERRIDE_SNAPSHOT",
+                },
             }),
         }
 
@@ -382,6 +386,27 @@ class DisplaySnapshotTests(unittest.TestCase):
         self.assertNotIn("snapshot_meta", lightweight)
         self.assertEqual(full["analysis"], {"large": "detail-only"})
         self.assertEqual(full["snapshot_meta"], {"schema_version": 1})
+
+    def test_deleted_template_displays_frozen_confidence_score_instead_of_gate_label(self):
+        template_path = Path(self.dashboard.app.template_folder) / "deleted_matches.html"
+        template = template_path.read_text(encoding="utf-8")
+        function_start = template.index("function signalQualityHtml(alert)")
+        function_end = template.index("function bucketStarsHtml(alert)", function_start)
+        quality_renderer = template[function_start:function_end]
+
+        self.assertIn("quality.quality_score ?? alert?.signal_quality_score", quality_renderer)
+        self.assertIn("${Math.round(score)}/100", quality_renderer)
+        self.assertNotIn("${escapeHtml(gate.text)}</button>", quality_renderer)
+
+    def test_deleted_template_has_first_signal_per_match_view(self):
+        template_path = Path(self.dashboard.app.template_folder) / "deleted_matches.html"
+        template = template_path.read_text(encoding="utf-8")
+
+        self.assertIn('id="uniqueMatchesBtn"', template)
+        self.assertIn("function firstSignalPerMatch(rows)", template)
+        self.assertIn("uniqueMatchesOnly ? firstSignalPerMatch(deletedAlerts)", template)
+        self.assertIn("const signalCount = Number(alert?.signal_count)", template)
+        self.assertIn("renderSignalBreakdown(rows)", template)
 
     def test_deleted_details_route_uses_direct_id_lookup(self):
         self.db.save_active_alert_display_snapshots({
