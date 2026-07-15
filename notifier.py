@@ -107,8 +107,8 @@ def _build_alert_text(
     except (TypeError, ValueError):
         confidence_text = "-"
     confidence_label = str(quality.get("quality_label") or "").strip()
-    if confidence_label and confidence_text != "-":
-        confidence_text += f" · {confidence_label}"
+    if not confidence_label:
+        confidence_label = "Güven verisi yok" if confidence_text == "-" else "Değerlendiriliyor"
     quarter_score_text = _quarter_score_text(analysis)
     match_ppm_text = _match_ppm_text(analysis)
     quarter_ppm_text = _quarter_ppm_text(analysis)
@@ -132,13 +132,15 @@ def _build_alert_text(
     )
     gate_state = str(gate.get("state") or "LEGACY_UNVERIFIED").upper()
     if gate_state == "TRUSTED":
-        signal_headline = f"✅ <b>ONAYLI · {final_direction} oynanabilir</b>{repeat}"
-    elif gate_state == "SHADOW":
-        signal_headline = f"🧪 <b>TEST · {final_direction} araştırma sinyali</b>{repeat}"
-    elif gate_state == "BLOCKED":
-        signal_headline = f"⛔ <b>PAS · {final_direction}</b>{repeat}"
+        playability_text = "Oynanabilir"
+    elif gate_state in {"SHADOW", "BLOCKED"}:
+        playability_text = "Beklemek daha iyi olur"
     else:
-        signal_headline = f"⚠️ <b>SİNYAL · {final_direction}</b>{repeat}"
+        playability_text = "Temkinli değerlendirin"
+    signal_headline = (
+        f"📊 <b>{final_direction} · Sinyal skoru: {escape(confidence_text)} "
+        f"(Güven: {escape(confidence_label)} · {playability_text})</b>{repeat}"
+    )
 
     reason_text = str(analysis.get("selection_reason") or "").strip()
     if not reason_text:
@@ -150,7 +152,6 @@ def _build_alert_text(
         f"🏆 {escape(tournament or '-')}\n\n"
         f"<b>Gerekçe:</b> {escape(reason_text)}\n"
         f"<b>Kanıt:</b> {escape(evidence_text)}\n"
-        f"<b>Güven skoru:</b> {escape(confidence_text)}\n"
         f"<b>Skor:</b> {escape(score or '-')}\n"
         f"<b>Ne zaman geldi:</b> {when}\n"
         f"<b>Çeyrek Skorları:</b> {escape(quarter_score_text)}\n"
@@ -261,7 +262,7 @@ class TelegramNotifier:
             await self._send_to_all(
                 "🤖 <b>Basket Tahmin Botu başlatıldı.</b>\n"
                 "Canlı barem hareketleri izleniyor. Eşiği geçen tüm sinyaller "
-                "PAS, TEST veya ONAY etiketiyle gönderilir."
+                "sinyal skoru, güven seviyesi ve oynanabilirlik yorumuyla gönderilir."
             )
         except TelegramError as e:
             logger.error(f"Failed to send startup message: {e}")

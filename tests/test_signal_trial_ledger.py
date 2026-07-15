@@ -2,7 +2,7 @@ import asyncio
 import json
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -68,7 +68,7 @@ class SignalTrialLedgerTests(unittest.TestCase):
         self.assertEqual(before_purge[0]["result_source"], "automatic_final_score")
         self.assertEqual(build_gate_evidence(
             before_purge,
-            as_of=datetime(2026, 7, 15, tzinfo=timezone.utc),
+            as_of=datetime.now(timezone.utc) + timedelta(seconds=1),
         )["resolved_unique"], 1)
 
         self.assertEqual(
@@ -88,7 +88,7 @@ class SignalTrialLedgerTests(unittest.TestCase):
         self.assertEqual(trial_rows[0]["result"], "")
         evidence = build_gate_evidence(
             trial_rows,
-            as_of=datetime(2026, 7, 15, tzinfo=timezone.utc),
+            as_of=datetime.now(timezone.utc) + timedelta(seconds=1),
         )
         self.assertEqual(evidence["eligible_unique"], 1)
         self.assertEqual(evidence["resolved_unique"], 0)
@@ -135,7 +135,7 @@ class SignalTrialLedgerTests(unittest.TestCase):
         self.assertEqual(trial["result_source"], "automatic_final_score")
         evidence = build_gate_evidence(
             [trial],
-            as_of=datetime(2026, 7, 15, tzinfo=timezone.utc),
+            as_of=datetime.now(timezone.utc) + timedelta(seconds=1),
         )
         self.assertEqual(evidence["resolved_unique"], 1)
 

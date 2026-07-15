@@ -148,18 +148,6 @@
       color: #fca5a5;
     }
 
-    .star-filter-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 42px;
-      padding-inline: 12px;
-      color: #facc15;
-      font-size: 15px;
-      line-height: 1;
-      font-weight: 900;
-    }
-
     .btn.warning {
       background: rgba(251,191,36,0.12);
       border-color: rgba(251,191,36,0.32);
@@ -392,7 +380,7 @@
 
     .match-link:hover { color: #a78bfa; }
 
-    .upcoming-followed-star {
+    .upcoming-followed-marker {
       color: #ef4444;
       font-weight: 900;
       font-size: 18px;
@@ -521,47 +509,6 @@
       border-color: rgba(239,68,68,0.36);
       background: rgba(239,68,68,0.12);
     }
-    .quality-badge.star {
-      min-width: 34px;
-      color: #67e8f9;
-      border-color: rgba(6,182,212,0.55);
-      background: rgba(6,182,212,0.16);
-      font-size: 15px;
-      font-weight: 950;
-      cursor: pointer;
-      transition: background 120ms, transform 120ms;
-    }
-    .quality-badge.star:hover {
-      background: rgba(6,182,212,0.28);
-      transform: scale(1.06);
-    }
-    .bucket-star {
-      min-width: 32px;
-      padding-inline: 8px;
-      color: #facc15;
-      border-color: rgba(250,204,21,0.55);
-      background: rgba(250,204,21,0.14);
-      font-size: 14px;
-      font-weight: 950;
-    }
-    .bucket-star:hover {
-      background: rgba(250,204,21,0.26);
-      transform: scale(1.06);
-    }
-    .bucket-history-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 9px;
-      margin-top: 10px;
-    }
-    .bucket-history-box {
-      border: 1px solid rgba(250,204,21,0.22);
-      background: rgba(250,204,21,0.08);
-      border-radius: 8px;
-      padding: 10px;
-    }
-    .bucket-history-box span { display: block; color: var(--text-soft); font-size: 11px; font-weight: 800; }
-    .bucket-history-box strong { display: block; margin-top: 3px; color: var(--text); font-size: 16px; }
     .quality-info-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.55);
       display: flex; align-items: center; justify-content: center;
@@ -2304,7 +2251,6 @@
           <button class="btn" data-filter="bet">Bahis</button>
           <button class="btn" data-filter="follow">Takip</button>
           <button class="btn" data-filter="ignored">Pas Geçilen</button>
-          <button class="btn star-filter-btn" data-filter="starred" id="starFilterBtn" title="Sinyal Kalitesi yanında yıldız olan sinyalleri göster" aria-label="Yıldızlı sinyaller">★</button>
           <button class="btn" data-filter="alt">ALT</button>
           <button class="btn" data-filter="ust">ÜST</button>
         </div>
@@ -2721,23 +2667,13 @@
         `Uzman güven skoru: ${scoreText}${label ? ` · ${label}` : ''}`,
         `${gate.text}: ${gate.label}`,
       ].join(' | ');
-      return `<span class="quality-stack"><button type="button" class="badge small-badge quality-badge ${tone}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(title)}">${escapeHtml(scoreText)}</button>${bucketStarsHtml(alert)}</span>`;
+      return `<span class="quality-stack"><button type="button" class="badge small-badge quality-badge ${tone}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(title)}">${escapeHtml(scoreText)}</button></span>`;
     }
 
     function cardGateReasonHtml(alert) {
       const gate = gatePresentation(alert);
       if (gate.state !== 'BLOCKED') return '';
       return `<div class="card-gate-note"><strong>PAS nedeni:</strong> ${escapeHtml(gatePrimaryReason(alert))}</div>`;
-    }
-
-    function bucketStarsHtml(alert) {
-      const stars = Array.isArray(alert.bucket_stars) ? alert.bucket_stars : [];
-      if (!stars.length) return '';
-      return stars.map(star => {
-        const id = String(star.id || '');
-        const title = `${star.label || 'Yıldızlı kova'} · geçmiş kovayı aç`;
-        return `<button type="button" class="badge small-badge quality-badge bucket-star" onclick="event.stopPropagation();openBucketStarModal(${Number(alert.id || 0)}, '${escapeHtml(id)}')" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">★</button>`;
-      }).join('');
     }
 
     function scoreButtonHtml(alert, extraClass = '') {
@@ -2782,12 +2718,12 @@
     function matchLink(alert) {
       const name = cleanMatchName(alert.match_name);
       const content = escapeHtml(name);
-      const followedStar = alert.upcoming_followed
-        ? '<span class="upcoming-followed-star" title="Gelecek maçlarda takip edilen maç">*</span>'
+      const followedMarker = alert.upcoming_followed
+        ? '<span class="upcoming-followed-marker" title="Gelecek maçlarda takip edilen maç">*</span>'
         : '';
       return alert.url
-        ? `${followedStar}<a class="match-link" href="${escapeHtml(alert.url)}" target="_blank" rel="noopener">${content}</a>`
-        : `${followedStar}<span class="match-link">${content}</span>`;
+        ? `${followedMarker}<a class="match-link" href="${escapeHtml(alert.url)}" target="_blank" rel="noopener">${content}</a>`
+        : `${followedMarker}<span class="match-link">${content}</span>`;
     }
 
     function noteInfoButton(alert) {
@@ -2931,10 +2867,6 @@
       return String(alert[field] || '').toLocaleLowerCase('tr-TR');
     }
 
-    function hasBucketStar(alert) {
-      return Array.isArray(alert?.bucket_stars) && alert.bucket_stars.length > 0;
-    }
-
     function filteredAlerts() {
       let list = [...allAlerts];
       if (focusedMatchId) list = list.filter(a => normalizeId(a.match_id) === focusedMatchId);
@@ -2942,7 +2874,6 @@
       if (currentFilter === 'bet') list = list.filter(a => a.bet_placed);
       if (currentFilter === 'follow') list = list.filter(a => a.followed);
       if (currentFilter === 'ignored') list = list.filter(a => a.ignored);
-      if (currentFilter === 'starred') list = list.filter(hasBucketStar);
       if (currentFilter === 'alt') list = list.filter(a => a.direction === 'ALT');
       if (currentFilter === 'ust') list = list.filter(a => a.direction === 'ÜST');
       if (activePeriods.size) {
@@ -3722,64 +3653,6 @@
             <div class="sig-section-title">Tam Puan Gerekçesi</div>
             <div class="sig-card"><div class="sig-help">${escapeHtml(quality.reason || alert.signal_quality_reason || '-')}</div></div>
           </details>
-        </div>
-      `;
-      $('signalModal').classList.add('active');
-    }
-
-    function bucketRateText(history) {
-      if (!history || !Number.isFinite(Number(history.resolved)) || Number(history.resolved) <= 0) return '-';
-      const rate = num(history.rate);
-      const success = Number(history.success || 0);
-      const resolved = Number(history.resolved || 0);
-      return `${success}/${resolved}${Number.isFinite(rate) ? ` · %${rate.toFixed(1)}` : ''}`;
-    }
-
-    function bucketSplitText(split) {
-      if (!split || !Number.isFinite(Number(split.resolved)) || Number(split.resolved) <= 0) return '-';
-      const rate = num(split.rate);
-      return `${Number(split.success || 0)}/${Number(split.resolved || 0)}${Number.isFinite(rate) ? ` · %${rate.toFixed(1)}` : ''}`;
-    }
-
-    function openBucketStarModal(id, bucketId) {
-      const alert = allAlerts.find(a => Number(a.id) === Number(id));
-      if (!alert) return;
-      const stars = Array.isArray(alert.bucket_stars) ? alert.bucket_stars : [];
-      const star = stars.find(item => String(item.id || '') === String(bucketId || '')) || stars[0];
-      if (!star) return;
-      const history = star.history && typeof star.history === 'object' ? star.history : {};
-      const values = star.values && typeof star.values === 'object' ? star.values : {};
-      const wilson = num(history.wilson_low);
-      $('signalModalTitle').textContent = `Yıldızlı Kova - ${cleanMatchName(alert.match_name)}`;
-      $('signalModalBody').innerHTML = `
-        <div style="padding:16px 18px;line-height:1.5;">
-          <div class="sig-card">
-            <div class="row"><span>Kova</span><strong>${escapeHtml(star.label || '-')}</strong></div>
-            <div class="row"><span>Yön</span><strong>${escapeHtml(star.direction || '-')}</strong></div>
-            <div class="row"><span>Durum</span><strong>${escapeHtml(star.headline || '-')}</strong></div>
-          </div>
-          <div class="bucket-history-grid">
-            <div class="bucket-history-box"><span>Geçmiş Başarı</span><strong>${escapeHtml(bucketRateText(history))}</strong></div>
-            <div class="bucket-history-box"><span>İlk Yarı</span><strong>${escapeHtml(bucketSplitText(history.first_half))}</strong></div>
-            <div class="bucket-history-box"><span>Son Yarı</span><strong>${escapeHtml(bucketSplitText(history.second_half))}</strong></div>
-          </div>
-          <div class="sig-section-title">Kova Kuralı</div>
-          <div class="sig-card"><div class="sig-help">${escapeHtml(star.rule || '-')}</div></div>
-          <div class="sig-section-title">Bu Sinyaldeki Değerler</div>
-          <div class="sig-card">
-            <div class="row"><span>Canlı Barem</span><strong>${qualityValue(values.live)}</strong></div>
-            <div class="row"><span>Adil Barem</span><strong>${qualityValue(values.fair)}</strong></div>
-            <div class="row"><span>Projeksiyon</span><strong>${qualityValue(values.projected)}</strong></div>
-            <div class="row"><span>Adil - Canlı</span><strong>${qualityValue(values.fair_edge)}</strong></div>
-            <div class="row"><span>Projeksiyon - Canlı</span><strong>${qualityValue(values.projected_gap)}</strong></div>
-            <div class="row"><span>Adil - Projeksiyon</span><strong>${qualityValue(values.fair_projected_gap)}</strong></div>
-          </div>
-          <div class="sig-section-title">Analist Notu</div>
-          <div class="sig-card"><div class="sig-help">${escapeHtml(star.analysis_note || '-')}</div></div>
-          <div class="sig-help" style="margin-top:10px;">
-            Wilson alt sınırı: ${Number.isFinite(wilson) ? `%${wilson.toFixed(1)}` : '-'}.
-            ${escapeHtml(star.warning || 'Bu etiket tek başına kesinlik anlamı taşımaz.')}
-          </div>
         </div>
       `;
       $('signalModal').classList.add('active');

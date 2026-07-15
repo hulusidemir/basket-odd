@@ -1,6 +1,6 @@
 # Basketball Odds Monitor (AIScore)
 
-This Python/Flask application monitors AIScore basketball totals, stores opening-vs-live line anomalies in SQLite, and evaluates them with versioned projection, fair-line, data-quality, and prospective evidence rules. Crossing `THRESHOLD` creates a stored alert and sends it to Telegram with a `PAS`, `TEST`, or `ONAY` label; the label, not delivery, communicates playability.
+This Python/Flask application monitors AIScore basketball totals, stores opening-vs-live line anomalies in SQLite, and evaluates them with versioned projection, fair-line, data-quality, and prospective evidence rules. Crossing `THRESHOLD` creates a stored alert and sends it to Telegram with the frozen signal score, confidence level, and a plain-language playability comment.
 
 The current `trusted_70_v2` policy treats 70% as a validation target, not as a proven or guaranteed win rate. Until the fixed strategy has enough automatically settled forward trials, eligible signals remain `SHADOW`; signals that fail candidate or data requirements are `BLOCKED`.
 
@@ -12,9 +12,9 @@ The current `trusted_70_v2` policy treats 70% as a validation target, not as a p
 - Versioned `shadow_projection_v1` projection and `calibrated_fair_v1` fair line
 - Fixed `projection_edge_6_q2q3_v2` research-candidate rule
 - Prospective `BLOCKED` / `SHADOW` / `TRUSTED` evidence gate and durable trial ledger
-- Telegram outbox with per-recipient delivery IDs and bounded retries; every threshold alert is delivered with its `PAS`, `TEST`, or `ONAY` label
+- Telegram outbox with per-recipient delivery IDs and bounded retries; every threshold alert is delivered with its frozen signal score and playability comment
 - Flask dashboard for live review, actions, notes, reports, and CSV export
-- Deletion-time `display_snapshot`; deleted signals are displayed without recalculating model, star, projection, or fair-line fields
+- Deletion-time `display_snapshot`; deleted signals are displayed without recalculating model, projection, or fair-line fields
 - Separate final-score settlement that requires an explicit final status
 - Upcoming-match scraping with provenance, stale/partial health reporting, and non-destructive partial updates
 - Optional country/league blacklist, bankroll tools, and balance tracker
@@ -169,7 +169,7 @@ BLACKLIST=NBA,China,CBA,WNBA
 
 ## Deleted-Signal Data Model
 
-All model calculations belong to the active dashboard flow. At deletion time, the exact display fields are frozen in `display_snapshot`. The deleted-signals page reads that frozen model view and does not rerun current projection, fair-line, quality, or star logic. If the match later finishes, only `final_status`, `final_score`, and `result` are overlaid as settlement metadata. An archived match tied to an unresolved prospective trial is protected from permanent purge until its automatic final result is recorded; manual UI labels never replace that evidence result.
+All model calculations belong to the active dashboard flow. At deletion time, the exact display fields are frozen in `display_snapshot`. The deleted-signals page reads that frozen model view and does not rerun current projection, fair-line, or quality logic. If the match later finishes, only `final_status`, `final_score`, and `result` are overlaid as settlement metadata. An archived match tied to an unresolved prospective trial is protected from permanent purge until its automatic final result is recorded; manual UI labels never replace that evidence result.
 
 ## Troubleshooting
 

@@ -24,7 +24,6 @@ from finished_match_service import (
 )
 from aiscore_scraper import AiscoreScraper
 from signal_analysis import build_backtest_profile, build_signal_analysis, enrich_analysis_with_backtest
-from signal_buckets import build_signal_bucket_profile, matching_signal_buckets
 from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
 from signal_quality import CONFIDENCE_SCORE_VERSION, calculate_signal_quality
 
@@ -355,7 +354,6 @@ def enrich_alerts_with_analysis(
     history_profile: dict | None = None,
     list_profile: dict | None = None,
     league_quality_profile: dict | None = None,
-    bucket_profile: dict | None = None,
     persist_signal_quality: bool = False,
 ) -> list[dict]:
     previous_map = _previous_directions_by_alert_id(alerts)
@@ -440,8 +438,7 @@ def enrich_alerts_with_analysis(
         alert["model_validated"] = analysis.get("model_validated")
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
         _apply_canonical_signal_direction(alert, analysis)
-        alert["bucket_stars"] = matching_signal_buckets(alert, analysis, bucket_profile)
-        legacy_quality = build_quality_tag(alert, list_profile)
+        legacy_quality = build_quality_tag(alert)
         alert["quality_label"] = legacy_quality["label"]
         alert["quality_tone"] = legacy_quality["tone"]
         alert["quality_title"] = legacy_quality["title"]
@@ -643,14 +640,12 @@ def _build_live_dashboard_rows(
     persist_signal_quality: bool = False,
 ) -> list[dict]:
     deleted_rows = db.recent_deleted_alerts(limit=None)
-    bucket_profile = build_signal_bucket_profile(deleted_rows)
     enriched = enrich_alerts_with_analysis(
         rows,
         build_backtest_profile(deleted_rows),
         _build_history_profile(deleted_rows),
         build_signal_list_profile(db.list_signal_list_entries()),
         _build_league_quality_profile(deleted_rows),
-        bucket_profile,
         persist_signal_quality=persist_signal_quality,
     )
     followed_ids = db.upcoming_followed_match_ids([row.get("match_id") for row in enriched])
@@ -798,7 +793,7 @@ _DELETED_LIST_FIELDS = (
     "signal_gate", "gate_state", "candidate_eligible",
     "signal_quality", "signal_quality_score", "signal_quality_label",
     "signal_quality_reason", "signal_quality_risk_note",
-    "bucket_stars", "result", "result_source", "settled_at", "note",
+    "result", "result_source", "settled_at", "note",
     "bet_placed", "ignored", "followed",
 )
 
@@ -839,8 +834,7 @@ def _enrich_deleted_alert(
     ):
         if key in raw:
             result[key] = raw[key]
-    if "bucket_stars" not in result or not isinstance(result.get("bucket_stars"), list):
-        result["bucket_stars"] = []
+    result.pop("bucket_stars", None)
     result.pop("display_snapshot", None)
     result.pop("ai_analysis", None)
     if full:

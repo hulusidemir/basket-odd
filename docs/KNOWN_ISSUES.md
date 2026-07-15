@@ -78,15 +78,16 @@ Bu dosya aktif hata, operasyonel risk ve kanıt eksiklerini listeler. Yeni oturu
 ### 11. Büyük silinen-sinyal geçmişi dashboard profil maliyetini artırabilir
 
 - İlgili dosyalar: `dashboard.py`, `db.py`
-- Durum: Canlı API'nin betimsel geçmiş/yıldız profilleri silinen kayıtları okuyabilir; trial evidence hot path'i son 200 kayıtla sınırlandırılmış olsa da UI profilleri henüz kalıcı özet/cache kullanmaz.
+- Durum: Canlı API'nin betimsel geçmiş profilleri silinen kayıtları okuyabilir; trial evidence hot path'i son 200 kayıtla sınırlandırılmış olsa da UI profilleri henüz kalıcı özet/cache kullanmaz.
 - Etki: Çok büyük arşivde `/api/alerts` ve rapor uçları yavaşlayabilir.
 - Sonraki adım: Snapshot semantiğini değiştirmeden result/version anahtarlı profil cache'i veya özet tablo ekle.
 
 ## Çözülen Başlıklar
 
-- Telegram başarı logu ve teslimat: Kalıcı outbox, alıcı bazlı mesaj ID'si ve sınırlı retry ile izlenir; eşiği geçen PAS/TEST/ONAY kayıtların tamamı gönderim gerektirir.
+- Telegram başarı logu ve teslimat: Kalıcı outbox, alıcı bazlı mesaj ID'si ve sınırlı retry ile izlenir; eşiği geçen kayıtların tamamı sinyal skoru ve oynanabilirlik yorumuyla gönderim gerektirir.
 - Final olmayan skordan sonuç üretme: Settlement yalnız açık final etiketi ve makul otomatik final skorla yapılır.
-- Silinen sinyallerde yeniden hesaplama: Silme anındaki `display_snapshot` kullanılır; model/yıldız/projeksiyon/fair tekrar hesaplanmaz.
+- Silinen sinyallerde yeniden hesaplama: Silme anındaki `display_snapshot` kullanılır; model/projeksiyon/fair tekrar hesaplanmaz.
+- Eski yıldızlı filtre ve kurallar: Canlı/silinen arayüzden, veri hazırlama akışından ve eski snapshot API çıktısından kaldırılmıştır.
 - Final ile silme anı skorunun karışması: `status/score` ve `final_status/final_score` ayrılmıştır.
 - Geçersiz yönün `ALT` sayılması: Geçersiz yön boş/güvenli duruma düşer.
 - Riskli DB kolon düşürme ve sessiz migration hataları: Migration veri koruyucu hale getirilmiş, duplicate-column dışı operasyonel hatalar görünür bırakılmıştır.

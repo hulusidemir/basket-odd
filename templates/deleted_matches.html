@@ -354,7 +354,6 @@
     .stat-chip.fail strong { color: var(--accent-red); }
     .stat-chip.rate strong { color: var(--accent-yellow); }
     .stat-chip.hundred strong { color: #fef08a; }
-    .stat-chip.star strong { color: #facc15; }
     .stat-chip .stat-sub {
       margin-top: 4px;
       color: var(--text-soft);
@@ -785,8 +784,7 @@
 	      background: rgba(239, 68, 68, 0.18);
 	      border-color: rgba(239, 68, 68, 0.48);
 	    }
-	    .quality-badge.red-check,
-	    .quality-badge.star {
+	    .quality-badge.red-check {
 	      min-width: 34px;
 	      font-size: 15px;
 	      font-weight: 950;
@@ -795,25 +793,6 @@
 	      color: #d1d5db;
 	      background: rgba(156, 163, 175, 0.12);
 	      border-color: rgba(156, 163, 175, 0.34);
-	    }
-	    .quality-badge.star {
-	      color: #67e8f9;
-	      background: rgba(6, 182, 212, 0.16);
-	      border-color: rgba(6, 182, 212, 0.55);
-	      cursor: pointer;
-	      transition: background 120ms, transform 120ms;
-	    }
-	    .quality-badge.star:hover {
-	      background: rgba(6, 182, 212, 0.28);
-	      transform: scale(1.06);
-	    }
-	    .quality-badge.bucket-star {
-	      color: #facc15;
-	      background: rgba(250, 204, 21, 0.14);
-	      border-color: rgba(250, 204, 21, 0.55);
-	    }
-	    .quality-badge.bucket-star:hover {
-	      background: rgba(250, 204, 21, 0.26);
 	    }
 	    .quality-info-overlay {
 	      position: fixed; inset: 0; background: rgba(0,0,0,0.55);
@@ -1043,6 +1022,17 @@
     .mono {
       font-family: "SFMono-Regular", Consolas, monospace;
       font-variant-numeric: tabular-nums;
+    }
+
+    th.ft-col,
+    td.ft-col {
+      width: 38px;
+      min-width: 38px;
+      max-width: 38px;
+      padding-left: 6px;
+      padding-right: 6px;
+      text-align: center;
+      white-space: nowrap;
     }
 
     .empty-state {
@@ -1787,11 +1777,6 @@
           <span>Başarı %</span>
           <strong id="statRate">-</strong>
 	        </div>
-        <div class="stat-chip star clickable" id="chipStarred" onclick="toggleStatFilter('starred', true)" title="Silme anındaki canlı dashboard snapshot'ında yıldız olan sinyalleri göster">
-          <span>★ Yıldızlı</span>
-          <strong id="statStarred">0</strong>
-          <div class="stat-sub" id="statStarredMeta">- · 0 başarılı / 0 başarısız</div>
-        </div>
 	      </section>
 
 	      <section class="panel">
@@ -1831,14 +1816,14 @@
               <th data-sort="match_name">Maç</th>
 	              <th data-sort="alert_moment">Sinyal Anı</th>
 	              <th data-sort="direction">Sinyal</th>
-              <th data-sort="status">Durum</th>
+              <th class="ft-col" data-sort="final_status">FT</th>
               <th data-sort="score">Skor</th>
               <th data-sort="opening">Açılış</th>
               <th data-sort="live">Canlı</th>
-              <th data-sort="projected">Proj.</th>
               <th data-sort="signal_quality_score">Güven</th>
               <th data-sort="diff">Fark</th>
               <th data-sort="fair_line">Adil Barem</th>
+              <th data-sort="projected">Proj.</th>
               <th data-sort="result">Sonuç</th>
               <th aria-label="Sil"></th>
             </tr>
@@ -1972,6 +1957,19 @@
         return parts[0] + parts[1];
       }
       return null;
+    }
+
+    function scoreWithTotalHtml(score) {
+      const text = String(score || '').trim() || '-';
+      const total = calculateScoreTotal(text);
+      return `${escapeHtml(text)}${total !== null ? ` (${total})` : ''}`;
+    }
+
+    function fullTimeLabel(alert) {
+      const statuses = [alert?.final_status, alert?.status]
+        .map(value => String(value || '').trim())
+        .filter(Boolean);
+      return statuses.some(value => /^(?:full[\s-]*time|ft)$/i.test(value)) ? 'FT' : '-';
     }
 
     function alertAnalysis(alert) {
@@ -2180,18 +2178,8 @@
 	        `Silme anındaki uzman güven skoru: ${scoreText}${label ? ` · ${label}` : ''}`,
 	        `${gate.text}: ${gate.label}`,
 	      ].join(' | ');
-	      return `<span class="quality-cell"><button type="button" class="badge quality-badge ${tone}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(title)}" aria-label="Silme anındaki güven puanını aç">${escapeHtml(scoreText)}</button>${bucketStarsHtml(alert)}</span>`;
+	      return `<span class="quality-cell"><button type="button" class="badge quality-badge ${tone}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(title)}" aria-label="Silme anındaki güven puanını aç">${escapeHtml(scoreText)}</button></span>`;
 	    }
-
-    function bucketStarsHtml(alert) {
-      const stars = Array.isArray(alert?.bucket_stars) ? alert.bucket_stars : [];
-      if (!stars.length) return '';
-      return stars.map(star => {
-        const id = String(star.id || '');
-        const title = `${star.label || 'Yıldızlı kova'} geçmişini aç`;
-        return `<button type="button" class="badge quality-badge star bucket-star" onclick="openBucketStarModal(${Number(alert.id || 0)}, '${escapeHtml(id)}')" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">★</button>`;
-      }).join('');
-    }
 
 	    function qualityValue(value, digits = 1) {
 	      const n = numValue(value);
@@ -2247,57 +2235,6 @@
 	      const modal = document.getElementById('signalQualityModal');
 	      if (modal) modal.classList.remove('open');
 	    }
-
-    function bucketRateText(history) {
-      if (!history || !Number.isFinite(Number(history.resolved)) || Number(history.resolved) <= 0) return '-';
-      const rate = numValue(history.rate);
-      return `${Number(history.success || 0)}/${Number(history.resolved || 0)}${Number.isFinite(rate) ? ` · %${rate.toFixed(1)}` : ''}`;
-    }
-
-    function bucketSplitText(split) {
-      if (!split || !Number.isFinite(Number(split.resolved)) || Number(split.resolved) <= 0) return '-';
-      const rate = numValue(split.rate);
-      return `${Number(split.success || 0)}/${Number(split.resolved || 0)}${Number.isFinite(rate) ? ` · %${rate.toFixed(1)}` : ''}`;
-    }
-
-    function openBucketStarModal(alertId, bucketId) {
-      const alert = deletedAlerts.find(item => Number(item.id || 0) === Number(alertId || 0));
-      const modal = document.getElementById('signalQualityModal');
-      const content = document.getElementById('signalQualityContent');
-      if (!alert || !modal || !content) return;
-      const stars = Array.isArray(alert.bucket_stars) ? alert.bucket_stars : [];
-      const star = stars.find(item => String(item.id || '') === String(bucketId || '')) || stars[0];
-      if (!star) return;
-      const history = star.history && typeof star.history === 'object' ? star.history : {};
-      const values = star.values && typeof star.values === 'object' ? star.values : {};
-      const wilson = numValue(history.wilson_low);
-      document.getElementById('signalQualityTitle').textContent = `Yıldızlı Kova - ${cleanMatchName(alert.match_name || '-')}`;
-      content.innerHTML = `
-        <div class="signal-quality-card">
-          <div class="signal-quality-row"><span>Kova</span><strong>${escapeHtml(star.label || '-')}</strong></div>
-          <div class="signal-quality-row"><span>Yön</span><strong>${escapeHtml(star.direction || '-')}</strong></div>
-          <div class="signal-quality-row"><span>Silme Anındaki Önceki Kova Geçmişi</span><strong>${escapeHtml(bucketRateText(history))}</strong></div>
-          <div class="signal-quality-row"><span>İlk Yarı</span><strong>${escapeHtml(bucketSplitText(history.first_half))}</strong></div>
-          <div class="signal-quality-row"><span>Son Yarı</span><strong>${escapeHtml(bucketSplitText(history.second_half))}</strong></div>
-          <div class="signal-quality-row"><span>Wilson Alt Sınırı</span><strong>${Number.isFinite(wilson) ? `%${wilson.toFixed(1)}` : '-'}</strong></div>
-        </div>
-        <div class="signal-quality-title">Kova Kuralı</div>
-        <div class="signal-quality-card signal-quality-note">${escapeHtml(star.rule || '-')}</div>
-        <div class="signal-quality-title">Bu Sinyaldeki Değerler</div>
-        <div class="signal-quality-card">
-          <div class="signal-quality-row"><span>Canlı</span><strong>${qualityValue(values.live)}</strong></div>
-          <div class="signal-quality-row"><span>Adil</span><strong>${qualityValue(values.fair)}</strong></div>
-          <div class="signal-quality-row"><span>Projeksiyon</span><strong>${qualityValue(values.projected)}</strong></div>
-          <div class="signal-quality-row"><span>Adil - Canlı</span><strong>${qualityValue(values.fair_edge)}</strong></div>
-          <div class="signal-quality-row"><span>Projeksiyon - Canlı</span><strong>${qualityValue(values.projected_gap)}</strong></div>
-          <div class="signal-quality-row"><span>Adil - Projeksiyon</span><strong>${qualityValue(values.fair_projected_gap)}</strong></div>
-        </div>
-        <div class="signal-quality-title">Analist Notu</div>
-        <div class="signal-quality-card signal-quality-note">${escapeHtml(star.analysis_note || '-')}</div>
-        <div class="signal-quality-note">${escapeHtml(star.warning || 'Bu etiket tek başına kesinlik anlamı taşımaz.')}</div>
-      `;
-      modal.classList.add('open');
-    }
 
 	    function modalListItem(key, value) {
 	      return `<li><span class="signal-info-key">${escapeHtml(key)}</span><span class="signal-info-value">${escapeHtml(value ?? '-')}</span></li>`;
@@ -2470,8 +2407,8 @@
           <div class="signal-info-match">${escapeHtml(matchName)}</div>
           <div class="signal-info-meta">
             🏆 ${escapeHtml(alert.tournament || '-')} &nbsp;·&nbsp;
-            Sinyal: ⏱ ${escapeHtml(alert.status || '-')} · 🏀 <b>${escapeHtml(alert.score || '-')}</b> &nbsp;·&nbsp;
-            Final: ${escapeHtml(alert.final_status || '-')} · <b>${escapeHtml(alert.final_score || '-')}</b> &nbsp;·&nbsp;
+            Sinyal: ⏱ ${escapeHtml(alert.status || '-')} · 🏀 <b>${scoreWithTotalHtml(alert.score)}</b> &nbsp;·&nbsp;
+            Final: ${escapeHtml(alert.final_status || '-')} · <b>${scoreWithTotalHtml(alert.final_score)}</b> &nbsp;·&nbsp;
             Sonuç: <b>${escapeHtml(alert.result || '-')}</b>
           </div>
         </div>
@@ -2651,19 +2588,6 @@
       </div>`;
     }
 
-    function hasBucketStar(alert) {
-      return Array.isArray(alert?.bucket_stars) && alert.bucket_stars.length > 0;
-    }
-
-    function deletedBucketStarStats(rows) {
-      const starredRows = rows.filter(hasBucketStar);
-      const success = starredRows.filter(alert => alert.result === 'Başarılı').length;
-      const fail = starredRows.filter(alert => alert.result === 'Başarısız').length;
-      const resolved = success + fail;
-      const rate = resolved > 0 ? (success / resolved) * 100 : null;
-      return { count: starredRows.length, success, fail, resolved, rate };
-    }
-
     function signalOrder(alert) {
       const signalCount = Number(alert?.signal_count);
       const signalRank = Number.isFinite(signalCount) && signalCount > 0
@@ -2714,7 +2638,6 @@
 	          if (activeFilter.direction && alert.direction !== activeFilter.direction) return false;
 	          if (activeFilter.result && alert.result !== activeFilter.result) return false;
 	          if (activeFilter.matchKey && matchKey(alert) !== activeFilter.matchKey) return false;
-	          if (activeFilter.starred && !hasBucketStar(alert)) return false;
 	          return true;
 	        });
 	      }
@@ -2791,9 +2714,6 @@
       document.getElementById('statSuccess').textContent = successList.length;
       document.getElementById('statFail').textContent = failList.length;
       document.getElementById('statRate').textContent = rate !== null ? `%${rate.toFixed(1)}` : '-';
-	      const starStats = deletedBucketStarStats(rows);
-      document.getElementById('statStarred').textContent = starStats.count;
-      document.getElementById('statStarredMeta').textContent = `${starStats.rate !== null ? '%' + starStats.rate.toFixed(1) : '-'} · ${starStats.success} başarılı / ${starStats.fail} başarısız`;
 	      updateUniqueMatchesButton();
 	      renderSignalBreakdown(rows);
     }
@@ -2887,15 +2807,12 @@
       const chipUst = document.getElementById('chipUst');
       const chipSuccess = document.getElementById('chipSuccess');
       const chipFail = document.getElementById('chipFail');
-      const chipStarred = document.getElementById('chipStarred');
-      const isDir = activeFilter && !activeFilter.result && !activeFilter.matchKey && !activeFilter.starred;
-      const isRes = activeFilter && !activeFilter.direction && !activeFilter.matchKey && !activeFilter.starred;
-      const isStarred = activeFilter && activeFilter.starred && Object.keys(activeFilter).length === 1;
+      const isDir = activeFilter && !activeFilter.result && !activeFilter.matchKey;
+      const isRes = activeFilter && !activeFilter.direction && !activeFilter.matchKey;
       if (chipAlt) chipAlt.classList.toggle('active', isDir && activeFilter.direction === 'ALT');
       if (chipUst) chipUst.classList.toggle('active', isDir && activeFilter.direction === 'ÜST');
 	      if (chipSuccess) chipSuccess.classList.toggle('active', isRes && activeFilter.result === 'Başarılı');
 	      if (chipFail) chipFail.classList.toggle('active', isRes && activeFilter.result === 'Başarısız');
-      if (chipStarred) chipStarred.classList.toggle('active', isStarred);
 	    }
 
 	    function updatePeriodButtons() {
@@ -3040,14 +2957,14 @@
 	              ${signalBadge(alert)}
 	              ${Number(alert.signal_count || 0) > 1 ? `<div class="subline">${Number(alert.signal_count)}. sinyal</div>` : ''}
 	            </td>
-            <td>${escapeHtml(alert.status || '-')}<div class="subline">Final: ${escapeHtml(alert.final_status || '-')}</div></td>
-            <td class="mono">${escapeHtml(alert.score || '-')}<div class="subline">Final: ${escapeHtml(alert.final_score || '-')}${(() => { const total = calculateScoreTotal(alert.final_score); return total !== null ? ` (${total})` : ''; })()}</div></td>
+            <td class="ft-col mono">${fullTimeLabel(alert)}</td>
+            <td class="mono">${scoreWithTotalHtml(alert.score)}<div class="subline">Final: ${scoreWithTotalHtml(alert.final_score)}</div></td>
             <td class="mono">${formatNumber(alert.opening)}</td>
             <td class="mono">${formatNumber(alert.live)}</td>
-            <td class="mono">${formatNumber(alert.projected)}</td>
             <td>${signalQualityHtml(alert)}</td>
             <td class="mono">${formatNumber(alert.diff)}</td>
             <td>${fairLineCell(alert)}</td>
+            <td class="mono">${formatNumber(alert.projected)}</td>
             <td>${resultCell(alert)}</td>
             <td><button class="row-delete-btn" type="button" onclick="deleteDeletedAlert(${Number(alert.id)}, this)" title="Kaydı sil" aria-label="Kaydı sil">🗑</button></td>
           </tr>

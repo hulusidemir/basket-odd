@@ -62,7 +62,7 @@ class DisplaySnapshotTests(unittest.TestCase):
 
         self.assertIsNotNone(self.db.get_alert(self.alert_id))
         self.db.save_active_alert_display_snapshots({
-            self.alert_id: {"id": self.alert_id, "bucket_stars": []}
+            self.alert_id: {"id": self.alert_id}
         })
         self.assertEqual(
             self.db.delete_match_data(
@@ -79,7 +79,7 @@ class DisplaySnapshotTests(unittest.TestCase):
 
         self.assertIsNotNone(self.db.get_alert(self.alert_id))
         self.db.save_active_alert_display_snapshots({
-            self.alert_id: {"id": self.alert_id, "bucket_stars": []}
+            self.alert_id: {"id": self.alert_id}
         })
         self.assertEqual(
             self.db.clear_all(require_display_snapshot=True),
@@ -125,7 +125,7 @@ class DisplaySnapshotTests(unittest.TestCase):
         self.assertIsNotNone(self.db.get_alert(self.alert_id))
 
         self.db.save_active_alert_display_snapshots({
-            self.alert_id: {"id": self.alert_id, "bucket_stars": []}
+            self.alert_id: {"id": self.alert_id}
         })
         self.db.delete_match_data("match-1", require_display_snapshot=True)
         self.assertTrue(self.db.delete_alert(self.alert_id))
@@ -146,7 +146,7 @@ class DisplaySnapshotTests(unittest.TestCase):
 
     def test_purge_deleted_does_not_remove_reused_active_match_id(self):
         self.db.save_active_alert_display_snapshots({
-            self.alert_id: {"id": self.alert_id, "bucket_stars": []}
+            self.alert_id: {"id": self.alert_id}
         })
         self.db.delete_match_data("match-1", require_display_snapshot=True)
         with self.db._conn() as conn:
@@ -178,7 +178,6 @@ class DisplaySnapshotTests(unittest.TestCase):
                     "id": self.alert_id,
                     "direction": "ALT",
                     "fair_line": 166.5,
-                    "bucket_stars": [],
                 }
             ])
 
@@ -235,7 +234,7 @@ class DisplaySnapshotTests(unittest.TestCase):
         self.assertEqual(enriched["signal_quality_score"], 77)
         self.assertEqual(enriched["signal_quality_label"], "GÜÇLÜ")
 
-    def test_deleted_enrichment_does_not_recalculate_bucket_stars(self):
+    def test_deleted_enrichment_removes_legacy_bucket_stars(self):
         row = {
             "id": 10,
             "match_id": "match-10",
@@ -250,7 +249,7 @@ class DisplaySnapshotTests(unittest.TestCase):
                 "live": 165,
                 "fair_line": 158,
                 "projected": 164,
-                "bucket_stars": [],
+                "bucket_stars": [{"id": "legacy-star"}],
             }),
             "ai_analysis": json.dumps({
                 "fair_line": 158,
@@ -261,10 +260,10 @@ class DisplaySnapshotTests(unittest.TestCase):
 
         enriched = self.dashboard._enrich_deleted_alert(row, full=False)
 
-        self.assertEqual(enriched["bucket_stars"], [])
+        self.assertNotIn("bucket_stars", enriched)
         self.assertEqual(enriched["result"], "")
 
-    def test_deleted_enrichment_keeps_snapshot_bucket_stars(self):
+    def test_deleted_enrichment_never_exposes_snapshot_bucket_stars(self):
         stars = [{"id": "from-live-dashboard", "label": "Canlı Snapshot"}]
         row = {
             "id": 11,
@@ -280,7 +279,7 @@ class DisplaySnapshotTests(unittest.TestCase):
 
         enriched = self.dashboard._enrich_deleted_alert(row, full=False)
 
-        self.assertEqual(enriched["bucket_stars"], stars)
+        self.assertNotIn("bucket_stars", enriched)
 
     def test_deleted_enrichment_keeps_snapshot_model_values_and_overlays_settlement(self):
         row = {
@@ -339,7 +338,7 @@ class DisplaySnapshotTests(unittest.TestCase):
         self.assertEqual(enriched["signal_gate"]["state"], "SHADOW")
         self.assertFalse(enriched["signal_gate"]["telegram_allowed"])
         self.assertEqual(enriched["signal_gate"]["evidence"]["resolved_unique"], 12)
-        self.assertEqual(enriched["bucket_stars"], [{"id": "frozen-star"}])
+        self.assertNotIn("bucket_stars", enriched)
         self.assertEqual(enriched["status"], "Q3 04:00")
         self.assertEqual(enriched["score"], "55 - 52")
         self.assertEqual(enriched["final_status"], "Full Time")
@@ -378,7 +377,8 @@ class DisplaySnapshotTests(unittest.TestCase):
 
         self.assertEqual(lightweight["fair_line"], 166.5)
         self.assertEqual(lightweight["projected"], 164.0)
-        self.assertEqual(lightweight["bucket_stars"], [{"id": "frozen-star"}])
+        self.assertNotIn("bucket_stars", lightweight)
+        self.assertNotIn("bucket_stars", full)
         self.assertEqual(lightweight["status"], "Q2 05:00")
         self.assertEqual(lightweight["score"], "40 - 35")
         self.assertNotIn("analysis", lightweight)
@@ -391,12 +391,33 @@ class DisplaySnapshotTests(unittest.TestCase):
         template_path = Path(self.dashboard.app.template_folder) / "deleted_matches.html"
         template = template_path.read_text(encoding="utf-8")
         function_start = template.index("function signalQualityHtml(alert)")
-        function_end = template.index("function bucketStarsHtml(alert)", function_start)
+        function_end = template.index("function qualityValue(value", function_start)
         quality_renderer = template[function_start:function_end]
 
         self.assertIn("quality.quality_score ?? alert?.signal_quality_score", quality_renderer)
         self.assertIn("${Math.round(score)}/100", quality_renderer)
         self.assertNotIn("${escapeHtml(gate.text)}</button>", quality_renderer)
+
+    def test_deleted_template_has_compact_ft_score_total_and_projection_order(self):
+        template_path = Path(self.dashboard.app.template_folder) / "deleted_matches.html"
+        template = template_path.read_text(encoding="utf-8")
+
+        self.assertIn('<th class="ft-col" data-sort="final_status">FT</th>', template)
+        self.assertIn('class="ft-col mono">${fullTimeLabel(alert)}</td>', template)
+        self.assertIn("${scoreWithTotalHtml(alert.score)}", template)
+        self.assertIn("${scoreWithTotalHtml(alert.final_score)}", template)
+        self.assertLess(
+            template.index('<th data-sort="fair_line">Adil Barem</th>'),
+            template.index('<th data-sort="projected">Proj.</th>'),
+        )
+
+    def test_star_filters_and_rules_are_absent_from_dashboard_templates(self):
+        for filename in ("dashboard.html", "deleted_matches.html"):
+            template = (Path(self.dashboard.app.template_folder) / filename).read_text(encoding="utf-8")
+            lowered = template.lower()
+            self.assertNotIn("starred", lowered)
+            self.assertNotIn("bucketstars", lowered)
+            self.assertNotIn("yıldızlı", lowered)
 
     def test_deleted_template_has_first_signal_per_match_view(self):
         template_path = Path(self.dashboard.app.template_folder) / "deleted_matches.html"
@@ -415,7 +436,6 @@ class DisplaySnapshotTests(unittest.TestCase):
                 "match_id": "match-1",
                 "match_name": "Home - Away",
                 "direction": "ALT",
-                "bucket_stars": [],
             }
         })
         self.db.delete_match_data("match-1", require_display_snapshot=True)
