@@ -318,6 +318,27 @@
 
     table { width: 100%; border-collapse: collapse; min-width: 1480px; }
 
+    .alerts-table { min-width: 1588px; table-layout: fixed; }
+
+    .alerts-table th,
+    .alerts-table td { padding: 9px 8px; }
+
+    .alerts-table .col-time { width: 98px; white-space: nowrap; }
+    .alerts-table .col-signal { width: 136px; white-space: nowrap; }
+    .alerts-table .col-model { width: 58px; }
+    .alerts-table .col-time,
+    .alerts-table .col-signal,
+    .alerts-table .col-model { padding-left: 5px; padding-right: 5px; }
+    .alerts-table .col-quality { width: 76px; }
+    .alerts-table .col-match { width: 240px; }
+    .alerts-table .col-tournament { width: 150px; }
+    .alerts-table .col-context { width: 62px; text-align: center; }
+    .alerts-table .col-status { width: 90px; }
+    .alerts-table .col-score { width: 80px; }
+    .alerts-table .col-market { width: 76px; }
+    .alerts-table .col-diff { width: 70px; }
+    .alerts-table .col-action { width: 212px; }
+
     th, td {
       padding: 11px 13px;
       text-align: left;
@@ -353,10 +374,10 @@
     tbody tr.is-followed { background: rgba(251,191,36,0.05); }
     tbody tr.is-followed .match-link,
     tbody tr.is-followed .tournament-cell,
-    tbody tr.is-followed td:nth-child(11),
-    tbody tr.is-followed td:nth-child(12) strong,
-    tbody tr.is-followed td:nth-child(13),
-    tbody tr.is-followed td:nth-child(14) { color: #f5e6b0; }
+    tbody tr.is-followed .context-metric,
+    tbody tr.is-followed .market-cell,
+    tbody tr.is-followed .diff-cell,
+    tbody tr.is-followed .action-cell { color: #f5e6b0; }
     tbody tr.is-followed .match-link:hover { color: #a78bfa; }
     tbody tr.is-ignored { opacity: 0.28; filter: grayscale(0.8); }
     tbody tr.is-ignored td { text-decoration: line-through; text-decoration-color: rgba(255,255,255,0.25); }
@@ -380,6 +401,8 @@
 
     .match-link:hover { color: #a78bfa; }
 
+    .alerts-table .match-link { max-width: 180px; }
+
     .upcoming-followed-marker {
       color: #ef4444;
       font-weight: 900;
@@ -391,6 +414,7 @@
     }
 
     .match-cell-wrap { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    .alerts-table .match-cell-wrap { gap: 5px; }
 
     .subline {
       color: var(--text-soft);
@@ -407,6 +431,12 @@
       width: 112px;
       max-width: 112px;
       margin: 0;
+    }
+
+    .alerts-table .tournament-cell {
+      width: 132px;
+      max-width: 132px;
+      cursor: help;
     }
 
     .tournament-row {
@@ -459,6 +489,25 @@
     .badge-alt { background: rgba(239,68,68,0.13); color: #fca5a5; border-color: rgba(239,68,68,0.28); }
     .badge-ust { background: rgba(52,211,153,0.13); color: #6ee7b7; border-color: rgba(52,211,153,0.28); }
     .small-badge { min-width: 0; padding: 4px 7px; font-size: 11px; color: var(--text-soft); }
+    .context-metric {
+      appearance: none;
+      min-width: 46px;
+      padding: 4px 6px;
+      border: 1px solid rgba(96,165,250,0.28);
+      border-radius: 7px;
+      background: rgba(96,165,250,0.08);
+      color: #bfdbfe;
+      font: inherit;
+      font-size: 11px;
+      font-weight: 850;
+      font-variant-numeric: tabular-nums;
+      cursor: pointer;
+    }
+    .context-metric:hover {
+      border-color: rgba(96,165,250,0.62);
+      background: rgba(96,165,250,0.17);
+    }
+    .context-metric.missing { color: var(--text-soft); }
     .sf-badge {
       min-width: 48px;
       border-color: rgba(96,165,250,0.42);
@@ -2274,23 +2323,25 @@
 
       <section class="panel table-panel">
         <div class="table-wrap">
-          <table>
+          <table class="alerts-table">
             <thead>
               <tr>
                 <th class="select-cell"><input class="match-select" id="selectAll" type="checkbox" onchange="selectPage(this.checked)" aria-label="Sayfadaki maçları seç"></th>
-	                <th data-sort="alerted_at">Zaman</th>
-                <th data-sort="direction">Sinyal</th>
-                <th data-sort="fair_line">Adil</th>
-                <th data-sort="projected">Proj.</th>
-                <th data-sort="signal_quality_score">Güven</th>
-                <th data-sort="match_name">Maç</th>
-                <th data-sort="tournament">Turnuva</th>
-                <th data-sort="status">Durum</th>
-                <th data-sort="score">Skor</th>
-                <th data-sort="opening">Açılış</th>
-                <th data-sort="live">Canlı</th>
-                <th data-sort="diff">Fark</th>
-                <th>Aksiyon</th>
+                <th class="col-time" data-sort="alerted_at">Zaman</th>
+                <th class="col-signal" data-sort="direction">Sinyal</th>
+                <th class="col-model" data-sort="fair_line">Adil</th>
+                <th class="col-model" data-sort="projected">Proj.</th>
+                <th class="col-context" data-sort="h2h_total" title="İki takımın geçmiş karşılaşmalarındaki toplam sayı ortalaması">H2H</th>
+                <th class="col-context" data-sort="team_recent_total" title="Takımların son form maçlarından hesaplanan toplam sayı ortalaması">SF Ort.</th>
+                <th class="col-quality" data-sort="signal_quality_score">Güven</th>
+                <th class="col-match" data-sort="match_name">Maç</th>
+                <th class="col-tournament" data-sort="tournament">Turnuva</th>
+                <th class="col-status" data-sort="status">Durum</th>
+                <th class="col-score" data-sort="score">Skor</th>
+                <th class="col-market" data-sort="opening">Açılış</th>
+                <th class="col-market" data-sort="live">Canlı</th>
+                <th class="col-diff" data-sort="diff">Fark</th>
+                <th class="col-action">Aksiyon</th>
               </tr>
             </thead>
             <tbody id="alertsBody"></tbody>
@@ -2477,6 +2528,10 @@
       return div.innerHTML;
     }
 
+    function escapeAttr(value) {
+      return escapeHtml(value).replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+    }
+
     function jsString(value) {
       return JSON.stringify(String(value ?? ''));
     }
@@ -2621,6 +2676,25 @@
 
     function projectedHtml(alert) {
       return `<span class="badge small-badge">${fmt(alert.projected)}</span>`;
+    }
+
+    function contextMetricValue(alert, field) {
+      const analysis = parseAnalysis(alert);
+      if (field === 'h2h_total') {
+        return num(alert.h2h_total ?? analysis.h2h_total);
+      }
+      const teamContext = analysis.team_context || alert.team_context || {};
+      return num(alert.team_recent_total ?? analysis.team_recent_total ?? teamContext.expected_total);
+    }
+
+    function contextMetricHtml(alert, field) {
+      const value = contextMetricValue(alert, field);
+      const isH2h = field === 'h2h_total';
+      const games = isH2h ? num(alert.h2h_games ?? parseAnalysis(alert).h2h_games) : null;
+      const title = isH2h
+        ? `H2H ortalaması${games === null ? '' : ` · ${Math.round(games)} maç`} · Ayrıntıları aç`
+        : 'Son form toplam ortalaması · Ayrıntıları aç';
+      return `<button type="button" class="context-metric ${value === null ? 'missing' : ''}" onclick="openSignalModal(${Number(alert.id || 0)})" title="${escapeHtml(title)}">${value === null ? '–' : value.toFixed(1)}</button>`;
     }
 
     function gatePresentation(alert) {
@@ -2859,9 +2933,12 @@
     }
 
     function sortValue(alert, field) {
-	      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count', 'signal_quality_score'].includes(field)) {
-	        return num(alert[field]) ?? Number.NEGATIVE_INFINITY;
-	      }
+      if (field === 'h2h_total' || field === 'team_recent_total') {
+        return contextMetricValue(alert, field) ?? Number.NEGATIVE_INFINITY;
+      }
+      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count', 'signal_quality_score'].includes(field)) {
+        return num(alert[field]) ?? Number.NEGATIVE_INFINITY;
+      }
       if (field === 'history_guard') return historyGuardSummary(alert).score;
       if (field === 'alerted_at') return alert.alerted_at ? new Date(`${String(alert.alerted_at).replace(' ', 'T')}Z`).getTime() : 0;
       return String(alert[field] || '').toLocaleLowerCase('tr-TR');
@@ -2943,19 +3020,21 @@
         return `
           <tr class="${classes}">
             <td class="select-cell"><input class="match-select" type="checkbox" ${selectedMatchIds.has(matchId) ? 'checked' : ''} onchange='toggleSelected(${matchIdArg}, this.checked)' aria-label="Maç seç"></td>
-	            <td class="mono">${timeText(a.alerted_at)}</td>
-            <td>${directionBadge(a)} ${Number(a.signal_count || 1) > 1 ? `<span class="badge small-badge">${Number(a.signal_count)}. sinyal</span>` : ''}</td>
-            <td>${fairHtml(a)}</td>
-            <td>${projectedHtml(a)}</td>
-            <td>${signalQualityHtml(a)}</td>
-            <td><div class="match-cell-wrap">${focusButton(a)}${matchLink(a)}${listMarkersHtml(a, 'team')}${noteInfoButton(a)}</div></td>
-            <td><div class="tournament-row"><span class="subline tournament-cell">${tournament}</span>${listMarkersHtml(a, 'league')}</div></td>
-            <td>${escapeHtml(a.status || '-')}</td>
-            <td>${scoreButtonHtml(a)}</td>
-            <td class="mono">${fmt(a.opening)}</td>
-            <td class="mono">${fmt(a.live)}</td>
-            <td class="mono ${diffCls}">${signed(a.diff)}</td>
-            <td>${actionButtons(a)}</td>
+	            <td class="mono col-time">${timeText(a.alerted_at)}</td>
+            <td class="col-signal">${directionBadge(a)} ${Number(a.signal_count || 1) > 1 ? `<span class="badge small-badge">${Number(a.signal_count)}. sinyal</span>` : ''}</td>
+            <td class="col-model">${fairHtml(a)}</td>
+            <td class="col-model">${projectedHtml(a)}</td>
+            <td class="col-context">${contextMetricHtml(a, 'h2h_total')}</td>
+            <td class="col-context">${contextMetricHtml(a, 'team_recent_total')}</td>
+            <td class="col-quality">${signalQualityHtml(a)}</td>
+            <td class="col-match"><div class="match-cell-wrap">${focusButton(a)}${matchLink(a)}${listMarkersHtml(a, 'team')}${noteInfoButton(a)}</div></td>
+            <td class="col-tournament"><div class="tournament-row"><span class="subline tournament-cell" title="${escapeAttr(a.tournament || '-')}">${tournament}</span>${listMarkersHtml(a, 'league')}</div></td>
+            <td class="col-status">${escapeHtml(a.status || '-')}</td>
+            <td class="col-score">${scoreButtonHtml(a)}</td>
+            <td class="mono market-cell col-market">${fmt(a.opening)}</td>
+            <td class="mono market-cell col-market">${fmt(a.live)}</td>
+            <td class="mono diff-cell col-diff ${diffCls}">${signed(a.diff)}</td>
+            <td class="action-cell col-action">${actionButtons(a)}</td>
           </tr>
         `;
       }).join('');
