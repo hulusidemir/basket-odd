@@ -1801,7 +1801,7 @@
 	      <section class="panel toolbar">
         <input class="search-box" id="searchInput" type="text" placeholder="Maç, turnuva veya skor ara">
         <div class="actions">
-          <button class="btn" id="uniqueMatchesBtn" type="button" onclick="toggleUniqueMatchesOnly()" title="Her maçın ilk sinyalini bırakır; sonraki sinyalleri yalnız görünümden gizler">Tekrarlıları Gizle</button>
+          <button class="btn" id="uniqueMatchesBtn" type="button" onclick="toggleUniqueMatchesOnly()" title="Her maçta ilk ALT ve ilk ÜST sinyalini ayrı ayrı bırakır; aynı yöndeki tekrarları yalnız görünümden gizler">Tekrarlıları Gizle</button>
           <button class="btn" onclick="resetSearch()">Temizle</button>
         </div>
       </section>
@@ -2610,19 +2610,19 @@
       return false;
     }
 
-    function firstSignalPerMatch(rows) {
-      const firstByMatch = new Map();
+    function firstSignalPerMatchDirection(rows) {
+      const firstByMatchDirection = new Map();
       (rows || []).forEach(alert => {
-        const key = matchKey(alert);
-        const current = firstByMatch.get(key);
-        if (!current || comesBefore(alert, current)) firstByMatch.set(key, alert);
+        const key = JSON.stringify([matchKey(alert), normalizeDirection(alert.direction)]);
+        const current = firstByMatchDirection.get(key);
+        if (!current || comesBefore(alert, current)) firstByMatchDirection.set(key, alert);
       });
-      const firstIds = new Set([...firstByMatch.values()].map(alert => Number(alert.id)));
+      const firstIds = new Set([...firstByMatchDirection.values()].map(alert => Number(alert.id)));
       return (rows || []).filter(alert => firstIds.has(Number(alert.id)));
     }
 
     function summaryRows() {
-      return uniqueMatchesOnly ? firstSignalPerMatch(deletedAlerts) : [...deletedAlerts];
+      return uniqueMatchesOnly ? firstSignalPerMatchDirection(deletedAlerts) : [...deletedAlerts];
     }
 
     function toggleUniqueMatchesOnly() {
@@ -2706,7 +2706,7 @@
       const resolved = successList.length + failList.length;
       const rate = resolved > 0 ? Math.round((successList.length / resolved) * 1000) / 10 : null;
 
-	      document.getElementById('statSignalsLabel').textContent = uniqueMatchesOnly ? 'İlk Sinyal' : 'Silinen Sinyal';
+	      document.getElementById('statSignalsLabel').textContent = uniqueMatchesOnly ? 'Benzersiz Sinyal' : 'Silinen Sinyal';
 	      document.getElementById('statSignals').textContent = rows.length;
       document.getElementById('statMatches').textContent = matchIds.size;
 	      document.getElementById('statAlt').textContent = rows.filter(item => item.direction === 'ALT').length;
@@ -2721,10 +2721,10 @@
     function updateUniqueMatchesButton() {
       const button = document.getElementById('uniqueMatchesBtn');
       if (!button) return;
-      const hiddenCount = Math.max(0, deletedAlerts.length - firstSignalPerMatch(deletedAlerts).length);
+      const hiddenCount = Math.max(0, deletedAlerts.length - firstSignalPerMatchDirection(deletedAlerts).length);
       button.classList.toggle('primary', uniqueMatchesOnly);
       button.textContent = uniqueMatchesOnly
-        ? `✓ Tek Maç Görünümü · ${hiddenCount} gizli`
+        ? `✓ Tekrarlılar Gizli · ${hiddenCount} gizli`
         : `Tekrarlıları Gizle${hiddenCount ? ` (${hiddenCount})` : ''}`;
       button.setAttribute('aria-pressed', uniqueMatchesOnly ? 'true' : 'false');
     }
@@ -2733,25 +2733,29 @@
       return new Set(rows.map(item => matchKey(item)).filter(Boolean)).size;
     }
 
-    function baseStats(rows) {
+    function baseStats(rows, uniqueRows = firstSignalPerMatchDirection(rows)) {
       const successRows = rows.filter(item => item.result === 'Başarılı');
       const failRows = rows.filter(item => item.result === 'Başarısız');
+      const uniqueSuccessRows = uniqueRows.filter(item => item.result === 'Başarılı');
+      const uniqueFailRows = uniqueRows.filter(item => item.result === 'Başarısız');
       const resolved = successRows.length + failRows.length;
       const rate = resolved > 0 ? Math.round((successRows.length / resolved) * 1000) / 10 : null;
       return {
         total: rows.length,
-        unique: uniqueMatchCount(rows),
+        unique: uniqueRows.length,
         success: successRows.length,
-        successUnique: uniqueMatchCount(successRows),
+        successUnique: uniqueSuccessRows.length,
         fail: failRows.length,
-        failUnique: uniqueMatchCount(failRows),
+        failUnique: uniqueFailRows.length,
         rate,
       };
     }
 
     function directionStats(direction, rows) {
 	      const scoped = rows.filter(item => item.direction === direction);
-      return baseStats(scoped);
+      const uniqueScoped = firstSignalPerMatchDirection(rows)
+        .filter(item => item.direction === direction);
+      return baseStats(scoped, uniqueScoped);
     }
 
     function renderSignalBreakdown(rows = summaryRows()) {
@@ -2775,7 +2779,7 @@
             <button class="direction-summary-head direction-filter-btn ${directionActive ? 'active' : ''}" onclick='setSummaryFilter(${escapeHtml(JSON.stringify({ direction }))})'>
               <div class="direction-summary-title">
                 <span class="badge ${badgeClass}">${direction}</span>
-	                <span>${uniqueMatchesOnly ? 'İlk Sinyal Özeti' : 'Sinyal Özeti'}</span>
+	                <span>${uniqueMatchesOnly ? 'Benzersiz Sinyal Özeti' : 'Sinyal Özeti'}</span>
               </div>
               <div class="direction-summary-total">${stats.total}</div>
             </button>

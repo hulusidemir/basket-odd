@@ -419,15 +419,24 @@ class DisplaySnapshotTests(unittest.TestCase):
             self.assertNotIn("bucketstars", lowered)
             self.assertNotIn("yıldızlı", lowered)
 
-    def test_deleted_template_has_first_signal_per_match_view(self):
+    def test_deleted_template_has_first_signal_per_match_and_direction_view(self):
         template_path = Path(self.dashboard.app.template_folder) / "deleted_matches.html"
         template = template_path.read_text(encoding="utf-8")
 
         self.assertIn('id="uniqueMatchesBtn"', template)
-        self.assertIn("function firstSignalPerMatch(rows)", template)
-        self.assertIn("uniqueMatchesOnly ? firstSignalPerMatch(deletedAlerts)", template)
+        self.assertIn("function firstSignalPerMatchDirection(rows)", template)
+        self.assertIn(
+            "JSON.stringify([matchKey(alert), normalizeDirection(alert.direction)])",
+            template,
+        )
+        self.assertIn(
+            "uniqueMatchesOnly ? firstSignalPerMatchDirection(deletedAlerts)",
+            template,
+        )
         self.assertIn("const signalCount = Number(alert?.signal_count)", template)
         self.assertIn("renderSignalBreakdown(rows)", template)
+        self.assertIn("const uniqueScoped = firstSignalPerMatchDirection(rows)", template)
+        self.assertIn("return baseStats(scoped, uniqueScoped)", template)
 
     def test_deleted_details_route_uses_direct_id_lookup(self):
         self.db.save_active_alert_display_snapshots({
