@@ -2174,6 +2174,8 @@ def _serialize_team_history_entry(row: dict) -> dict:
         "diff": row.get("diff"),
         "status": str(row.get("status") or ""),
         "score": str(row.get("score") or ""),
+        "final_status": str(row.get("final_status") or ""),
+        "final_score": str(row.get("final_score") or ""),
         "result": str(row.get("result") or ""),
         "alerted_at": row.get("alerted_at") or "",
         "deleted_at": row.get("deleted_at") or "",

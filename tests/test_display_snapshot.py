@@ -411,6 +411,25 @@ class DisplaySnapshotTests(unittest.TestCase):
             template.index('<th data-sort="projected">Proj.</th>'),
         )
 
+    def test_team_history_uses_final_score_for_match_result_total(self):
+        serialized = self.dashboard._serialize_team_history_entry({
+            "id": 21,
+            "match_id": "match-21",
+            "score": "55 - 52",
+            "final_status": "Full Time",
+            "final_score": "81 - 80",
+        })
+        template_path = Path(self.dashboard.app.template_folder) / "dashboard.html"
+        template = template_path.read_text(encoding="utf-8")
+
+        self.assertEqual(serialized["score"], "55 - 52")
+        self.assertEqual(serialized["final_status"], "Full Time")
+        self.assertEqual(serialized["final_score"], "81 - 80")
+        self.assertIn(
+            "const score = String(match.final_score || (hasLegacyFinalScore ? match.score : '') || '').trim();",
+            template,
+        )
+
     def test_star_filters_and_rules_are_absent_from_dashboard_templates(self):
         for filename in ("dashboard.html", "deleted_matches.html"):
             template = (Path(self.dashboard.app.template_folder) / filename).read_text(encoding="utf-8")
@@ -418,6 +437,18 @@ class DisplaySnapshotTests(unittest.TestCase):
             self.assertNotIn("starred", lowered)
             self.assertNotIn("bucketstars", lowered)
             self.assertNotIn("yıldızlı", lowered)
+
+    def test_dashboard_confidence_components_have_accessible_explanations(self):
+        template_path = Path(self.dashboard.app.template_folder) / "dashboard.html"
+        template = template_path.read_text(encoding="utf-8")
+
+        self.assertIn("const componentHelpTexts = {", template)
+        self.assertIn('class="confidence-component-help-button"', template)
+        self.assertIn('role="tooltip"', template)
+        self.assertIn('aria-expanded="false"', template)
+        self.assertIn("function toggleConfidenceComponentHelp(event, button)", template)
+        self.assertIn("document.addEventListener('click', event => {", template)
+        self.assertIn("üzerine gelin veya simgeye dokunun", template)
 
     def test_deleted_template_has_first_signal_per_match_and_direction_view(self):
         template_path = Path(self.dashboard.app.template_folder) / "deleted_matches.html"

@@ -15,11 +15,21 @@ from aiscore_scraper import (
 
 
 class _LinkPage:
-    def __init__(self, href_batches, *, live_count=3, live_found=True):
+    def __init__(
+        self,
+        href_batches,
+        *,
+        live_count=3,
+        live_found=True,
+        live_count_known=True,
+        empty_state_text="",
+    ):
         self.url = "https://www.aiscore.com/basketball"
         self.href_batches = list(href_batches)
         self.live_count = live_count
         self.live_found = live_found
+        self.live_count_known = live_count_known
+        self.empty_state_text = empty_state_text
 
     async def wait_for_function(self, *_args, **_kwargs):
         return None
@@ -39,10 +49,19 @@ class _LinkPage:
         if "let tab = null" in script:
             return {
                 "found": self.live_found,
-                "tabText": f"Live ({self.live_count})",
+                "tabText": (
+                    f"Live ({self.live_count})"
+                    if self.live_count_known
+                    else "Live"
+                ),
                 "count": self.live_count,
-                "countKnown": self.live_found,
+                "countKnown": self.live_found and self.live_count_known,
                 "clicked": self.live_found,
+            }
+        if "const patterns = [" in script:
+            return {
+                "found": bool(self.empty_state_text),
+                "text": self.empty_state_text,
             }
         if "const liveHrefs" in script:
             return self.href_batches.pop(0) if self.href_batches else []
@@ -280,6 +299,32 @@ class AiscoreScraperTests(unittest.TestCase):
         self.assertEqual(links, [])
         self.assertTrue(scraper._last_listing_diagnostics["authoritative_empty"])
 
+    def test_explicit_empty_state_is_a_clean_empty_listing_without_count_badge(self):
+        page = _LinkPage(
+            [[], [], []],
+            live_count=0,
+            live_count_known=False,
+            empty_state_text="There are no live games at this moment",
+        )
+        scraper = AiscoreScraper(page.url)
+
+        links = asyncio.run(scraper._collect_match_links(page))
+
+        self.assertEqual(links, [])
+        self.assertTrue(scraper._last_listing_diagnostics["authoritative_empty"])
+        self.assertTrue(scraper._last_listing_diagnostics["empty_state_found"])
+
+    def test_missing_count_and_empty_state_is_not_treated_as_clean_empty(self):
+        page = _LinkPage(
+            [[], [], []],
+            live_count=0,
+            live_count_known=False,
+        )
+        scraper = AiscoreScraper(page.url)
+
+        with self.assertRaisesRegex(RuntimeError, "verified zero count"):
+            asyncio.run(scraper._collect_match_links(page))
+
     def test_missing_live_tab_is_not_treated_as_clean_empty(self):
         page = _LinkPage([[]], live_count=0, live_found=False)
         scraper = AiscoreScraper(page.url)
@@ -330,6 +375,24 @@ class AiscoreScraperTests(unittest.TestCase):
         self.assertEqual(page.goto_calls[0][1]["timeout"], 12345)
         self.assertEqual(scraper.last_report["listing_attempts"], 2)
         self.assertEqual(len(scraper.last_report["listing_navigation_errors"]), 1)
+
+    def test_explicit_empty_listing_does_not_retry_or_raise(self):
+        scraper, result, page = self._run_cycle(
+            links=[],
+            extracted=[],
+            listing_diagnostics={
+                "live_tab_found": True,
+                "live_tab_count_known": False,
+                "authoritative_empty": True,
+                "empty_state_found": True,
+                "empty_state_text": "There are no live games at this moment",
+            },
+        )
+
+        self.assertEqual(result, [])
+        self.assertEqual(len(page.goto_calls), 1)
+        self.assertEqual(scraper.last_report["listing_attempts"], 1)
+        self.assertEqual(scraper.last_report["status"], "empty")
 
     def test_partial_cycle_is_reported_without_dropping_valid_rows(self):
         scraper, result, _page = self._run_cycle(

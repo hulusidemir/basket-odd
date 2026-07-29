@@ -385,6 +385,7 @@ class AiscoreScraper:
                     except Exception as exc:
                         error = f"{type(exc).__name__}: {exc}"
                         report["listing_parse_errors"].append(error)
+                        report["listing"] = dict(self._last_listing_diagnostics)
                         logger.warning(
                             "AIScore listing parse failed (%s/3): %s",
                             attempt,
@@ -394,7 +395,9 @@ class AiscoreScraper:
                             await list_page.wait_for_timeout(500 * attempt)
                         continue
                     report["listing"] = dict(self._last_listing_diagnostics)
-                    if links:
+                    if links or bool(
+                        (report.get("listing") or {}).get("authoritative_empty")
+                    ):
                         break
                     if attempt < 3:
                         logger.warning("AIScore listing returned 0 links; retrying list load (%s/3).", attempt + 1)
@@ -708,7 +711,7 @@ class AiscoreScraper:
         live_count_known = bool(live_info.get("countKnown", False))
         tab_text = live_info.get("tabText", "")
         tab_clicked = live_info.get("clicked", False)
-        authoritative_empty = bool(
+        count_verified_empty = bool(
             live_found and live_count_known and int(live_count or 0) == 0
         )
 
@@ -717,7 +720,7 @@ class AiscoreScraper:
             logger.info("Live tab found: '%s' (%s matches), clicked=%s.", tab_text, live_max, tab_clicked)
         elif live_found:
             live_max = 50
-            if authoritative_empty:
+            if count_verified_empty:
                 logger.info("Live tab explicitly reports 0 matches: '%s'.", tab_text)
             else:
                 logger.info("Live tab found: '%s' (no count), clicked=%s. Using max=%s.", tab_text, tab_clicked, live_max)
@@ -729,13 +732,47 @@ class AiscoreScraper:
         try:
             await page.wait_for_function(
                 r"""
-                () => document.querySelectorAll('a[href*="/basketball/match-"]').length > 0
+                () => {
+                    if (document.querySelectorAll('a[href*="/basketball/match-"]').length > 0) {
+                        return true;
+                    }
+                    const body = (document.body?.innerText || '').replace(/\s+/g, ' ').trim();
+                    return /there\s+(?:are|is)\s+no\s+live\s+(?:games?|matches?|events?)(?:\s+at\s+(?:the|this)\s+moment)?/i.test(body)
+                        || /no\s+live\s+(?:games?|matches?|events?)\s+(?:at\s+(?:the|this)\s+moment|right\s+now)/i.test(body);
+                }
                 """,
                 timeout=min(2500, self.page_timeout_ms),
             )
         except Exception as exc:
             logger.debug("Live-tab result readiness wait ended without links: %s", exc)
         await page.wait_for_timeout(300)
+
+        empty_state = await page.evaluate(r"""() => {
+            const text = value => (value || '').replace(/\s+/g, ' ').trim();
+            const patterns = [
+                /^there\s+(?:are|is)\s+no\s+live\s+(?:games?|matches?|events?)(?:\s+at\s+(?:the|this)\s+moment)?[.!]?$/i,
+                /^no\s+live\s+(?:games?|matches?|events?)\s+(?:at\s+(?:the|this)\s+moment|right\s+now)[.!]?$/i,
+                /^there\s+(?:are|is)\s+currently\s+no\s+live\s+(?:games?|matches?|events?)[.!]?$/i
+            ];
+            const visible = el => {
+                const style = window.getComputedStyle(el);
+                if (style.display === 'none' || style.visibility === 'hidden') return false;
+                const rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            };
+            const candidates = document.querySelectorAll('main, section, div, p, span');
+            for (const el of candidates) {
+                const value = text(el.innerText);
+                if (!value || value.length > 160 || !visible(el)) continue;
+                if (patterns.some(pattern => pattern.test(value))) {
+                    return { found: true, text: value };
+                }
+            }
+            return { found: false, text: '' };
+        }""")
+        explicit_empty_state = bool(
+            isinstance(empty_state, dict) and empty_state.get("found")
+        )
 
         # ── Step 2: Collect links — only from rows with a live time indicator ──
         all_hrefs: dict[str, None] = {}
@@ -791,7 +828,7 @@ class AiscoreScraper:
             await page.evaluate("window.scrollBy(0, 600)")
             await page.wait_for_timeout(250)
 
-        if not all_hrefs:
+        if not all_hrefs and not (count_verified_empty or explicit_empty_state):
             logger.warning("Live-only filter found 0 verified live match links.")
 
         _suffixes = re.compile(r'/(h2h|odds|stats|lineups|standings|summary)/?$')
@@ -806,6 +843,17 @@ class AiscoreScraper:
             if len(links) >= live_max:
                 break
 
+        authoritative_empty = bool(
+            live_found
+            and not links
+            and (count_verified_empty or explicit_empty_state)
+        )
+        if authoritative_empty and explicit_empty_state:
+            logger.info(
+                "Live tab explicitly reports an empty slate: '%s'.",
+                str(empty_state.get("text") or "")[:160],
+            )
+
         self._last_listing_diagnostics = {
             "page_url": page_diag.get("url"),
             "page_title": page_diag.get("title"),
@@ -816,6 +864,12 @@ class AiscoreScraper:
             "live_tab_count_known": live_count_known,
             "live_tab_clicked": bool(tab_clicked),
             "authoritative_empty": authoritative_empty,
+            "empty_state_found": explicit_empty_state,
+            "empty_state_text": (
+                str(empty_state.get("text") or "")[:160]
+                if isinstance(empty_state, dict)
+                else ""
+            ),
             "verified_live_link_count": len(links),
             "unverified_live_link_count": max(
                 0,
