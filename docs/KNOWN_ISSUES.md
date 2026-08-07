@@ -4,19 +4,19 @@ Bu dosya aktif hata, operasyonel risk ve kanıt eksiklerini listeler. Yeni oturu
 
 ## Açık Riskler ve Sınırlamalar
 
-### 1. V2 stratejisinin %70 başarısı henüz kanıtlanmadı
+### 1. Eski V2 gate kanıtı yeni skora aktarılamaz
 
 - İlgili dosyalar: `signal_gate.py`, `signal_analysis.py`, `signal_quality.py`, `projection.py`, `db.py`
-- Durum: `trusted_70_v2` bir hedef/evidence kapısıdır; isim veya eşikler gerçekleşmiş başarı oranı değildir. Aktif tek-bookmaker sürüm 3 kanıtı yalnız `2026-07-14T00:00:00+00:00` epoch'undan sonra, sabit fingerprint ile oluşan ve otomatik final skorla sonuçlanan benzersiz `signal_trials` kayıtlarından gelir.
-- Etki: Veri/model önkoşulunu sağlayan sinyaller yeterli kanıt oluşana kadar `SHADOW`, sağlam veri/aday koşulunu sağlayamayanlar `BLOCKED` kalır. Tüm etiketler Telegram'a gönderilir; bu ayrım oynanabilirlik bilgisidir.
-- Sonraki adım: En az 100 benzersiz sonuçlanmış trial ve kapının tüm Wilson/blok/kapsam koşullarını bekle. Dashboard genel başarı yüzdesini veya silinen kayıt istatistiğini bu kanıtın yerine kullanma.
+- Durum: `trusted_70_v2` artık aktif akışta değildir. Eski fingerprint ile oluşan `signal_trials` yalnız tarihsel bütünlük için korunur.
+- Etki: Eski gate sonuçları `market_edge_league_v1` veya yeni fair/projeksiyon sürümünün kanıtı sayılamaz.
+- Sonraki adım: Yeni skor için ayrı epoch ve ileri tarihli ledger kullan; eski trial'ları yeni yıldız eşiklerini açmak için birleştirme.
 
-### 2. Adil barem ve projeksiyonun piyasa üstünlüğü kanıtlanmış değil
+### 2. Yeni adil barem ve sinyal skorunun piyasa üstünlüğü henüz kanıtlanmış değil
 
 - İlgili dosyalar: `projection.py`, `signal_analysis.py`, `signal_quality.py`
-- Durum: `calibrated_fair_v1` canlı piyasayı anchor olarak kullanır ve ham pace oynaklığını sınırlar. Buna rağmen fair/projeksiyonun canlı piyasa baremini farklı zaman ve lig rejimlerinde istatistiksel olarak geçtiği gösterilmiş değildir.
-- Etki: Model farkı yararlı bir araştırma özelliği olabilir fakat tek başına oynama kararı veya `%70` iddiası üretemez.
-- Sonraki adım: Katsayıları sabit tutarak ileri tarihli veri topla; lig/format bazlı değişikliği ayrı holdout ile değerlendir ve değişiklikte fingerprint/sürüm/epoch yenile.
+- Durum: `current_pace_projection_v2` şeffaf ham tempo uzatımıdır; `independent_pace_fair_v2` canlı baremden bağımsız konservatif kalan-tempo tahminidir. Zaman sıralı mevcut kontrol 65-74 bandında umut verse de örnek küçüktür.
+- Etki: Sinyal skoru araştırma sıralamasıdır fakat tek başına oynama kararı veya `%70` garantisi üretemez. Dört ve beş yıldız bu nedenle kilitlidir.
+- Sonraki adım: Katsayıları ve `market_edge_league_v1` formülünü sabit tutarak ayrı ileri tarihli ledger aç; en az 100 benzersiz sonuçta skor bantlarını tekrar değerlendir.
 - Ek sınır: Katsayıları yeniden üreten sürümlü eğitim artifact'i ve final toplam için prediction interval henüz yoktur; mevcut skor olasılık değildir.
 
 ### 3. AIScore DOM/Nuxt değişikliği veri akışını bozabilir
@@ -33,10 +33,10 @@ Bu dosya aktif hata, operasyonel risk ve kanıt eksiklerini listeler. Yeni oturu
 - Etki: Daha fazla sinyal veri kapısından geçebilir, fakat seçilen tek kaynaktaki yanlış/stale satırın etkisi artar.
 - Sonraki adım: Tek bookmaker rejiminin sonuçlarını sürüm 3 fingerprint'i altında ayrı izle; eski iki-bookmaker kanıtıyla karıştırma.
 
-### 5. Güven rejimi yalnız 4x10 formatında tanımlı
+### 5. Aktif sinyal skoru yalnız 4x10 formatında doğrulandı
 
 - İlgili dosyalar: `projection.py`, `signal_analysis.py`, `signal_quality.py`, `signal_gate.py`
-- Durum: NBA 4x12 ve NCAA formatları süre/projeksiyon görünürlüğü için ayrıştırılsa da `projection_edge_6_q2q3_v2` kanıt rejimi 4x10 ile sınırlıdır.
+- Durum: NBA 4x12 ve NCAA formatları süre/projeksiyon görünürlüğü için ayrıştırılsa da `fair_edge_4_projection_5_q2q3_v3` araştırma rejimi 4x10 ile sınırlıdır. NBA Summer League ayrıca doğru biçimde 4x10 tanınır.
 - Etki: Diğer formatların güvenilir sinyal olarak açılması için yeterli ayrı kanıt yoktur.
 - Sonraki adım: Her format için bağımsız strateji/fingerprint, epoch ve ileri tarihli örneklem kullan.
 

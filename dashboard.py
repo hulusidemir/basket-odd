@@ -23,9 +23,20 @@ from finished_match_service import (
     run_single_deleted_match_result_check,
 )
 from aiscore_scraper import AiscoreScraper
-from signal_analysis import build_backtest_profile, build_signal_analysis, enrich_analysis_with_backtest
+from projection import PROJECTION_MODEL_VERSION
+from signal_analysis import (
+    FAIR_MODEL_VERSION,
+    build_backtest_profile,
+    build_signal_analysis,
+    enrich_analysis_with_backtest,
+)
 from signal_lists import build_quality_tag, build_signal_list_markers, build_signal_list_profile
-from signal_quality import CONFIDENCE_SCORE_VERSION, calculate_signal_quality
+from signal_quality import (
+    SIGNAL_SCORE_VERSION,
+    build_league_signal_profile,
+    calculate_signal_quality,
+    league_stats_for_signal,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -277,29 +288,7 @@ def _trim_backtest_payload(backtest: dict | None) -> dict:
 
 
 def _build_league_quality_profile(rows: list[dict]) -> dict:
-    grouped: dict[str, dict] = {}
-    for row in rows or []:
-        result_key = _fold(row.get("result"))
-        if result_key not in {"basarili", "basarisiz"}:
-            continue
-        tournament = str(row.get("tournament") or "").strip()
-        if not tournament:
-            continue
-        bucket = grouped.setdefault(tournament, {"resolved": 0, "success": 0})
-        bucket["resolved"] += 1
-        if result_key == "basarili":
-            bucket["success"] += 1
-    profile = {}
-    for tournament, bucket in grouped.items():
-        resolved = int(bucket.get("resolved") or 0)
-        if resolved <= 0:
-            continue
-        profile[tournament] = {
-            "resolved": resolved,
-            "success": int(bucket.get("success") or 0),
-            "rate": round((float(bucket.get("success") or 0) / resolved) * 100, 1),
-        }
-    return profile
+    return build_league_signal_profile(rows)
 
 
 def _previous_directions_by_alert_id(alerts: list[dict]) -> dict[int, list[str]]:
@@ -322,12 +311,12 @@ def _previous_directions_by_alert_id(alerts: list[dict]) -> dict[int, list[str]]
 
 def _apply_signal_quality(alert: dict, league_profile: dict | None, previous_directions: list[str] | None = None) -> dict:
     tournament = str(alert.get("tournament") or "").strip()
-    league_stats = (league_profile or {}).get(tournament) or {}
+    direction = alert.get("final_direction") or alert.get("direction")
+    league_stats = league_stats_for_signal(league_profile, tournament, direction)
     quality = calculate_signal_quality({
         **alert,
-        "direction": alert.get("final_direction") or alert.get("direction"),
-        "league_success_rate": league_stats.get("rate"),
-        "league_success_samples": league_stats.get("resolved"),
+        "direction": direction,
+        "league_signal_stats": league_stats,
         "previous_directions": previous_directions or [],
     })
     alert["signal_quality"] = quality
@@ -335,6 +324,7 @@ def _apply_signal_quality(alert: dict, league_profile: dict | None, previous_dir
     alert["signal_quality_label"] = quality.get("quality_label")
     alert["signal_quality_reason"] = quality.get("reason")
     alert["signal_quality_risk_note"] = quality.get("risk_note")
+    alert["signal_stars"] = quality.get("stars")
     return quality
 
 
@@ -345,6 +335,7 @@ def _apply_stored_signal_quality(alert: dict, analysis: dict) -> dict:
     alert["signal_quality_label"] = quality.get("quality_label")
     alert["signal_quality_reason"] = quality.get("reason")
     alert["signal_quality_risk_note"] = quality.get("risk_note")
+    alert["signal_stars"] = quality.get("stars")
     return quality
 
 
@@ -449,7 +440,7 @@ def enrich_alerts_with_analysis(
             if isinstance(analysis.get("signal_quality"), dict)
             else {}
         )
-        if stored_quality.get("confidence_score_version") == CONFIDENCE_SCORE_VERSION:
+        if stored_quality.get("signal_score_version") == SIGNAL_SCORE_VERSION:
             quality = _apply_stored_signal_quality(alert, analysis)
         else:
             quality = _apply_signal_quality(
@@ -750,11 +741,13 @@ def api_delete_signal_list_entry(entry_id: int):
 
 
 def _analysis_needs_live_rebuild(analysis: dict) -> bool:
-    """Older ai_analysis payloads predate fair-line/projection fields."""
+    """Rebuild active rows when projection/fair semantics have changed."""
     return (
         not isinstance(analysis, dict)
         or analysis.get("projected_total") is None
         or analysis.get("fair_line") is None
+        or analysis.get("projection_model_version") != PROJECTION_MODEL_VERSION
+        or analysis.get("fair_model_version") != FAIR_MODEL_VERSION
     )
 
 
@@ -791,7 +784,7 @@ _DELETED_LIST_FIELDS = (
     "projected", "projected_gap", "opening_delta", "fair_line", "fair_edge",
     "projection_quality", "recommendation", "selection_reason",
     "signal_gate", "gate_state", "candidate_eligible",
-    "signal_quality", "signal_quality_score", "signal_quality_label",
+    "signal_quality", "signal_quality_score", "signal_quality_label", "signal_stars",
     "signal_quality_reason", "signal_quality_risk_note",
     "result", "result_source", "settled_at", "note",
     "bet_placed", "ignored", "followed",
@@ -837,6 +830,13 @@ def _enrich_deleted_alert(
     result.pop("bucket_stars", None)
     result.pop("display_snapshot", None)
     result.pop("ai_analysis", None)
+    stored_score = result.get("signal_quality") if isinstance(result.get("signal_quality"), dict) else {}
+    if stored_score.get("signal_score_version") != SIGNAL_SCORE_VERSION:
+        for key in (
+            "signal_quality", "signal_quality_score", "signal_quality_label",
+            "signal_quality_reason", "signal_quality_risk_note", "signal_stars",
+        ):
+            result.pop(key, None)
     if full:
         return result
     return {
@@ -891,7 +891,7 @@ def api_export_finished_deleted_matches_csv():
     writer.writerow([
         "Maç", "Lig", "Sinyal Tarihi (TR)", "Sinyal Saati (TR)", "Sinyal Anı", "Sinyal Türü",
         "Sinyal Anı Skoru", "Final Skor",
-        "Açılış", "Canlı", "Proj.", "Adil Barem", "S.K. Puan", "S.K. Etiket", "Sonuç", "Not",
+        "Açılış", "Canlı", "Tempo Proj.", "Adil Barem", "Sinyal Puanı", "Yıldız", "Etiket", "Sonuç", "Not",
     ])
 
     for row in rows:
@@ -918,6 +918,7 @@ def api_export_finished_deleted_matches_csv():
             projected_cell,
             fair_line_cell,
             row.get("signal_quality_score") if row.get("signal_quality_score") is not None else "",
+            row.get("signal_stars") if row.get("signal_stars") is not None else "",
             row.get("signal_quality_label") or "",
             row.get("result") or "",
             row.get("note") or "",

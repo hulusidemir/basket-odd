@@ -5,7 +5,7 @@ from signal_analysis import calculate_fair_line
 
 
 class ProjectionModelTests(unittest.TestCase):
-    def test_four_by_ten_projection_uses_calibrated_pace_response(self):
+    def test_four_by_ten_projection_extrapolates_current_pace(self):
         result = calculate_live_projection(
             "40 - 35",
             "Q2 05:00",
@@ -13,9 +13,10 @@ class ProjectionModelTests(unittest.TestCase):
             "FIBA",
             market_total=160,
         )
-        self.assertEqual(result["projected_total"], 178.5)
+        self.assertEqual(result["projected_total"], 200.0)
         self.assertEqual(result["raw_projected_total"], 200.0)
-        self.assertEqual(result["components"]["observed_pace_weight"], 0.14)
+        self.assertEqual(result["components"]["observed_pace_weight"], 1.0)
+        self.assertEqual(result["projection_kind"], "current_pace_if_unchanged")
 
     def test_projection_converges_to_current_score_at_regulation_end(self):
         projected = calculate_projected_total(
@@ -90,6 +91,12 @@ class ProjectionModelTests(unittest.TestCase):
         self.assertEqual(clock["format"], "4x12")
         self.assertFalse(clock["model_validated"])
 
+    def test_nba_summer_league_uses_four_by_ten(self):
+        clock = game_clock("Q3 06:00", "A - B", "NBA Summer League")
+        self.assertEqual(clock["quarter_length"], 10)
+        self.assertEqual(clock["format"], "4x10")
+        self.assertTrue(clock["model_validated"])
+
     def test_ncaa_men_and_women_use_different_period_structures(self):
         men = game_clock("2H 10:00", "A - B", "NCAA")
         women = game_clock("Q3 05:00", "A Women - B Women", "NCAA Women")
@@ -108,7 +115,7 @@ class ProjectionModelTests(unittest.TestCase):
         self.assertEqual(clock["format"], "4x10")
         self.assertFalse(clock["model_validated"])
 
-    def test_fair_line_uses_live_market_calibration(self):
+    def test_fair_line_is_independent_from_live_market(self):
         fair, meta = calculate_fair_line(
             prematch=160,
             pure_pace_projection=178.5,
@@ -119,9 +126,10 @@ class ProjectionModelTests(unittest.TestCase):
             period=2,
             current_total=75,
         )
-        self.assertEqual(fair, 172.8)
-        self.assertEqual(meta["live_market_weight"], 0.66)
-        self.assertEqual(meta["model_weight"], 0.34)
+        self.assertEqual(fair, 176.4)
+        self.assertEqual(meta["live_market_weight"], 0.0)
+        self.assertEqual(meta["model_weight"], 0.12)
+        self.assertEqual(meta["anchor"], "pregame_and_observed_pace")
 
     def test_fair_line_converges_at_final_score(self):
         fair, meta = calculate_fair_line(

@@ -21,13 +21,13 @@ class SignalDirectionTests(unittest.TestCase):
         self.assertEqual(self.decision(fair_edge=2.0)["direction"], "ALT")
         self.assertEqual(self.decision(fair_edge=-2.0)["direction"], "ALT")
 
-    def test_projection_changes_direction_only_when_material_and_calibrated(self):
+    def test_projection_changes_direction_only_with_material_independent_fair_edge(self):
         self.assertEqual(
-            self.decision(fair_edge=2.0, projected_total=176.0)["direction"],
+            self.decision(fair_edge=4.0, projected_total=176.0)["direction"],
             "ÜST",
         )
         self.assertEqual(
-            self.decision(fair_edge=2.0, projected_total=175.0)["direction"],
+            self.decision(fair_edge=3.9, projected_total=176.0)["direction"],
             "ALT",
         )
 
@@ -43,7 +43,7 @@ class SignalDirectionTests(unittest.TestCase):
         q2 = self.decision(
             tournament="FIBA",
             projected_total=176.0,
-            fair_edge=2.0,
+            fair_edge=4.0,
             projection_quality=90,
         )
         self.assertTrue(_classify_signal(q2)["candidate_eligible"])
@@ -52,7 +52,7 @@ class SignalDirectionTests(unittest.TestCase):
             tournament="FIBA",
             status="Q1 05:00",
             projected_total=176.0,
-            fair_edge=3.0,
+            fair_edge=4.0,
             projection_quality=90,
         )
         self.assertFalse(_classify_signal(q1)["candidate_eligible"])

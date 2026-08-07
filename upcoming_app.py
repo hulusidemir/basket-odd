@@ -294,7 +294,7 @@ def upcoming_api_delete_saved_list(list_id: int):
 def _build_scraper(config: Config) -> UpcomingScraper:
     max_matches = _env_int(
         "UPCOMING_MAX_MATCHES",
-        12,
+        0,
         minimum=0,
         maximum=500,
     )

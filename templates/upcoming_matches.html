@@ -630,7 +630,7 @@
         <span class="nav-sep">|</span>
         <div class="page-actions">
           <button class="btn" id="exportCsvBtn" type="button">CSV İndir</button>
-          <button class="btn warning" id="fetchBtn" type="button">Gelecek Maçları Çek</button>
+          <button class="btn warning" id="fetchBtn" type="button">Önümüzdeki 24 Saati Çek</button>
           <button class="btn danger" id="clearAllBtn" type="button">Tümünü Sil</button>
         </div>
       </div>
@@ -1073,7 +1073,9 @@
       const warnings = Array.isArray(row.data_warnings) ? row.data_warnings : [];
       const warningLabels = warnings.map(value => ({
         odds_detail_unavailable_listing_fallback: 'odds detayı listing verisiyle tamamlandı',
+        total_market_unavailable: 'doğrulanmış toplam sayı baremi bulunamadı',
         h2h_unavailable: 'H2H verisi alınamadı',
+        h2h_metrics_unavailable: 'H2H metrikleri ayrıştırılamadı',
       })[value] || value);
       const warningHtml = warningLabels.length
         ? `<div class="subline" title="${escapeHtml(warningLabels.join(' · '))}">⚠ ${escapeHtml(warningLabels.join(' · '))}</div>`
@@ -1302,7 +1304,7 @@
         showStatus('Çekim başarısız: ' + err.message, 'error');
       } finally {
         fetchBtn.disabled = false;
-        fetchBtn.textContent = 'Gelecek Maçları Çek';
+        fetchBtn.textContent = 'Önümüzdeki 24 Saati Çek';
       }
     }
 

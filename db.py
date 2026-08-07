@@ -3,7 +3,7 @@ import logging
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -1504,17 +1504,14 @@ class Database:
 
     # ---------- upcoming matches ----------
 
-    def _upcoming_date_window(self) -> tuple[str, str]:
+    def _upcoming_datetime_window(self) -> tuple[str, str]:
         timezone_id = os.getenv("AISCORE_TIMEZONE", "Europe/Istanbul")
         try:
-            today = datetime.now(ZoneInfo(timezone_id)).date()
+            now = datetime.now(ZoneInfo(timezone_id))
         except ZoneInfoNotFoundError:
-            today = date.today()
-        try:
-            days_ahead = max(0, int(os.getenv("UPCOMING_DAYS_AHEAD", "0") or 0))
-        except ValueError:
-            days_ahead = 0
-        return today.isoformat(), (today + timedelta(days=days_ahead)).isoformat()
+            now = datetime.now(timezone.utc)
+        end = now + timedelta(hours=24)
+        return now.strftime("%Y-%m-%d %H:%M"), end.strftime("%Y-%m-%d %H:%M")
 
     def save_upcoming_matches_and_signals(
         self,
@@ -1610,17 +1607,17 @@ class Database:
 
                 enriched.append(row)
 
-            start_date, end_date = self._upcoming_date_window()
+            window_start, window_end = self._upcoming_datetime_window()
             expired_rows = conn.execute(
                 """
                 SELECT match_id
                 FROM upcoming_matches
                 WHERE kickoff IS NOT NULL
                   AND kickoff != ''
-                  AND length(kickoff) >= 10
-                  AND (substr(kickoff, 1, 10) < ? OR substr(kickoff, 1, 10) > ?)
+                  AND length(kickoff) >= 16
+                  AND (substr(kickoff, 1, 16) < ? OR substr(kickoff, 1, 16) > ?)
                 """,
-                (start_date, end_date),
+                (window_start, window_end),
             ).fetchall()
             expired_ids = [
                 str(row["match_id"])
@@ -1650,11 +1647,11 @@ class Database:
                     f"""
                     SELECT match_id
                     FROM upcoming_matches
-                    WHERE (kickoff IS NULL OR kickoff = '' OR length(kickoff) < 10
-                           OR substr(kickoff, 1, 10) BETWEEN ? AND ?)
+                    WHERE (kickoff IS NULL OR kickoff = '' OR length(kickoff) < 16
+                           OR substr(kickoff, 1, 16) BETWEEN ? AND ?)
                       AND match_id NOT IN ({placeholders})
                     """,
-                    (start_date, end_date, *sorted(authoritative_ids)),
+                    (window_start, window_end, *sorted(authoritative_ids)),
                 ).fetchall()
                 missing_ids = [
                     str(row["match_id"])
@@ -1694,7 +1691,7 @@ class Database:
         }
 
     def list_upcoming_matches(self, limit: int = 200) -> list[dict]:
-        start_date, end_date = self._upcoming_date_window()
+        window_start, window_end = self._upcoming_datetime_window()
         with self._conn() as conn:
             rows = conn.execute(
                 """
@@ -1704,8 +1701,8 @@ class Database:
                 FROM upcoming_matches
                 WHERE kickoff IS NULL
                    OR kickoff = ''
-                   OR length(kickoff) < 10
-                   OR substr(kickoff, 1, 10) BETWEEN ? AND ?
+                   OR length(kickoff) < 16
+                   OR substr(kickoff, 1, 16) BETWEEN ? AND ?
                 ORDER BY
                     kickoff ASC,
                     CASE WHEN diff IS NULL THEN 1 ELSE 0 END,
@@ -1713,7 +1710,7 @@ class Database:
                     fetched_at DESC
                 LIMIT ?
                 """,
-                (start_date, end_date, max(1, int(limit or 200))),
+                (window_start, window_end, max(1, int(limit or 200))),
             ).fetchall()
 
         items: list[dict] = []

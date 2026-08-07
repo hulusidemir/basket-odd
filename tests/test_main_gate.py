@@ -99,7 +99,7 @@ class MainGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(normalized["tournament"], "")
         self.assertEqual(normalized["url"], "")
 
-    async def run_case(self, state, telegram_allowed):
+    async def run_case(self):
         db = FakeDatabase()
         notifier = SimpleNamespace(send_alert=AsyncMock(return_value={"chat": 1}))
         config = SimpleNamespace(
@@ -120,41 +120,19 @@ class MainGateTests(unittest.IsolatedAsyncioTestCase):
             "data_reliability_score": 95,
             "data_hard_fail": False,
         }
-        gate = {
-            "state": state,
-            "telegram_allowed": telegram_allowed,
-            "trial_eligible": True,
-        }
         with (
             patch("main.build_signal_analysis", return_value=analysis),
             patch("main.calculate_signal_quality", return_value=quality),
-            patch("main.evaluate_signal_gate", return_value=gate),
         ):
             await process_match(match_payload(), db, notifier, config)
         return db, notifier
 
-    async def test_shadow_is_saved_and_sent(self):
-        db, notifier = await self.run_case("SHADOW", False)
-        self.assertEqual(db.saved_analysis["signal_gate"]["state"], "SHADOW")
+    async def test_signal_is_saved_and_sent_without_gate(self):
+        db, notifier = await self.run_case()
+        self.assertNotIn("signal_gate", db.saved_analysis)
         self.assertTrue(db.telegram_required)
         self.assertEqual(db.telegram_sent, (1, {"chat": 1}))
         self.assertIsNone(db.telegram_failed)
-        notifier.send_alert.assert_awaited_once()
-
-    async def test_trusted_is_saved_and_sent(self):
-        db, notifier = await self.run_case("TRUSTED", True)
-        self.assertEqual(db.saved_analysis["signal_gate"]["state"], "TRUSTED")
-        self.assertTrue(db.telegram_required)
-        self.assertEqual(db.telegram_sent, (1, {"chat": 1}))
-        self.assertIsNone(db.telegram_failed)
-        notifier.send_alert.assert_awaited_once()
-
-    async def test_blocked_pass_is_saved_and_sent(self):
-        db, notifier = await self.run_case("BLOCKED", False)
-
-        self.assertEqual(db.saved_analysis["signal_gate"]["state"], "BLOCKED")
-        self.assertTrue(db.telegram_required)
-        self.assertEqual(db.telegram_sent, (1, {"chat": 1}))
         notifier.send_alert.assert_awaited_once()
 
     async def test_empty_delivery_is_marked_for_retry(self):
@@ -178,15 +156,9 @@ class MainGateTests(unittest.IsolatedAsyncioTestCase):
             "data_reliability_score": 95,
             "data_hard_fail": False,
         }
-        gate = {
-            "state": "TRUSTED",
-            "telegram_allowed": True,
-            "trial_eligible": True,
-        }
         with (
             patch("main.build_signal_analysis", return_value=analysis),
             patch("main.calculate_signal_quality", return_value=quality),
-            patch("main.evaluate_signal_gate", return_value=gate),
         ):
             await process_match(match_payload(), db, notifier, config)
 

@@ -216,16 +216,19 @@ class DisplaySnapshotTests(unittest.TestCase):
             self.assertNotIn(key, enriched)
             self.assertNotIn(key, snapshot)
 
-    def test_current_confidence_score_is_frozen_at_signal_time(self):
+    def test_current_signal_score_is_frozen_at_signal_time(self):
         row = self.db.get_alert(self.alert_id)
         row["ai_analysis"] = json.dumps({
             "projected_total": 168,
             "pure_projected_total": 168,
             "fair_line": 166,
+            "projection_model_version": self.dashboard.PROJECTION_MODEL_VERSION,
+            "fair_model_version": self.dashboard.FAIR_MODEL_VERSION,
             "signal_quality": {
                 "quality_score": 77,
                 "quality_label": "GÜÇLÜ",
-                "confidence_score_version": self.dashboard.CONFIDENCE_SCORE_VERSION,
+                "signal_score_version": self.dashboard.SIGNAL_SCORE_VERSION,
+                "stars": 4,
             },
         })
 
@@ -334,7 +337,7 @@ class DisplaySnapshotTests(unittest.TestCase):
         self.assertEqual(enriched["projected"], 174)
         self.assertEqual(enriched["projected_gap"], 8)
         self.assertEqual(enriched["opening_delta"], -12)
-        self.assertEqual(enriched["signal_quality_score"], 82)
+        self.assertNotIn("signal_quality_score", enriched)
         self.assertEqual(enriched["signal_gate"]["state"], "SHADOW")
         self.assertFalse(enriched["signal_gate"]["telegram_allowed"])
         self.assertEqual(enriched["signal_gate"]["evidence"]["resolved_unique"], 12)
@@ -387,7 +390,7 @@ class DisplaySnapshotTests(unittest.TestCase):
         self.assertEqual(full["analysis"], {"large": "detail-only"})
         self.assertEqual(full["snapshot_meta"], {"schema_version": 1})
 
-    def test_deleted_template_displays_frozen_confidence_score_instead_of_gate_label(self):
+    def test_deleted_template_displays_frozen_signal_score_and_stars(self):
         template_path = Path(self.dashboard.app.template_folder) / "deleted_matches.html"
         template = template_path.read_text(encoding="utf-8")
         function_start = template.index("function signalQualityHtml(alert)")
@@ -395,7 +398,10 @@ class DisplaySnapshotTests(unittest.TestCase):
         quality_renderer = template[function_start:function_end]
 
         self.assertIn("quality.quality_score ?? alert?.signal_quality_score", quality_renderer)
-        self.assertIn("${Math.round(score)}/100", quality_renderer)
+        self.assertIn("`${Math.round(score)}`", quality_renderer)
+        self.assertIn("quality.stars ?? alert?.signal_stars", quality_renderer)
+        self.assertIn("'★'.repeat(stars)", quality_renderer)
+        self.assertNotIn("'☆'.repeat", quality_renderer)
         self.assertNotIn("${escapeHtml(gate.text)}</button>", quality_renderer)
 
     def test_deleted_template_has_compact_ft_score_total_and_projection_order(self):
@@ -408,7 +414,7 @@ class DisplaySnapshotTests(unittest.TestCase):
         self.assertIn("${scoreWithTotalHtml(alert.final_score)}", template)
         self.assertLess(
             template.index('<th data-sort="fair_line">Adil Barem</th>'),
-            template.index('<th data-sort="projected">Proj.</th>'),
+            template.index('<th data-sort="projected">Tempo Proj.</th>'),
         )
 
     def test_team_history_uses_final_score_for_match_result_total(self):
@@ -438,17 +444,16 @@ class DisplaySnapshotTests(unittest.TestCase):
             self.assertNotIn("bucketstars", lowered)
             self.assertNotIn("yıldızlı", lowered)
 
-    def test_dashboard_confidence_components_have_accessible_explanations(self):
+    def test_dashboard_signal_score_uses_compact_explanation(self):
         template_path = Path(self.dashboard.app.template_folder) / "dashboard.html"
         template = template_path.read_text(encoding="utf-8")
 
-        self.assertIn("const componentHelpTexts = {", template)
-        self.assertIn('class="confidence-component-help-button"', template)
-        self.assertIn('role="tooltip"', template)
-        self.assertIn('aria-expanded="false"', template)
-        self.assertIn("function toggleConfidenceComponentHelp(event, button)", template)
-        self.assertIn("document.addEventListener('click', event => {", template)
-        self.assertIn("üzerine gelin veya simgeye dokunun", template)
+        self.assertIn('<div class="row"><span>Adil fark</span>', template)
+        self.assertIn('<div class="row"><span>Tempo farkı</span>', template)
+        self.assertIn('<div class="row"><span>Lig</span>', template)
+        self.assertNotIn('Skorun Dağılımı', template)
+        self.assertNotIn("'☆'.repeat", template)
+        self.assertNotIn("const componentHelpTexts = {", template)
 
     def test_deleted_template_has_first_signal_per_match_and_direction_view(self):
         template_path = Path(self.dashboard.app.template_folder) / "deleted_matches.html"

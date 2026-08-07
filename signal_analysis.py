@@ -5,13 +5,12 @@ from statistics import mean
 from projection import calculate_live_projection, calculate_quarter_ppm, game_clock, parse_score
 
 
-FAIR_MODEL_VERSION = "calibrated_fair_v1"
-_FAIR_CALIBRATION = {
-    1: (0.51, 0.002),
-    2: (0.34, -0.110),
-    3: (0.11, 0.280),
-    4: (0.12, 1.143),
-}
+FAIR_MODEL_VERSION = "independent_pace_fair_v2"
+
+# The current score is already fixed. These conservative weights apply only to
+# the remaining-minutes pace, blending the pre-match expectation with the pace
+# observed so far. The live market is deliberately excluded from the estimate.
+_FAIR_OBSERVED_PACE_WEIGHT = {1: 0.08, 2: 0.12, 3: 0.18, 4: 0.25}
 
 
 def calculate_fair_line(
@@ -25,11 +24,7 @@ def calculate_fair_line(
     period: int | None = None,
     current_total: float | None = None,
 ) -> tuple[float | None, dict]:
-    """Apply the fixed v1 period calibration against the live market.
-
-    The live line remains the main anchor. The coefficients are research
-    parameters, not a probability estimate or proof of market advantage.
-    """
+    """Estimate a fair final total independently from the live market line."""
     total = max(20, int(total_game_minutes or 40))
     progress = (
         max(0.0, min(1.0, float(elapsed_minutes) / total))
@@ -46,15 +41,18 @@ def calculate_fair_line(
         "calibration_intercept": 0.0,
         "progress": round(progress, 3),
         "data_quality": round(float(data_quality), 1),
+        "future_pregame_pace_weight": 0.0,
+        "future_observed_pace_weight": 0.0,
         "anchor": "none",
     }
-    if pure_pace_projection is None:
-        fallback = live_line if live_line is not None else prematch
+    if pure_pace_projection is None or elapsed_minutes is None or current_total is None:
+        fallback = prematch if prematch is not None else live_line
         if fallback is None:
             return None, meta
-        meta["anchor"] = "market_only"
-        meta["live_market_weight"] = 1.0 if live_line is not None else 0.0
-        meta["opening_weight"] = 0.0 if live_line is not None else 1.0
+        meta["anchor"] = "prematch_fallback" if prematch is not None else "live_fallback"
+        meta["prematch_weight"] = 1.0 if prematch is not None else 0.0
+        meta["opening_weight"] = meta["prematch_weight"]
+        meta["live_market_weight"] = 1.0 if prematch is None and live_line is not None else 0.0
         return round(float(fallback), 1), meta
 
     if elapsed_minutes is not None and float(elapsed_minutes) >= total:
@@ -64,25 +62,32 @@ def calculate_fair_line(
         meta.update({"model_weight": 1.0, "live_weight": 1.0, "anchor": "final_score"})
         return round(fair, 1), meta
 
-    if live_line is None:
-        meta.update({"model_weight": 1.0, "live_weight": 1.0, "anchor": "projection_only"})
-        fair = float(pure_pace_projection)
-    else:
-        beta, intercept = _FAIR_CALIBRATION.get(int(period or 0), (0.0, 0.0))
-        fair = float(live_line) + beta * (
-            float(pure_pace_projection) - float(live_line)
-        ) + intercept
-        meta.update(
-            {
-                "live_market_weight": round(1.0 - beta, 3),
-                "model_weight": round(beta, 3),
-                "live_weight": round(beta, 3),
-                "calibration_intercept": round(intercept, 3),
-                "anchor": "live_market_calibrated",
-            }
-        )
-    if current_total is not None:
-        fair = max(float(current_total), fair)
+    elapsed = max(0.1, min(float(total), float(elapsed_minutes)))
+    remaining = max(0.0, float(total) - elapsed)
+    prior_total = _safe_float(prematch)
+    if prior_total is None:
+        prior_total = float(pure_pace_projection)
+    prior_pace = float(prior_total) / float(total)
+    observed_pace = float(pure_pace_projection) / float(total)
+    observed_weight = _FAIR_OBSERVED_PACE_WEIGHT.get(int(period or 0), 0.10)
+    future_pace = (
+        (1.0 - observed_weight) * prior_pace
+        + observed_weight * observed_pace
+    )
+    fair = float(current_total) + remaining * max(0.0, future_pace)
+    meta.update(
+        {
+            "prematch_weight": round(1.0 - observed_weight, 3),
+            "opening_weight": round(1.0 - observed_weight, 3),
+            "model_weight": round(observed_weight, 3),
+            "live_weight": 0.0,
+            "live_market_weight": 0.0,
+            "future_pregame_pace_weight": round(1.0 - observed_weight, 3),
+            "future_observed_pace_weight": round(observed_weight, 3),
+            "anchor": "pregame_and_observed_pace",
+        }
+    )
+    fair = max(float(current_total), fair)
     return round(fair, 1), meta
 
 
@@ -1164,8 +1169,10 @@ def _classify_signal(decision: dict) -> dict:
     projection_quality = _safe_float(decision.get("projection_quality"))
     period = decision.get("period")
     model_validated = bool(decision.get("model_validated"))
+    fair_edge_abs = abs(fair_edge) if fair_edge is not None else 0.0
     candidate_eligible = (
-        projected_gap_abs >= 6.0
+        projected_gap_abs >= 5.0
+        and fair_edge_abs >= 4.0
         and projection_aligned
         and calibration_aligned
         and projection_quality is not None
@@ -1176,18 +1183,20 @@ def _classify_signal(decision: dict) -> dict:
 
     if candidate_eligible:
         reason = (
-            f"Kalibre projeksiyon canlı baremden {projected_gap_abs:.1f} puan "
-            f"{'yüksek' if projected_gap > 0 else 'düşük'}; Q{period} veri kalitesi "
-            f"{projection_quality:.0f}/100. Bu yalnız ileri tarihli araştırma adayıdır."
+            f"Bağımsız adil barem canlıdan {fair_edge_abs:.1f}, tempo projeksiyonu "
+            f"{projected_gap_abs:.1f} puan {'yüksek' if projected_gap > 0 else 'düşük'}; "
+            f"Q{period} model girdileri tam. Bu ileri tarihli araştırma adayıdır."
         )
     else:
         if projected_gap is None or fair_edge is None:
             reason = "Projeksiyon/adil barem hesaplanamadı; araştırma adaylığı için veri yok."
-        elif projected_gap_abs < 6.0:
+        elif projected_gap_abs < 5.0:
             reason = (
                 f"Projeksiyon canlıya çok yakın ({projected_gap_abs:.1f} puan; "
-                "araştırma eşiği 6.0); PAS."
+                "araştırma eşiği 5.0); düşük kanıt."
             )
+        elif fair_edge_abs < 4.0:
+            reason = "Bağımsız adil barem avantajı 4 sayının altında; düşük kanıt."
         elif not calibration_aligned:
             reason = "Kalibrasyon ile projeksiyon yönü uyumsuz; PAS."
         elif period not in {2, 3}:
@@ -1199,7 +1208,7 @@ def _classify_signal(decision: dict) -> dict:
 
     return {
         "candidate_eligible": candidate_eligible,
-        "candidate_rule_id": "projection_edge_6_q2q3_v2",
+        "candidate_rule_id": "fair_edge_4_projection_5_q2q3_v3",
         "send_allowed": True,
         "selection_reason": reason,
     }
@@ -1257,7 +1266,13 @@ def _decision_from_components(
         and projected_gap is not None
         and float(fair_edge) * float(projected_gap) > 0
     )
-    if projected_gap is not None and abs(float(projected_gap)) >= 6.0 and calibrated_alignment:
+    if (
+        projected_gap is not None
+        and abs(float(projected_gap)) >= 5.0
+        and fair_edge is not None
+        and abs(float(fair_edge)) >= 4.0
+        and calibrated_alignment
+    ):
         final_direction = "ÜST" if float(projected_gap) > 0 else "ALT"
     else:
         final_direction = legacy_direction

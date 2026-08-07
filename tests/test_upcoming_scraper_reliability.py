@@ -1,6 +1,8 @@
 import os
 import unittest
-from unittest.mock import patch
+from datetime import datetime
+from unittest.mock import AsyncMock, patch
+from zoneinfo import ZoneInfo
 
 from upcoming_scraper import UpcomingScraper
 
@@ -17,6 +19,36 @@ class _RetryPage:
 
     async def wait_for_timeout(self, value):
         self.waits.append(value)
+
+
+class _Response:
+    def __init__(self, status):
+        self.status = status
+
+
+class _HttpRetryPage(_RetryPage):
+    async def goto(self, url, **kwargs):
+        self.goto_calls.append((url, kwargs))
+        return _Response(403 if len(self.goto_calls) == 1 else 200)
+
+
+class _DetailPage:
+    def __init__(self):
+        self.closed = False
+
+    def set_default_timeout(self, _value):
+        return None
+
+    def is_closed(self):
+        return self.closed
+
+    async def close(self):
+        self.closed = True
+
+
+class _DetailContext:
+    async def new_page(self):
+        return _DetailPage()
 
 
 class UpcomingScraperSettingsTests(unittest.TestCase):
@@ -116,6 +148,29 @@ class UpcomingScraperSettingsTests(unittest.TestCase):
         self.assertEqual(kickoff, "2026-07-13 20:30")
         self.assertEqual(source, "scheduled_nuxt")
 
+    def test_kickoff_filter_uses_rolling_24_hour_window(self):
+        scraper = UpcomingScraper(timezone_id="Europe/Istanbul")
+        start = datetime(2026, 8, 6, 12, 0, tzinfo=ZoneInfo("Europe/Istanbul"))
+        scraper._window_bounds = lambda: (
+            start,
+            datetime(2026, 8, 7, 12, 0, tzinfo=ZoneInfo("Europe/Istanbul")),
+        )
+
+        self.assertFalse(scraper._kickoff_in_allowed_window("2026-08-06 11:59"))
+        self.assertTrue(scraper._kickoff_in_allowed_window("2026-08-06 12:00"))
+        self.assertTrue(scraper._kickoff_in_allowed_window("2026-08-07 12:00"))
+        self.assertFalse(scraper._kickoff_in_allowed_window("2026-08-07 12:01"))
+
+    def test_today_fallback_alone_is_not_complete_24_hour_coverage(self):
+        scraper = UpcomingScraper()
+        scraper._listing_source_reports = {
+            "scheduled": {"status": "partial", "count": 3},
+            "today_matches": {"status": "ok", "count": 3},
+            "future": {"status": "skipped", "count": 0},
+        }
+
+        self.assertFalse(scraper._listing_is_complete())
+
 
 class UpcomingScraperAsyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_navigation_retries_with_explicit_timeout(self):
@@ -133,6 +188,20 @@ class UpcomingScraperAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(
             all(call[1]["timeout"] == 12345 for call in page.goto_calls)
         )
+        self.assertEqual(page.waits, [400])
+
+    async def test_navigation_retries_http_error_responses(self):
+        scraper = UpcomingScraper(page_timeout_ms=12345)
+        page = _HttpRetryPage()
+
+        loaded = await scraper._goto_with_retry(
+            page,
+            "https://example.test/match",
+            label="test page",
+        )
+
+        self.assertTrue(loaded)
+        self.assertEqual(len(page.goto_calls), 2)
         self.assertEqual(page.waits, [400])
 
     async def test_report_counts_discovery_before_cap_and_marks_partial(self):
@@ -239,15 +308,15 @@ class UpcomingScraperAsyncTests(unittest.IsolatedAsyncioTestCase):
             calls += 1
             if calls == 1:
                 scraper._listing_source_reports = {
-                    "scheduled": {"status": "ok", "count": 1, "error": None},
+                    "scheduled": {"status": "partial", "count": 1, "error": "tomorrow timeout"},
                     "today_matches": {"status": "skipped", "count": 0, "error": None},
-                    "future": {"status": "failed", "count": 0, "error": "timeout"},
+                    "future": {"status": "skipped", "count": 0, "error": None},
                 }
                 return [link_a]
             scraper._listing_source_reports = {
-                "scheduled": {"status": "failed", "count": 0, "error": "timeout"},
-                "today_matches": {"status": "ok", "count": 1, "error": None},
-                "future": {"status": "ok", "count": 1, "error": None},
+                "scheduled": {"status": "ok", "count": 1, "error": None},
+                "today_matches": {"status": "skipped", "count": 0, "error": None},
+                "future": {"status": "skipped", "count": 0, "error": None},
             }
             return [link_b]
 
@@ -264,6 +333,40 @@ class UpcomingScraperAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(scraper.last_report["listing_attempts"]), 2)
         self.assertTrue(scraper.last_report["listing_complete"])
         self.assertEqual(scraper.last_report["status"], "complete")
+
+    async def test_missing_total_market_marks_detail_row_partial(self):
+        scraper = UpcomingScraper(max_matches=None)
+        link = "https://www.aiscore.com/basketball/match-a-b/id-a"
+        scraper._listing_rows_by_id["id-a"] = {
+            "match_id": "id-a",
+            "match_name": "A - B",
+            "home_team": "A",
+            "away_team": "B",
+            "kickoff": "18:30",
+            "listing_source": "today_matches",
+            "kickoff_source": "today_matches",
+        }
+        scraper._listing_source_by_id["id-a"] = "today_matches"
+        scraper._read_odds_page = AsyncMock(
+            return_value={
+                "match_name": "A - B",
+                "opening": None,
+                "prematch": None,
+                "is_live": False,
+                "is_finished": False,
+            }
+        )
+        scraper._read_h2h_page = AsyncMock(return_value="usable h2h body")
+
+        with patch(
+            "upcoming_scraper.extract_h2h_metrics",
+            return_value={"expected_total": 165.5},
+        ):
+            row = await scraper._extract_one(_DetailContext(), link)
+
+        self.assertEqual(row["data_status"], "partial")
+        self.assertIn("total_market_unavailable", row["data_warnings"])
+        self.assertEqual(row["match_name"], "A - B")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,11 @@
 import unittest
 
 from signal_analysis import _market_total
-from signal_quality import calculate_signal_quality
+from signal_quality import (
+    SIGNAL_SCORE_VERSION,
+    build_league_signal_profile,
+    calculate_signal_quality,
+)
 
 
 def quality(**overrides):
@@ -14,18 +18,14 @@ def quality(**overrides):
         "status": "Q3 04:00",
         "match_name": "Home - Away",
         "tournament": "FIBA",
-        "url": "https://example.test/match",
-        "pure_projected_total": 155.0,
+        "projected_total": 155.0,
         "fair_line": 160.0,
-        "projection_quality": 85,
-        "sustainable_ppm": 3.4,
-        "odds_snapshot": {
-            "bookmaker_count": 2,
-            "paired_bookmaker_count": 2,
-            "opening_min": 159.5,
-            "opening_max": 160.5,
-            "inplay_min": 169.5,
-            "inplay_max": 170.5,
+        "league_signal_stats": {
+            "wins": 21,
+            "resolved": 30,
+            "rate": 70.0,
+            "adjusted_rate": 65.0,
+            "scope": "league_direction",
         },
     }
     payload.update(overrides)
@@ -33,65 +33,104 @@ def quality(**overrides):
 
 
 class SignalQualityTests(unittest.TestCase):
-    def test_high_quality_requires_complete_basketball_evidence(self):
+    def test_strong_evidence_is_prospectively_capped_at_three_stars(self):
         result = quality()
-        self.assertEqual(result["quality_label"], "ÇOK GÜÇLÜ")
-        self.assertGreaterEqual(result["quality_score"], 85)
-        self.assertEqual(result["score_kind"], "expert_heuristic_not_probability")
-        self.assertEqual(result["confidence_score_version"], "basketball_expert_v1")
-        self.assertEqual(
-            result["quality_score"],
-            sum(item["score"] for item in result["confidence_components"].values()),
-        )
 
-    def test_missing_clock_is_capped_below_watch(self):
-        result = quality(status="Live")
+        self.assertEqual(result["quality_score"], 74)
+        self.assertEqual(result["quality_label"], "ORTA-GÜÇLÜ")
+        self.assertEqual(result["stars"], 3)
+        self.assertEqual(result["signal_score_version"], SIGNAL_SCORE_VERSION)
+        self.assertEqual(result["score_kind"], "evidence_ranking_not_probability")
+        self.assertEqual(sum(item["score"] for item in result["score_components"].values()), 100)
+        self.assertIn("ileri tarihli kanıt", result["risk_note"])
+
+    def test_small_league_sample_cannot_receive_five_stars(self):
+        result = quality(league_signal_stats={
+            "wins": 4,
+            "resolved": 4,
+            "rate": 100.0,
+            "adjusted_rate": 64.3,
+        })
+
+        self.assertLessEqual(result["quality_score"], 74)
+        self.assertLessEqual(result["stars"], 3)
+        self.assertIn("lig örneklemi", result["risk_note"])
+
+    def test_fair_line_against_direction_is_hard_capped(self):
+        result = quality(fair_line=175.0)
+
+        self.assertLessEqual(result["quality_score"], 39)
+        self.assertIn("adil barem sinyal yönünü desteklemiyor", result["risk_note"])
+
+    def test_projection_against_direction_is_hard_capped(self):
+        result = quality(projected_total=180.0)
+
         self.assertLessEqual(result["quality_score"], 49)
+        self.assertIn("tempo projeksiyonu sinyal yönüne ters", result["risk_note"])
+
+    def test_fair_edge_below_four_is_risky(self):
+        result = quality(fair_line=167.0)
+
+        self.assertLessEqual(result["quality_score"], 59)
+        self.assertIn("4 sayının altında", result["risk_note"])
+
+    def test_missing_clock_is_capped(self):
+        result = quality(status="Live")
+
+        self.assertLessEqual(result["quality_score"], 39)
         self.assertIn("kesin maç saati yok", result["risk_note"])
 
-    def test_fair_line_without_projection_is_a_safe_data_failure(self):
-        result = quality(
-            pure_projected_total=None,
-            score="",
-            status="Live",
-            fair_line=160.0,
-        )
-        self.assertIsNone(result["projection"])
-        self.assertIsNone(result["projection_diff"])
-        self.assertTrue(result["data_hard_fail"])
-        self.assertLessEqual(result["quality_score"], 49)
-
-    def test_first_four_minutes_are_not_actionable(self):
+    def test_first_four_minutes_are_capped(self):
         result = quality(status="Q1 07:00", score="4 - 3")
+
         self.assertLessEqual(result["quality_score"], 49)
         self.assertIn("Q1 ilk 4 dakika", result["risk_note"])
 
-    def test_late_close_game_penalizes_under_more_than_over(self):
-        under = quality(status="Q4 06:00", score="70 - 67", direction="ALT")
-        over = quality(status="Q4 06:00", score="70 - 67", direction="ÜST", fair_line=180.0)
-        self.assertLess(under["components"]["game_script"], over["components"]["game_script"])
-
-    def test_same_direction_repeat_is_not_bonus(self):
-        first = quality()
-        repeated = quality(previous_directions=["ALT"])
-        self.assertEqual(first["quality_score"], repeated["quality_score"])
-
-    def test_confidence_does_not_count_fair_edge_as_a_second_signal(self):
-        strong_fair = quality(fair_line=155.0)
-        weak_fair = quality(fair_line=168.0)
-
-        self.assertEqual(
-            strong_fair["model_support_score"],
-            weak_fair["model_support_score"],
-        )
-        self.assertEqual(
-            strong_fair["expert_heuristic_score"],
-            weak_fair["expert_heuristic_score"],
-        )
-
     def test_direction_flip_is_capped(self):
         result = quality(previous_directions=["ÜST"])
+
         self.assertLessEqual(result["quality_score"], 59)
+        self.assertIn("yön değişimi", result["risk_note"])
+
+    def test_bookmaker_metadata_does_not_change_score(self):
+        self.assertEqual(
+            quality(odds_snapshot={"bookmaker_count": 1})["quality_score"],
+            quality(odds_snapshot={"bookmaker_count": 5})["quality_score"],
+        )
+
+    def test_league_profile_counts_each_match_once_with_current_strategy(self):
+        base = {
+            "match_name": "Home - Away",
+            "tournament": "FIBA",
+            "opening": 160,
+            "prematch": 160,
+            "live": 170,
+            "score": "40 - 35",
+            "status": "Q2 05:00",
+            "result": "Başarılı",
+        }
+        rows = [
+            {**base, "id": 1, "match_id": "m1", "signal_count": 1, "final_score": "90 - 90"},
+            {**base, "id": 2, "match_id": "m1", "signal_count": 2, "final_score": "90 - 90"},
+            {**base, "id": 3, "match_id": "m2", "signal_count": 1, "final_score": "80 - 80"},
+        ]
+
+        profile = build_league_signal_profile(rows)
+
+        self.assertEqual(profile["leagues"]["FIBA"]["overall"]["resolved"], 2)
+        self.assertEqual(profile["leagues"]["FIBA"]["overall"]["wins"], 1)
+
+    def test_global_fallback_cannot_create_a_strong_signal(self):
+        result = quality(league_signal_stats={
+            "wins": 70,
+            "resolved": 100,
+            "rate": 70.0,
+            "adjusted_rate": 68.2,
+            "scope": "global_fallback",
+        })
+
+        self.assertLessEqual(result["quality_score"], 64)
+        self.assertIn("bu lig için", result["risk_note"])
 
     def test_prematch_line_has_priority_over_opening(self):
         match = {
@@ -100,35 +139,6 @@ class SignalQualityTests(unittest.TestCase):
             "odds_snapshot": {"opening_median": 151, "prematch_median": 164},
         }
         self.assertEqual(_market_total(match, 150), 164.0)
-
-    def test_single_bookmaker_is_enough_without_cross_bookmaker_comparison(self):
-        single = quality(odds_snapshot={
-            "bookmaker_count": 1,
-            "paired_bookmaker_count": 1,
-            "opening_min": 160,
-            "opening_max": 160,
-            "inplay_min": 170,
-            "inplay_max": 170,
-        })
-        self.assertFalse(single["data_hard_fail"])
-        self.assertTrue(single["data_checks"]["readable_bookmaker_available"])
-
-        wide = quality(odds_snapshot={
-            "bookmaker_count": 2,
-            "paired_bookmaker_count": 2,
-            "opening_min": 150,
-            "opening_max": 170,
-            "inplay_min": 155,
-            "inplay_max": 180,
-        })
-        self.assertFalse(wide["data_hard_fail"])
-        self.assertNotIn("market_dispersion_valid", wide["data_checks"])
-
-    def test_missing_result_source_url_cannot_enter_prospective_evidence(self):
-        result = quality(url="")
-
-        self.assertTrue(result["data_hard_fail"])
-        self.assertFalse(result["data_checks"]["result_source_present"])
 
 
 if __name__ == "__main__":

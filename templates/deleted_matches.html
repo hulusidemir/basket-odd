@@ -1820,10 +1820,10 @@
               <th data-sort="score">Skor</th>
               <th data-sort="opening">Açılış</th>
               <th data-sort="live">Canlı</th>
-              <th data-sort="signal_quality_score">Güven</th>
+              <th data-sort="signal_quality_score">Sinyal</th>
               <th data-sort="diff">Fark</th>
               <th data-sort="fair_line">Adil Barem</th>
-              <th data-sort="projected">Proj.</th>
+              <th data-sort="projected">Tempo Proj.</th>
               <th data-sort="result">Sonuç</th>
               <th aria-label="Sil"></th>
             </tr>
@@ -2166,19 +2166,17 @@
 	        : {};
 	      const score = numValue(quality.quality_score ?? alert?.signal_quality_score);
 	      const label = String(quality.quality_label ?? alert?.signal_quality_label ?? '').trim();
+	      const stars = Math.max(1, Math.min(5, Number(quality.stars ?? alert?.signal_stars ?? 1)));
+	      const starText = '★'.repeat(stars);
 	      const tone = score === null ? 'neutral'
 	        : score >= 85 ? 'strong'
-	        : score >= 70 ? 'playable'
+	        : score >= 65 ? 'playable'
 	        : score >= 55 ? 'watch'
 	        : score >= 40 ? 'neutral'
 	        : 'pass';
-	      const scoreText = score === null ? '-' : `${Math.round(score)}/100`;
-	      const gate = gatePresentation(alert);
-	      const title = [
-	        `Silme anındaki uzman güven skoru: ${scoreText}${label ? ` · ${label}` : ''}`,
-	        `${gate.text}: ${gate.label}`,
-	      ].join(' | ');
-	      return `<span class="quality-cell"><button type="button" class="badge quality-badge ${tone}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(title)}" aria-label="Silme anındaki güven puanını aç">${escapeHtml(scoreText)}</button></span>`;
+	      const scoreText = score === null ? '-' : `${Math.round(score)}`;
+	      const title = `Sinyal: ${scoreText}${label ? ` · ${label}` : ''}`;
+	      return `<span class="quality-cell"><button type="button" class="badge quality-badge ${tone}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(title)}" aria-label="Silme anındaki sinyal puanını aç">${escapeHtml(scoreText)} ${escapeHtml(starText)}</button></span>`;
 	    }
 
 	    function qualityValue(value, digits = 1) {
@@ -2191,44 +2189,25 @@
 	      const modal = document.getElementById('signalQualityModal');
 	      const content = document.getElementById('signalQualityContent');
 	      if (!alert || !modal || !content) return;
-	      const quality = alert.signal_quality && typeof alert.signal_quality === 'object' ? alert.signal_quality : {};
-	      const score = quality.quality_score ?? alert.signal_quality_score;
-	      const scoreNum = numValue(score);
-	      const label = quality.quality_label ?? alert.signal_quality_label ?? '-';
-	      const modelSupport = numValue(quality.model_support_score);
-	      const gate = alert.signal_gate && typeof alert.signal_gate === 'object' ? alert.signal_gate : {};
-	      const evidence = gate.evidence && typeof gate.evidence === 'object' ? gate.evidence : {};
-	      const gateUi = gatePresentation(alert);
-	      const rate = numValue(evidence.rate);
-	      const lower = numValue(evidence.wilson_low_95);
-	      const reasons = gateReasonTexts(alert);
-	      const reasonsHtml = reasons.length
-	        ? `<ul class="signal-note-list">${reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>`
-	        : '<div class="signal-quality-note">Ek engel nedeni yok.</div>';
-	      document.getElementById('signalQualityTitle').textContent = `Sinyal Güveni - ${cleanMatchName(alert.match_name || '-')}`;
-	      content.innerHTML = `
-	        <div class="signal-quality-card">
-	          <div class="signal-quality-row"><span>Silme anındaki uzman güven skoru</span><strong>${scoreNum === null ? '-' : scoreNum.toFixed(0)} / 100 · ${escapeHtml(label)}</strong></div>
-	          <div class="signal-quality-row"><span>Silme anındaki sistem kararı</span><strong>${escapeHtml(gateUi.text)} · ${escapeHtml(gateUi.label)}</strong></div>
-	          <div class="signal-quality-row"><span>İleri tarihli benzersiz sonuç</span><strong>${escapeHtml(evidence.resolved_unique ?? 0)} / 100</strong></div>
-	          <div class="signal-quality-row"><span>Gerçekleşen başarı</span><strong>${Number.isFinite(rate) ? '%' + rate.toFixed(1) : '-'}</strong></div>
-	          <div class="signal-quality-row"><span>%95 alt güven sınırı</span><strong>${Number.isFinite(lower) ? '%' + lower.toFixed(1) : '-'}</strong></div>
-	          <div class="signal-quality-row"><span>Veri güvenilirliği</span><strong>${escapeHtml(quality.data_reliability_score ?? '-')} / 100</strong></div>
-	          <div class="signal-quality-row"><span>Teknik model desteği</span><strong>${modelSupport === null ? '-' : modelSupport.toFixed(0)} / 100</strong></div>
-	          <div class="signal-quality-row"><span>Projeksiyon</span><strong>${qualityValue(quality.projection)}</strong></div>
-	          <div class="signal-quality-row"><span>Projeksiyon - Canlı Barem Farkı</span><strong>${qualityValue(quality.projection_diff)}</strong></div>
-	          <div class="signal-quality-row"><span>Gereken Tempo</span><strong>${qualityValue(quality.required_pace, 2)}</strong></div>
-	          <div class="signal-quality-row"><span>Mevcut Tempo</span><strong>${qualityValue(quality.current_pace, 2)}</strong></div>
-	          <div class="signal-quality-row"><span>Skor Farkı</span><strong>${escapeHtml(quality.score_gap ?? '-')}</strong></div>
-		          <div class="signal-quality-row"><span>Risk Notu</span><strong>${escapeHtml(quality.risk_note || alert.signal_quality_risk_note || '-')}</strong></div>
-		        </div>
-		        <div class="signal-quality-title">Kararın Açık Nedenleri</div>
-		        <div class="signal-quality-card">${reasonsHtml}</div>
-		        <div class="signal-quality-title">Model Uyum Gerekçesi</div>
-	        <div class="signal-quality-card signal-quality-note">${escapeHtml(quality.reason || alert.signal_quality_reason || '-')}</div>
-	        <div class="signal-quality-note">Bu değerler canlı dashboard satırı silinirken saklanan değerlerdir; burada yeniden hesaplanmaz. Model uyum puanı kazanma olasılığı değildir.</div>
-	      `;
-	      modal.classList.add('open');
+	      {
+	        const scoreData = alert.signal_quality && typeof alert.signal_quality === 'object' ? alert.signal_quality : {};
+	        const scoreValue = numValue(scoreData.quality_score ?? alert.signal_quality_score);
+	        const labelValue = scoreData.quality_label ?? alert.signal_quality_label ?? 'Yeni skor yok';
+	        const starCount = Math.max(1, Math.min(5, Number(scoreData.stars ?? alert.signal_stars ?? 1)));
+	        const starText = '★'.repeat(starCount);
+	        const leagueRate = numValue(scoreData.league_rate);
+	        document.getElementById('signalQualityTitle').textContent = `Sinyal Skoru - ${cleanMatchName(alert.match_name || '-')}`;
+	        content.innerHTML = `
+	          <div class="signal-quality-card">
+	            <div class="signal-quality-row"><span>Sinyal</span><strong>${scoreValue === null ? '-' : scoreValue.toFixed(0)} ${escapeHtml(starText)} · ${escapeHtml(labelValue)}</strong></div>
+	            <div class="signal-quality-row"><span>Adil fark</span><strong>${qualityValue(scoreData.fair_edge)}</strong></div>
+	            <div class="signal-quality-row"><span>Tempo farkı</span><strong>${qualityValue(scoreData.projection_diff)}</strong></div>
+	            <div class="signal-quality-row"><span>Lig</span><strong>${leagueRate === null ? 'Veri yok' : '%' + leagueRate.toFixed(0) + ' (' + escapeHtml(scoreData.league_samples ?? 0) + ' maç)'}</strong></div>
+	          </div>
+	          <div class="signal-quality-note">${escapeHtml(scoreData.risk_note || 'Belirgin ek risk yok.')}</div>`;
+	        modal.classList.add('open');
+	        return;
+	      }
 	    }
 
 	    function closeSignalQualityModal() {
@@ -2435,7 +2414,7 @@
             </div>
             <div>
               <div class="stat-num">${projectedStr}</div>
-              <div class="stat-label">Projeksiyon</div>
+              <div class="stat-label">Tempo aynı kalırsa</div>
               ${projectedGapStr ? `<div class="stat-sub ${projectedGapCls}">${projectedGapStr} fark</div>` : ''}
             </div>
           </div>

@@ -1,28 +1,22 @@
 from __future__ import annotations
 
 import math
+import re
 
-from projection import game_clock, parse_score
+from projection import calculate_live_projection, game_clock, parse_score
 
 
-CONFIDENCE_SCORE_VERSION = "basketball_expert_v1"
+SIGNAL_SCORE_VERSION = "market_edge_league_v1"
+SIGNAL_SCORE_EPOCH = "2026-08-04T00:00:00+03:00"
+LEAGUE_EDGE_MINIMUM = 4.0
 
 
 def _safe_float(value) -> float | None:
-    if value is None:
-        return None
     try:
-        parsed = float(str(value).replace(",", ".").strip())
+        parsed = float(value)
     except (TypeError, ValueError):
         return None
     return parsed if math.isfinite(parsed) else None
-
-
-def _safe_int(value) -> int | None:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _normalize_direction(value) -> str:
@@ -30,523 +24,342 @@ def _normalize_direction(value) -> str:
     return text if text in {"ALT", "ÜST"} else ""
 
 
-def _clamp_score(value: float) -> int:
-    return int(round(max(0, min(100, value))))
+def _final_total(value) -> float | None:
+    match = re.fullmatch(r"\s*(\d{1,3})\s*[-–]\s*(\d{1,3})\s*", str(value or ""))
+    if not match:
+        return None
+    total = float(int(match.group(1)) + int(match.group(2)))
+    return total if 60 <= total <= 400 else None
 
 
 def _quality_label(score: int) -> str:
     if score >= 85:
         return "ÇOK GÜÇLÜ"
-    if score >= 70:
+    if score >= 75:
         return "GÜÇLÜ"
-    if score >= 55:
-        return "ORTA"
-    if score >= 40:
-        return "ZAYIF"
-    return "ÇOK ZAYIF"
+    if score >= 65:
+        return "ORTA-GÜÇLÜ"
+    if score >= 50:
+        return "RİSKLİ"
+    return "ÇOK RİSKLİ"
 
 
-def _fmt(value, digits: int = 1) -> str:
-    number = _safe_float(value)
-    return "-" if number is None else f"{number:.{digits}f}"
+def _stars(score: int) -> int:
+    if score >= 85:
+        return 5
+    if score >= 75:
+        return 4
+    if score >= 65:
+        return 3
+    if score >= 50:
+        return 2
+    return 1
 
 
-def _played_minutes(match_data: dict, total_score: int | None) -> tuple[float | None, dict]:
-    explicit = _safe_float(match_data.get("played_minutes") or match_data.get("elapsed_minutes"))
+def _bucket_stats(wins: int, resolved: int) -> dict:
+    if resolved <= 0:
+        return {"wins": 0, "resolved": 0, "rate": None, "adjusted_rate": None}
+    rate = wins / resolved * 100.0
+    # Ten neutral pseudo-games stop a tiny 3/3 or 4/4 sample from presenting
+    # itself as trustworthy league evidence.
+    adjusted = (wins + 5.0) / (resolved + 10.0) * 100.0
+    return {
+        "wins": wins,
+        "resolved": resolved,
+        "rate": round(rate, 1),
+        "adjusted_rate": round(adjusted, 1),
+    }
+
+
+def _historical_strategy_observation(row: dict) -> dict | None:
+    """Re-evaluate one archived alert with the current fair-line strategy."""
+    final_total = _final_total(row.get("final_score"))
+    live = _safe_float(row.get("live"))
+    opening = _safe_float(row.get("opening"))
+    if final_total is None or live is None or opening is None:
+        return None
+
+    prematch = _safe_float(row.get("prematch"))
+    projection = calculate_live_projection(
+        str(row.get("score") or ""),
+        str(row.get("status") or ""),
+        str(row.get("match_name") or ""),
+        str(row.get("tournament") or ""),
+        market_total=prematch if prematch is not None else opening,
+        opening_total=opening,
+    )
+    projected = _safe_float(projection.get("projected_total"))
+    clock = game_clock(
+        str(row.get("status") or ""),
+        str(row.get("match_name") or ""),
+        str(row.get("tournament") or ""),
+    )
+    home, away = parse_score(str(row.get("score") or ""))
+    if (
+        projected is None
+        or home is None
+        or away is None
+        or clock.get("period") is None
+        or clock.get("remaining_min") is None
+    ):
+        return None
+
+    elapsed = (
+        (int(clock["period"]) - 1) * float(clock.get("quarter_length") or 10)
+        + (float(clock.get("quarter_length") or 10) - float(clock["remaining_min"]))
+    )
+    from signal_analysis import calculate_fair_line
+
+    fair, _meta = calculate_fair_line(
+        prematch=prematch if prematch is not None else opening,
+        pure_pace_projection=projected,
+        elapsed_minutes=elapsed,
+        total_game_minutes=int(clock.get("total_game_min") or 40),
+        live_line=live,
+        period=int(clock["period"]),
+        current_total=float(home + away),
+    )
+    fair = _safe_float(fair)
+    if fair is None:
+        return None
+    fair_edge = fair - live
+    if abs(fair_edge) < LEAGUE_EDGE_MINIMUM:
+        return None
+    direction = "ÜST" if fair_edge > 0 else "ALT"
+    if abs(final_total - live) < 0.0001:
+        return None
+    won = final_total > live if direction == "ÜST" else final_total < live
+    return {
+        "direction": direction,
+        "won": bool(won),
+        "fair_edge": round(fair_edge, 1),
+    }
+
+
+def build_league_signal_profile(rows: list[dict] | None) -> dict:
+    """Build match-unique, versioned league evidence for the new strategy."""
+    first_by_match: dict[str, tuple[tuple, dict]] = {}
+    for row in rows or []:
+        match_id = str(row.get("match_id") or "").strip()
+        if not match_id:
+            continue
+        rank = (
+            int(row.get("signal_count") or 999),
+            str(row.get("alerted_at") or ""),
+            int(row.get("id") or 0),
+        )
+        current = first_by_match.get(match_id)
+        if current is None or rank < current[0]:
+            first_by_match[match_id] = (rank, row)
+
+    counters: dict[tuple[str, str], dict[str, int]] = {}
+
+    def add(scope: str, direction: str, won: bool) -> None:
+        bucket = counters.setdefault((scope, direction), {"wins": 0, "resolved": 0})
+        bucket["resolved"] += 1
+        if won:
+            bucket["wins"] += 1
+
+    for _rank, row in first_by_match.values():
+        tournament = str(row.get("tournament") or "").strip()
+        if not tournament:
+            continue
+        observation = _historical_strategy_observation(row)
+        if not observation:
+            continue
+        direction = observation["direction"]
+        won = observation["won"]
+        for scope in ("__global__", tournament):
+            add(scope, "overall", won)
+            add(scope, direction, won)
+
+    profile = {
+        "version": SIGNAL_SCORE_VERSION,
+        "epoch": SIGNAL_SCORE_EPOCH,
+        "global": {},
+        "leagues": {},
+    }
+    for (scope, direction), bucket in counters.items():
+        stats = _bucket_stats(bucket["wins"], bucket["resolved"])
+        if scope == "__global__":
+            profile["global"][direction] = stats
+        else:
+            profile["leagues"].setdefault(scope, {})[direction] = stats
+    return profile
+
+
+def league_stats_for_signal(profile: dict | None, tournament: str, direction: str) -> dict:
+    profile = profile if isinstance(profile, dict) else {}
+    league = (profile.get("leagues") or {}).get(str(tournament or "").strip()) or {}
+    direction = _normalize_direction(direction)
+    directional = league.get(direction) if direction else None
+    overall = league.get("overall") or {}
+    if isinstance(directional, dict) and int(directional.get("resolved") or 0) >= 8:
+        return {**directional, "scope": "league_direction"}
+    if isinstance(overall, dict) and int(overall.get("resolved") or 0) > 0:
+        return {**overall, "scope": "league"}
+    global_stats = (profile.get("global") or {}).get(direction) or (profile.get("global") or {}).get("overall") or {}
+    return {**global_stats, "scope": "global_fallback"} if global_stats else {}
+
+
+def _edge_points(edge: float | None, thresholds: tuple[tuple[float, int], ...]) -> int:
+    if edge is None:
+        return 0
+    points = 0
+    for threshold, value in thresholds:
+        if edge >= threshold:
+            points = value
+    return points
+
+
+def calculate_signal_quality(match_data: dict) -> dict:
+    """Return a conservative market-edge score, never a win probability."""
+    direction = _normalize_direction(match_data.get("direction") or match_data.get("final_direction"))
+    live = _safe_float(match_data.get("live") or match_data.get("inplay_total"))
+    projection = _safe_float(
+        match_data.get("projected_total")
+        or match_data.get("pure_projected_total")
+        or match_data.get("projected")
+    )
+    fair = _safe_float(match_data.get("fair_line"))
+    fair_edge = None
+    projection_edge = None
+    if direction and live is not None and fair is not None:
+        fair_edge = fair - live if direction == "ÜST" else live - fair
+    if direction and live is not None and projection is not None:
+        projection_edge = projection - live if direction == "ÜST" else live - projection
+
+    fair_points = _edge_points(
+        fair_edge,
+        ((0, 5), (2, 15), (4, 28), (5, 36), (6, 45)),
+    )
+    projection_points = _edge_points(
+        projection_edge,
+        ((0, 4), (3, 8), (5, 13), (8, 19), (12, 25)),
+    )
+
+    league_stats = match_data.get("league_signal_stats")
+    if not isinstance(league_stats, dict):
+        league_stats = {
+            "rate": match_data.get("league_success_rate"),
+            "adjusted_rate": match_data.get("league_adjusted_rate"),
+            "resolved": match_data.get("league_success_samples"),
+            "scope": "legacy_input",
+        }
+    league_samples = int(league_stats.get("resolved") or 0)
+    league_scope = str(league_stats.get("scope") or "")
+    league_rate = _safe_float(league_stats.get("rate"))
+    adjusted_rate = _safe_float(league_stats.get("adjusted_rate"))
+    if adjusted_rate is None and league_rate is not None:
+        adjusted_rate = (league_rate * league_samples / 100.0 + 5.0) / (league_samples + 10.0) * 100.0
+    league_raw_points = _edge_points(
+        adjusted_rate,
+        ((0, 0), (45, 3), (50, 7), (55, 12), (60, 16), (65, 20)),
+    )
+    league_points = (
+        0
+        if league_scope == "global_fallback"
+        else int(round(league_raw_points * min(1.0, league_samples / 30.0)))
+    )
+    agreement_points = 10 if (fair_edge is not None and fair_edge > 0 and projection_edge is not None and projection_edge > 0) else 0
+
+    score = fair_points + projection_points + league_points + agreement_points
+    caps: list[int] = []
+    risks: list[str] = []
     clock = game_clock(
         str(match_data.get("status") or ""),
         str(match_data.get("match_name") or ""),
         str(match_data.get("tournament") or ""),
     )
-    if explicit is not None and explicit > 0:
-        return explicit, clock
-
-    period = clock.get("period")
-    remaining_min = clock.get("remaining_min")
-    quarter_length = clock.get("quarter_length") or 10
-    if period is not None and remaining_min is not None:
-        played = (int(period) - 1) * quarter_length + (quarter_length - float(remaining_min))
-        return max(0.0, played), clock
-
-    # Live status but no clock: keep projection limited instead of inventing a
-    # precise minute from score. The caller gets an explicit missing-data note.
-    if total_score is not None and str(match_data.get("status") or "").strip().lower() == "live":
-        return None, clock
-    return None, clock
-
-
-def _assess_data_reliability(
-    match_data: dict,
-    *,
-    direction: str,
-    opening: float | None,
-    prematch: float | None,
-    live: float | None,
-    total_score: int | None,
-    clock: dict,
-) -> dict:
-    """Score only input integrity; this is deliberately not a win estimate."""
-    period = clock.get("period")
-    remaining = _safe_float(clock.get("remaining_min"))
-    period_count = _safe_int(clock.get("period_count"))
-    quarter_length = _safe_float(clock.get("quarter_length"))
-    projection = _safe_float(
-        match_data.get("pure_projected_total")
-        or match_data.get("projected_total")
-        or match_data.get("projected")
-    )
-    fair_line = _safe_float(match_data.get("fair_line"))
-    status = str(match_data.get("status") or "").strip().upper()
-    odds_snapshot = (
-        match_data.get("odds_snapshot")
-        if isinstance(match_data.get("odds_snapshot"), dict)
-        else {}
-    )
-    paired_bookmakers = _safe_int(
-        odds_snapshot.get("paired_bookmaker_count")
-    ) or 0
-
-    checks = {
-        "direction_valid": direction in {"ALT", "ÜST"},
-        "lines_valid": opening is not None and live is not None,
-        "score_valid": total_score is not None,
-        "clock_explicit": period is not None and remaining is not None,
-        "clock_range_valid": bool(
-            period is not None
-            and period_count is not None
-            and 1 <= int(period) <= period_count
-            and remaining is not None
-            and quarter_length is not None
-            and 0 <= remaining <= quarter_length
-        ),
-        "format_supported": bool(clock.get("model_validated")),
-        "projection_available": projection is not None and fair_line is not None,
-        # Prospective trials need a durable route to the final score. A model
-        # candidate without its source URL cannot ever become valid evidence.
-        "result_source_present": bool(str(match_data.get("url") or "").strip()),
-        "live_line_above_score": bool(
-            live is not None and total_score is not None and live >= total_score
-        ),
-        "not_overtime": not status.startswith("OT") and "UZATMA" not in status,
-        # One bookmaker with both opening and in-play total is sufficient.
-        # Cross-bookmaker count/spread comparison is intentionally not a gate.
-        "readable_bookmaker_available": paired_bookmakers >= 1,
-        "market_not_locked": not bool(match_data.get("market_locked")),
-    }
-    hard_fail = not all(checks.values())
-    score = 100
-    projection_quality = _safe_float(match_data.get("projection_quality"))
-    if projection_quality is None:
-        score -= 60
-    elif projection_quality < 70:
-        score -= 40
-    elif projection_quality < 85:
-        score -= 20
-    if prematch is None:
-        score -= 10
-
-    quarter_totals = match_data.get("quarter_totals")
-    if not isinstance(quarter_totals, list) or not quarter_totals:
-        score -= 10
-    completed_needed = max(0, int(period or 1) - 1)
-    if completed_needed and (
-        not isinstance(quarter_totals, list) or len(quarter_totals) < completed_needed
-    ):
-        score -= 15
-    if hard_fail:
-        score = min(score, 49)
-    return {
-        "score": _clamp_score(score),
-        "hard_fail": hard_fail,
-        "checks": checks,
-    }
-
-
-def _minute_phase_delta(clock: dict, played: float | None) -> tuple[int, str | None]:
-    period = clock.get("period")
-    remaining_min = clock.get("remaining_min")
-    quarter_length = float(clock.get("quarter_length") or 10)
-    if period is None or remaining_min is None or played is None:
-        return 0, None
-
-    elapsed_in_period = max(0.0, quarter_length - float(remaining_min))
-    if int(period) == 1:
-        if elapsed_in_period < quarter_length * 0.4:
-            return -10, "1. periyot erken bölüm: veri henüz oturmamış."
-        return -5, "1. periyot sonu: sinyal evresi sınırlı güven verdi."
-    if int(period) == 2:
-        if elapsed_in_period < quarter_length * 0.35:
-            return -5, "2. periyot başı: geçiş evresi sınırlı güven verdi."
-        if float(remaining_min) <= quarter_length * 0.35:
-            return 5, "Devreye yakın bölüm: veri daha oturmuş görünüyor."
-        return 0, "2. periyot orta bölüm: maç evresi nötr."
-    if int(period) == 3:
-        if elapsed_in_period < quarter_length * 0.35:
-            return 5, "3. periyot başı: ikinci yarı verisi oluşuyor."
-        return 10, "3. periyot orta/son bölüm: tempo verisi daha güvenilir."
-    if int(period) == 4:
-        if float(remaining_min) <= 5:
-            return -10, "4. periyot son 5 dakika: maç sonu dinamikleri riski artırır."
-        return 5, "4. periyot başı: veri oturmuş ancak maç sonu etkisi yaklaşabilir."
-    return 0, None
-
-
-def calculate_signal_quality(match_data: dict) -> dict:
-    """Return basketball expert evidence, not a claimed win probability."""
-    score_value = 50.0
-    reasons: list[str] = []
-    risk_notes: list[str] = []
-    caps: list[int] = []
-    components = {
-        "data": 0,
-        "phase": 0,
-        "model_edge": 0,
-        "pace_stability": 0,
-        "game_script": 0,
-        "market_context": 0,
-        "history_prior": 0,
-    }
-
-    direction = _normalize_direction(match_data.get("direction") or match_data.get("final_direction"))
-    opening = _safe_float(match_data.get("opening") or match_data.get("opening_total"))
-    prematch = _safe_float(match_data.get("prematch") or match_data.get("prematch_total"))
-    live = _safe_float(match_data.get("live") or match_data.get("inplay_total"))
-    home_score, away_score = parse_score(str(match_data.get("score") or ""))
-    total_score = home_score + away_score if home_score is not None and away_score is not None else None
-    played, clock = _played_minutes(match_data, total_score)
-    total_game_min = _safe_float(match_data.get("total_game_min")) or float(clock.get("total_game_min") or 40)
-    reliability = _assess_data_reliability(
-        match_data,
-        direction=direction,
-        opening=opening,
-        prematch=prematch,
-        live=live,
-        total_score=total_score,
-        clock=clock,
-    )
-
-    missing = []
-    if not direction:
-        missing.append("sinyal yönü")
-    if opening is None:
-        missing.append("açılış baremi")
-    if live is None:
-        missing.append("canlı barem")
-    if total_score is None:
-        missing.append("skor")
-    if played is None or played <= 0:
-        missing.append("maç dakikası")
-    if missing:
-        risk_notes.append("eksik veri nedeniyle kalite sınırlı")
-        reasons.append("Eksik veri: " + ", ".join(missing) + ".")
-        caps.append(49)
-    else:
-        components["data"] = 10
-
-    status = str(match_data.get("status") or "").strip()
-    if status.upper().startswith("OT"):
+    if clock.get("period") is None or clock.get("remaining_min") is None:
         caps.append(39)
-        risk_notes.append("uzatma periyodu desteklenmiyor")
-
-    period = clock.get("period")
-    remaining_min = _safe_float(clock.get("remaining_min"))
-    quarter_length = _safe_float(clock.get("quarter_length")) or 10.0
-    if period is None or remaining_min is None:
-        caps.append(49)
-        risk_notes.append("kesin maç saati yok")
-    else:
-        components["data"] += 5
-
-    line_diff = live - opening if opening is not None and live is not None else None
-    market_reference = prematch if prematch is not None else opening
-    market_move = live - market_reference if live is not None and market_reference is not None else None
-    if market_move is not None:
-        abs_move = abs(market_move)
-        if 10 <= abs_move <= 16:
-            market_delta = 4
-        elif abs_move <= 22:
-            market_delta = 0
-        elif abs_move <= 30:
-            market_delta = -4
-        else:
-            market_delta = -8
-            caps.append(69)
-            risk_notes.append("aşırı piyasa hareketi")
-        components["market_context"] = market_delta
-        score_value += market_delta
-        reference_name = "prematch" if prematch is not None else "açılış"
-        reasons.append(f"Canlı barem {reference_name} bareminden {market_move:+.1f} farklı ({market_delta:+d}).")
-
-    minute_delta, minute_reason = _minute_phase_delta(clock, played)
-    if period == 3:
-        minute_delta = 8 if remaining_min is not None and remaining_min <= quarter_length * 0.65 else 3
-    elif period == 4 and remaining_min is not None and remaining_min > 5:
-        minute_delta = 2
-    if period == 1 and played is not None and played < 4:
-        caps.append(49)
-        risk_notes.append("Q1 ilk 4 dakika")
-    if period == 4 and remaining_min is not None and remaining_min <= 5:
-        caps.append(59)
-        risk_notes.append("Q4 son 5 dakika faul/rotasyon riski")
-    components["phase"] = minute_delta
-    score_value += minute_delta
-    if minute_reason:
-        reasons.append(f"{minute_reason} ({minute_delta:+d})")
-
-    current_pace = total_score / played if total_score is not None and played is not None and played > 0 else None
-    fallback_projection = current_pace * total_game_min if current_pace is not None else None
-    projection = _safe_float(
-        match_data.get("pure_projected_total")
-        or match_data.get("projected_total")
-        or match_data.get("projected")
-    )
-    advanced_projection = projection is not None
-    if projection is None:
-        projection = fallback_projection
-        caps.append(69)
-        risk_notes.append("yalnız ham puan/dakika projeksiyonu var")
-    projection_diff = None
-    signed_model_edge = None
-    fair_line = _safe_float(match_data.get("fair_line"))
-    model_line = fair_line if fair_line is not None else projection
-    if model_line is not None and live is not None and direction:
-        projection_diff = projection - live if projection is not None else None
-        signed_model_edge = model_line - live if direction == "ÜST" else live - model_line
-        if signed_model_edge < 0:
-            model_delta = -20
-        elif signed_model_edge < 3:
-            model_delta = -8
-        elif signed_model_edge < 5:
-            model_delta = 4
-        elif signed_model_edge < 8:
-            model_delta = 12
-        else:
-            model_delta = 16
-        if not advanced_projection:
-            model_delta = max(-10, min(8, model_delta))
-        components["model_edge"] = model_delta
-        score_value += model_delta
-        reasons.append(f"Yön işaretli model avantajı {signed_model_edge:+.1f} ({model_delta:+d}).")
-
-    projection_quality = _safe_float(match_data.get("projection_quality"))
-    if projection_quality is None:
-        caps.append(69)
-        risk_notes.append("projeksiyon kalite ölçümü yok")
-    else:
-        if projection_quality < 60:
+        risks.append("kesin maç saati yok")
+    elif int(clock.get("period") or 0) == 1:
+        elapsed_in_period = float(clock.get("quarter_length") or 10) - float(clock.get("remaining_min") or 0)
+        if elapsed_in_period < 4:
             caps.append(49)
-            risk_notes.append("projeksiyon kalitesi düşük")
-        elif projection_quality < 70:
-            caps.append(59)
-        elif projection_quality < 85:
-            caps.append(79)
-
-    score_gap = abs(home_score - away_score) if home_score is not None and away_score is not None else None
-    script_delta = 0
-    if score_gap is not None and period is not None and remaining_min is not None:
-        remaining_game = max(0.1, total_game_min - float(played or 0))
-        if period >= 3 and score_gap / remaining_game >= 2.0:
-            script_delta = 6 if direction == "ALT" else -12
-            risk_notes.append("garbage-time senaryosu")
-        elif period == 4 and 5 < remaining_min <= 8 and score_gap <= 7:
-            script_delta = 5 if direction == "ÜST" else -8
-            risk_notes.append("yakın maç faul senaryosu")
-    components["game_script"] = script_delta
-    score_value += script_delta
-    if script_delta:
-        reasons.append(f"Skor farkı ve kalan süre senaryosu ({script_delta:+d}).")
-
-    required_pace = None
-    if live is not None and total_score is not None and played is not None:
-        remaining = max(0.0, total_game_min - played)
-        if remaining > 0:
-            required_pace = (live - total_score) / remaining
-    sustainable_pace = _safe_float(match_data.get("sustainable_ppm"))
-    if sustainable_pace is None:
-        projection_components = match_data.get("projection_components")
-        if isinstance(projection_components, dict):
-            sustainable_pace = _safe_float(projection_components.get("sustainable_pace_per_min"))
-    if current_pace and sustainable_pace and sustainable_pace > 0 and direction:
-        deviation = (current_pace - sustainable_pace) / sustainable_pace
-        regression_direction = "ALT" if deviation > 0 else "ÜST"
-        magnitude = abs(deviation)
-        if magnitude >= 0.20:
-            pace_delta = 12 if regression_direction == direction else -18
-        elif magnitude >= 0.10:
-            pace_delta = 8 if regression_direction == direction else -12
-        else:
-            pace_delta = 0
-        # Model edge and pace stability share information; cap their combined upside.
-        if components["model_edge"] > 0:
-            pace_delta = min(pace_delta, max(0, 20 - components["model_edge"]))
-        components["pace_stability"] = pace_delta
-        score_value += pace_delta
-        reasons.append(f"Sürdürülebilir tempoya dönüş {regression_direction} yönünde ({pace_delta:+d}).")
-    else:
+            risks.append("Q1 ilk 4 dakika")
+    if not direction or live is None or fair is None or projection is None:
+        caps.append(39)
+        risks.append("sinyal hesabı için gerekli barem/projeksiyon eksik")
+    if fair_edge is not None and fair_edge < 0:
+        caps.append(39)
+        risks.append("adil barem sinyal yönünü desteklemiyor")
+    elif fair_edge is not None and fair_edge < 4:
+        caps.append(59)
+        risks.append("adil barem avantajı 4 sayının altında")
+    if projection_edge is not None and projection_edge < 0:
+        caps.append(49)
+        risks.append("ham tempo projeksiyonu sinyal yönüne ters")
+    if league_samples < 10:
+        caps.append(74)
+        risks.append("lig örneklemi henüz küçük")
+    if league_scope == "global_fallback":
+        caps.append(64)
+        risks.append("bu lig için karşılaştırılabilir sonuç yok")
+    if adjusted_rate is not None and adjusted_rate < 50:
+        caps.append(64)
+        risks.append("lig geçmişi sinyali desteklemiyor")
+    if not clock.get("model_validated"):
+        caps.append(59)
+        risks.append("maç formatı bu strateji için doğrulanmadı")
+    if clock.get("period") == 4:
         caps.append(69)
-        risk_notes.append("tamamlanmış periyot temposu yok")
-
-    # Outcome history is intentionally excluded from this heuristic. It is
-    # evaluated once, prospectively and with unique matches, by signal_gate.
-
+        risks.append("Q4 maç sonu faul ve rotasyon riski")
     previous_directions = [
         _normalize_direction(item)
         for item in (match_data.get("previous_directions") or [])
         if _normalize_direction(item)
     ]
-    if previous_directions and direction:
-        if any(prev != direction for prev in previous_directions):
-            score_value -= 12
-            caps.append(59)
-            risk_notes.append("yön değişimi var")
-            reasons.append("Aynı maçta önceki sinyal yönüyle çelişki var (-12 ve güven tavanı).")
-
-    # Fixed support score for one calibrated projection signal. Fair edge is a
-    # deterministic transformation of this gap, so it must not earn a second
-    # independent block of points.
-    model_support = 0.0
-    signed_projection_edge = None
-    if projection is not None and live is not None and direction:
-        signed_projection_edge = (
-            projection - live if direction == "ÜST" else live - projection
-        )
-        if signed_projection_edge >= 8:
-            model_support += 65
-        elif signed_projection_edge >= 6:
-            model_support += 55
-        elif signed_projection_edge >= 4:
-            model_support += 35
-        elif signed_projection_edge >= 0:
-            model_support += 15
-    if projection_quality is not None:
-        if projection_quality >= 85:
-            model_support += 10
-        elif projection_quality >= 70:
-            model_support += 5
-    if period in {2, 3}:
-        model_support += 10
-    if int(match_data.get("signal_count") or 1) == 1:
-        model_support += 10
-    model_support_score = _clamp_score(model_support)
+    if direction and any(previous != direction for previous in previous_directions):
+        caps.append(59)
+        risks.append("aynı maçta yön değişimi var")
+    # The 65-74 band separated prospectively in the current archive, while the
+    # few 75+ rows did not. Reserve four/five stars until this exact version has
+    # accumulated a dedicated prospective evidence ledger.
+    caps.append(74)
+    risks.append("4-5 yıldız için yeni stratejide ileri tarihli kanıt henüz yok")
     if caps:
-        model_support_score = min(model_support_score, min(caps))
+        score = min(score, min(caps))
+    score = int(round(max(0, min(100, score))))
+    star_count = _stars(score)
+    label = _quality_label(score)
 
-    # User-facing expert confidence score. These six blocks total 100 points.
-    # It ranks signals by evidence quality; it is not a claimed win chance.
-    data_points = max(0, min(20, int(round(reliability["score"] * 0.20))))
-
-    if signed_projection_edge is None or signed_projection_edge < 0:
-        model_edge_points = 0
-    elif signed_projection_edge < 3:
-        model_edge_points = 5
-    elif signed_projection_edge < 5:
-        model_edge_points = 12
-    elif signed_projection_edge < 6:
-        model_edge_points = 17
-    elif signed_projection_edge < 8:
-        model_edge_points = 24
-    else:
-        model_edge_points = 30
-
-    phase_points = 0
-    if period == 1 and remaining_min is not None:
-        phase_points = 0 if played is not None and played < 4 else 3
-    elif period == 2 and remaining_min is not None:
-        elapsed_in_period = quarter_length - remaining_min
-        if elapsed_in_period < quarter_length * 0.35:
-            phase_points = 6
-        elif remaining_min <= quarter_length * 0.35:
-            phase_points = 9
-        else:
-            phase_points = 8
-    elif period == 3 and remaining_min is not None:
-        phase_points = 9 if remaining_min > quarter_length * 0.65 else 10
-    elif period == 4 and remaining_min is not None:
-        phase_points = 6 if remaining_min > 5 else 2
-
-    pace_points = 4
-    if current_pace is not None and sustainable_pace is not None and sustainable_pace > 0 and direction:
-        pace_deviation = (current_pace - sustainable_pace) / sustainable_pace
-        regression_direction = "ALT" if pace_deviation > 0 else "ÜST"
-        pace_magnitude = abs(pace_deviation)
-        if pace_magnitude < 0.10:
-            pace_points = 10
-        elif regression_direction == direction:
-            pace_points = 20 if pace_magnitude >= 0.20 else 16
-        else:
-            pace_points = 0 if pace_magnitude >= 0.20 else 4
-
-    game_script_points = 4
-    if score_gap is not None and period is not None and remaining_min is not None:
-        game_script_points = 6
-        remaining_game = max(0.1, total_game_min - float(played or 0))
-        if period >= 3 and score_gap / remaining_game >= 2.0:
-            game_script_points = 10 if direction == "ALT" else 0
-        elif period == 4 and 5 < remaining_min <= 8 and score_gap <= 7:
-            game_script_points = 10 if direction == "ÜST" else 2
-
-    if market_move is None:
-        market_points = 3
-    else:
-        abs_market_move = abs(market_move)
-        if 10 <= abs_market_move <= 16:
-            market_points = 10
-        elif abs_market_move < 10:
-            market_points = 6
-        elif abs_market_move <= 22:
-            market_points = 8
-        elif abs_market_move <= 30:
-            market_points = 4
-        else:
-            market_points = 1
-
-    confidence_components = {
-        "data_reliability": {"score": data_points, "max": 20},
-        "model_edge": {"score": model_edge_points, "max": 30},
-        "pace_stability": {"score": pace_points, "max": 20},
-        "match_phase": {"score": phase_points, "max": 10},
-        "game_script": {"score": game_script_points, "max": 10},
-        "market_context": {"score": market_points, "max": 10},
-    }
-    expert_heuristic_score = _clamp_score(
-        sum(item["score"] for item in confidence_components.values())
+    rate_text = (
+        f"%{league_rate:.1f} ({league_samples} maç)"
+        if league_rate is not None and league_samples
+        else "yeterli lig sonucu yok"
     )
-    if caps:
-        expert_heuristic_score = min(expert_heuristic_score, min(caps))
-
-    label = _quality_label(expert_heuristic_score)
-    risk_note = "; ".join(dict.fromkeys(risk_notes)) if risk_notes else ""
-    if not risk_note:
-        risk_note = "Belirgin ek risk notu yok."
-
-    if not reasons:
-        reasons.append("Hesaplanabilir veri sınırlı olduğu için başlangıç puanı korundu.")
-    summary = (
-        f"Canlı barem açılıştan {_fmt(line_diff)} farklı. "
-        f"Projeksiyon canlı baremden {_fmt(projection_diff)} farklı. "
-        f"Mevcut tempo {_fmt(current_pace, 2)}, gereken tempo {_fmt(required_pace, 2)}. "
-        f"Skor farkı {score_gap if score_gap is not None else '-'}. "
-        f"Bu nedenle uzman güven etiketi {label}."
+    reason = (
+        f"Adil barem avantajı {fair_edge:+.1f}, tempo projeksiyonu avantajı {projection_edge:+.1f}. "
+        if fair_edge is not None and projection_edge is not None
+        else "Adil barem/projeksiyon avantajı tam hesaplanamadı. "
     )
+    reason += f"Karşılaştırılabilir lig geçmişi {rate_text}. Sonuç: {star_count} yıldız, {label}."
+    risk_note = "; ".join(dict.fromkeys(risks)) if risks else "Belirgin ek risk yok."
 
     return {
-        "quality_score": expert_heuristic_score,
+        "quality_score": score,
         "quality_label": label,
-        "score_kind": "expert_heuristic_not_probability",
-        "confidence_score_version": CONFIDENCE_SCORE_VERSION,
-        "confidence_components": confidence_components,
-        "model_support_score": model_support_score,
-        "expert_heuristic_score": expert_heuristic_score,
-        "data_reliability_score": reliability["score"],
-        "data_hard_fail": reliability["hard_fail"],
-        "data_checks": reliability["checks"],
-        "components": components,
-        "quality_cap": min(caps) if caps else 100,
+        "stars": star_count,
+        "score_kind": "evidence_ranking_not_probability",
+        "signal_score_version": SIGNAL_SCORE_VERSION,
+        "signal_score_epoch": SIGNAL_SCORE_EPOCH,
+        "score_components": {
+            "fair_edge": {"score": fair_points, "max": 45},
+            "pace_projection": {"score": projection_points, "max": 25},
+            "league_evidence": {"score": league_points, "max": 20},
+            "direction_agreement": {"score": agreement_points, "max": 10},
+        },
+        "fair_line": round(fair, 1) if fair is not None else None,
+        "fair_edge": round(fair_edge, 1) if fair_edge is not None else None,
         "projection": round(projection, 1) if projection is not None else None,
-        "projection_diff": round(projection_diff, 1) if projection_diff is not None else None,
-        "current_pace": round(current_pace, 3) if current_pace is not None else None,
-        "required_pace": round(required_pace, 3) if required_pace is not None else None,
-        "score_gap": int(score_gap) if score_gap is not None else None,
+        "projection_diff": round(projection_edge, 1) if projection_edge is not None else None,
+        "league_rate": round(league_rate, 1) if league_rate is not None else None,
+        "league_adjusted_rate": round(adjusted_rate, 1) if adjusted_rate is not None else None,
+        "league_samples": league_samples,
+        "league_scope": league_scope,
+        "quality_cap": min(caps) if caps else 100,
         "risk_note": risk_note,
-        "reason": " ".join(reasons[:8]) + " " + summary,
+        "reason": reason,
     }

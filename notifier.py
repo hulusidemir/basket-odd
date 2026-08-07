@@ -101,14 +101,19 @@ def _build_alert_text(
     proj_text = f"{float(projected):.1f}" if projected is not None else "-"
     h2h_text = f"{float(h2h_total):.1f}" if h2h_total is not None else "-"
     quality = analysis.get("signal_quality") if isinstance(analysis.get("signal_quality"), dict) else {}
-    confidence_value = quality.get("quality_score")
+    signal_score_value = quality.get("quality_score")
     try:
-        confidence_text = f"{int(round(float(confidence_value)))}/100"
+        signal_score_text = f"{int(round(float(signal_score_value)))}"
     except (TypeError, ValueError):
-        confidence_text = "-"
-    confidence_label = str(quality.get("quality_label") or "").strip()
-    if not confidence_label:
-        confidence_label = "Güven verisi yok" if confidence_text == "-" else "Değerlendiriliyor"
+        signal_score_text = "-"
+    signal_score_label = str(quality.get("quality_label") or "").strip()
+    if not signal_score_label:
+        signal_score_label = "Skor yok" if signal_score_text == "-" else "Değerlendiriliyor"
+    try:
+        stars = max(1, min(5, int(quality.get("stars") or 1)))
+    except (TypeError, ValueError):
+        stars = 1
+    star_text = "★" * stars
     quarter_score_text = _quarter_score_text(analysis)
     match_ppm_text = _match_ppm_text(analysis)
     quarter_ppm_text = _quarter_ppm_text(analysis)
@@ -121,25 +126,9 @@ def _build_alert_text(
     if final_direction not in {"ALT", "ÜST"}:
         final_direction = direction
 
-    gate = analysis.get("signal_gate") if isinstance(analysis.get("signal_gate"), dict) else {}
-    evidence = gate.get("evidence") if isinstance(gate.get("evidence"), dict) else {}
-    confidence_floor = evidence.get("wilson_low_95")
-    evidence_text = (
-        f"%95 alt güven sınırı %{float(confidence_floor):.1f} · "
-        f"{int(evidence.get('resolved_unique') or 0)} benzersiz maç"
-        if confidence_floor is not None
-        else "İleri tarihli güven kanıtı yok"
-    )
-    gate_state = str(gate.get("state") or "LEGACY_UNVERIFIED").upper()
-    if gate_state == "TRUSTED":
-        playability_text = "Oynanabilir"
-    elif gate_state in {"SHADOW", "BLOCKED"}:
-        playability_text = "Beklemek daha iyi olur"
-    else:
-        playability_text = "Temkinli değerlendirin"
     signal_headline = (
-        f"📊 <b>{final_direction} · Sinyal skoru: {escape(confidence_text)} "
-        f"(Güven: {escape(confidence_label)} · {playability_text})</b>{repeat}"
+        f"📊 <b>{final_direction} · {escape(signal_score_text)} {escape(star_text)} "
+        f"· {escape(signal_score_label)}</b>{repeat}"
     )
 
     reason_text = str(analysis.get("selection_reason") or "").strip()
@@ -151,7 +140,6 @@ def _build_alert_text(
         f"🏀 <b>{escape(match_name)}</b>\n"
         f"🏆 {escape(tournament or '-')}\n\n"
         f"<b>Gerekçe:</b> {escape(reason_text)}\n"
-        f"<b>Kanıt:</b> {escape(evidence_text)}\n"
         f"<b>Skor:</b> {escape(score or '-')}\n"
         f"<b>Ne zaman geldi:</b> {when}\n"
         f"<b>Çeyrek Skorları:</b> {escape(quarter_score_text)}\n"
@@ -159,7 +147,7 @@ def _build_alert_text(
         f"<b>Çeyrek hızları:</b> {escape(quarter_ppm_text)}\n"
         f"<b>Barem değişimi:</b> {opening:.1f}{prematch_text} → {live:.1f} ({diff:+.1f})\n"
         f"<b>Adil barem:</b> {fair_text}\n"
-        f"<b>Maç sonu tahmini:</b> {proj_text}\n"
+        f"<b>Tempo aynı kalırsa:</b> {proj_text}\n"
         f"<b>Geçmiş maç ortalaması:</b> {h2h_text}"
     )
 
@@ -262,7 +250,7 @@ class TelegramNotifier:
             await self._send_to_all(
                 "🤖 <b>Basket Tahmin Botu başlatıldı.</b>\n"
                 "Canlı barem hareketleri izleniyor. Eşiği geçen tüm sinyaller "
-                "sinyal skoru, güven seviyesi ve oynanabilirlik yorumuyla gönderilir."
+                "sinyal skoru ve kısa gerekçesiyle gönderilir."
             )
         except TelegramError as e:
             logger.error(f"Failed to send startup message: {e}")

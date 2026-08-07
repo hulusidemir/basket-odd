@@ -21,8 +21,11 @@ from notifier import TelegramNotifier
 from pace_tracker import PaceTracker
 from projection import game_clock, parse_score
 from signal_analysis import build_signal_analysis
-from signal_gate import DEFAULT_GATE_POLICY, build_gate_evidence, evaluate_signal_gate
-from signal_quality import calculate_signal_quality
+from signal_quality import (
+    build_league_signal_profile,
+    calculate_signal_quality,
+    league_stats_for_signal,
+)
 from signal_repeat import live_total_delta
 
 
@@ -165,7 +168,7 @@ async def process_match(
     config: Config,
     pace_tracker: PaceTracker | None = None,
     backtest_profile: dict | None = None,
-    gate_evidence: dict | None = None,
+    league_signal_profile: dict | None = None,
 ) -> None:
     match = _normalize_match_payload(match)
     match_id = match["match_id"]
@@ -182,10 +185,6 @@ async def process_match(
 
     if db.is_match_deleted(match_id):
         log.debug("Skipped (deleted match): %s", match_name)
-        return
-
-    if re.search(r'\bOT\b|Uzatma', status, re.IGNORECASE):
-        log.debug("Skipped (Overtime): %s", match_name)
         return
 
     clock = game_clock(status, match_name, tournament)
@@ -297,23 +296,18 @@ async def process_match(
             "direction": direction,
             "signal_count": signal_count,
             "previous_directions": previous_directions,
+            "league_signal_stats": league_stats_for_signal(
+                league_signal_profile,
+                tournament,
+                direction,
+            ),
         }
-    )
-    gate = evaluate_signal_gate(
-        {
-            **match,
-            "signal_count": signal_count,
-        },
-        analysis,
-        quality,
-        gate_evidence,
     )
     analysis = {
         **analysis,
         "direction": direction,
         "final_direction": direction,
         "signal_quality": quality,
-        "signal_gate": gate,
     }
 
     previous_same_direction = db.latest_match_alert_in_direction(match_id, direction)
@@ -371,8 +365,7 @@ async def process_match(
         )
 
     log.info(
-        "Signal saved (gate=%s telegram=%s%s): alert_id=%s match_id=%s | %s | %s | diff=%.2f | fair_line=%s",
-        gate.get("state"),
+        "Signal saved (telegram=%s%s): alert_id=%s match_id=%s | %s | %s | diff=%.2f | fair_line=%s",
         "sent" if message_ids else "not-sent",
         " · followed" if followed_upcoming else "",
         alert_id, match_id, match_name, direction, abs_diff, analysis.get("fair_line"),
@@ -386,7 +379,7 @@ async def process_match_batch(
     config: Config,
     pace_tracker: PaceTracker,
     backtest_profile: dict | None = None,
-    gate_evidence: dict | None = None,
+    league_signal_profile: dict | None = None,
 ) -> dict:
     """Process every scraper item independently and return cycle health counts."""
     log = logging.getLogger("main")
@@ -401,7 +394,7 @@ async def process_match_batch(
                 config,
                 pace_tracker,
                 backtest_profile,
-                gate_evidence,
+                league_signal_profile,
             )
             processed_count += 1
         except Exception as exc:
@@ -570,15 +563,6 @@ async def run():
                 len(matches),
                 scrape_seconds,
             )
-            policy = DEFAULT_GATE_POLICY
-            gate_evidence = build_gate_evidence(db.signal_trial_rows(
-                policy_id=policy.policy_id,
-                strategy_id=policy.strategy_id,
-                strategy_version=policy.strategy_version,
-                evidence_epoch=policy.evidence_epoch,
-                limit=policy.evidence_window,
-            ))
-
             cycle_summary = await process_match_batch(
                 matches,
                 db,
@@ -586,7 +570,7 @@ async def run():
                 config,
                 pace_tracker,
                 None,
-                gate_evidence,
+                build_league_signal_profile(db.recent_deleted_alerts(limit=None)),
             )
             if cycle_summary["pace_states_pruned"]:
                 log.info(

@@ -1,7 +1,8 @@
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from db import Database
 
@@ -68,6 +69,21 @@ class UpcomingReconcileTests(unittest.TestCase):
             ["match-a"],
         )
         self.assertTrue(self.db.get_upcoming_match_action_status("match-b")["followed"])
+
+    def test_rows_outside_rolling_24_hours_are_removed(self):
+        now = datetime.now(ZoneInfo("Europe/Istanbul"))
+        inside = upcoming_row("inside")
+        outside = upcoming_row("outside")
+        inside["kickoff"] = (now + timedelta(hours=23)).strftime("%Y-%m-%d %H:%M")
+        outside["kickoff"] = (now + timedelta(hours=25)).strftime("%Y-%m-%d %H:%M")
+
+        summary = self.db.save_upcoming_matches_and_signals([inside, outside])
+
+        self.assertEqual(summary["removed_expired"], 1)
+        self.assertEqual(
+            [row["match_id"] for row in self.db.list_upcoming_matches()],
+            ["inside"],
+        )
 
 
 if __name__ == "__main__":

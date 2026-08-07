@@ -1,18 +1,18 @@
 # Basketball Odds Monitor (AIScore)
 
-This Python/Flask application monitors AIScore basketball totals, stores opening-vs-live line anomalies in SQLite, and evaluates them with versioned projection, fair-line, data-quality, and prospective evidence rules. Crossing `THRESHOLD` creates a stored alert and sends it to Telegram with the frozen signal score, confidence level, and a plain-language playability comment.
+This Python/Flask application monitors AIScore basketball totals, stores opening-vs-live line anomalies in SQLite, and evaluates them with versioned pace projection, an independent fair line, and a league/model evidence score. Crossing `THRESHOLD` creates a stored alert and sends it to Telegram with the frozen signal score and stars.
 
-The current `trusted_70_v2` policy treats 70% as a validation target, not as a proven or guaranteed win rate. Until the fixed strategy has enough automatically settled forward trials, eligible signals remain `SHADOW`; signals that fail candidate or data requirements are `BLOCKED`.
+The active score is a conservative ranking, not a promised win probability. Four and five stars remain locked until this exact strategy version has enough automatically settled forward evidence.
 
 ## Current Features
 
 - Live AIScore scraping with bounded retries, concurrency, per-match failure isolation, and coverage reports
 - Opening/live totals taken from the first readable bookmaker block
 - Opening-vs-live anomaly storage with per-match, per-period, and repeat-signal protection
-- Versioned `shadow_projection_v1` projection and `calibrated_fair_v1` fair line
-- Fixed `projection_edge_6_q2q3_v2` research-candidate rule
-- Prospective `BLOCKED` / `SHADOW` / `TRUSTED` evidence gate and durable trial ledger
-- Telegram outbox with per-recipient delivery IDs and bounded retries; every threshold alert is delivered with its frozen signal score and playability comment
+- Versioned `current_pace_projection_v2` raw pace projection and live-market-independent `independent_pace_fair_v2` fair line
+- Fixed `fair_edge_4_projection_5_q2q3_v3` research-candidate rule
+- `market_edge_league_v1` signal score using fair edge, pace edge, match-unique league evidence, and direction agreement
+- Telegram outbox with per-recipient delivery IDs and bounded retries; every threshold alert is delivered with its frozen signal score and stars
 - Flask dashboard for live review, actions, notes, reports, and CSV export
 - Deletion-time `display_snapshot`; deleted signals are displayed without recalculating model, projection, or fair-line fields
 - Separate final-score settlement that requires an explicit final status
@@ -32,29 +32,28 @@ The raw threshold controls which opening/live anomalies are stored. Lowering it 
 
 ### 2. Fixed research candidate
 
-`projection_edge_6_q2q3_v2` requires all of the following:
+`fair_edge_4_projection_5_q2q3_v3` requires all of the following:
 
 - A validated 4x10 game clock in Q2 or Q3
-- At least a 6-point absolute projection edge versus the live line
+- At least a 4-point independent fair edge versus the live line
+- At least a 5-point current-pace projection edge versus the live line
 - Projection direction aligned with the stored signal direction
-- Fair calibration aligned with the projection direction
+- Independent fair direction aligned with the projection direction
 - Projection data quality of at least 85
 
-Data reliability is assessed separately. It includes valid score/clock/lines, a supported format, no overtime or locked market, live line above the current score, a durable source URL for final settlement, and one bookmaker block with readable opening and in-play totals.
+The raw projection answers only “where does the game finish if the points/minute observed so far stays unchanged?” The fair line does not use the live line as an input; it combines the pre-match pace and observed pace only for the remaining minutes.
 
-### 3. Prospective trust gate
+### 3. Signal score and stars
 
-The active policy is `trusted_70_v2`, strategy version `3`. One bookmaker with readable opening and in-play totals is sufficient; cross-bookmaker count/spread comparison is not a gate. A trial-eligible alert is stored in `signal_trials` once per match and is settled only from an automatic final score. Evidence never mixes another strategy fingerprint or evidence epoch and never uses results that occurred after the alert decision.
-
-`TRUSTED` requires at least 100 unique resolved trials, at least 90% resolution coverage, an overall 95% Wilson lower bound of at least 70%, and two stable 50-match blocks. Until every condition passes, an otherwise eligible candidate is `SHADOW`. `quality_score` is the frozen `basketball_expert_v1` ranking score (data 20, projection edge 30, pace 20, phase 10, game script 10, market context 10); it is not a win probability, gate decision, or Telegram permission.
+`market_edge_league_v1` allocates 45 points to independent fair edge, 25 to raw pace projection, 20 to match-unique and small-sample-adjusted league evidence, and 10 to direction agreement. Missing league evidence, model disagreement, unsupported formats, early Q1, Q4, and direction changes cap the score. The current version is capped at 74/three stars until a dedicated forward ledger validates higher bands.
 
 ## Architecture
 
 - `main.py`: live loop, raw anomaly evaluation, alert persistence, and Telegram orchestration
 - `aiscore_scraper.py`: live AIScore parsing, paired bookmaker consensus, and scrape health report
 - `signal_analysis.py`: projection/fair context, direction, and fixed candidate selection
-- `signal_quality.py`: input reliability, frozen expert confidence ranking, and gate-specific model-support score
-- `signal_gate.py`: immutable strategy identity and prospective evidence decision
+- `signal_quality.py`: league evidence profile, conservative signal score, and stars
+- `signal_gate.py`: legacy strategy identity and historical evidence compatibility
 - `projection.py`, `pace_tracker.py`: clock/format-aware projection and pace lifecycle
 - `db.py`: SQLite schema, alerts, snapshots, trial ledger, and Telegram outbox
 - `finished_match_service.py`: explicit-final settlement for active/deleted alerts
@@ -146,8 +145,8 @@ Dashboard capabilities include:
 | `AISCORE_TIMEZONE` | Timezone for upcoming-date filtering; default `Europe/Istanbul` |
 | `AISCORE_CONCURRENCY` | Concurrent live detail workers, clamped to `1..8`; default `2` |
 | `UPCOMING_CONCURRENCY` | Concurrent upcoming detail workers, clamped to `1..8`; default `2` |
-| `UPCOMING_DAYS_AHEAD` | Upcoming window, `0..14`; `0` means today's upcoming listing |
-| `UPCOMING_MAX_MATCHES` | Detail limit, default `12`; `0` removes the configured cap, with an internal fetch ceiling of 500 |
+| `UPCOMING_DAYS_AHEAD` | Legacy compatibility setting; upcoming collection now uses a rolling next-24-hour window |
+| `UPCOMING_MAX_MATCHES` | Optional detail limit; default `0` collects the full 24-hour window, with an internal safety ceiling of 500 |
 | `UPCOMING_FETCH_TIMEOUT_SECONDS` | Configured floor for an upcoming fetch timeout, clamped to `60..3600`; workload budgeting may raise the effective timeout |
 | `UPCOMING_MATCH_TIMEOUT_SECONDS` | Per-detail timeout, clamped to `30..180` seconds |
 | `UPCOMING_STALE_AFTER_SECONDS` | Age at which an unfinished upcoming job is marked stale, clamped to `300..86400`; default `1800` |

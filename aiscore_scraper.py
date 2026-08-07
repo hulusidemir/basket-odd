@@ -1657,7 +1657,6 @@ class AiscoreScraper:
             "inplay_total": float(inplay),
             "url": url,
             "score": score_text,
-            "market_locked": bool(parsed.get("hasLockedRows", False)),
             "has_prematch": prematch is not None,
             "h2h_body_text": h2h_body,
             "quarter_scores": quarter_scores,

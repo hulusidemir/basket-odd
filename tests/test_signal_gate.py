@@ -9,7 +9,6 @@ from signal_gate import (
     wilson_lower_95,
 )
 from signal_analysis import build_signal_analysis
-from signal_quality import calculate_signal_quality
 
 
 def gate_row(index, *, success=True, match_id=None, version=None, eligible=True):
@@ -212,16 +211,15 @@ class SignalGateTests(unittest.TestCase):
                     },
                 }
                 analysis = build_signal_analysis(match, {}, threshold=10)
-                quality = calculate_signal_quality(
-                    {
-                        **match,
-                        **analysis,
-                        "opening": match["opening_total"],
-                        "prematch": match["prematch_total"],
-                        "live": match["inplay_total"],
-                        "direction": analysis["direction"],
-                    }
-                )
+                # The gate is legacy-only; keep its compatibility contract
+                # independent from the active market-edge signal score.
+                quality = {
+                    "quality_score": 90,
+                    "model_support_score": 90,
+                    "data_reliability_score": 95,
+                    "data_hard_fail": False,
+                    "components": {"game_script": 0},
+                }
                 gate = evaluate_signal_gate(match, analysis, quality)
 
                 self.assertTrue(analysis["candidate_eligible"])

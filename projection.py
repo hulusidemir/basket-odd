@@ -2,12 +2,8 @@ import math
 import re
 
 
-PROJECTION_MODEL_VERSION = "shadow_projection_v1"
-
-# Fixed v1 research coefficients. They deliberately keep the observed-pace
-# contribution small because raw early-game pace is unstable. These values are
-# not win probabilities and remain subject to prospective validation.
-_OBSERVED_PACE_WEIGHT = {1: 0.06, 2: 0.14, 3: 0.24, 4: 0.02}
+PROJECTION_MODEL_VERSION = "current_pace_projection_v2"
+PROJECTION_KIND = "current_pace_if_unchanged"
 
 # Yalnız maç önü baremi yoksa kullanılan nötr görünürlük fallback'i. Bu
 # fallback ile üretilen kayıt güven kapısından geçmez.
@@ -136,6 +132,10 @@ def game_clock(status: str, match_name: str = "", tournament: str = "") -> dict:
 def game_minutes(match_name: str = "", tournament: str = "") -> int:
     text_to_check = f"{match_name} {tournament}".upper()
     is_women = any(token in text_to_check for token in ("WNBA", "WOMEN", "WOMEN'S", "WOMAN"))
+    # NBA Summer League uses four 10-minute periods. It must be resolved before
+    # the generic NBA rule, otherwise the elapsed/remaining time is overstated.
+    if "NBA SUMMER LEAGUE" in text_to_check:
+        return 40
     is_nba = (
         re.search(r"\bNBA\b", text_to_check)
         or "NATIONAL BASKETBALL ASSOCIATION" in text_to_check
@@ -179,10 +179,7 @@ def calculate_projected_total(
     *,
     prior_total: float | None = None,
 ) -> float | None:
-    """
-    Maç önü sayı/dakika önselini gözlenen canlı tempoya doğru kontrollü
-    günceller. Saat bilinmiyorsa kesinlik icat etmek yerine None döndürür.
-    """
+    """Project the final total if the observed points/minute stays unchanged."""
     home_score, away_score = parse_score(score)
     if home_score is None or away_score is None:
         return None
@@ -206,14 +203,8 @@ def calculate_projected_total(
     if remaining_total_min <= 0:
         return float(total_pts)
 
-    parsed_prior, _ = _canonical_prior_total(prior_total, total_game_min)
-    prior_ppm = parsed_prior / total_game_min
     observed_ppm = total_pts / elapsed_min
-    observed_weight = _OBSERVED_PACE_WEIGHT.get(period)
-    if observed_weight is None:
-        return None
-    remaining_ppm = prior_ppm + observed_weight * (observed_ppm - prior_ppm)
-    projected = total_pts + remaining_total_min * max(0.0, remaining_ppm)
+    projected = observed_ppm * total_game_min
     return round(max(float(total_pts), projected), 1)
 
 
@@ -322,7 +313,7 @@ def calculate_live_projection(
     market_total: float | None = None,
     opening_total: float | None = None,
 ) -> dict:
-    """Return the versioned, leakage-safe shadow projection and diagnostics."""
+    """Return the final total implied by the points/minute observed so far."""
     clock = game_clock(status, match_name, tournament)
     total_game_min = clock["total_game_min"]
     prior_total, prior_source, prior_valid, invalid_prior = _select_prior_total(
@@ -355,9 +346,11 @@ def calculate_live_projection(
             "raw_projected_total": base,
             "pure_projected_total": base,
             "model_version": PROJECTION_MODEL_VERSION,
+            "projection_kind": PROJECTION_KIND,
             "data_quality": 20,
             "components": {
                 "model_version": PROJECTION_MODEL_VERSION,
+                "projection_kind": PROJECTION_KIND,
                 "game_format": clock.get("format"),
                 "model_validated": bool(clock.get("model_validated")),
                 "prior_total": round(prior_total, 1),
@@ -393,7 +386,7 @@ def calculate_live_projection(
 
     projected = float(base)
     notes: list[str] = []
-    observed_weight = _OBSERVED_PACE_WEIGHT.get(period) if period is not None else None
+    observed_weight = 1.0 if period is not None else None
     raw_pace_projection = (
         total_pts / elapsed * total_game_min
         if elapsed is not None and elapsed > 1
@@ -401,6 +394,7 @@ def calculate_live_projection(
     )
     components = {
         "model_version": PROJECTION_MODEL_VERSION,
+        "projection_kind": PROJECTION_KIND,
         "game_format": clock.get("format"),
         "model_validated": bool(clock.get("model_validated")),
         "prior_total": round(prior_total, 1),
@@ -469,6 +463,7 @@ def calculate_live_projection(
         else None,
         "pure_projected_total": round(projected, 1),
         "model_version": PROJECTION_MODEL_VERSION,
+        "projection_kind": PROJECTION_KIND,
         "data_quality": max(0, min(100, data_quality)),
         "components": components,
         "notes": notes,
