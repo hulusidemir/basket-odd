@@ -39,11 +39,97 @@ class TeamStatsNormalizationTests(unittest.TestCase):
         self.assertEqual(result["home"]["fg3a"], 28)
         self.assertEqual(result["away"]["fta"], 22)
         self.assertEqual(result["current_period_flow"]["foul_events"], 7)
+        self.assertTrue(result["has_stats"])
 
     def test_invalid_made_attempt_pair_is_not_inferred(self):
         result = _normalize_team_stats_snapshot({"home": {"fieldGoals": "12-10"}})
         self.assertIsNone(result["home"]["fgm"])
         self.assertIsNone(result["home"]["fga"])
+
+    def test_unknown_stats_availability_stays_unknown(self):
+        missing = _normalize_team_stats_snapshot({})
+        unknown = _normalize_team_stats_snapshot({"has_stats": "unknown"})
+
+        self.assertIsNone(missing["has_stats"])
+        self.assertIsNone(unknown["has_stats"])
+
+    def test_explicit_stats_availability_is_normalized(self):
+        self.assertTrue(_normalize_team_stats_snapshot({"has_stats": 1})["has_stats"])
+        self.assertTrue(_normalize_team_stats_snapshot({"has_stats": 2})["has_stats"])
+        self.assertTrue(_normalize_team_stats_snapshot({"has_stats": "true"})["has_stats"])
+        self.assertFalse(_normalize_team_stats_snapshot({"has_stats": 0})["has_stats"])
+        self.assertFalse(_normalize_team_stats_snapshot({"has_stats": "false"})["has_stats"])
+
+
+class TeamStatsReadinessTests(unittest.TestCase):
+    def test_readiness_requires_real_team_total_fields(self):
+        page = AsyncMock()
+        scraper = AiscoreScraper(
+            "https://www.aiscore.com/basketball",
+            page_timeout_ms=10000,
+        )
+
+        asyncio.run(scraper._wait_for_team_stats_ready(page))
+
+        script = page.wait_for_function.await_args.args[0]
+        self.assertIn("['0', 'false', 'no', 'off'].includes(hasStatsText)", script)
+        self.assertIn("const madeAttemptPair", script)
+        self.assertIn("Number(parsed[1]) <= Number(parsed[2])", script)
+        self.assertIn("integer(detail.turnovers)", script)
+        self.assertIn("complete(home) && complete(away)", script)
+
+    def test_overview_waits_for_stats_specific_readiness(self):
+        page = AsyncMock()
+        page.evaluate.return_value = {
+            "status": "Q2 05:00",
+            "score": "30 - 30",
+            "quarterScores": {},
+            "teamStats": {},
+            "isFinished": False,
+        }
+        scraper = AiscoreScraper(
+            "https://www.aiscore.com/basketball",
+            page_timeout_ms=10000,
+        )
+        scraper._wait_for_match_page_ready = AsyncMock()
+        scraper._wait_for_team_stats_ready = AsyncMock()
+
+        result = asyncio.run(
+            scraper._fetch_overview_data(
+                page,
+                "https://www.aiscore.com/basketball/match-home-away/abc123",
+                wait_for_team_stats=True,
+            )
+        )
+
+        scraper._wait_for_match_page_ready.assert_awaited_once_with(page)
+        scraper._wait_for_team_stats_ready.assert_awaited_once_with(page)
+        self.assertEqual(result["score"], "30 - 30")
+
+    def test_overview_skips_stats_wait_when_snapshot_is_not_needed(self):
+        page = AsyncMock()
+        page.evaluate.return_value = {
+            "status": "Q2 05:00",
+            "score": "30 - 30",
+            "quarterScores": {},
+            "teamStats": {},
+            "isFinished": False,
+        }
+        scraper = AiscoreScraper(
+            "https://www.aiscore.com/basketball",
+            page_timeout_ms=10000,
+        )
+        scraper._wait_for_match_page_ready = AsyncMock()
+        scraper._wait_for_team_stats_ready = AsyncMock()
+
+        asyncio.run(
+            scraper._fetch_overview_data(
+                page,
+                "https://www.aiscore.com/basketball/match-home-away/abc123",
+            )
+        )
+
+        scraper._wait_for_team_stats_ready.assert_not_awaited()
 
 
 class _LinkPage:
@@ -548,6 +634,50 @@ class AiscoreScraperTests(unittest.TestCase):
         self.assertEqual(result["prematch_total"], 161.5)
         self.assertEqual(result["inplay_total"], 175.5)
         scraper._fetch_overview_data.assert_not_awaited()
+
+    def test_threshold_anomaly_requests_team_stats_readiness(self):
+        parsed = {
+            "opening": 160.5,
+            "prematch": 161.5,
+            "inplay": 175.5,
+            "matchName": "Home - Away",
+            "tournament": "FIBA",
+            "status": "Q2 05:00",
+            "score": "40 - 35",
+            "isFinished": False,
+            "isQ4": False,
+            "remainingMinutes": 5.0,
+            "hasLockedRows": False,
+            "quarterScores": {
+                "home": [20],
+                "away": [18],
+                "source": "fixture",
+                "quality": 90,
+            },
+            "oddsSnapshot": {
+                "opening_lines": [160.5],
+                "prematch_lines": [161.5],
+                "inplay_lines": [175.5],
+                "bookmaker_count": 1,
+            },
+        }
+        page = _DetailPage(parsed)
+        url = "https://www.aiscore.com/basketball/match-home-away/abc123"
+        scraper = AiscoreScraper(
+            "https://www.aiscore.com/basketball",
+            skip_h2h=True,
+            stats_threshold=10,
+        )
+        scraper._fetch_overview_data = AsyncMock(return_value={})
+
+        result = asyncio.run(scraper._extract_match(page, url))
+
+        self.assertEqual(result["match_id"], "abc123")
+        scraper._fetch_overview_data.assert_awaited_once_with(
+            page,
+            url,
+            wait_for_team_stats=True,
+        )
 
     def test_missing_totals_market_is_an_expected_skip(self):
         parsed = {

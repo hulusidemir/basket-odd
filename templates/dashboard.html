@@ -2783,11 +2783,13 @@
       const evidence = alert?.market_evidence && typeof alert.market_evidence === 'object'
         ? alert.market_evidence
         : {};
-      const code = String(evidence.code || 'insufficient');
-      const symbol = String(evidence.symbol || '?');
-      const label = String(evidence.label || 'İSTATİSTİK YETERSİZ');
-      const tone = code === 'supports_signal' ? 'strong'
-        : code === 'supports_market' ? 'pass'
+      const hasEvidence = Boolean(String(evidence.code || '').trim());
+      const code = String(evidence.code || 'legacy');
+      const symbol = String(evidence.symbol || (hasEvidence ? '?' : '–'));
+      const label = String(evidence.label || (hasEvidence ? 'İSTATİSTİK YETERSİZ' : 'Kanıt özelliğinden önce oluşturuldu'));
+      const tone = !hasEvidence ? 'empty'
+        : code === 'supports_signal' ? 'strong'
+        : ['opposes_signal', 'supports_market'].includes(code) ? 'pass'
         : code === 'mixed' ? 'watch'
         : 'neutral';
       return `<span class="quality-stack"><button type="button" class="badge small-badge quality-badge ${tone}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${escapeHtml(symbol)}</button></span>`;
@@ -3690,14 +3692,25 @@
       if (!alert) return;
       {
         const evidence = alert.market_evidence && typeof alert.market_evidence === 'object' ? alert.market_evidence : {};
+        const hasEvidence = Boolean(String(evidence.code || '').trim());
+        $('signalModalTitle').textContent = `İstatistik Kanıtı - ${cleanMatchName(alert.match_name)}`;
+        if (!hasEvidence) {
+          $('signalModalBody').innerHTML = `
+            <div style="padding:16px 18px;line-height:1.5;">
+              <div class="confidence-message">Bu sinyal kanıt özelliğinden önce oluşturuldu; sonradan yeni modelle hesaplanmadı.</div>
+            </div>`;
+          $('signalModal').classList.add('active');
+          return;
+        }
         const metrics = evidence.metrics && typeof evidence.metrics === 'object' ? evidence.metrics : {};
         const reasons = Array.isArray(evidence.reasons) ? evidence.reasons.filter(Boolean) : [];
         const code = String(evidence.code || 'insufficient');
         const symbol = String(evidence.symbol || '?');
         const label = String(evidence.label || 'İSTATİSTİK YETERSİZ');
-        const heroTone = code === 'supports_signal' ? 'strong' : code === 'supports_market' ? 'watch' : 'playable';
+        const heroTone = code === 'supports_signal' ? 'strong'
+          : ['opposes_signal', 'supports_market'].includes(code) ? 'watch'
+          : 'playable';
         const detailReasons = reasons.slice(1).map(reason => `<li>${escapeHtml(reason)}</li>`).join('');
-        $('signalModalTitle').textContent = `İstatistik Kanıtı - ${cleanMatchName(alert.match_name)}`;
         $('signalModalBody').innerHTML = `
           <div style="padding:16px 18px;line-height:1.5;">
             <div class="confidence-hero ${heroTone}">
@@ -3709,6 +3722,12 @@
             <div class="sig-card">
               <div class="row"><span>İstatistiksel adil barem</span><strong>${qualityValue(metrics.stats_fair_total)}</strong></div>
               <div class="row"><span>Canlı barem</span><strong>${qualityValue(metrics.live_total)}</strong></div>
+              <div class="row"><span>Sinyal yönündeki fark</span><strong>${signed(metrics.signal_edge)}</strong></div>
+              <div class="row"><span>Net karar bandı</span><strong>${metrics.decision_edge == null ? '-' : '±' + qualityValue(metrics.decision_edge)}</strong></div>
+              <div class="row"><span>Kalan sayı · model / piyasa</span><strong>${qualityValue(metrics.model_remaining_points)} / ${qualityValue(metrics.market_remaining_points)}</strong></div>
+              <div class="row"><span>Gerçekleşmiş skor sapması</span><strong>${signed(metrics.realised_scoring_surprise)}</strong></div>
+              <div class="row"><span>Kalan beklenti revizyonu · model / piyasa</span><strong>${signed(metrics.model_future_revision)} / ${signed(metrics.market_future_revision)}</strong></div>
+              <div class="row"><span>Regresyon · verimlilik / tempo</span><strong>${signed(metrics.efficiency_regression_points)} / ${signed(metrics.pace_regression_points)}</strong></div>
               <div class="row"><span>Tahmini tempo / 40 dk</span><strong>${qualityValue(metrics.observed_pace_40)}</strong></div>
               <div class="row"><span>Üçlük</span><strong>${escapeHtml(metrics.three_points || '-')} ${metrics.three_pct == null ? '' : '(%' + escapeHtml(metrics.three_pct) + ')'}</strong></div>
               <div class="row"><span>eFG</span><strong>${metrics.efg_pct == null ? '-' : '%' + escapeHtml(metrics.efg_pct)}</strong></div>

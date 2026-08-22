@@ -4,7 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from db import Database
 
@@ -284,6 +284,289 @@ class DisplaySnapshotTests(unittest.TestCase):
 
         self.assertNotIn("bucket_stars", enriched)
 
+    def test_deleted_enrichment_keeps_frozen_market_evidence_in_list_and_details(self):
+        frozen_evidence = {
+            "version": self.dashboard.MARKET_EVIDENCE_VERSION,
+            "code": "opposes_signal",
+            "label": "SİNYALİN TERSİ DESTEKLENİYOR",
+            "symbol": "⇄",
+            "primary_reason": "Frozen evidence reason",
+            "metrics": {
+                "stats_fair_total": 171.5,
+                "live_total": 165.0,
+                "signal_edge": -6.5,
+            },
+        }
+        row = {
+            "id": 14,
+            "match_id": "match-14",
+            "result": "Başarısız",
+            "display_snapshot": json.dumps({
+                "id": 14,
+                "match_id": "match-14",
+                "direction": "ALT",
+                "market_evidence": frozen_evidence,
+            }, ensure_ascii=False),
+            "ai_analysis": json.dumps({
+                "market_evidence": {
+                    "version": self.dashboard.MARKET_EVIDENCE_VERSION,
+                    "code": "supports_signal",
+                    "label": "RAW_ANALYSIS_MUST_NOT_OVERRIDE_SNAPSHOT",
+                    "symbol": "✓",
+                },
+            }, ensure_ascii=False),
+        }
+
+        lightweight = self.dashboard._enrich_deleted_alert(row, full=False)
+        full = self.dashboard._enrich_deleted_alert(row, full=True)
+
+        self.assertEqual(lightweight["market_evidence"], frozen_evidence)
+        self.assertEqual(full["market_evidence"], frozen_evidence)
+        self.assertEqual(lightweight["market_evidence_rank"], 2)
+        self.assertEqual(full["market_evidence_rank"], 2)
+
+    def test_live_analysis_rebuild_preserves_signal_time_market_evidence(self):
+        frozen_evidence = {
+            "version": self.dashboard.MARKET_EVIDENCE_VERSION,
+            "code": "supports_signal",
+            "symbol": "✓",
+        }
+        with patch.object(
+            self.dashboard,
+            "build_signal_analysis",
+            return_value={
+                "fair_line": 170.0,
+                "direction": "ÜST",
+                "final_direction": "ÜST",
+                "market_evidence": {"code": "insufficient", "symbol": "?"},
+            },
+        ):
+            rebuilt = self.dashboard._rebuild_live_analysis_from_alert(
+                {"opening": 160, "live": 170, "direction": "ALT"},
+                {"direction": "ALT", "final_direction": "ALT", "market_evidence": frozen_evidence},
+            )
+
+        self.assertEqual(rebuilt["fair_line"], 170.0)
+        self.assertEqual(rebuilt["market_evidence"], frozen_evidence)
+        self.assertEqual(rebuilt["direction"], "ALT")
+        self.assertEqual(rebuilt["final_direction"], "ALT")
+
+    def test_live_analysis_rebuild_does_not_invent_legacy_market_evidence(self):
+        with patch.object(
+            self.dashboard,
+            "build_signal_analysis",
+            return_value={
+                "fair_line": 170.0,
+                "direction": "ÜST",
+                "final_direction": "ÜST",
+                "market_evidence": {"code": "insufficient", "symbol": "?"},
+            },
+        ):
+            rebuilt = self.dashboard._rebuild_live_analysis_from_alert(
+                {"opening": 160, "live": 170, "direction": "ALT"},
+                {},
+            )
+
+        self.assertNotIn("market_evidence", rebuilt)
+        self.assertEqual(rebuilt["direction"], "ALT")
+        self.assertEqual(rebuilt["final_direction"], "ALT")
+
+    def _seed_refreshable_alert_with_frozen_evidence(self):
+        frozen_evidence = {
+            "version": self.dashboard.MARKET_EVIDENCE_VERSION,
+            "code": "supports_signal",
+            "symbol": "✓",
+            "supported_direction": "ÜST",
+        }
+        analysis = {
+            "direction": "ÜST",
+            "final_direction": "ÜST",
+            "projected_total": 166.0,
+            "fair_line": 165.0,
+            "projection_model_version": self.dashboard.PROJECTION_MODEL_VERSION,
+            "fair_model_version": self.dashboard.FAIR_MODEL_VERSION,
+            "market_evidence": frozen_evidence,
+        }
+        with self.db._conn() as conn:
+            conn.execute(
+                "UPDATE alerts SET url = ?, ai_analysis = ? WHERE id = ?",
+                (
+                    "https://www.aiscore.com/basketball/match-home-away/test-id",
+                    json.dumps(analysis, ensure_ascii=False),
+                    self.alert_id,
+                ),
+            )
+        return frozen_evidence
+
+    def _conflicting_refresh_analysis(self):
+        return {
+            "direction": "ALT",
+            "final_direction": "ALT",
+            "projected_total": 168.0,
+            "fair_line": 167.0,
+            "projection_model_version": self.dashboard.PROJECTION_MODEL_VERSION,
+            "fair_model_version": self.dashboard.FAIR_MODEL_VERSION,
+            "market_evidence": {"code": "insufficient", "symbol": "?"},
+        }
+
+    def test_h2h_refresh_preserves_frozen_evidence_and_direction(self):
+        frozen_evidence = self._seed_refreshable_alert_with_frozen_evidence()
+
+        with (
+            patch.object(self.dashboard, "db", self.db),
+            patch.object(
+                self.dashboard,
+                "_fetch_alert_h2h_body",
+                new=AsyncMock(return_value="usable h2h body"),
+            ),
+            patch.object(
+                self.dashboard,
+                "build_signal_analysis",
+                return_value=self._conflicting_refresh_analysis(),
+            ),
+        ):
+            response = self.dashboard.app.test_client().post(
+                f"/api/alerts/{self.alert_id}/h2h/refresh"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        persisted = json.loads(self.db.get_alert(self.alert_id)["ai_analysis"])
+        self.assertEqual(persisted["market_evidence"], frozen_evidence)
+        self.assertEqual(persisted["direction"], "ÜST")
+        self.assertEqual(persisted["final_direction"], "ÜST")
+
+    def test_quarter_refresh_preserves_frozen_evidence_and_direction(self):
+        frozen_evidence = self._seed_refreshable_alert_with_frozen_evidence()
+        overview = {
+            "status": "Q4 05:00",
+            "score": "80 - 78",
+            "quarterScores": {
+                "home": [20, 20, 20, 20],
+                "away": [19, 20, 19, 20],
+            },
+        }
+
+        with (
+            patch.object(self.dashboard, "db", self.db),
+            patch.object(
+                self.dashboard,
+                "_fetch_alert_overview_snapshot",
+                new=AsyncMock(return_value=overview),
+            ),
+            patch.object(
+                self.dashboard,
+                "build_signal_analysis",
+                return_value=self._conflicting_refresh_analysis(),
+            ),
+        ):
+            response = self.dashboard.app.test_client().post(
+                f"/api/alerts/{self.alert_id}/quarter-scores/refresh"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        persisted = json.loads(self.db.get_alert(self.alert_id)["ai_analysis"])
+        self.assertEqual(persisted["market_evidence"], frozen_evidence)
+        self.assertEqual(persisted["direction"], "ÜST")
+        self.assertEqual(persisted["final_direction"], "ÜST")
+        self.assertEqual(persisted["quarter_scores"], overview["quarterScores"])
+
+    def test_live_enrichment_keeps_stored_direction_after_backtest_refresh(self):
+        frozen_evidence = {
+            "version": self.dashboard.MARKET_EVIDENCE_VERSION,
+            "code": "supports_signal",
+            "symbol": "✓",
+        }
+        alert = {
+            "id": 0,
+            "match_id": "match-direction",
+            "match_name": "Home - Away",
+            "direction": "ALT",
+            "opening": 160.0,
+            "live": 170.0,
+            "diff": 10.0,
+            "status": "Q2 05:00",
+            "score": "30 - 30",
+            "tournament": "FIBA Europe Cup",
+            "signal_count": 1,
+            "ai_analysis": json.dumps({
+                "direction": "ALT",
+                "final_direction": "ALT",
+                "projected_total": 166.0,
+                "fair_line": 165.0,
+                "projection_model_version": self.dashboard.PROJECTION_MODEL_VERSION,
+                "fair_model_version": self.dashboard.FAIR_MODEL_VERSION,
+                "market_evidence": frozen_evidence,
+            }, ensure_ascii=False),
+        }
+
+        def flip_direction(_alert, analysis, _profile, _threshold):
+            return {**analysis, "direction": "ÜST", "final_direction": "ÜST"}
+
+        with patch.object(
+            self.dashboard,
+            "enrich_analysis_with_backtest",
+            side_effect=flip_direction,
+        ):
+            enriched = self.dashboard.enrich_alerts_with_analysis(
+                [alert],
+                backtest_profile={},
+            )[0]
+
+        self.assertEqual(enriched["direction"], "ALT")
+        self.assertEqual(enriched["final_direction"], "ALT")
+        self.assertEqual(enriched["analysis"]["direction"], "ALT")
+        self.assertEqual(enriched["analysis"]["final_direction"], "ALT")
+        self.assertEqual(enriched["market_evidence"], frozen_evidence)
+
+    def test_live_enrichment_prefers_frozen_analysis_direction_over_legacy_alert_direction(self):
+        frozen_evidence = {
+            "version": self.dashboard.MARKET_EVIDENCE_VERSION,
+            "code": "supports_signal",
+            "symbol": "✓",
+            "supported_direction": "ÜST",
+        }
+        alert = {
+            "id": 0,
+            "match_id": "legacy-direction-mismatch",
+            "match_name": "Home - Away",
+            "direction": "ALT",
+            "opening": 170.0,
+            "live": 160.0,
+            "diff": -10.0,
+            "status": "Q2 05:00",
+            "score": "30 - 30",
+            "tournament": "FIBA Europe Cup",
+            "signal_count": 1,
+            "ai_analysis": json.dumps({
+                "direction": "ÜST",
+                "final_direction": "ÜST",
+                "projected_total": 166.0,
+                "fair_line": 165.0,
+                "projection_model_version": self.dashboard.PROJECTION_MODEL_VERSION,
+                "fair_model_version": self.dashboard.FAIR_MODEL_VERSION,
+                "market_evidence": frozen_evidence,
+            }, ensure_ascii=False),
+        }
+
+        def flip_to_raw_direction(_alert, analysis, _profile, _threshold):
+            return {**analysis, "direction": "ALT", "final_direction": "ALT"}
+
+        with patch.object(
+            self.dashboard,
+            "enrich_analysis_with_backtest",
+            side_effect=flip_to_raw_direction,
+        ):
+            enriched = self.dashboard.enrich_alerts_with_analysis(
+                [alert],
+                backtest_profile={},
+            )[0]
+
+        self.assertEqual(enriched["direction"], "ÜST")
+        self.assertEqual(enriched["final_direction"], "ÜST")
+        self.assertEqual(enriched["analysis"]["direction"], "ÜST")
+        self.assertEqual(enriched["analysis"]["final_direction"], "ÜST")
+        self.assertEqual(enriched["market_evidence"], frozen_evidence)
+
     def test_deleted_enrichment_keeps_snapshot_model_values_and_overlays_settlement(self):
         row = {
             "id": 12,
@@ -404,6 +687,31 @@ class DisplaySnapshotTests(unittest.TestCase):
         self.assertNotIn("'☆'.repeat", quality_renderer)
         self.assertNotIn("${escapeHtml(gate.text)}</button>", quality_renderer)
 
+    def test_deleted_template_displays_frozen_market_evidence(self):
+        template_path = Path(self.dashboard.app.template_folder) / "deleted_matches.html"
+        template = template_path.read_text(encoding="utf-8")
+        renderer_start = template.index("function marketEvidenceHtml(alert)")
+        renderer_end = template.index("function qualityValue(value", renderer_start)
+        renderer = template[renderer_start:renderer_end]
+        modal_start = template.index("function openMarketEvidenceModal(alertId)")
+        modal_end = template.index("function closeSignalQualityModal()", modal_start)
+        modal = template[modal_start:modal_end]
+
+        self.assertIn('<th data-sort="market_evidence_rank">Kanıt</th>', template)
+        self.assertIn("alert?.market_evidence", renderer)
+        self.assertIn("const hasEvidence = Boolean(String(evidence.code || '').trim())", renderer)
+        self.assertIn("hasEvidence ? '?' : '–'", renderer)
+        self.assertIn("Kanıt özelliğinden önce oluşturuldu", renderer)
+        self.assertIn("openMarketEvidenceModal", renderer)
+        self.assertIn("<td>${marketEvidenceHtml(alert)}</td>", template)
+        self.assertIn("'market_evidence_rank'].includes(field)", template)
+        self.assertIn("İstatistik Kanıtı -", modal)
+        self.assertIn("Bu sinyal kanıt özelliğinden önce oluşturuldu", modal)
+        self.assertIn("evidence.primary_reason", modal)
+        self.assertIn("Kalan sayı · model / piyasa", modal)
+        self.assertIn("Gerçekleşmiş skor sapması", modal)
+        self.assertIn("Serbest atış oranı", modal)
+
     def test_deleted_template_has_compact_ft_score_total_and_projection_order(self):
         template_path = Path(self.dashboard.app.template_folder) / "deleted_matches.html"
         template = template_path.read_text(encoding="utf-8")
@@ -448,14 +756,119 @@ class DisplaySnapshotTests(unittest.TestCase):
         template_path = Path(self.dashboard.app.template_folder) / "dashboard.html"
         template = template_path.read_text(encoding="utf-8")
 
-        self.assertIn("const symbol = String(evidence.symbol || '?')", template)
+        self.assertIn("const hasEvidence = Boolean(String(evidence.code || '').trim())", template)
+        self.assertIn("const symbol = String(evidence.symbol || (hasEvidence ? '?' : '–'))", template)
+        self.assertIn("Kanıt özelliğinden önce oluşturuldu", template)
         self.assertIn('<div class="row"><span>İstatistiksel adil barem</span>', template)
+        self.assertIn('<div class="row"><span>Kalan sayı · model / piyasa</span>', template)
+        self.assertIn('<div class="row"><span>Gerçekleşmiş skor sapması</span>', template)
         self.assertIn('<div class="row"><span>Tahmini tempo / 40 dk</span>', template)
         self.assertIn('<div class="row"><span>Serbest atış oranı</span>', template)
         self.assertNotIn("scoreData.risk_note", template)
         self.assertNotIn('Skorun Dağılımı', template)
         self.assertNotIn("'☆'.repeat", template)
         self.assertNotIn("const componentHelpTexts = {", template)
+
+    def test_market_evidence_outcome_report_deduplicates_match_and_direction(self):
+        version = self.dashboard.MARKET_EVIDENCE_VERSION
+        rows = [
+            {
+                "id": 1,
+                "match_id": "m1",
+                "direction": "ALT",
+                "signal_count": 1,
+                "result": "Başarılı",
+                "market_evidence": {"version": version, "code": "supports_signal"},
+            },
+            {
+                "id": 2,
+                "match_id": "m1",
+                "direction": "ALT",
+                "signal_count": 2,
+                "result": "Başarısız",
+                "market_evidence": {"version": version, "code": "opposes_signal"},
+            },
+            {
+                "id": 3,
+                "match_id": "m1",
+                "direction": "ÜST",
+                "signal_count": 3,
+                "result": "Başarısız",
+                "market_evidence": {"version": version, "code": "opposes_signal"},
+            },
+            {
+                "id": 4,
+                "match_id": "m2",
+                "direction": "ALT",
+                "signal_count": 1,
+                "result": "Başarılı",
+                "market_evidence": {"version": version, "code": "mixed"},
+            },
+            {
+                "id": 5,
+                "match_id": "legacy",
+                "direction": "ALT",
+                "signal_count": 1,
+                "result": "Başarılı",
+                "market_evidence": {
+                    "version": "market_evidence_4x10_v1",
+                    "code": "supports_market",
+                },
+            },
+        ]
+
+        report = self.dashboard.build_market_evidence_outcome_report(rows)
+        buckets = {bucket["code"]: bucket for bucket in report["buckets"]}
+
+        self.assertEqual(report["total_unique"], 3)
+        self.assertEqual(report["resolved"], 3)
+        self.assertEqual(report["decisive_resolved"], 2)
+        self.assertEqual(report["verdict_correct"], 2)
+        self.assertEqual(report["verdict_accuracy"], 100.0)
+        self.assertEqual(buckets["supports_signal"]["total"], 1)
+        self.assertEqual(buckets["opposes_signal"]["total"], 1)
+        self.assertEqual(buckets["mixed"]["total"], 1)
+
+    def test_market_evidence_outcome_report_rejects_unknown_direction(self):
+        version = self.dashboard.MARKET_EVIDENCE_VERSION
+        report = self.dashboard.build_market_evidence_outcome_report([
+            {
+                "id": 1,
+                "match_id": "m1",
+                "direction": "",
+                "signal_count": 1,
+                "result": "Başarılı",
+                "market_evidence": {"version": version, "code": "supports_signal"},
+            },
+            {
+                "id": 2,
+                "match_id": "m2",
+                "direction": "SIDE",
+                "signal_count": 1,
+                "result": "Başarılı",
+                "market_evidence": {"version": version, "code": "supports_signal"},
+            },
+        ])
+
+        self.assertEqual(report["total_unique"], 0)
+        self.assertEqual(report["resolved"], 0)
+
+    def test_market_evidence_outcome_report_falls_back_from_invalid_final_direction(self):
+        version = self.dashboard.MARKET_EVIDENCE_VERSION
+        report = self.dashboard.build_market_evidence_outcome_report([
+            {
+                "id": 1,
+                "match_id": "m1",
+                "final_direction": "SIDE",
+                "direction": "ALT",
+                "signal_count": 1,
+                "result": "Başarılı",
+                "market_evidence": {"version": version, "code": "supports_signal"},
+            },
+        ])
+
+        self.assertEqual(report["total_unique"], 1)
+        self.assertEqual(report["resolved"], 1)
 
     def test_deleted_template_has_first_signal_per_match_and_direction_view(self):
         template_path = Path(self.dashboard.app.template_folder) / "deleted_matches.html"

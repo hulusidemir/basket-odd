@@ -82,6 +82,25 @@ def _safe_env_int(name: str, default: int, *, minimum: int, maximum: int) -> int
     return value
 
 
+def _optional_bool(value) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if value is None or str(value).strip() == "":
+        return None
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    try:
+        numeric = float(text)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric) or numeric < 0:
+        return None
+    return numeric > 0
+
+
 def _status_from_play_by_play_hint(value) -> dict:
     """Build a real clock status from AiScore's latest play-by-play row."""
     hint = value if isinstance(value, dict) else {}
@@ -232,7 +251,7 @@ def _normalize_team_stats_snapshot(value) -> dict:
     return {
         "version": "aiscore_team_stats_v1",
         "source": str(raw.get("source") or "").strip(),
-        "has_stats": bool(raw.get("has_stats")),
+        "has_stats": _optional_bool(raw.get("has_stats")),
         "home": team_stats(raw.get("home")),
         "away": team_stats(raw.get("away")),
         "current_period_flow": flow,
@@ -378,6 +397,58 @@ class AiscoreScraper:
         except Exception as exc:
             logger.debug("AIScore match-page readiness wait ended without a signal: %s", exc)
         await page.wait_for_timeout(250)
+
+    async def _wait_for_team_stats_ready(self, page) -> None:
+        """Wait for complete Nuxt team totals or an explicit no-stats flag."""
+        try:
+            await page.wait_for_function(
+                r"""
+                () => {
+                    const basketball = window.__NUXT__
+                        && window.__NUXT__.state
+                        && window.__NUXT__.state.basketball;
+                    const match = basketball
+                        && basketball.basketballDetailMatchData
+                        && basketball.basketballDetailMatchData.match;
+                    if (!match) return false;
+                    const rawHasStats = match.competition
+                        && match.competition.hasStats;
+                    const hasStatsText = String(rawHasStats ?? '').trim().toLowerCase();
+                    if (
+                        rawHasStats === false
+                        || ['0', 'false', 'no', 'off'].includes(hasStatsText)
+                    ) {
+                        return true;
+                    }
+                    const lineup = basketball._boxscoreData
+                        && basketball._boxscoreData.lineup;
+                    const home = lineup && lineup.homePlayerTotals
+                        && lineup.homePlayerTotals.bkDetail;
+                    const away = lineup && lineup.awayPlayerTotals
+                        && lineup.awayPlayerTotals.bkDetail;
+                    const integer = value => /^\d+$/.test(String(value ?? '').trim());
+                    const madeAttemptPair = value => {
+                        const parsed = String(value ?? '').trim().match(
+                            /^(\d+)\s*[-–/]\s*(\d+)$/
+                        );
+                        return Boolean(parsed) && Number(parsed[1]) <= Number(parsed[2]);
+                    };
+                    const complete = detail => Boolean(detail)
+                        && integer(detail.points)
+                        && madeAttemptPair(detail.fieldGoals)
+                        && madeAttemptPair(detail.threePoints)
+                        && madeAttemptPair(detail.freeThrows)
+                        && integer(detail.offensiveRebounds)
+                        && integer(detail.defensiveRebounds)
+                        && integer(detail.turnovers);
+                    return complete(home) && complete(away);
+                }
+                """,
+                timeout=min(5000, self.page_timeout_ms),
+            )
+        except Exception as exc:
+            logger.debug("AIScore team-stats readiness wait ended without a signal: %s", exc)
+        await page.wait_for_timeout(150)
 
     # ── Ana tarama ────────────────────────────────────────────────────
 
@@ -1642,7 +1713,15 @@ class AiscoreScraper:
             or not parsed_quarter_scores.get("away")
             or needs_stats_snapshot
         )
-        overview_data = await self._fetch_overview_data(page, url) if needs_overview else {}
+        overview_data = (
+            await self._fetch_overview_data(
+                page,
+                url,
+                wait_for_team_stats=needs_stats_snapshot,
+            )
+            if needs_overview
+            else {}
+        )
         if overview_data.get("status"):
             parsed["status"] = overview_data.get("status")
         if overview_data.get("score"):
@@ -1738,7 +1817,13 @@ class AiscoreScraper:
             "team_stats": team_stats,
         }
 
-    async def _fetch_overview_data(self, page, url: str) -> dict:
+    async def _fetch_overview_data(
+        self,
+        page,
+        url: str,
+        *,
+        wait_for_team_stats: bool = False,
+    ) -> dict:
         try:
             await page.goto(
                 url.rstrip("/"),
@@ -1746,6 +1831,8 @@ class AiscoreScraper:
                 timeout=self.page_timeout_ms,
             )
             await self._wait_for_match_page_ready(page)
+            if wait_for_team_stats:
+                await self._wait_for_team_stats_ready(page)
             result = await page.evaluate(r"""
                 () => {
                   const text = s => (s || '').replace(/\s+/g, ' ').trim();
@@ -1867,6 +1954,9 @@ class AiscoreScraper:
                   const awayTotals = lineup.awayPlayerTotals
                     && lineup.awayPlayerTotals.bkDetail
                     ? lineup.awayPlayerTotals.bkDetail : {};
+                  const rawHasStats = nuxtMatch && nuxtMatch.competition
+                    ? nuxtMatch.competition.hasStats
+                    : null;
                   const visiblePbpRows = Array.from(document.querySelectorAll(
                     '.pbp .dataList, [class*="pbp"] [class~="dataList"]'
                   )).filter(el => el.offsetParent !== null);
@@ -1882,10 +1972,7 @@ class AiscoreScraper:
                   };
                   const teamStats = {
                     source: 'nuxt_boxscore_team_totals',
-                    has_stats: Boolean(
-                      nuxtMatch && nuxtMatch.competition
-                      && Number(nuxtMatch.competition.hasStats) > 0
-                    ),
+                    has_stats: rawHasStats,
                     home: homeTotals,
                     away: awayTotals,
                     current_period_flow: currentPeriodFlow,

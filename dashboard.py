@@ -23,6 +23,7 @@ from finished_match_service import (
     run_single_deleted_match_result_check,
 )
 from aiscore_scraper import AiscoreScraper
+from market_evidence import MARKET_EVIDENCE_VERSION
 from projection import PROJECTION_MODEL_VERSION
 from signal_analysis import (
     FAIR_MODEL_VERSION,
@@ -352,6 +353,17 @@ def enrich_alerts_with_analysis(
         alert["tournament"] = _sanitize_tournament_display(alert.get("tournament"))
         raw_analysis = alert.get("ai_analysis")
         analysis = _parse_analysis(raw_analysis)
+        frozen_signal_direction = ""
+        for candidate in (
+            analysis.get("final_direction"),
+            analysis.get("direction"),
+            alert.get("final_direction"),
+            alert.get("direction"),
+        ):
+            normalized = _normalize_direction(candidate)
+            if normalized in {"ALT", "ÜST"}:
+                frozen_signal_direction = normalized
+                break
         alert.pop("ai_analysis", None)
         if _analysis_needs_live_rebuild(analysis):
             analysis = _rebuild_live_analysis_from_alert(alert, analysis, backtest_profile)
@@ -359,6 +371,12 @@ def enrich_alerts_with_analysis(
             analysis = {}
         if backtest_profile is not None:
             analysis = enrich_analysis_with_backtest(alert, analysis, backtest_profile, config.THRESHOLD)
+        if frozen_signal_direction:
+            analysis = {
+                **analysis,
+                "direction": frozen_signal_direction,
+                "final_direction": frozen_signal_direction,
+            }
         analysis = _sanitize_h2h_analysis(_sanitize_recent_form_analysis(analysis))
         if analysis.get("projected_total") is None:
             analysis = {**analysis}
@@ -436,6 +454,7 @@ def enrich_alerts_with_analysis(
         alert["market_evidence_rank"] = {
             "supports_signal": 4,
             "mixed": 3,
+            "opposes_signal": 2,
             "supports_market": 2,
             "insufficient": 1,
         }.get(str(alert["market_evidence"].get("code") or ""), 1)
@@ -762,6 +781,35 @@ def _analysis_needs_live_rebuild(analysis: dict) -> bool:
     )
 
 
+def _merge_rebuilt_analysis_preserving_signal_snapshot(
+    alert: dict,
+    existing_analysis: dict | None,
+    rebuilt_analysis: dict | None,
+) -> dict:
+    """Refresh derived fields without rewriting signal-time evidence or direction."""
+    existing = existing_analysis if isinstance(existing_analysis, dict) else {}
+    rebuilt = rebuilt_analysis if isinstance(rebuilt_analysis, dict) else {}
+    merged = {**existing, **rebuilt}
+
+    if "market_evidence" in existing:
+        merged["market_evidence"] = existing["market_evidence"]
+    else:
+        merged.pop("market_evidence", None)
+
+    for candidate in (
+        existing.get("final_direction"),
+        existing.get("direction"),
+        alert.get("final_direction"),
+        alert.get("direction"),
+    ):
+        frozen_direction = _normalize_direction(candidate)
+        if frozen_direction in {"ALT", "ÜST"}:
+            merged["direction"] = frozen_direction
+            merged["final_direction"] = frozen_direction
+            break
+    return merged
+
+
 def _rebuild_live_analysis_from_alert(
     alert: dict,
     analysis: dict | None,
@@ -784,7 +832,9 @@ def _rebuild_live_analysis_from_alert(
         )
     except (TypeError, ValueError, KeyError):
         return existing
-    return {**existing, **rebuilt}
+    # Alert rows do not retain the signal-time team-stat snapshot. Rebuilds
+    # may update projections, but must not invent/replace its frozen verdict.
+    return _merge_rebuilt_analysis_preserving_signal_snapshot(alert, existing, rebuilt)
 
 
 _DELETED_LIST_FIELDS = (
@@ -841,6 +891,7 @@ def _enrich_deleted_alert(
     result["market_evidence_rank"] = {
         "supports_signal": 4,
         "mixed": 3,
+        "opposes_signal": 2,
         "supports_market": 2,
         "insufficient": 1,
     }.get(str(evidence.get("code") or ""), 1)
@@ -1259,6 +1310,104 @@ def _parse_ts(value):
         return None
 
 
+_MARKET_EVIDENCE_BUCKETS = (
+    ("supports_signal", "Sinyal destekleniyor"),
+    ("mixed", "Net ayrışma yok"),
+    ("opposes_signal", "Sinyalin tersi destekleniyor"),
+    ("insufficient", "İstatistik yetersiz"),
+)
+
+
+def build_market_evidence_outcome_report(signals: list[dict]) -> dict:
+    """Measure the current evidence version once per match and direction."""
+    first_by_match_direction: dict[tuple[str, str], tuple[tuple, dict]] = {}
+    for row in signals:
+        evidence = (
+            row.get("market_evidence")
+            if isinstance(row.get("market_evidence"), dict)
+            else {}
+        )
+        if str(evidence.get("version") or "") != MARKET_EVIDENCE_VERSION:
+            continue
+        code = str(evidence.get("code") or "")
+        if code not in {item[0] for item in _MARKET_EVIDENCE_BUCKETS}:
+            continue
+        direction = _normalize_direction(row.get("final_direction"))
+        if direction not in {"ALT", "ÜST"}:
+            direction = _normalize_direction(row.get("direction"))
+        if direction not in {"ALT", "ÜST"}:
+            continue
+        match_key = str(row.get("match_id") or row.get("id") or "").strip()
+        if not match_key:
+            continue
+        try:
+            signal_count = max(1, int(row.get("signal_count") or 1))
+        except (TypeError, ValueError):
+            signal_count = 1
+        try:
+            alert_id = int(row.get("id") or 0)
+        except (TypeError, ValueError):
+            alert_id = 0
+        order = (signal_count, str(row.get("alerted_at") or ""), alert_id)
+        key = (match_key, direction)
+        current = first_by_match_direction.get(key)
+        if current is None or order < current[0]:
+            first_by_match_direction[key] = (order, row)
+
+    unique_rows = [item[1] for item in first_by_match_direction.values()]
+    groups: dict[str, list[dict]] = {
+        code: [] for code, _label in _MARKET_EVIDENCE_BUCKETS
+    }
+    for row in unique_rows:
+        evidence = row.get("market_evidence") or {}
+        groups[str(evidence.get("code") or "")].append(row)
+
+    buckets = []
+    decisive_resolved = 0
+    verdict_correct = 0
+    for code, label in _MARKET_EVIDENCE_BUCKETS:
+        rows = groups[code]
+        stats = _bucket_stats(rows)
+        bucket_correct = 0
+        if code == "supports_signal":
+            bucket_correct = stats["success"]
+            bucket_verdict_resolved = stats["resolved"]
+        elif code == "opposes_signal":
+            bucket_correct = stats["fail"]
+            bucket_verdict_resolved = stats["resolved"]
+        else:
+            bucket_verdict_resolved = 0
+        decisive_resolved += bucket_verdict_resolved
+        verdict_correct += bucket_correct
+        buckets.append({
+            "code": code,
+            "label": label,
+            **stats,
+            "verdict_resolved": bucket_verdict_resolved,
+            "verdict_correct": bucket_correct,
+            "verdict_accuracy": _pct(bucket_correct, bucket_verdict_resolved),
+        })
+
+    resolved = sum(
+        1
+        for row in unique_rows
+        if _fold(row.get("result")) in {"basarili", "basarisiz"}
+    )
+    return {
+        "version": MARKET_EVIDENCE_VERSION,
+        "total_unique": len(unique_rows),
+        "resolved": resolved,
+        "decisive_resolved": decisive_resolved,
+        "verdict_correct": verdict_correct,
+        "verdict_accuracy": _pct(verdict_correct, decisive_resolved),
+        "buckets": buckets,
+        "note": (
+            "Yalnız bu kanıt sürümündeki ilk maç+yön sinyali sayılır; "
+            "tekrarlar ve eski sürümler karıştırılmaz."
+        ),
+    }
+
+
 def build_deleted_matches_report(signals: list) -> dict:
     if not signals:
         return {
@@ -1276,6 +1425,7 @@ def build_deleted_matches_report(signals: list) -> dict:
             "tournament_top": [],
             "tournament_bottom": [],
             "signal_quality_report": build_signal_quality_report([]),
+            "market_evidence_report": build_market_evidence_outcome_report([]),
             "trend_7d": None,
             "actions": [],
         }
@@ -1619,6 +1769,7 @@ def build_deleted_matches_report(signals: list) -> dict:
         "tournament_top": tournament_top,
         "tournament_bottom": tournament_bottom,
         "signal_quality_report": build_signal_quality_report(signals),
+        "market_evidence_report": build_market_evidence_outcome_report(signals),
         "trend_7d": trend_7d,
         "actions": actions,
     }
@@ -2071,10 +2222,11 @@ def api_refresh_alert_h2h(alert_id: int):
         {"h2h": {"body_text": h2h_body}},
         config.THRESHOLD,
     )
-    analysis = {
-        **existing_analysis,
-        **rebuilt,
-    }
+    analysis = _merge_rebuilt_analysis_preserving_signal_snapshot(
+        alert,
+        existing_analysis,
+        rebuilt,
+    )
     db.update_alert_live_snapshot(
         alert_id,
         ai_analysis=json.dumps(analysis, ensure_ascii=False),
@@ -2121,8 +2273,11 @@ def api_refresh_alert_quarter_scores(alert_id: int):
         config.THRESHOLD,
     )
     analysis = {
-        **existing_analysis,
-        **rebuilt,
+        **_merge_rebuilt_analysis_preserving_signal_snapshot(
+            alert,
+            existing_analysis,
+            rebuilt,
+        ),
         "quarter_scores": quarter_scores,
     }
     db.update_alert_live_snapshot(
