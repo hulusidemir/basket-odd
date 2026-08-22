@@ -2,6 +2,7 @@ import json
 import re
 from statistics import mean
 
+from market_evidence import build_market_evidence
 from projection import calculate_live_projection, calculate_quarter_ppm, game_clock, parse_score
 
 
@@ -1515,6 +1516,7 @@ def build_signal_analysis(
     )
     direction = decision["direction"]
     selection = _classify_signal(decision)
+    market_evidence = build_market_evidence(match, direction)
     warnings.insert(0, selection["selection_reason"])
 
     if fair_line is None:
@@ -1597,5 +1599,6 @@ def build_signal_analysis(
         "candidate_eligible": selection.get("candidate_eligible", False),
         "candidate_rule_id": selection.get("candidate_rule_id"),
         "selection_reason": selection.get("selection_reason"),
+        "market_evidence": market_evidence,
     }
     return result

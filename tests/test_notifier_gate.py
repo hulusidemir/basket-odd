@@ -25,8 +25,14 @@ class NotifierGateTests(unittest.IsolatedAsyncioTestCase):
                 "selection_reason": "test",
                 "signal_quality": {
                     "quality_score": 82,
-                    "quality_label": "GÜÇLÜ",
+                    "quality_label": "ÇOK RİSKLİ",
                     "stars": 4,
+                },
+                "market_evidence": {
+                    "code": "supports_signal",
+                    "symbol": "✓",
+                    "label": "SİNYAL DESTEKLENİYOR",
+                    "primary_reason": "Pozisyon temposu barem artışını açıklamıyor.",
                 },
                 "signal_gate": gate,
             },
@@ -40,7 +46,11 @@ class NotifierGateTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result, {"chat": 1})
         text = notifier._send_to_all.await_args.args[0]
-        self.assertIn("ALT · 82 ★★★★ · GÜÇLÜ", text)
+        self.assertTrue(text.startswith("✓ <b>SİNYAL DESTEKLENİYOR</b>"))
+        self.assertIn("📊 <b>ALT</b>", text)
+        self.assertIn("Pozisyon temposu barem artışını açıklamıyor.", text)
+        self.assertNotIn("RİSKLİ", text)
+        self.assertNotIn("★", text)
         self.assertNotIn("Beklemek daha iyi olur", text)
         self.assertNotIn("<b>Kanıt:</b>", text)
         self.assertNotIn("PAS", text)
@@ -52,7 +62,7 @@ class NotifierGateTests(unittest.IsolatedAsyncioTestCase):
         result = await notifier.send_alert(**self.kwargs({}))
         self.assertEqual(result, {"chat": 1})
         text = notifier._send_to_all.await_args.args[0]
-        self.assertIn("ALT · 82 ★★★★ · GÜÇLÜ", text)
+        self.assertIn("SİNYAL DESTEKLENİYOR", text)
         self.assertNotIn("Temkinli değerlendirin", text)
 
     async def test_blocked_legacy_state_is_not_shown(self):
@@ -62,7 +72,7 @@ class NotifierGateTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result, {"chat": 1})
         text = notifier._send_to_all.await_args.args[0]
-        self.assertIn("ALT · 82 ★★★★ · GÜÇLÜ", text)
+        self.assertIn("SİNYAL DESTEKLENİYOR", text)
         self.assertNotIn("Beklemek daha iyi olur", text)
         self.assertNotIn("PAS", text)
         self.assertNotIn("Güven skoru:</b>", text)
@@ -81,7 +91,7 @@ class NotifierGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, {"chat": 1})
         notifier._send_to_all.assert_awaited_once()
         text = notifier._send_to_all.await_args.args[0]
-        self.assertIn("ALT · 82 ★★★★ · GÜÇLÜ", text)
+        self.assertIn("SİNYAL DESTEKLENİYOR", text)
         self.assertNotIn("Oynanabilir", text)
         self.assertNotIn("ONAYLI", text)
         self.assertNotIn("<b>Kanıt:</b>", text)
@@ -92,7 +102,7 @@ class NotifierGateTests(unittest.IsolatedAsyncioTestCase):
         await notifier.send_startup()
 
         text = notifier._send_to_all.await_args.args[0]
-        self.assertIn("sinyal skoru ve kısa gerekçesiyle", text)
+        self.assertIn("istatistiksel kanıt etiketi ve kısa gerekçesiyle", text)
         self.assertNotIn("PAS, TEST", text)
 
 

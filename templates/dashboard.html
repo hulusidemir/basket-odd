@@ -521,7 +521,7 @@
     .trust.reliable { color: #6ee7b7; border-color: rgba(52,211,153,0.28); }
     .trust.watch { color: #fde68a; border-color: rgba(251,191,36,0.28); }
     .trust.weak { color: #fca5a5; border-color: rgba(239,68,68,0.28); }
-    .quality-badge { min-width: 54px; cursor: pointer; font-variant-numeric: tabular-nums; transition: background 120ms, transform 120ms; border: 1px solid transparent; }
+    .quality-badge { min-width: 34px; cursor: pointer; font-size: 16px; font-weight: 950; font-variant-numeric: tabular-nums; transition: background 120ms, transform 120ms; border: 1px solid transparent; }
     .quality-badge:hover { transform: scale(1.06); filter: brightness(1.15); }
     .quality-badge.red-check {
       color: #fecaca;
@@ -2389,7 +2389,7 @@
                 <th class="col-model" data-sort="projected">Tempo Proj.</th>
                 <th class="col-context" data-sort="h2h_total" title="İki takımın geçmiş karşılaşmalarındaki toplam sayı ortalaması">H2H</th>
                 <th class="col-context" data-sort="team_recent_total" title="Takımların son form maçlarından hesaplanan toplam sayı ortalaması">SF Ort.</th>
-                <th class="col-quality" data-sort="signal_quality_score">Sinyal</th>
+                <th class="col-quality" data-sort="market_evidence_rank">Kanıt</th>
                 <th class="col-match" data-sort="match_name">Maç</th>
                 <th class="col-tournament" data-sort="tournament">Turnuva</th>
                 <th class="col-status" data-sort="status">Durum</th>
@@ -2780,22 +2780,17 @@
     }
 
     function signalQualityHtml(alert) {
-      const quality = alert?.signal_quality && typeof alert.signal_quality === 'object'
-        ? alert.signal_quality
+      const evidence = alert?.market_evidence && typeof alert.market_evidence === 'object'
+        ? alert.market_evidence
         : {};
-      const score = num(quality.quality_score ?? alert?.signal_quality_score);
-      const label = String(quality.quality_label ?? alert?.signal_quality_label ?? '').trim();
-      const stars = Math.max(1, Math.min(5, Number(quality.stars ?? alert?.signal_stars ?? 1)));
-      const starText = '★'.repeat(stars);
-      const tone = score === null ? 'neutral'
-        : score >= 85 ? 'strong'
-        : score >= 65 ? 'playable'
-        : score >= 55 ? 'watch'
-        : score >= 40 ? 'neutral'
-        : 'pass';
-      const scoreText = score === null ? '-' : `${Math.round(score)}`;
-      const title = `Sinyal: ${scoreText}${label ? ` · ${label}` : ''}`;
-      return `<span class="quality-stack"><button type="button" class="badge small-badge quality-badge ${tone}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(title)}"><span>${escapeHtml(scoreText)}</span><span>${escapeHtml(starText)}</span></button></span>`;
+      const code = String(evidence.code || 'insufficient');
+      const symbol = String(evidence.symbol || '?');
+      const label = String(evidence.label || 'İSTATİSTİK YETERSİZ');
+      const tone = code === 'supports_signal' ? 'strong'
+        : code === 'supports_market' ? 'pass'
+        : code === 'mixed' ? 'watch'
+        : 'neutral';
+      return `<span class="quality-stack"><button type="button" class="badge small-badge quality-badge ${tone}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${escapeHtml(symbol)}</button></span>`;
     }
 
     function cardGateReasonHtml(alert) {
@@ -2990,7 +2985,7 @@
       if (field === 'h2h_total' || field === 'team_recent_total') {
         return contextMetricValue(alert, field) ?? Number.NEGATIVE_INFINITY;
       }
-      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count', 'signal_quality_score'].includes(field)) {
+      if (['opening', 'live', 'diff', 'projected', 'fair_line', 'signal_count', 'signal_quality_score', 'market_evidence_rank'].includes(field)) {
         return num(alert[field]) ?? Number.NEGATIVE_INFINITY;
       }
       if (field === 'history_guard') return historyGuardSummary(alert).score;
@@ -3694,26 +3689,35 @@
       const alert = allAlerts.find(a => Number(a.id) === Number(id));
       if (!alert) return;
       {
-        const scoreData = alert.signal_quality && typeof alert.signal_quality === 'object' ? alert.signal_quality : {};
-        const scoreValue = num(scoreData.quality_score ?? alert.signal_quality_score);
-        const labelValue = scoreData.quality_label ?? alert.signal_quality_label ?? '-';
-        const starCount = Math.max(1, Math.min(5, Number(scoreData.stars ?? alert.signal_stars ?? 1)));
-        const starText = '★'.repeat(starCount);
-        const leagueRate = num(scoreData.league_rate);
-        $('signalModalTitle').textContent = `Sinyal Skoru - ${cleanMatchName(alert.match_name)}`;
+        const evidence = alert.market_evidence && typeof alert.market_evidence === 'object' ? alert.market_evidence : {};
+        const metrics = evidence.metrics && typeof evidence.metrics === 'object' ? evidence.metrics : {};
+        const reasons = Array.isArray(evidence.reasons) ? evidence.reasons.filter(Boolean) : [];
+        const code = String(evidence.code || 'insufficient');
+        const symbol = String(evidence.symbol || '?');
+        const label = String(evidence.label || 'İSTATİSTİK YETERSİZ');
+        const heroTone = code === 'supports_signal' ? 'strong' : code === 'supports_market' ? 'watch' : 'playable';
+        const detailReasons = reasons.slice(1).map(reason => `<li>${escapeHtml(reason)}</li>`).join('');
+        $('signalModalTitle').textContent = `İstatistik Kanıtı - ${cleanMatchName(alert.match_name)}`;
         $('signalModalBody').innerHTML = `
           <div style="padding:16px 18px;line-height:1.5;">
-            <div class="confidence-hero ${scoreValue !== null && scoreValue >= 75 ? 'strong' : scoreValue !== null && scoreValue >= 65 ? 'playable' : 'watch'}">
-              <div class="confidence-score">${scoreValue === null ? '-' : scoreValue.toFixed(0)}</div>
-              <div class="confidence-copy"><div class="confidence-label">${escapeHtml(starText)} · ${escapeHtml(labelValue)}</div><div class="confidence-sub">65 ve üzeri daha seçici sinyaldir</div></div>
+            <div class="confidence-hero ${heroTone}">
+              <div class="confidence-score">${escapeHtml(symbol)}</div>
+              <div class="confidence-copy"><div class="confidence-label">${escapeHtml(label)}</div><div class="confidence-sub">Etiket sinyali engellemez; sinyal anındaki veriden dondurulur.</div></div>
             </div>
             <div class="sig-section-title">Neden?</div>
+            <div class="confidence-message">${escapeHtml(evidence.primary_reason || 'Sinyal anına ait doğrulanmış takım istatistiği yok.')}</div>
             <div class="sig-card">
-              <div class="row"><span>Adil fark</span><strong>${qualityValue(scoreData.fair_edge)}</strong></div>
-              <div class="row"><span>Tempo farkı</span><strong>${qualityValue(scoreData.projection_diff)}</strong></div>
-              <div class="row"><span>Lig</span><strong>${leagueRate === null ? 'Veri yok' : '%' + leagueRate.toFixed(0) + ' (' + escapeHtml(scoreData.league_samples ?? 0) + ' maç)'}</strong></div>
+              <div class="row"><span>İstatistiksel adil barem</span><strong>${qualityValue(metrics.stats_fair_total)}</strong></div>
+              <div class="row"><span>Canlı barem</span><strong>${qualityValue(metrics.live_total)}</strong></div>
+              <div class="row"><span>Tahmini tempo / 40 dk</span><strong>${qualityValue(metrics.observed_pace_40)}</strong></div>
+              <div class="row"><span>Üçlük</span><strong>${escapeHtml(metrics.three_points || '-')} ${metrics.three_pct == null ? '' : '(%' + escapeHtml(metrics.three_pct) + ')'}</strong></div>
+              <div class="row"><span>eFG</span><strong>${metrics.efg_pct == null ? '-' : '%' + escapeHtml(metrics.efg_pct)}</strong></div>
+              <div class="row"><span>Serbest atış oranı</span><strong>${metrics.free_throw_rate_pct == null ? '-' : '%' + escapeHtml(metrics.free_throw_rate_pct)}</strong></div>
+              <div class="row"><span>Hücum ribaundu oranı</span><strong>${metrics.offensive_rebound_rate_pct == null ? '-' : '%' + escapeHtml(metrics.offensive_rebound_rate_pct)}</strong></div>
+              <div class="row"><span>Top kaybı oranı</span><strong>${metrics.turnover_rate_pct == null ? '-' : '%' + escapeHtml(metrics.turnover_rate_pct)}</strong></div>
+              <div class="row"><span>Veri güveni</span><strong>${escapeHtml(evidence.data_quality ?? 0)}/100</strong></div>
             </div>
-            <div class="confidence-message">${escapeHtml(scoreData.risk_note || 'Belirgin ek risk yok.')}</div>
+            ${detailReasons ? `<div class="sig-section-title">Oyun verileri</div><ul style="margin:0;padding-left:20px;color:var(--text-soft);">${detailReasons}</ul>` : ''}
           </div>`;
         $('signalModal').classList.add('active');
         return;

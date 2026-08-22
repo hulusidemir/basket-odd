@@ -444,13 +444,15 @@ class DisplaySnapshotTests(unittest.TestCase):
             self.assertNotIn("bucketstars", lowered)
             self.assertNotIn("yıldızlı", lowered)
 
-    def test_dashboard_signal_score_uses_compact_explanation(self):
+    def test_dashboard_market_evidence_uses_symbol_and_compact_explanation(self):
         template_path = Path(self.dashboard.app.template_folder) / "dashboard.html"
         template = template_path.read_text(encoding="utf-8")
 
-        self.assertIn('<div class="row"><span>Adil fark</span>', template)
-        self.assertIn('<div class="row"><span>Tempo farkı</span>', template)
-        self.assertIn('<div class="row"><span>Lig</span>', template)
+        self.assertIn("const symbol = String(evidence.symbol || '?')", template)
+        self.assertIn('<div class="row"><span>İstatistiksel adil barem</span>', template)
+        self.assertIn('<div class="row"><span>Tahmini tempo / 40 dk</span>', template)
+        self.assertIn('<div class="row"><span>Serbest atış oranı</span>', template)
+        self.assertNotIn("scoreData.risk_note", template)
         self.assertNotIn('Skorun Dağılımı', template)
         self.assertNotIn("'☆'.repeat", template)
         self.assertNotIn("const componentHelpTexts = {", template)

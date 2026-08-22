@@ -533,6 +533,7 @@ async def run():
         max_matches_per_cycle=config.MAX_MATCHES_PER_CYCLE,
         page_timeout_ms=config.PAGE_TIMEOUT_MS,
         concurrency=config.AISCORE_CONCURRENCY,
+        stats_threshold=config.THRESHOLD,
     )
     pace_tracker = PaceTracker()
 

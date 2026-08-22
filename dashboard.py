@@ -428,6 +428,17 @@ def enrich_alerts_with_analysis(
         alert["game_format"] = analysis.get("game_format")
         alert["model_validated"] = analysis.get("model_validated")
         alert["warnings"] = analysis.get("warnings") if isinstance(analysis.get("warnings"), list) else []
+        alert["market_evidence"] = (
+            analysis.get("market_evidence")
+            if isinstance(analysis.get("market_evidence"), dict)
+            else {}
+        )
+        alert["market_evidence_rank"] = {
+            "supports_signal": 4,
+            "mixed": 3,
+            "supports_market": 2,
+            "insufficient": 1,
+        }.get(str(alert["market_evidence"].get("code") or ""), 1)
         _apply_canonical_signal_direction(alert, analysis)
         legacy_quality = build_quality_tag(alert)
         alert["quality_label"] = legacy_quality["label"]
@@ -786,6 +797,7 @@ _DELETED_LIST_FIELDS = (
     "signal_gate", "gate_state", "candidate_eligible",
     "signal_quality", "signal_quality_score", "signal_quality_label", "signal_stars",
     "signal_quality_reason", "signal_quality_risk_note",
+    "market_evidence", "market_evidence_rank",
     "result", "result_source", "settled_at", "note",
     "bet_placed", "ignored", "followed",
 )
@@ -817,7 +829,21 @@ def _enrich_deleted_alert(
             else {}
         )
         result["gate_state"] = result["signal_gate"].get("state") or "LEGACY_UNVERIFIED"
+        result["market_evidence"] = (
+            analysis.get("market_evidence")
+            if isinstance(analysis.get("market_evidence"), dict)
+            else {}
+        )
         _apply_stored_signal_quality(result, analysis)
+
+    evidence = result.get("market_evidence") if isinstance(result.get("market_evidence"), dict) else {}
+    result["market_evidence"] = evidence
+    result["market_evidence_rank"] = {
+        "supports_signal": 4,
+        "mixed": 3,
+        "supports_market": 2,
+        "insufficient": 1,
+    }.get(str(evidence.get("code") or ""), 1)
 
     # Settlement and deletion metadata may legitimately change after the snapshot.
     for key in (

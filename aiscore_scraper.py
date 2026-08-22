@@ -179,6 +179,66 @@ def _normalize_market_snapshot(value) -> dict:
     }
 
 
+def _stat_int(value) -> int | None:
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _stat_pair(value) -> tuple[int | None, int | None]:
+    match = re.fullmatch(r"\s*(\d+)\s*[-–/]\s*(\d+)\s*", str(value or ""))
+    if not match:
+        return None, None
+    made, attempted = int(match.group(1)), int(match.group(2))
+    if made > attempted:
+        return None, None
+    return made, attempted
+
+
+def _normalize_team_stats_snapshot(value) -> dict:
+    """Normalize AiScore Nuxt team totals; never infer missing box-score values."""
+    raw = value if isinstance(value, dict) else {}
+
+    def team_stats(team_value) -> dict:
+        team = team_value if isinstance(team_value, dict) else {}
+        fgm, fga = _stat_pair(team.get("fieldGoals"))
+        fg3m, fg3a = _stat_pair(team.get("threePoints"))
+        ftm, fta = _stat_pair(team.get("freeThrows"))
+        return {
+            "points": _stat_int(team.get("points")),
+            "fgm": fgm,
+            "fga": fga,
+            "fg3m": fg3m,
+            "fg3a": fg3a,
+            "ftm": ftm,
+            "fta": fta,
+            "oreb": _stat_int(team.get("offensiveRebounds")),
+            "dreb": _stat_int(team.get("defensiveRebounds")),
+            "reb": _stat_int(team.get("rebounds")),
+            "tov": _stat_int(team.get("turnovers")),
+            "pf": _stat_int(team.get("personalFouls")),
+        }
+
+    flow_raw = raw.get("current_period_flow") if isinstance(raw.get("current_period_flow"), dict) else {}
+    flow = {
+        "period": _stat_int(flow_raw.get("period")),
+        "row_count": _stat_int(flow_raw.get("row_count")) or 0,
+        "foul_events": _stat_int(flow_raw.get("foul_events")) or 0,
+        "free_throw_events": _stat_int(flow_raw.get("free_throw_events")) or 0,
+        "turnover_events": _stat_int(flow_raw.get("turnover_events")) or 0,
+    }
+    return {
+        "version": "aiscore_team_stats_v1",
+        "source": str(raw.get("source") or "").strip(),
+        "has_stats": bool(raw.get("has_stats")),
+        "home": team_stats(raw.get("home")),
+        "away": team_stats(raw.get("away")),
+        "current_period_flow": flow,
+    }
+
+
 def _select_market_line(parsed: dict, snapshot: dict, name: str) -> float | None:
     """Use the first readable bookmaker line; keep median only as a fallback."""
     lines = _valid_market_lines(snapshot.get(f"{name}_lines"))
@@ -209,12 +269,18 @@ class AiscoreScraper:
         page_timeout_ms: int = 30000,
         skip_h2h: bool = False,
         concurrency: int | None = None,
+        stats_threshold: float | None = None,
     ):
         self.aiscore_url = aiscore_url
         self.max_matches_per_cycle = max_matches_per_cycle
         self.page_timeout_ms = page_timeout_ms
         self.skip_h2h = skip_h2h
         self.concurrency = concurrency
+        self.stats_threshold = (
+            max(0.0, float(stats_threshold))
+            if stats_threshold is not None
+            else None
+        )
         # Per-match H2H body cache. H2H data does not change during a match, so
         # re-scraping the H2H tab on every poll cycle is wasted work.
         self._h2h_cache: dict[str, str] = {}
@@ -1565,11 +1631,16 @@ class AiscoreScraper:
             return _MatchSkip("late_q4")
 
         parsed_quarter_scores = parsed.get("quarterScores") or {}
+        needs_stats_snapshot = (
+            self.stats_threshold is not None
+            and abs(float(inplay) - float(opening)) >= self.stats_threshold
+        )
         needs_overview = (
             not parsed.get("status")
             or not parsed.get("score")
             or not parsed_quarter_scores.get("home")
             or not parsed_quarter_scores.get("away")
+            or needs_stats_snapshot
         )
         overview_data = await self._fetch_overview_data(page, url) if needs_overview else {}
         if overview_data.get("status"):
@@ -1581,6 +1652,9 @@ class AiscoreScraper:
             if (overview_data.get("quarterScores") or {}).get("home")
             else parsed_quarter_scores
         ) or {}
+        team_stats = _normalize_team_stats_snapshot(
+            overview_data.get("teamStats")
+        )
 
         match_id = self._extract_match_id(url)
 
@@ -1661,6 +1735,7 @@ class AiscoreScraper:
             "h2h_body_text": h2h_body,
             "quarter_scores": quarter_scores,
             "odds_snapshot": odds_snapshot,
+            "team_stats": team_stats,
         }
 
     async def _fetch_overview_data(self, page, url: str) -> dict:
@@ -1781,11 +1856,47 @@ class AiscoreScraper:
                     || Number(nuxtMatch.statusId) === 10
                   );
 
+                  const boxscore = window.__NUXT__
+                    && window.__NUXT__.state
+                    && window.__NUXT__.state.basketball
+                    && window.__NUXT__.state.basketball._boxscoreData;
+                  const lineup = boxscore && boxscore.lineup ? boxscore.lineup : {};
+                  const homeTotals = lineup.homePlayerTotals
+                    && lineup.homePlayerTotals.bkDetail
+                    ? lineup.homePlayerTotals.bkDetail : {};
+                  const awayTotals = lineup.awayPlayerTotals
+                    && lineup.awayPlayerTotals.bkDetail
+                    ? lineup.awayPlayerTotals.bkDetail : {};
+                  const visiblePbpRows = Array.from(document.querySelectorAll(
+                    '.pbp .dataList, [class*="pbp"] [class~="dataList"]'
+                  )).filter(el => el.offsetParent !== null);
+                  const flowTexts = visiblePbpRows.map(el => text(el.innerText));
+                  const currentPeriodFlow = {
+                    period,
+                    row_count: flowTexts.length,
+                    foul_events: flowTexts.filter(value =>
+                      /\bFoul\b/i.test(value) && !/\bReceived\s+Foul\b/i.test(value)
+                    ).length,
+                    free_throw_events: flowTexts.filter(value => /\bFree\s+Throw\b/i.test(value)).length,
+                    turnover_events: flowTexts.filter(value => /\bTurn\s*Over\b/i.test(value)).length,
+                  };
+                  const teamStats = {
+                    source: 'nuxt_boxscore_team_totals',
+                    has_stats: Boolean(
+                      nuxtMatch && nuxtMatch.competition
+                      && Number(nuxtMatch.competition.hasStats) > 0
+                    ),
+                    home: homeTotals,
+                    away: awayTotals,
+                    current_period_flow: currentPeriodFlow,
+                  };
+
                   return {
                     status,
                     score,
                     quarterScores,
                     playByPlayStatus,
+                    teamStats,
                     isFinished: nuxtFinished,
                   };
                 }

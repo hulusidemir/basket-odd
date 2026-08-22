@@ -7,11 +7,43 @@ from aiscore_scraper import (
     AiscoreScraper,
     _MatchSkip,
     _normalize_market_snapshot,
+    _normalize_team_stats_snapshot,
     _redact_proxy_url,
     _safe_env_int,
     _select_market_line,
     _status_from_play_by_play_hint,
 )
+
+
+class TeamStatsNormalizationTests(unittest.TestCase):
+    def test_structured_team_totals_are_normalized(self):
+        result = _normalize_team_stats_snapshot({
+            "source": "nuxt_boxscore_team_totals",
+            "has_stats": True,
+            "home": {
+                "points": "79", "fieldGoals": "27-62", "threePoints": "11-28",
+                "freeThrows": "14-23", "offensiveRebounds": "13",
+                "defensiveRebounds": "30", "rebounds": "43", "turnovers": "18",
+                "personalFouls": "26",
+            },
+            "away": {
+                "points": "64", "fieldGoals": "19-59", "threePoints": "8-34",
+                "freeThrows": "18-22", "offensiveRebounds": "12",
+                "defensiveRebounds": "26", "rebounds": "38", "turnovers": "22",
+                "personalFouls": "24",
+            },
+            "current_period_flow": {"period": 4, "row_count": 30, "foul_events": 7},
+        })
+
+        self.assertEqual(result["home"]["fgm"], 27)
+        self.assertEqual(result["home"]["fg3a"], 28)
+        self.assertEqual(result["away"]["fta"], 22)
+        self.assertEqual(result["current_period_flow"]["foul_events"], 7)
+
+    def test_invalid_made_attempt_pair_is_not_inferred(self):
+        result = _normalize_team_stats_snapshot({"home": {"fieldGoals": "12-10"}})
+        self.assertIsNone(result["home"]["fgm"])
+        self.assertIsNone(result["home"]["fga"])
 
 
 class _LinkPage:

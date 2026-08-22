@@ -100,20 +100,10 @@ def _build_alert_text(
 
     proj_text = f"{float(projected):.1f}" if projected is not None else "-"
     h2h_text = f"{float(h2h_total):.1f}" if h2h_total is not None else "-"
-    quality = analysis.get("signal_quality") if isinstance(analysis.get("signal_quality"), dict) else {}
-    signal_score_value = quality.get("quality_score")
-    try:
-        signal_score_text = f"{int(round(float(signal_score_value)))}"
-    except (TypeError, ValueError):
-        signal_score_text = "-"
-    signal_score_label = str(quality.get("quality_label") or "").strip()
-    if not signal_score_label:
-        signal_score_label = "Skor yok" if signal_score_text == "-" else "Değerlendiriliyor"
-    try:
-        stars = max(1, min(5, int(quality.get("stars") or 1)))
-    except (TypeError, ValueError):
-        stars = 1
-    star_text = "★" * stars
+    evidence = analysis.get("market_evidence") if isinstance(analysis.get("market_evidence"), dict) else {}
+    evidence_symbol = str(evidence.get("symbol") or "?").strip()
+    evidence_label = str(evidence.get("label") or "İSTATİSTİK YETERSİZ").strip()
+    evidence_reason = str(evidence.get("primary_reason") or "Sinyal anına ait doğrulanmış takım istatistiği yok.").strip()
     quarter_score_text = _quarter_score_text(analysis)
     match_ppm_text = _match_ppm_text(analysis)
     quarter_ppm_text = _quarter_ppm_text(analysis)
@@ -126,20 +116,15 @@ def _build_alert_text(
     if final_direction not in {"ALT", "ÜST"}:
         final_direction = direction
 
-    signal_headline = (
-        f"📊 <b>{final_direction} · {escape(signal_score_text)} {escape(star_text)} "
-        f"· {escape(signal_score_label)}</b>{repeat}"
-    )
-
-    reason_text = str(analysis.get("selection_reason") or "").strip()
-    if not reason_text:
-        reason_text = "Nihai sinyal yönü, canlı barem hareketi ve adil barem/projeksiyon kontrolüyle seçildi."
+    evidence_headline = f"{escape(evidence_symbol)} <b>{escape(evidence_label)}</b>"
+    signal_headline = f"📊 <b>{final_direction}</b>{repeat}"
 
     return (
+        f"{evidence_headline}\n"
         f"{signal_headline}\n"
         f"🏀 <b>{escape(match_name)}</b>\n"
         f"🏆 {escape(tournament or '-')}\n\n"
-        f"<b>Gerekçe:</b> {escape(reason_text)}\n"
+        f"<b>İstatistiksel kanıt:</b> {escape(evidence_reason)}\n"
         f"<b>Skor:</b> {escape(score or '-')}\n"
         f"<b>Ne zaman geldi:</b> {when}\n"
         f"<b>Çeyrek Skorları:</b> {escape(quarter_score_text)}\n"
@@ -227,7 +212,12 @@ class TelegramNotifier:
             period=period,
         )
         if followed_upcoming:
-            text = "<b>TAKİP EDİLEN MAÇA AİT SİNYAL GELDİ</b>\n" + text
+            first_line, separator, remainder = text.partition("\n")
+            text = (
+                first_line
+                + "\n<b>TAKİP EDİLEN MAÇA AİT SİNYAL GELDİ</b>"
+                + (separator + remainder if separator else "")
+            )
         try:
             if pending_recipient_keys is None:
                 msg_ids = await self._send_to_all(text)
@@ -250,7 +240,7 @@ class TelegramNotifier:
             await self._send_to_all(
                 "🤖 <b>Basket Tahmin Botu başlatıldı.</b>\n"
                 "Canlı barem hareketleri izleniyor. Eşiği geçen tüm sinyaller "
-                "sinyal skoru ve kısa gerekçesiyle gönderilir."
+                "istatistiksel kanıt etiketi ve kısa gerekçesiyle gönderilir."
             )
         except TelegramError as e:
             logger.error(f"Failed to send startup message: {e}")

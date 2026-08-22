@@ -21,10 +21,10 @@ Bu dosya aktif hata, operasyonel risk ve kanıt eksiklerini listeler. Yeni oturu
 
 ### 3. AIScore DOM/Nuxt değişikliği veri akışını bozabilir
 
-- İlgili dosyalar: `aiscore_scraper.py`, `upcoming_scraper.py`
-- Durum: Retry, timeout, selector fallback, maç bazlı izolasyon ve sağlık raporu eklendi; dış sitenin DOM/Nuxt sözleşmesi yine proje kontrolü dışındadır.
-- Etki: Discovered/parsed sayısı düşebilir, market alanları kaybolabilir veya upcoming akışı kısmi duruma geçebilir.
-- Sonraki adım: `last_report` kapsam ve hata trendlerini izle. Upstream değişiklikte debug artifact'i hassas veri içermeden inceleyip parser fixture'larını güncelle.
+- İlgili dosyalar: `aiscore_scraper.py`, `upcoming_scraper.py`, `market_evidence.py`
+- Durum: Retry, timeout, selector fallback, maç bazlı izolasyon ve sağlık raporu eklendi; dış sitenin DOM/Nuxt sözleşmesi yine proje kontrolü dışındadır. Piyasa kanıtı ayrıca masaüstü Nuxt boxscore takım toplamlarına bağlıdır.
+- Etki: Discovered/parsed sayısı düşebilir, market alanları kaybolabilir, upcoming akışı kısmi duruma geçebilir veya kanıt etiketi güvenli biçimde `İSTATİSTİK YETERSİZ` kalabilir.
+- Sonraki adım: `last_report` kapsam ve hata trendleriyle birlikte kanıt etiketlerinin veri yeterlilik oranını izle. Upstream değişiklikte debug artifact'i hassas veri içermeden inceleyip parser fixture'larını güncelle.
 
 ### 4. Tek bookmaker verisi kaynak hatasına daha duyarlıdır
 
