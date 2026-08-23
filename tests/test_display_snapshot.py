@@ -769,6 +769,26 @@ class DisplaySnapshotTests(unittest.TestCase):
         self.assertNotIn("'☆'.repeat", template)
         self.assertNotIn("const componentHelpTexts = {", template)
 
+    def test_dashboard_displays_signal_score_next_to_market_evidence(self):
+        template_path = Path(self.dashboard.app.template_folder) / "dashboard.html"
+        template = template_path.read_text(encoding="utf-8")
+        function_start = template.index("function signalQualityHtml(alert)")
+        function_end = template.index("function cardGateReasonHtml(alert)", function_start)
+        renderer = template[function_start:function_end]
+
+        self.assertIn("alert?.signal_quality_score ?? quality.quality_score", renderer)
+        self.assertIn('class="sig-score-pill ${scoreTone}"', renderer)
+        self.assertIn("openSignalScoreModal", renderer)
+        self.assertIn("</button>${scorePill}</span>", renderer)
+
+        modal_start = template.index("function openSignalScoreModal(id)")
+        modal_end = template.index("function openSignalQualityModal(id)", modal_start)
+        modal = template[modal_start:modal_end]
+        self.assertIn("Sinyal Skoru -", modal)
+        self.assertIn('<div class="sig-section-title">Neden?</div>', modal)
+        self.assertIn("quality.reason || alert.signal_quality_reason", modal)
+        self.assertIn("quality.risk_note || alert.signal_quality_risk_note", modal)
+
     def test_market_evidence_outcome_report_deduplicates_match_and_direction(self):
         version = self.dashboard.MARKET_EVIDENCE_VERSION
         rows = [

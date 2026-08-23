@@ -592,6 +592,7 @@
     .quality-info-close:hover { background: rgba(6,182,212,0.32); }
     .quality-stack { display: inline-flex; align-items: center; gap: 5px; }
     .sig-score-pill {
+      appearance: none; cursor: pointer; font-family: inherit;
       display: inline-flex; align-items: center; justify-content: center;
       min-width: 28px; height: 20px; padding: 0 6px; border-radius: 5px;
       font-size: 11px; font-weight: 900; line-height: 1;
@@ -2389,7 +2390,7 @@
                 <th class="col-model" data-sort="projected">Tempo Proj.</th>
                 <th class="col-context" data-sort="h2h_total" title="İki takımın geçmiş karşılaşmalarındaki toplam sayı ortalaması">H2H</th>
                 <th class="col-context" data-sort="team_recent_total" title="Takımların son form maçlarından hesaplanan toplam sayı ortalaması">SF Ort.</th>
-                <th class="col-quality" data-sort="market_evidence_rank">Kanıt</th>
+                <th class="col-quality" data-sort="market_evidence_rank" title="İstatistik kanıtı ve sinyal skoru">Kanıt</th>
                 <th class="col-match" data-sort="match_name">Maç</th>
                 <th class="col-tournament" data-sort="tournament">Turnuva</th>
                 <th class="col-status" data-sort="status">Durum</th>
@@ -2792,7 +2793,18 @@
         : ['opposes_signal', 'supports_market'].includes(code) ? 'pass'
         : code === 'mixed' ? 'watch'
         : 'neutral';
-      return `<span class="quality-stack"><button type="button" class="badge small-badge quality-badge ${tone}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${escapeHtml(symbol)}</button></span>`;
+      const quality = alert?.signal_quality && typeof alert.signal_quality === 'object'
+        ? alert.signal_quality
+        : {};
+      const score = num(alert?.signal_quality_score ?? quality.quality_score);
+      const scoreLabel = String(alert?.signal_quality_label || quality.quality_label || '').trim();
+      const scoreTone = score === null ? ''
+        : score >= 65 ? 's-good'
+        : score >= 50 ? 's-mid'
+        : score >= 40 ? 's-weak'
+        : 's-pass';
+      const scorePill = score === null ? '' : `<button type="button" class="sig-score-pill ${scoreTone}" onclick="event.stopPropagation();openSignalScoreModal(${Number(alert.id || 0)})" title="Sinyal skoru: ${Math.round(score)}${scoreLabel ? ` · ${escapeHtml(scoreLabel)}` : ''} · Nedenini aç" aria-label="Sinyal skoru ${Math.round(score)}; nedenini aç">${Math.round(score)}</button>`;
+      return `<span class="quality-stack"><button type="button" class="badge small-badge quality-badge ${tone}" onclick="openSignalQualityModal(${Number(alert.id || 0)})" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${escapeHtml(symbol)}</button>${scorePill}</span>`;
     }
 
     function cardGateReasonHtml(alert) {
@@ -3685,6 +3697,44 @@
       help.classList.toggle('open', shouldOpen);
       button.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
       if (!shouldOpen) button.blur();
+    }
+
+    function openSignalScoreModal(id) {
+      const alert = allAlerts.find(a => Number(a.id) === Number(id));
+      if (!alert) return;
+      const quality = alert.signal_quality && typeof alert.signal_quality === 'object'
+        ? alert.signal_quality
+        : {};
+      const score = num(alert.signal_quality_score ?? quality.quality_score);
+      const label = String(alert.signal_quality_label || quality.quality_label || 'Skor hesaplanamadı');
+      const stars = Math.max(1, Math.min(5, Number(alert.signal_stars ?? quality.stars ?? 1)));
+      const heroTone = score !== null && score >= 65 ? 'playable'
+        : score !== null && score >= 50 ? 'watch'
+        : 'pass';
+      const leagueRate = num(quality.league_rate);
+      const leagueSamples = Number(quality.league_samples || 0);
+
+      $('signalModalTitle').textContent = `Sinyal Skoru - ${cleanMatchName(alert.match_name)}`;
+      $('signalModalBody').innerHTML = `
+        <div style="padding:16px 18px;line-height:1.5;">
+          <div class="confidence-hero ${heroTone}">
+            <div class="confidence-score">${score === null ? '–' : Math.round(score)}<small>/100</small></div>
+            <div class="confidence-copy">
+              <div class="confidence-label">${escapeHtml(label)}</div>
+              <div class="confidence-sub">${'★'.repeat(stars)} · Bu skor bir kazanma olasılığı veya garanti değildir.</div>
+            </div>
+          </div>
+          <div class="sig-section-title">Neden?</div>
+          <div class="confidence-message">${escapeHtml(quality.reason || alert.signal_quality_reason || 'Sinyal skoru için ayrıntılı gerekçe bulunamadı.')}</div>
+          <div class="sig-card">
+            <div class="row"><span>Adil barem farkı</span><strong>${qualityValue(quality.fair_edge)}</strong></div>
+            <div class="row"><span>Tempo projeksiyonu farkı</span><strong>${qualityValue(quality.projection_diff)}</strong></div>
+            <div class="row"><span>Lig geçmişi</span><strong>${leagueRate === null ? 'Veri yok' : '%' + leagueRate.toFixed(1) + ' · ' + leagueSamples + ' maç'}</strong></div>
+          </div>
+          <div class="sig-section-title">Risk notu</div>
+          <div class="confidence-message">${escapeHtml(quality.risk_note || alert.signal_quality_risk_note || 'Belirgin ek risk yok.')}</div>
+        </div>`;
+      $('signalModal').classList.add('active');
     }
 
     function openSignalQualityModal(id) {
