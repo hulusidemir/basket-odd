@@ -47,7 +47,10 @@ class TelegramOutboxTests(unittest.TestCase):
             retry_pending_telegram_deliveries(self.db, notifier)
         )
 
-        self.assertEqual(summary, {"pending": 1, "sent": 1, "failed": 0})
+        self.assertEqual(
+            summary,
+            {"pending": 1, "sent": 1, "failed": 0, "cancelled": 0},
+        )
         self.assertEqual(self.db.pending_telegram_alerts(), [])
         row = self.db.get_alert(self.alert_id)
         self.assertEqual(row["telegram_status"], "sent")
@@ -61,7 +64,10 @@ class TelegramOutboxTests(unittest.TestCase):
             retry_pending_telegram_deliveries(self.db, notifier)
         )
 
-        self.assertEqual(summary, {"pending": 1, "sent": 0, "failed": 1})
+        self.assertEqual(
+            summary,
+            {"pending": 1, "sent": 0, "failed": 1, "cancelled": 0},
+        )
         row = self.db.get_alert(self.alert_id)
         self.assertEqual(row["telegram_status"], "retry")
         self.assertEqual(row["telegram_retry_count"], 1)
@@ -80,7 +86,10 @@ class TelegramOutboxTests(unittest.TestCase):
 
         summary = asyncio.run(retry_pending_telegram_deliveries(self.db, notifier))
 
-        self.assertEqual(summary, {"pending": 1, "sent": 1, "failed": 0})
+        self.assertEqual(
+            summary,
+            {"pending": 1, "sent": 1, "failed": 0, "cancelled": 0},
+        )
         self.assertEqual(
             notifier.send_alert.await_args.kwargs["pending_recipient_keys"],
             {"recipient-b"},
@@ -91,6 +100,22 @@ class TelegramOutboxTests(unittest.TestCase):
             json.loads(row["telegram_message_ids"]),
             {"recipient-a": 111, "recipient-b": 222},
         )
+
+    def test_blacklisted_pending_delivery_is_cancelled_without_sending(self):
+        self.db.add_signal_list_entry("black", "team", "Home")
+        notifier = type("Notifier", (), {})()
+        notifier.send_alert = AsyncMock(return_value={"chat": 123})
+
+        summary = asyncio.run(retry_pending_telegram_deliveries(self.db, notifier))
+
+        self.assertEqual(
+            summary,
+            {"pending": 1, "sent": 0, "failed": 0, "cancelled": 1},
+        )
+        notifier.send_alert.assert_not_awaited()
+        row = self.db.get_alert(self.alert_id)
+        self.assertEqual(row["telegram_status"], "cancelled")
+        self.assertIn("team=Home", row["telegram_last_error"])
 
     def test_retry_exhaustion_becomes_explicit_failure(self):
         for _ in range(8):

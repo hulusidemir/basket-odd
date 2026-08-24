@@ -759,6 +759,21 @@ class Database:
             )
         return cursor.rowcount > 0
 
+    def cancel_telegram_delivery(self, alert_id: int, reason: str) -> bool:
+        clean_reason = str(reason or "delivery cancelled").strip()[:500]
+        with self._conn() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE alerts
+                SET telegram_status = 'cancelled',
+                    telegram_last_error = ?
+                WHERE id = ?
+                  AND telegram_status IN ('pending', 'retry')
+                """,
+                (clean_reason, int(alert_id)),
+            )
+        return cursor.rowcount > 0
+
     def update_alert_live_snapshot(
         self,
         alert_id: int,

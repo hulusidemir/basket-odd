@@ -21,6 +21,7 @@ from notifier import TelegramNotifier
 from pace_tracker import PaceTracker
 from projection import game_clock, parse_score
 from signal_analysis import build_signal_analysis
+from signal_lists import build_signal_blacklist_matches, build_signal_list_profile
 from signal_quality import (
     build_league_signal_profile,
     calculate_signal_quality,
@@ -169,6 +170,7 @@ async def process_match(
     pace_tracker: PaceTracker | None = None,
     backtest_profile: dict | None = None,
     league_signal_profile: dict | None = None,
+    signal_list_profile: dict | None = None,
 ) -> None:
     match = _normalize_match_payload(match)
     match_id = match["match_id"]
@@ -186,6 +188,27 @@ async def process_match(
     if db.is_match_deleted(match_id):
         log.debug("Skipped (deleted match): %s", match_name)
         return
+
+    if signal_list_profile is None:
+        list_entries = getattr(db, "list_signal_list_entries", None)
+        signal_list_profile = build_signal_list_profile(
+            list_entries() if callable(list_entries) else []
+        )
+    blacklist_matches = build_signal_blacklist_matches(match, signal_list_profile)
+    if blacklist_matches:
+        matched = ", ".join(
+            f"{item.get('scope')}={item.get('value')}"
+            for item in blacklist_matches
+        )
+        log.info("Skipped (dashboard blacklist: %s): %s", matched, match_name)
+        return
+
+    if config.BLACKLIST:
+        check_text = f"{match_name} {tournament} {url}".lower()
+        for term in config.BLACKLIST:
+            if term in check_text:
+                log.debug("Blacklisted (%s): %s", term, match_name)
+                return
 
     clock = game_clock(status, match_name, tournament)
     period = clock["period"]
@@ -227,13 +250,6 @@ async def process_match(
                 quarter_length,
                 remaining_min=remaining_min,
             )
-
-    if config.BLACKLIST:
-        check_text = f"{match_name} {tournament} {url}".lower()
-        for term in config.BLACKLIST:
-            if term in check_text:
-                log.debug("Blacklisted (%s): %s", term, match_name)
-                return
 
     diff = inplay_total - opening_total
     abs_diff = abs(diff)
@@ -380,11 +396,17 @@ async def process_match_batch(
     pace_tracker: PaceTracker,
     backtest_profile: dict | None = None,
     league_signal_profile: dict | None = None,
+    signal_list_profile: dict | None = None,
 ) -> dict:
     """Process every scraper item independently and return cycle health counts."""
     log = logging.getLogger("main")
     processed_count = 0
     failed_count = 0
+    if signal_list_profile is None:
+        list_entries = getattr(db, "list_signal_list_entries", None)
+        signal_list_profile = build_signal_list_profile(
+            list_entries() if callable(list_entries) else []
+        )
     for index, match in enumerate(matches):
         try:
             await process_match(
@@ -395,6 +417,7 @@ async def process_match_batch(
                 pace_tracker,
                 backtest_profile,
                 league_signal_profile,
+                signal_list_profile,
             )
             processed_count += 1
         except Exception as exc:
@@ -436,8 +459,31 @@ async def retry_pending_telegram_deliveries(
     rows = db.pending_telegram_alerts(limit=limit)
     sent = 0
     failed = 0
+    cancelled = 0
+    list_entries = getattr(db, "list_signal_list_entries", None)
+    signal_list_profile = build_signal_list_profile(
+        list_entries() if callable(list_entries) else []
+    )
     for row in rows:
         alert_id = int(row.get("id") or 0)
+        blacklist_matches = build_signal_blacklist_matches(row, signal_list_profile)
+        if blacklist_matches:
+            matched = ", ".join(
+                f"{item.get('scope')}={item.get('value')}"
+                for item in blacklist_matches
+            )
+            db.cancel_telegram_delivery(
+                alert_id,
+                f"Dashboard blacklist matched: {matched}",
+            )
+            cancelled += 1
+            log.info(
+                "Pending Telegram delivery cancelled by dashboard blacklist: alert_id=%s match_id=%s matches=%s",
+                alert_id,
+                str(row.get("match_id") or "")[:120],
+                matched,
+            )
+            continue
         try:
             stored_message_ids = json.loads(row.get("telegram_message_ids") or "{}")
         except (TypeError, ValueError, json.JSONDecodeError):
@@ -510,7 +556,12 @@ async def retry_pending_telegram_deliveries(
                 str(row.get("match_id") or "")[:120],
                 type(exc).__name__,
             )
-    return {"pending": len(rows), "sent": sent, "failed": failed}
+    return {
+        "pending": len(rows),
+        "sent": sent,
+        "failed": failed,
+        "cancelled": cancelled,
+    }
 
 
 async def run():
@@ -551,10 +602,11 @@ async def run():
             delivery_summary = await retry_pending_telegram_deliveries(db, notifier)
             if delivery_summary["pending"]:
                 log.info(
-                    "Telegram outbox: pending=%s sent=%s failed=%s",
+                    "Telegram outbox: pending=%s sent=%s failed=%s cancelled=%s",
                     delivery_summary["pending"],
                     delivery_summary["sent"],
                     delivery_summary["failed"],
+                    delivery_summary["cancelled"],
                 )
             cycle_started = time.monotonic()
             matches = await scraper.get_live_basketball_totals()

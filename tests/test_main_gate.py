@@ -13,6 +13,7 @@ from main import (
     setup_logging,
 )
 from pace_tracker import PaceTracker
+from signal_lists import build_signal_list_profile
 
 
 class FakeDatabase:
@@ -165,6 +166,72 @@ class MainGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(db.telegram_required)
         self.assertIsNone(db.telegram_sent)
         self.assertEqual(db.telegram_failed[0], 1)
+
+    async def test_dashboard_team_blacklist_stops_signal_before_analysis(self):
+        db = FakeDatabase()
+        notifier = SimpleNamespace(send_alert=AsyncMock(return_value={"chat": 1}))
+        config = SimpleNamespace(
+            BLACKLIST=[],
+            THRESHOLD=10,
+            MAX_SIGNALS_PER_MATCH=3,
+            SAME_DIRECTION_MIN_LIVE_DELTA=10,
+        )
+        profile = build_signal_list_profile([
+            {
+                "list_type": "black",
+                "scope": "team",
+                "value": "Höme",
+                "normalized_value": "home",
+            }
+        ])
+
+        with patch("main.build_signal_analysis") as build_analysis:
+            await process_match(
+                match_payload(),
+                db,
+                notifier,
+                config,
+                signal_list_profile=profile,
+            )
+
+        self.assertIsNone(db.saved_analysis)
+        build_analysis.assert_not_called()
+        notifier.send_alert.assert_not_awaited()
+
+    async def test_dashboard_league_blacklist_wins_over_whitelist(self):
+        db = FakeDatabase()
+        notifier = SimpleNamespace(send_alert=AsyncMock(return_value={"chat": 1}))
+        config = SimpleNamespace(
+            BLACKLIST=[],
+            THRESHOLD=10,
+            MAX_SIGNALS_PER_MATCH=3,
+            SAME_DIRECTION_MIN_LIVE_DELTA=10,
+        )
+        profile = build_signal_list_profile([
+            {
+                "list_type": "black",
+                "scope": "league",
+                "value": "FIBA",
+                "normalized_value": "fiba",
+            },
+            {
+                "list_type": "white",
+                "scope": "team",
+                "value": "Home",
+                "normalized_value": "home",
+            },
+        ])
+
+        await process_match(
+            match_payload(),
+            db,
+            notifier,
+            config,
+            signal_list_profile=profile,
+        )
+
+        self.assertIsNone(db.saved_analysis)
+        notifier.send_alert.assert_not_awaited()
 
     async def test_one_bad_match_does_not_stop_the_batch(self):
         matches = [
