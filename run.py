@@ -10,11 +10,9 @@ import logging
 import os
 from dashboard import _archive_active_match, app
 from bankroll import bankroll_bp
-from balance_tracker.app import balance_tracker_bp
 import scheduled_tasks
 
 app.register_blueprint(bankroll_bp)
-app.register_blueprint(balance_tracker_bp)
 
 if __name__ == "__main__":
     logging.basicConfig(

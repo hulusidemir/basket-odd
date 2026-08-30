@@ -9,8 +9,9 @@ from datetime import datetime, timezone
 from statistics import median
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
+from camoufox.async_api import AsyncNewBrowser
 from playwright.async_api import async_playwright
-from projection import game_clock, parse_score
+from match_state import game_clock, parse_score
 
 logger = logging.getLogger(__name__)
 
@@ -80,25 +81,6 @@ def _safe_env_int(name: str, default: int, *, minimum: int, maximum: int) -> int
         )
         return clamped
     return value
-
-
-def _optional_bool(value) -> bool | None:
-    if isinstance(value, bool):
-        return value
-    if value is None or str(value).strip() == "":
-        return None
-    text = str(value).strip().lower()
-    if text in {"1", "true", "yes", "on"}:
-        return True
-    if text in {"0", "false", "no", "off"}:
-        return False
-    try:
-        numeric = float(text)
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(numeric) or numeric < 0:
-        return None
-    return numeric > 0
 
 
 def _status_from_play_by_play_hint(value) -> dict:
@@ -198,66 +180,6 @@ def _normalize_market_snapshot(value) -> dict:
     }
 
 
-def _stat_int(value) -> int | None:
-    try:
-        parsed = int(str(value).strip())
-    except (TypeError, ValueError):
-        return None
-    return parsed if parsed >= 0 else None
-
-
-def _stat_pair(value) -> tuple[int | None, int | None]:
-    match = re.fullmatch(r"\s*(\d+)\s*[-–/]\s*(\d+)\s*", str(value or ""))
-    if not match:
-        return None, None
-    made, attempted = int(match.group(1)), int(match.group(2))
-    if made > attempted:
-        return None, None
-    return made, attempted
-
-
-def _normalize_team_stats_snapshot(value) -> dict:
-    """Normalize AiScore Nuxt team totals; never infer missing box-score values."""
-    raw = value if isinstance(value, dict) else {}
-
-    def team_stats(team_value) -> dict:
-        team = team_value if isinstance(team_value, dict) else {}
-        fgm, fga = _stat_pair(team.get("fieldGoals"))
-        fg3m, fg3a = _stat_pair(team.get("threePoints"))
-        ftm, fta = _stat_pair(team.get("freeThrows"))
-        return {
-            "points": _stat_int(team.get("points")),
-            "fgm": fgm,
-            "fga": fga,
-            "fg3m": fg3m,
-            "fg3a": fg3a,
-            "ftm": ftm,
-            "fta": fta,
-            "oreb": _stat_int(team.get("offensiveRebounds")),
-            "dreb": _stat_int(team.get("defensiveRebounds")),
-            "reb": _stat_int(team.get("rebounds")),
-            "tov": _stat_int(team.get("turnovers")),
-            "pf": _stat_int(team.get("personalFouls")),
-        }
-
-    flow_raw = raw.get("current_period_flow") if isinstance(raw.get("current_period_flow"), dict) else {}
-    flow = {
-        "period": _stat_int(flow_raw.get("period")),
-        "row_count": _stat_int(flow_raw.get("row_count")) or 0,
-        "foul_events": _stat_int(flow_raw.get("foul_events")) or 0,
-        "free_throw_events": _stat_int(flow_raw.get("free_throw_events")) or 0,
-        "turnover_events": _stat_int(flow_raw.get("turnover_events")) or 0,
-    }
-    return {
-        "version": "aiscore_team_stats_v1",
-        "source": str(raw.get("source") or "").strip(),
-        "has_stats": _optional_bool(raw.get("has_stats")),
-        "home": team_stats(raw.get("home")),
-        "away": team_stats(raw.get("away")),
-        "current_period_flow": flow,
-    }
-
-
 def _select_market_line(parsed: dict, snapshot: dict, name: str) -> float | None:
     """Use the first readable bookmaker line; keep median only as a fallback."""
     lines = _valid_market_lines(snapshot.get(f"{name}_lines"))
@@ -286,25 +208,25 @@ class AiscoreScraper:
         aiscore_url: str,
         max_matches_per_cycle: int = 40,
         page_timeout_ms: int = 30000,
-        skip_h2h: bool = False,
         concurrency: int | None = None,
-        stats_threshold: float | None = None,
     ):
         self.aiscore_url = aiscore_url
         self.max_matches_per_cycle = max_matches_per_cycle
         self.page_timeout_ms = page_timeout_ms
-        self.skip_h2h = skip_h2h
         self.concurrency = concurrency
-        self.stats_threshold = (
-            max(0.0, float(stats_threshold))
-            if stats_threshold is not None
-            else None
-        )
-        # Per-match H2H body cache. H2H data does not change during a match, so
-        # re-scraping the H2H tab on every poll cycle is wasted work.
-        self._h2h_cache: dict[str, str] = {}
         self.last_report: dict = {}
         self._last_listing_diagnostics: dict = {}
+
+    @staticmethod
+    def _mobile_url(value: str) -> str:
+        parsed = urlsplit(value)
+        return urlunsplit((
+            "https",
+            "m.aiscore.com",
+            parsed.path or "/basketball",
+            parsed.query,
+            "",
+        ))
 
     @staticmethod
     def _sanitize_tournament(value: str, url: str) -> str:
@@ -320,21 +242,28 @@ class AiscoreScraper:
         proxy_server = os.getenv("PLAYWRIGHT_PROXY")
         launch_kwargs: dict = {
             "headless": True,
-            "args": ["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"],
+            "humanize": True,
+            "locale": "en-US",
         }
         if proxy_server:
             launch_kwargs["proxy"] = {"server": proxy_server}
             logger.info("Using proxy: %s", _redact_proxy_url(proxy_server))
-        browser = await playwright.chromium.launch(**launch_kwargs)
-        context = await self._new_desktop_context(browser)
+        browser = await AsyncNewBrowser(playwright, **launch_kwargs)
+        context = await self._new_mobile_context(browser)
         return browser, context
 
-    async def _new_desktop_context(self, browser):
+    async def _new_mobile_context(self, browser):
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-            viewport={"width": 1920, "height": 1080},
+            viewport={"width": 430, "height": 932},
             locale="en-US",
         )
+        async def block_heavy_assets(route):
+            if route.request.resource_type in {"image", "media", "font"}:
+                await route.abort()
+            else:
+                await route.continue_()
+
+        await context.route("**/*", block_heavy_assets)
         await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
         return context
 
@@ -398,58 +327,6 @@ class AiscoreScraper:
             logger.debug("AIScore match-page readiness wait ended without a signal: %s", exc)
         await page.wait_for_timeout(250)
 
-    async def _wait_for_team_stats_ready(self, page) -> None:
-        """Wait for complete Nuxt team totals or an explicit no-stats flag."""
-        try:
-            await page.wait_for_function(
-                r"""
-                () => {
-                    const basketball = window.__NUXT__
-                        && window.__NUXT__.state
-                        && window.__NUXT__.state.basketball;
-                    const match = basketball
-                        && basketball.basketballDetailMatchData
-                        && basketball.basketballDetailMatchData.match;
-                    if (!match) return false;
-                    const rawHasStats = match.competition
-                        && match.competition.hasStats;
-                    const hasStatsText = String(rawHasStats ?? '').trim().toLowerCase();
-                    if (
-                        rawHasStats === false
-                        || ['0', 'false', 'no', 'off'].includes(hasStatsText)
-                    ) {
-                        return true;
-                    }
-                    const lineup = basketball._boxscoreData
-                        && basketball._boxscoreData.lineup;
-                    const home = lineup && lineup.homePlayerTotals
-                        && lineup.homePlayerTotals.bkDetail;
-                    const away = lineup && lineup.awayPlayerTotals
-                        && lineup.awayPlayerTotals.bkDetail;
-                    const integer = value => /^\d+$/.test(String(value ?? '').trim());
-                    const madeAttemptPair = value => {
-                        const parsed = String(value ?? '').trim().match(
-                            /^(\d+)\s*[-–/]\s*(\d+)$/
-                        );
-                        return Boolean(parsed) && Number(parsed[1]) <= Number(parsed[2]);
-                    };
-                    const complete = detail => Boolean(detail)
-                        && integer(detail.points)
-                        && madeAttemptPair(detail.fieldGoals)
-                        && madeAttemptPair(detail.threePoints)
-                        && madeAttemptPair(detail.freeThrows)
-                        && integer(detail.offensiveRebounds)
-                        && integer(detail.defensiveRebounds)
-                        && integer(detail.turnovers);
-                    return complete(home) && complete(away);
-                }
-                """,
-                timeout=min(5000, self.page_timeout_ms),
-            )
-        except Exception as exc:
-            logger.debug("AIScore team-stats readiness wait ended without a signal: %s", exc)
-        await page.wait_for_timeout(150)
-
     # ── Ana tarama ────────────────────────────────────────────────────
 
     async def get_live_basketball_totals(self) -> list[dict]:
@@ -501,8 +378,8 @@ class AiscoreScraper:
                     report["listing_attempts"] = attempt
                     try:
                         await list_page.goto(
-                            self.aiscore_url,
-                            wait_until="domcontentloaded",
+                            self._mobile_url(self.aiscore_url),
+                            wait_until="commit",
                             timeout=self.page_timeout_ms,
                         )
                     except Exception as exc:
@@ -602,12 +479,12 @@ class AiscoreScraper:
 
                 await list_page.close()
                 await context.close()
-                context = await self._new_desktop_context(browser)
+                context = await self._new_mobile_context(browser)
 
                 if self.concurrency is None:
                     concurrent_tabs = _safe_env_int(
                         "AISCORE_CONCURRENCY",
-                        2,
+                        1,
                         minimum=1,
                         maximum=8,
                     )
@@ -616,10 +493,10 @@ class AiscoreScraper:
                         concurrent_tabs = max(1, min(8, int(self.concurrency)))
                     except (TypeError, ValueError):
                         logger.warning(
-                            "Invalid scraper concurrency=%r; using 2.",
+                            "Invalid scraper concurrency=%r; using 1.",
                             self.concurrency,
                         )
-                        concurrent_tabs = 2
+                        concurrent_tabs = 1
                 batch_links = links[: self.max_matches_per_cycle]
                 report["attempted_count"] = len(batch_links)
                 report["unattempted_count"] = max(0, len(links) - len(batch_links))
@@ -873,12 +750,21 @@ class AiscoreScraper:
                     if (document.querySelectorAll('a[href*="/basketball/match-"]').length > 0) {
                         return true;
                     }
+                    const visible = el => {
+                        const style = window.getComputedStyle(el);
+                        if (style.display === 'none' || style.visibility === 'hidden') return false;
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0;
+                    };
+                    const mobileEmpty = Array.from(document.querySelectorAll('.notData'))
+                        .some(el => visible(el) && !el.closest('.searchData'));
+                    if (document.querySelector('.activeLiveTab') && mobileEmpty) return true;
                     const body = (document.body?.innerText || '').replace(/\s+/g, ' ').trim();
                     return /there\s+(?:are|is)\s+no\s+live\s+(?:games?|matches?|events?)(?:\s+at\s+(?:the|this)\s+moment)?/i.test(body)
                         || /no\s+live\s+(?:games?|matches?|events?)\s+(?:at\s+(?:the|this)\s+moment|right\s+now)/i.test(body);
                 }
                 """,
-                timeout=min(2500, self.page_timeout_ms),
+                timeout=min(8000, self.page_timeout_ms),
             )
         except Exception as exc:
             logger.debug("Live-tab result readiness wait ended without links: %s", exc)
@@ -897,6 +783,11 @@ class AiscoreScraper:
                 const rect = el.getBoundingClientRect();
                 return rect.width > 0 && rect.height > 0;
             };
+            const mobileEmpty = Array.from(document.querySelectorAll('.notData'))
+                .find(el => visible(el) && !el.closest('.searchData'));
+            if (document.querySelector('.activeLiveTab') && mobileEmpty) {
+                return { found: true, text: text(mobileEmpty.textContent) || 'No data' };
+            }
             const candidates = document.querySelectorAll('main, section, div, p, span');
             for (const el of candidates) {
                 const value = text(el.innerText);
@@ -920,27 +811,25 @@ class AiscoreScraper:
         for scroll_i in range(max_scrolls):
             hrefs = await page.evaluate(r"""() => {
                 const liveHrefs = [];
+                const visible = el => {
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return style.display !== 'none'
+                        && style.visibility !== 'hidden'
+                        && rect.width > 0 && rect.height > 0;
+                };
                 const matchLinks = document.querySelectorAll('a[href*="/basketball/match-"]');
                 for (const a of matchLinks) {
-                    let row = a;
-                    for (let i = 0; i < 6; i++) {
-                        const parent = row.parentElement;
-                        if (!parent) break;
-                        const uniqueLinks = new Set(
-                            Array.from(parent.querySelectorAll('a[href*="/basketball/match-"]'))
-                                .map(link => link.getAttribute('href'))
-                                .filter(Boolean)
-                        );
-                        if (uniqueLinks.size > 1) break;
-                        row = parent;
-                    }
+                    if (!visible(a)) continue;
+                    const row = a.closest(
+                        '.allBox, .list-item, [class*="matchItem"], [class*="match-item"]'
+                    ) || a;
                     const rowText = (row.innerText || '').replace(/\s+/g, ' ');
-                    const hasLiveTime = /\b(Q[1-4]|[1-4]Q|OT|HT|1st|2nd|3rd|4th)\b/i.test(rowText)
-                                     || /\b\d{1,2}[-:]\d{2}[:-]\d{2}\b/.test(rowText);
+                    const hasLivePeriod = /\b(Q[1-4]|[1-4]Q|OT|HT|1st|2nd|3rd|4th)\b/i.test(rowText);
                     const timeEl = row.querySelector(
-                        '[class*="liveTime"], [class*="LiveTime"], [class*="live-status"], [style*="color: red"]'
+                        '[class*="liveTime"], [class*="LiveTime"], [class*="live-status"], .color-r, [style*="color: red"]'
                     );
-                    if (hasLiveTime || timeEl) {
+                    if (hasLivePeriod || (timeEl && visible(timeEl))) {
                         const href = a.getAttribute('href');
                         if (href) liveHrefs.push(href);
                     }
@@ -1023,767 +912,160 @@ class AiscoreScraper:
         return links
 
     async def _extract_match(self, page, url: str) -> dict | _MatchSkip:
-        clean_url = url.rstrip("/")
+        clean_url = self._mobile_url(url.rstrip("/"))
         odds_url = clean_url if clean_url.endswith("/odds") else clean_url + "/odds"
         await page.goto(
             odds_url,
-            wait_until="domcontentloaded",
+            wait_until="commit",
             timeout=self.page_timeout_ms,
         )
         await self._wait_for_odds_ready(page)
 
         try:
-            clicked_total = await page.evaluate(r"""
-                () => {
-                    const text = s => (s || '').replace(/\s+/g, ' ').trim();
-                    const tabs = Array.from(document.querySelectorAll('*')).filter(el => {
-                        const t = text(el.innerText).toLowerCase();
-                        const cls = (el.className || '').toString().toLowerCase();
-                        const role = (el.getAttribute && (el.getAttribute('role') || '').toLowerCase()) || '';
-                        return t.length < 30 && el.children.length <= 3
-                            && (role === 'tab' || /tab|market|filter|switch|select/.test(cls))
-                            && (/\btotal\b|\bo\/u\b|\bover.*under\b|\büst.*alt\b|\bou\b/i.test(t));
-                    });
-                    for (const tab of tabs) {
-                        try { tab.click(); return true; } catch(e) {}
-                    }
-                    return false;
-                }
-            """)
-            if clicked_total:
-                logger.debug("Clicked Total/O-U tab for %s", url)
-                await self._wait_for_odds_ready(page)
+            total_tab = page.locator(
+                ".oddTypesBox span",
+                has_text=re.compile(r"^\s*Total Points\s*$", re.I),
+            )
+            if await total_tab.count():
+                await total_tab.first.click()
+                try:
+                    await page.wait_for_function(
+                        r"""
+                        () => /total points|total|o\/u/i.test(
+                            (document.querySelector('.oddsContent .oddsType')?.innerText || '').trim()
+                        )
+                        """,
+                        timeout=min(5000, self.page_timeout_ms),
+                    )
+                except Exception:
+                    await page.wait_for_timeout(500)
         except Exception as exc:
-            logger.debug("Total/O-U tab selection failed for %s: %s", url, exc)
+            logger.debug("Total Points selection failed for %s: %s", url, exc)
 
         parsed = await page.evaluate(
             r"""
             () => {
-              const text = s => (s || '').replace(/\s+/g, ' ').trim();
-
-              let opening = null;
-              let prematch = null;
-              let inplay = null;
-              let oddsSnapshot = { opening_lines: [], prematch_lines: [], inplay_lines: [], bookmaker_count: 0 };
-
-              // Helper: find the first basketball total line value (100-400 range) in text
-              const findLine = (txt) => {
-                const nums = txt.match(/\d+\.?\d*/g);
-                if (!nums) return null;
-                for (const n of nums) {
-                  const v = parseFloat(n);
-                  if (v >= 100 && v <= 400) return v;
-                }
-                return null;
-              };
-
-              // Helper: detect if an element is locked/suspended (bookmaker updating odds)
-              const isLocked = (el) => {
-                const html = (el.innerHTML || '').toLowerCase();
-                const txt = text(el.innerText).toLowerCase();
-                if (html.includes('lock') || html.includes('🔒')) return true;
-                if (txt === '-' || txt === '--' || txt === '—') return true;
-                if (/suspend|locked|unavail/i.test(txt)) return true;
-                if (el.querySelector('svg[class*="lock"], [class*="Lock"], [class*="suspend"]')) return true;
-                return false;
-              };
-
-              // --- Find odds container ---
-              const container = document.querySelector('.newOdds')
-                             || document.querySelector('[class*="newOdds"]')
-                             || document.querySelector('[class*="oddsContent"]');
-
-              if (container) {
-                const median = arr => {
-                  const xs = arr.filter(v => Number.isFinite(v)).sort((a,b) => a-b);
-                  if (!xs.length) return null;
-                  const mid = Math.floor(xs.length / 2);
-                  return xs.length % 2 ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2;
-                };
-                const roundedLines = arr => {
-                  const out = [];
-                  for (const v of arr) {
-                    if (!Number.isFinite(v) || v < 100 || v > 400) continue;
-                    // One observation per bookmaker must remain one vote. Removing
-                    // duplicate line values biases the median toward outliers.
-                    out.push(parseFloat(v.toFixed(1)));
-                  }
-                  return out;
+                const text = value => (value || '').replace(/\s+/g, ' ').trim();
+                const findLine = value => {
+                    const numbers = text(value).match(/\d+(?:\.\d+)?/g) || [];
+                    for (const raw of numbers) {
+                        const line = Number.parseFloat(raw);
+                        if (Number.isFinite(line) && line >= 100 && line <= 400) {
+                            return Number(line.toFixed(1));
+                        }
+                    }
+                    return null;
                 };
 
-                // ── Strategy 1: class-based (openingBg / inPlayBg) ──
-                // Each bookmaker has 3 rows: opening, pre-match, in-play
-                const openingEls = container.querySelectorAll('[class*="openingBg"]');
-                const inPlayEls = container.querySelectorAll('[class*="inPlayBg"]');
-
-                if (openingEls.length > 0) {
-                  for (const el of openingEls) {
-                    if (isLocked(el)) continue;
-                    const v = findLine(text(el.innerText));
-                    if (v !== null) { opening = v; break; }
-                  }
-                }
-                if (inPlayEls.length > 0) {
-                  for (const el of inPlayEls) {
-                    if (isLocked(el)) continue;
-                    const v = findLine(text(el.innerText));
-                    if (v !== null) { inplay = v; break; }
-                  }
-                }
-
-                // Pre-match: the row that is NOT openingBg and NOT inPlayBg, between them
-                // In AiScore each bookmaker has 3 rows; the middle one is pre-match
-                const contentDivs_s1 = container.querySelectorAll('.content');
-                for (const content of contentDivs_s1) {
-                  if (isLocked(content)) continue;
-                  const allRows = Array.from(content.children).filter(el => !isLocked(el));
-                  // Look for row that has neither openingBg nor inPlayBg class
-                  const preBgRows = allRows.filter(el => {
-                    const cls = (el.className || '');
-                    return !cls.includes('openingBg') && !cls.includes('inPlayBg');
-                  });
-                  for (const el of preBgRows) {
-                    const v = findLine(text(el.innerText));
-                    if (v !== null) { prematch = v; break; }
-                  }
-                  if (prematch !== null) break;
-                }
-
-                // ── Strategy 2: Column-based (flex-col) layout ──
-                if (opening === null || inplay === null) {
-                  const contentDivs = container.querySelectorAll('.content');
-                  for (const content of contentDivs) {
-                    const cols = content.querySelectorAll('.flex.flex-1.align-center.flex-col');
-                    for (let i = 2; i < cols.length; i += 3) {
-                      const col = cols[i];
-                      const opEls = col.querySelectorAll('[class*="openingBg"]');
-                      const ipEls = col.querySelectorAll('[class*="inPlayBg"]');
-                      if (opening === null) {
-                        for (const el of opEls) {
-                          const v = findLine(text(el.innerText));
-                          if (v !== null) { opening = v; break; }
-                        }
-                      }
-                      if (inplay === null) {
-                        for (const el of ipEls) {
-                          const v = findLine(text(el.innerText));
-                          if (v !== null) { inplay = v; break; }
-                        }
-                      }
-                      if (opening !== null && inplay !== null) break;
-                    }
-                    if (opening !== null && inplay !== null) break;
-                  }
-                }
-
-                // ── Strategy 3: Positional — 1st, 2nd and 3rd rows of each bookmaker ──
-                if (opening === null || inplay === null) {
-                  const contentDivs = container.querySelectorAll('.content');
-                  for (const content of contentDivs) {
-                    if (isLocked(content)) continue;
-                    const rows = Array.from(content.children).filter(el => {
-                      return !isLocked(el) && findLine(text(el.innerText)) !== null;
-                    });
-                    if (rows.length >= 3) {
-                      if (opening === null) opening = findLine(text(rows[0].innerText));
-                      if (prematch === null) prematch = findLine(text(rows[1].innerText));
-                      if (inplay === null) inplay = findLine(text(rows[2].innerText));
-                    }
-                    if (opening !== null && inplay !== null) break;
-                  }
-                }
-
-                // ── Strategy 4: Broad search — all leaf elements in the container ──
-                if (opening === null || inplay === null) {
-                  const leafLines = [];
-                  container.querySelectorAll('*').forEach(el => {
-                    if (el.children.length === 0 && !isLocked(el)) {
-                      const v = findLine(text(el.innerText));
-                      if (v !== null) leafLines.push(v);
-                    }
-                  });
-                  if (leafLines.length >= 2) {
-                    if (opening === null) opening = leafLines[0];
-                    if (inplay === null) inplay = leafLines[leafLines.length - 1];
-                  }
-                }
-
-                // Consensus snapshot: use all bookmaker rows we can identify,
-                // not only the first row. This gives the analysis engine market
-                // spread and median line instead of a single bookmaker's number.
-                const contentDivs_snapshot = Array.from(container.querySelectorAll('.content'));
                 const openingLines = [];
                 const prematchLines = [];
                 const inplayLines = [];
-                for (const content of contentDivs_snapshot) {
-                  // AiScore may render extra numeric rows inside a bookmaker
-                  // block. Explicit opening/in-play classes are authoritative;
-                  // positional 1st/2nd/3rd fallback must not override them.
-                  const explicitOpening = Array.from(
-                    content.querySelectorAll('[class*="openingBg"]')
-                  ).find(el => !isLocked(el) && findLine(text(el.innerText)) !== null);
-                  const explicitInplay = Array.from(
-                    content.querySelectorAll('[class*="inPlayBg"]')
-                  ).find(el => !isLocked(el) && findLine(text(el.innerText)) !== null);
-                  if (explicitOpening && explicitInplay) {
-                    openingLines.push(findLine(text(explicitOpening.innerText)));
-                    inplayLines.push(findLine(text(explicitInplay.innerText)));
-
-                    const prematchRow = Array.from(content.children).find(el => {
-                      const cls = (el.className || '').toString();
-                      return !isLocked(el)
-                        && !cls.includes('openingBg')
-                        && !cls.includes('inPlayBg')
-                        && findLine(text(el.innerText)) !== null;
-                    });
-                    if (prematchRow) {
-                      prematchLines.push(findLine(text(prematchRow.innerText)));
+                const boxes = Array.from(
+                    document.querySelectorAll('.oddsContent .oddsBoxContent')
+                );
+                let lockedRows = 0;
+                for (const box of boxes) {
+                    const opening = findLine(box.querySelector('.border1')?.innerText);
+                    const prematch = findLine(box.querySelector('.border2')?.innerText);
+                    const inplay = findLine(box.querySelector('.border3')?.innerText);
+                    if (opening === null || inplay === null) {
+                        lockedRows += 1;
+                        continue;
                     }
-                    continue;
-                  }
-
-                  const rows = Array.from(content.children).filter(el => !isLocked(el));
-                  const lineRows = rows
-                    .map(el => ({ el, value: findLine(text(el.innerText)), cls: (el.className || '').toString() }))
-                    .filter(item => item.value !== null);
-                  if (lineRows.length >= 3) {
-                    openingLines.push(lineRows[0].value);
-                    prematchLines.push(lineRows[1].value);
-                    inplayLines.push(lineRows[2].value);
-                  } else {
-                    let pairedOpening = null;
-                    let pairedPrematch = null;
-                    let pairedInplay = null;
-                    for (const item of lineRows) {
-                      if (item.cls.includes('openingBg')) {
-                        pairedOpening = item.value;
-                      }
-                      else if (item.cls.includes('inPlayBg')) {
-                        pairedInplay = item.value;
-                      }
-                      else pairedPrematch = item.value;
-                    }
-                    // Opening and in-play must come from the same bookmaker
-                    // block. An unpaired row must not bias either median.
-                    if (pairedOpening !== null && pairedInplay !== null) {
-                      openingLines.push(pairedOpening);
-                      inplayLines.push(pairedInplay);
-                      if (pairedPrematch !== null) prematchLines.push(pairedPrematch);
-                    }
-                  }
+                    openingLines.push(opening);
+                    inplayLines.push(inplay);
+                    if (prematch !== null) prematchLines.push(prematch);
                 }
-                const openingConsensus = roundedLines(openingLines);
-                const prematchConsensus = roundedLines(prematchLines);
-                const inplayConsensus = roundedLines(inplayLines);
-                oddsSnapshot = {
-                  opening_lines: openingConsensus,
-                  prematch_lines: prematchConsensus,
-                  inplay_lines: inplayConsensus,
-                  opening_median: median(openingConsensus),
-                  prematch_median: median(prematchConsensus),
-                  inplay_median: median(inplayConsensus),
-                  opening_min: openingConsensus.length ? Math.min(...openingConsensus) : null,
-                  opening_max: openingConsensus.length ? Math.max(...openingConsensus) : null,
-                  inplay_min: inplayConsensus.length ? Math.min(...inplayConsensus) : null,
-                  inplay_max: inplayConsensus.length ? Math.max(...inplayConsensus) : null,
-                  bookmaker_count: Math.min(openingConsensus.length, inplayConsensus.length),
-                  paired_bookmaker_count: Math.min(openingConsensus.length, inplayConsensus.length),
+
+                const top = text(document.querySelector('.topBox')?.innerText);
+                const statusMatch = top.match(/\b(Q[1-4]|[1-4]Q|OT)\s*[-\s]?\s*(\d{1,2}:\d{2})\b/i);
+                const finalMatch = top.match(/\b(Full Time|FT|Finished|Ended|Final)\b/i);
+                const scoreMatches = Array.from(top.matchAll(/\b(\d{1,3})\s*[-–]\s*(\d{1,3})\b/g));
+                const scoreMatch = scoreMatches.length
+                    ? scoreMatches[scoreMatches.length - 1]
+                    : null;
+                const score = scoreMatch ? `${scoreMatch[1]} - ${scoreMatch[2]}` : '';
+                const status = finalMatch
+                    ? 'Full Time'
+                    : statusMatch ? `${statusMatch[1].toUpperCase()} ${statusMatch[2]}` : '';
+
+                const title = text(document.title || '');
+                const matchName = title
+                    .replace(/\s*\|.*/, '')
+                    .replace(/\s*-\s*AiScore.*/i, '')
+                    .replace(/\d{4}[\/-]\d{1,2}[\/-]\d{1,2}\s*/g, '')
+                    .replace(/\s*betting odds\s*/gi, '')
+                    .replace(/\s+vs\.?\s+/gi, ' - ')
+                    .trim();
+                const tournamentAnchor = Array.from(
+                    document.querySelectorAll('a[href*="/tournament-"]')
+                ).find(anchor => {
+                    const value = text(anchor.innerText);
+                    return value && value.length <= 100;
+                });
+                const tournament = tournamentAnchor ? text(tournamentAnchor.innerText) : '';
+
+                return {
+                    matchName,
+                    tournament,
+                    status,
+                    score,
+                    isFinished: Boolean(finalMatch),
+                    hasLockedRows: boxes.length > 0 && lockedRows === boxes.length,
+                    oddsSnapshot: {
+                        opening_lines: openingLines,
+                        prematch_lines: prematchLines,
+                        inplay_lines: inplayLines,
+                        bookmaker_count: Math.min(openingLines.length, inplayLines.length),
+                        paired_bookmaker_count: Math.min(openingLines.length, inplayLines.length),
+                    },
                 };
-              }
-
-              // --- Match info ---
-              const title = text(document.title || '');
-              let matchName = title
-                .replace(/\s*\|.*/,'')
-                .replace(/\s*-\s*AiScore.*/i,'')
-                .replace(/\s*live score.*/i,'')
-                .replace(/\s*prediction.*/i,'')
-                .replace(/\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}\s*/g, '')
-                .replace(/\s*betting odds\s*/gi, '')
-                .replace(/\s+vs\.?\s+/gi, ' - ')
-                .trim();
-
-              let tournament = '';
-              let country = '';
-              const promoRe = /schedule|standings|teams|stats|live\s*score|popular|trending|featured|odds|prediction|news|home/i;
-              // Strategy 0: a.not-allow — AiScore renders the league name above
-              // the team names as an anchor with class="not-allow" and href="javascript:;".
-              // This is the most direct source and takes priority over breadcrumb heuristics.
-              const notAllowEl = Array.from(document.querySelectorAll('a.not-allow'))
-                .find(e => { const t = text(e.innerText); return t && t.length >= 3 && t.length <= 80 && !promoRe.test(t); });
-              if (notAllowEl) tournament = text(notAllowEl.innerText);
-              // Strategy 1: top breadcrumb (most reliable — "Basketball Live
-              // Score > <Country/League> > <Match>"). Scope it tightly to
-              // breadcrumb-style containers so we don't pick up the footer's
-              // "Popular Leagues" widget.
-              const breadcrumbRoots = Array.from(document.querySelectorAll(
-                '.breadcrumb, [class*="breadcrumb"], [class*="Breadcrumb"], nav, header, ' +
-                '[class*="matchTop"], [class*="matchInfo"], [class*="matchHeader"]'
-              ));
-              const seen = new Set();
-              const scopedAnchors = [];
-              for (const root of breadcrumbRoots) {
-                for (const a of root.querySelectorAll('a')) {
-                  if (seen.has(a)) continue;
-                  seen.add(a);
-                  scopedAnchors.push(a);
-                }
-              }
-              const candidates = scopedAnchors
-                .map(e => ({text: text(e.innerText), href: e.getAttribute('href') || ''}))
-                .filter(e => e.href.includes('/tournament-'))
-                .filter(e => e.text && !promoRe.test(e.text));
-              if (candidates.length >= 2) {
-                country = candidates[0].text;
-                tournament = candidates[candidates.length - 1].text;
-              } else if (candidates.length === 1) {
-                tournament = candidates[0].text;
-              }
-              // Strategy 2: first valid /tournament- anchor anywhere on the
-              // page (document order). Top-of-page nav comes before footers.
-              if (!tournament) {
-                const docCandidate = Array.from(document.querySelectorAll('a'))
-                  .map(e => ({text: text(e.innerText), href: e.getAttribute('href') || ''}))
-                  .filter(e => e.href.includes('/tournament-'))
-                  .filter(e => e.text && !promoRe.test(e.text))
-                  .find(e => e.text.length >= 3 && e.text.length <= 80);
-                if (docCandidate) tournament = docCandidate.text;
-              }
-              // Strategy 3: slug from any /tournament- href in the document.
-              if (!tournament) {
-                const slugHref = Array.from(document.querySelectorAll('a'))
-                  .map(e => e.getAttribute('href') || '')
-                  .find(h => /\/tournament-[a-z0-9-]+/i.test(h));
-                if (slugHref) {
-                  const m = slugHref.match(/\/tournament-([a-z0-9-]+)/i);
-                  if (m && m[1]) {
-                    tournament = m[1].replace(/-/g, ' ')
-                      .replace(/\b\w/g, c => c.toUpperCase());
-                  }
-                }
-              }
-              const cleanRe = /\s*(live\s*score|betting\s*odds|prediction)\s*/gi;
-              tournament = tournament.replace(cleanRe, '').trim();
-              country = country.replace(cleanRe, '').trim();
-              // Reject final string if either half still smells like promo.
-              if (country && promoRe.test(country)) country = '';
-              if (tournament && promoRe.test(tournament)) tournament = '';
-              if (country && tournament && !tournament.toLowerCase().startsWith(country.toLowerCase())) {
-                tournament = country + ' : ' + tournament;
-              } else if (country && !tournament) {
-                tournament = country;
-              }
-
-              let status = '';
-              const statusCandidates = Array.from(document.querySelectorAll('span, div'))
-                .map(e => ({el: e, txt: text(e.innerText)}))
-                .filter(({txt}) => txt.length > 0 && txt.length < 30);
-
-              // Strateji 1: "Q1 03:00" — tek element içinde birleşik
-              const periodTime = statusCandidates
-                .map(({txt}) => txt)
-                .find(v => /^(Q[1-4]|[1-4]Q|OT)\s*[-\s]?\s*\d{1,2}:\d{2}$/i.test(v.trim()));
-              if (periodTime) {
-                status = periodTime.trim();
-              }
-
-              // Strateji 1b: "Q2-Ended" — çeyrek arası, maç bitmiş değil
-              if (!status) {
-                const periodEnded = statusCandidates
-                  .map(({txt}) => txt)
-                  .find(v => /^(Q[1-4]|[1-4]Q)\s*[-\s]?\s*Ended$/i.test(v.trim()));
-                if (periodEnded) status = periodEnded.trim();
-              }
-
-              // Strateji 2: Period ve zaman ayrı elementlerde — birleştir
-              if (!status) {
-                const periodEl = statusCandidates.find(({txt}) =>
-                  /^(Q[1-4]|[1-4]Q|HT|1st|2nd|3rd|4th)$/i.test(txt.trim())
-                );
-                const timeEl = statusCandidates.find(({txt}) =>
-                  /^\d{1,2}:\d{2}$/.test(txt.trim())
-                );
-                if (periodEl && timeEl) {
-                  status = periodEl.txt.trim() + ' ' + timeEl.txt.trim();
-                }
-              }
-
-              // Strateji 3: Zaman var ama period yok — çevreleyen DOM'da ara
-              if (!status) {
-                const timeItem = statusCandidates.find(({txt}) =>
-                  /^\d{1,2}:\d{2}$/.test(txt.trim())
-                );
-                if (timeItem) {
-                  let container2 = timeItem.el;
-                  let foundPeriod = '';
-                  for (let i = 0; i < 6; i++) {
-                    if (!container2 || !container2.parentElement) break;
-                    container2 = container2.parentElement;
-                    const ctxt = text(container2.innerText || '');
-                    const pm = ctxt.match(/\b(Q[1-4]|[1-4]Q|HT|OT|1st|2nd|3rd|4th)\b/i);
-                    if (pm) { foundPeriod = pm[0]; break; }
-                  }
-                  status = foundPeriod
-                    ? foundPeriod + ' ' + timeItem.txt.trim()
-                    : timeItem.txt.trim();
-                }
-              }
-
-              // Strateji 4: Sadece period — zaman bilinmiyor
-              if (!status) {
-                const periodOnly = statusCandidates
-                  .map(({txt}) => txt)
-                  .find(v => /^(Q[1-4]|[1-4]Q)(?:\s*[-\s]?\s*Ended)?$|^(OT|HT|FT|1st|2nd|3rd|4th)$/i.test(v.trim()));
-                if (periodOnly) status = periodOnly.trim();
-              }
-
-              // Strateji 5: Sayfa başlığında period ipucu
-              if (!status) {
-                const titlePm = text(document.title || '').match(/\b(Q[1-4]|[1-4]Q)(?:\s*[-\s]?\s*Ended)?\b|\b(HT|OT)\b/i);
-                if (titlePm) status = titlePm[0];
-              }
-
-              let isQ4 = /Q4|4Q|4th/i.test(status);
-              let remainingMinutes = null;
-              if (status) {
-                const tm = status.match(/(\d+):(\d+)/);
-                if (tm) remainingMinutes = parseInt(tm[1]) + parseInt(tm[2]) / 60;
-              }
-
-              const isQuarterEnded = /\b(Q[1-4]|[1-4]Q)\s*[-\s]?\s*Ended\b/i.test(status);
-              let isFinished = /\b(FT|Finished|Full Time)\b/i.test(status)
-                || (/\bEnded\b/i.test(status) && !isQuarterEnded);
-              if (!isFinished) {
-                // Only narrow final-score hooks; [class*="score"] / [class*="ended"] alone
-                // also match the live-score container and helper classes on AiScore.
-                const finishedBadge = document.querySelector(
-                  '[class*="final-score"], [class*="finalScore"]'
-                );
-                if (finishedBadge) isFinished = true;
-              }
-
-              let hasLockedRows = false;
-              if (container) {
-                const allRows = container.querySelectorAll('[class*="openingBg"], [class*="inPlayBg"], .content > *');
-                let lockedMarketRows = 0;
-                let usableMarketRows = 0;
-                for (const el of allRows) {
-                  if (isLocked(el)) lockedMarketRows += 1;
-                  else if (findLine(text(el.innerText)) !== null) usableMarketRows += 1;
-                }
-                hasLockedRows = lockedMarketRows > 0 && usableMarketRows === 0;
-              }
-
-              // --- Extract live score ---
-              // Layered strategy: AiScore's big score is rendered as two separate
-              // <div class="score ..."> elements (no combined "93-62" string).
-              // See finished_match_service.py for the same logic on finished pages.
-              let score = '';
-              const leafAll = Array.from(document.querySelectorAll('span, div, strong, b'))
-                .filter(el => el.children.length === 0);
-              const scoreNums = leafAll
-                .map(el => ({
-                  el,
-                  txt: text(el.innerText),
-                  rect: el.getBoundingClientRect(),
-                  size: parseFloat(window.getComputedStyle(el).fontSize) || 0,
-                  cls: (el.className || '').toString(),
-                }))
-                .filter(o => /^\d{1,3}$/.test(o.txt));
-
-              // Strategy A: class~="score" token match
-              const scoreClassEls = scoreNums.filter(n =>
-                n.cls.split(/\s+/).includes('score') && n.size >= 16
-              );
-              if (scoreClassEls.length >= 2) {
-                scoreClassEls.sort((a, b) => b.size - a.size || a.rect.left - b.rect.left);
-                const home = scoreClassEls[0];
-                let away = null;
-                for (let i = 1; i < scoreClassEls.length; i++) {
-                  const c = scoreClassEls[i];
-                  if (Math.abs(c.rect.top - home.rect.top) < 20 && c.rect.left !== home.rect.left) {
-                    away = c; break;
-                  }
-                }
-                if (!away) away = scoreClassEls[1];
-                const leftEl  = home.rect.left <= away.rect.left ? home : away;
-                const rightEl = home.rect.left <= away.rect.left ? away : home;
-                score = leftEl.txt + ' - ' + rightEl.txt;
-              }
-
-              // Strategy B: directly combined "93-62" string element (rare variant)
-              if (!score) {
-                const combined = Array.from(document.querySelectorAll('span, div'))
-                  .map(el => text(el.innerText))
-                  .find(t => /^\d{1,3}\s*[-–]\s*\d{1,3}$/.test(t));
-                if (combined) {
-                  const parts = combined.split(/\s*[-–]\s*/);
-                  if (parts.length === 2 && parseInt(parts[0]) <= 300 && parseInt(parts[1]) <= 300) {
-                    score = combined.trim();
-                  }
-                }
-              }
-
-              // Strategy C (last resort): two biggest numbers near the top,
-              // but both must share font size and be visibly large.
-              if (!score) {
-                const top = scoreNums
-                  .filter(n => n.rect.top < 260)
-                  .sort((a, b) => b.size - a.size);
-                if (top.length >= 2 && top[0].size >= 20 && Math.abs(top[0].size - top[1].size) < 2) {
-                  const a = top[0], b = top[1];
-                  const leftEl  = a.rect.left <= b.rect.left ? a : b;
-                  const rightEl = a.rect.left <= b.rect.left ? b : a;
-                  score = leftEl.txt + ' - ' + rightEl.txt;
-                }
-              }
-
-              // Basketball-plausibility guard. A live match can legitimately be
-              // below 60 total early on, so only reject absurd totals (> 400) here;
-              // the finished-match path applies a stricter floor before settling.
-              const mScore = score.match(/^\s*(\d{1,3})\s*[-–]\s*(\d{1,3})\s*$/);
-              if (mScore) {
-                const total = parseInt(mScore[1]) + parseInt(mScore[2]);
-                if (total > 400) score = '';
-              } else {
-                score = '';
-              }
-
-              if (opening !== null && !oddsSnapshot.opening_lines.length) {
-                oddsSnapshot.opening_lines = [opening];
-                oddsSnapshot.opening_median = opening;
-                oddsSnapshot.opening_min = opening;
-                oddsSnapshot.opening_max = opening;
-              }
-              if (prematch !== null && !oddsSnapshot.prematch_lines.length) {
-                oddsSnapshot.prematch_lines = [prematch];
-                oddsSnapshot.prematch_median = prematch;
-              }
-              if (inplay !== null && !oddsSnapshot.inplay_lines.length) {
-                oddsSnapshot.inplay_lines = [inplay];
-                oddsSnapshot.inplay_median = inplay;
-                oddsSnapshot.inplay_min = inplay;
-                oddsSnapshot.inplay_max = inplay;
-              }
-              if (!oddsSnapshot.bookmaker_count && (
-                oddsSnapshot.opening_lines.length || oddsSnapshot.inplay_lines.length
-              )) oddsSnapshot.bookmaker_count = 1;
-              if (!oddsSnapshot.paired_bookmaker_count
-                  && oddsSnapshot.opening_lines.length
-                  && oddsSnapshot.inplay_lines.length) {
-                oddsSnapshot.paired_bookmaker_count = 1;
-              }
-
-              let quarterScores = { home: [], away: [], source: '', quality: 0 };
-              if (score) {
-                const parts = score.split(/\s*[-–]\s*/).map(v => parseInt(v, 10));
-                const scoreHome = parts[0], scoreAway = parts[1];
-                const parseQuarterRow = (txt, total) => {
-                  const nums = (txt.match(/\b\d{1,3}\b/g) || []).map(n => parseInt(n, 10));
-                  if (nums.length < 2) return null;
-                  const totalIdx = nums.lastIndexOf(total);
-                  if (totalIdx < 0) return null;
-                  const periods = nums.slice(Math.max(0, totalIdx - 4), totalIdx);
-                  const usable = periods.filter(v => v >= 0 && v <= 80);
-                  if (!usable.length) return null;
-                  const sum = usable.reduce((a,b) => a + b, 0);
-                  if (Math.abs(sum - total) > 4) return null;
-                  return usable;
-                };
-
-                const detailBox = document.querySelector('.scoresDetails, [class*="scoresDetails"], [class*="scoreDetail"]');
-                if (detailBox) {
-                  const contentRows = Array.from(detailBox.querySelectorAll('.content, [class*="content"]'))
-                    .map(el => text(el.innerText))
-                    .filter(Boolean);
-                  let homePeriods = null;
-                  let awayPeriods = null;
-                  let homeRowIndex = -1;
-                  for (let rowIndex = 0; rowIndex < contentRows.length; rowIndex++) {
-                    const row = contentRows[rowIndex];
-                    const homeRow = parseQuarterRow(row, scoreHome);
-                    const awayRow = parseQuarterRow(row, scoreAway);
-                    if (homeRow && !homePeriods) {
-                      homePeriods = homeRow;
-                      homeRowIndex = rowIndex;
-                    }
-                    if (awayRow && !awayPeriods && rowIndex !== homeRowIndex) awayPeriods = awayRow;
-                  }
-                  if (homePeriods && awayPeriods) {
-                    quarterScores = {
-                      home: homePeriods,
-                      away: awayPeriods,
-                      source: 'scoreboard_dom',
-                      quality: 90,
-                    };
-                  }
-                }
-
-                const lines = (document.body.innerText || '')
-                  .split(/\n+/)
-                  .map(text)
-                  .filter(Boolean)
-                  .slice(0, 220);
-                const rowCandidates = [];
-                for (let idx = 0; idx < lines.length; idx++) {
-                  const nums = (lines[idx].match(/\b\d{1,3}\b/g) || []).map(n => parseInt(n, 10));
-                  if (nums.length < 2 || nums.length > 8) continue;
-                  const last = nums[nums.length - 1];
-                  if (last !== scoreHome && last !== scoreAway) continue;
-                  const periods = nums.slice(0, -1).slice(-4);
-                  const sum = periods.reduce((a,b) => a + b, 0);
-                  if (periods.length >= 1 && Math.abs(sum - last) <= 3) {
-                    rowCandidates.push({ idx, total: last, periods });
-                  }
-                }
-                for (let i = 0; i < rowCandidates.length; i++) {
-                  for (let j = i + 1; j < rowCandidates.length; j++) {
-                    const a = rowCandidates[i], b = rowCandidates[j];
-                    if (Math.abs(a.idx - b.idx) > 8) continue;
-                    if (
-                      (a.total === scoreHome && b.total === scoreAway)
-                      || (a.total === scoreAway && b.total === scoreHome)
-                    ) {
-                      const homeRow = a.total === scoreHome ? a : b;
-                      const awayRow = a.total === scoreHome ? b : a;
-                      quarterScores = {
-                        home: homeRow.periods,
-                        away: awayRow.periods,
-                        source: 'scoreboard_rows',
-                        quality: 75,
-                      };
-                      i = rowCandidates.length;
-                      break;
-                    }
-                  }
-                }
-              }
-
-              return {
-                opening, prematch, inplay, matchName, tournament, status,
-                isQ4, remainingMinutes, hasLockedRows, isFinished, score,
-                quarterScores, oddsSnapshot
-              };
             }
             """
         )
 
-        is_finished = parsed.get("isFinished", False)
-        status = parsed.get("status", "")
-        if is_finished:
-            logger.debug("Skipping finished match: %s (status=%s)", url, status)
+        if parsed.get("isFinished"):
             return _MatchSkip("finished")
 
         odds_snapshot = _normalize_market_snapshot(parsed.get("oddsSnapshot"))
-        parsed["oddsSnapshot"] = odds_snapshot
-        opening = _select_market_line(parsed, odds_snapshot, "opening")
-        inplay = _select_market_line(parsed, odds_snapshot, "inplay")
-        prematch = (
-            odds_snapshot.get("prematch_median")
-            if odds_snapshot.get("prematch_median") is not None
-            else parsed.get("prematch")
-        )
-        locked = parsed.get("hasLockedRows", False)
+        opening = _select_market_line({}, odds_snapshot, "opening")
+        inplay = _select_market_line({}, odds_snapshot, "inplay")
+        prematch = odds_snapshot.get("prematch_median")
         if opening is None or inplay is None:
-            if locked:
-                logger.debug("Odds locked/suspended for %s (bookmaker updating)", url)
+            if parsed.get("hasLockedRows"):
                 return _MatchSkip("odds_locked", retryable=True)
-            else:
-                logger.debug("Could not find opening/inplay totals for %s", url)
-                # A live fixture can legitimately have no totals market on
-                # AIScore. Retry once in case the market is still loading, but
-                # do not treat a persistently absent market as scraper damage.
-                return _MatchSkip("totals_missing", retryable=True)
+            return _MatchSkip("totals_missing", retryable=True)
 
-        is_q4 = parsed.get("isQ4", False)
-        remaining = parsed.get("remainingMinutes")
-        if not self.skip_h2h and is_q4 and remaining is not None and remaining <= 4.0:
-            logger.debug("Q4 <=4min remaining, skipping: %s (%.1f min)", url, remaining)
-            return _MatchSkip("late_q4")
-
-        parsed_quarter_scores = parsed.get("quarterScores") or {}
-        needs_stats_snapshot = (
-            self.stats_threshold is not None
-            and abs(float(inplay) - float(opening)) >= self.stats_threshold
-        )
-        needs_overview = (
-            not parsed.get("status")
-            or not parsed.get("score")
-            or not parsed_quarter_scores.get("home")
-            or not parsed_quarter_scores.get("away")
-            or needs_stats_snapshot
-        )
-        overview_data = (
-            await self._fetch_overview_data(
-                page,
-                url,
-                wait_for_team_stats=needs_stats_snapshot,
-            )
-            if needs_overview
-            else {}
-        )
-        if overview_data.get("status"):
-            parsed["status"] = overview_data.get("status")
-        if overview_data.get("score"):
-            parsed["score"] = overview_data.get("score")
-        quarter_scores = (
-            overview_data.get("quarterScores")
-            if (overview_data.get("quarterScores") or {}).get("home")
-            else parsed_quarter_scores
-        ) or {}
-        team_stats = _normalize_team_stats_snapshot(
-            overview_data.get("teamStats")
-        )
-
-        match_id = self._extract_match_id(url)
-
+        overview_data = {}
+        if not parsed.get("status") or not parsed.get("score"):
+            overview_data = await self._fetch_overview_data(page, clean_url)
+            if overview_data.get("status"):
+                parsed["status"] = overview_data["status"]
+            if overview_data.get("score"):
+                parsed["score"] = overview_data["score"]
         if overview_data.get("isFinished"):
-            logger.debug("Skipping finished match from Nuxt state: %s", url)
             return _MatchSkip("finished")
 
-        tournament = self._sanitize_tournament(parsed.get("tournament") or "", url)
-        status_text = str(parsed.get("status") or "").strip()
-        score_text = str(parsed.get("score") or "").strip()
+        match_id = self._extract_match_id(clean_url)
+        tournament = self._sanitize_tournament(
+            parsed.get("tournament") or "",
+            clean_url,
+        )
+        status = str(parsed.get("status") or "").strip()
+        score = str(parsed.get("score") or "").strip()
         match_name = str(parsed.get("matchName") or f"Match {match_id}").strip()
-        clock = game_clock(status_text, match_name, tournament)
-        home_score, away_score = parse_score(score_text)
+        clock = game_clock(status, match_name, tournament)
+        home_score, away_score = parse_score(score)
 
         if overview_data.get("periodEnded"):
-            last_regulation_period = (
+            is_last_period = (
                 clock.get("period") is not None
                 and clock.get("period") == clock.get("period_count")
             )
-            if last_regulation_period:
+            if is_last_period:
                 if home_score is not None and home_score == away_score:
-                    logger.debug("Skipping regulation tie awaiting overtime: %s", url)
                     return _MatchSkip("overtime")
-                logger.debug("Skipping finished match from play-by-play: %s", url)
                 return _MatchSkip("finished")
-
-        if (
-            not self.skip_h2h
-            and clock.get("period") == 4
-            and clock.get("remaining_min") is not None
-            and clock.get("remaining_min") <= 4.0
-        ):
-            logger.debug(
-                "Q4 <=4min remaining from overview, skipping: %s (%.1f min)",
-                url,
-                clock["remaining_min"],
-            )
-            return _MatchSkip("late_q4")
-
-        h2h_body = ""
-        if not self.skip_h2h:
-            cached = self._h2h_cache.get(match_id)
-            if cached is not None:
-                h2h_body = cached
-            else:
-                h2h_body = await self._fetch_h2h_body(page, url)
-                if h2h_body:
-                    if len(self._h2h_cache) >= 256:
-                        self._h2h_cache.pop(next(iter(self._h2h_cache)), None)
-                    self._h2h_cache[match_id] = h2h_body
 
         if (
             clock.get("period") is None
@@ -1792,11 +1074,10 @@ class AiscoreScraper:
             or away_score is None
         ):
             logger.warning(
-                "Incomplete live core data; match is not counted as parsed: %s "
-                "status=%r score=%r",
-                url,
-                status_text,
-                score_text,
+                "Incomplete live core data: %s status=%r score=%r",
+                clean_url,
+                status,
+                score,
             )
             return _MatchSkip("incomplete_live_core", degraded=True, retryable=True)
 
@@ -1804,35 +1085,24 @@ class AiscoreScraper:
             "match_id": match_id,
             "match_name": match_name,
             "tournament": tournament or "Unknown",
-            "status": status_text,
+            "status": status,
             "opening_total": float(opening),
             "prematch_total": float(prematch) if prematch is not None else None,
             "inplay_total": float(inplay),
-            "url": url,
-            "score": score_text,
+            "url": clean_url,
+            "score": score,
             "has_prematch": prematch is not None,
-            "h2h_body_text": h2h_body,
-            "quarter_scores": quarter_scores,
             "odds_snapshot": odds_snapshot,
-            "team_stats": team_stats,
         }
 
-    async def _fetch_overview_data(
-        self,
-        page,
-        url: str,
-        *,
-        wait_for_team_stats: bool = False,
-    ) -> dict:
+    async def _fetch_overview_data(self, page, url: str) -> dict:
         try:
             await page.goto(
-                url.rstrip("/"),
-                wait_until="domcontentloaded",
+                self._mobile_url(url.rstrip("/")),
+                wait_until="commit",
                 timeout=self.page_timeout_ms,
             )
             await self._wait_for_match_page_ready(page)
-            if wait_for_team_stats:
-                await self._wait_for_team_stats_ready(page)
             result = await page.evaluate(r"""
                 () => {
                   const text = s => (s || '').replace(/\s+/g, ' ').trim();
@@ -1864,62 +1134,13 @@ class AiscoreScraper:
                     score = `${left.txt} - ${right.txt}`;
                   }
 
-                  const parseQuarterRow = (txt, total) => {
-                    const nums = (txt.match(/\b\d{1,3}\b/g) || []).map(n => parseInt(n, 10));
-                    if (nums.length < 2) return null;
-                    const totalIdx = nums.lastIndexOf(total);
-                    if (totalIdx < 0) return null;
-                    const periods = nums.slice(Math.max(0, totalIdx - 4), totalIdx).filter(v => v >= 0 && v <= 80);
-                    if (!periods.length) return null;
-                    const sum = periods.reduce((a,b) => a + b, 0);
-                    if (Math.abs(sum - total) > 4) return null;
-                    return periods;
-                  };
-
-                  let quarterScores = { home: [], away: [], source: '', quality: 0 };
-                  if (score) {
-                    const parts = score.split(/\s*[-–]\s*/).map(v => parseInt(v, 10));
-                    const scoreHome = parts[0], scoreAway = parts[1];
-                    const detailBox = document.querySelector('.scoresDetails, [class*="scoresDetails"], [class*="scoreDetail"]');
-                    if (detailBox) {
-                      const rows = Array.from(detailBox.querySelectorAll('.content, [class*="content"]'))
-                        .map(el => text(el.innerText))
-                        .filter(Boolean);
-                      let homePeriods = null;
-                      let awayPeriods = null;
-                      let homeRowIndex = -1;
-                      for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-                        const row = rows[rowIndex];
-                        const homeRow = parseQuarterRow(row, scoreHome);
-                        const awayRow = parseQuarterRow(row, scoreAway);
-                        if (homeRow && !homePeriods) {
-                          homePeriods = homeRow;
-                          homeRowIndex = rowIndex;
-                        }
-                        if (awayRow && !awayPeriods && rowIndex !== homeRowIndex) awayPeriods = awayRow;
-                      }
-                      if (homePeriods && awayPeriods) {
-                        quarterScores = {
-                          home: homePeriods,
-                          away: awayPeriods,
-                          source: 'overview_scoreboard_dom',
-                          quality: 90,
-                        };
-                      }
-                    }
-                  }
-
                   const arrivedPeriods = Array.from(document.querySelectorAll(
                     '.Qn button.matchArrive, .Qn .matchArrive'
                   ))
                     .map(el => text(el.innerText).match(/^Q([1-4])$/i))
                     .filter(Boolean)
                     .map(match => parseInt(match[1], 10));
-                  const scorePeriodCount = Math.max(
-                    (quarterScores.home || []).length,
-                    (quarterScores.away || []).length,
-                  );
-                  const period = Math.max(0, scorePeriodCount, ...arrivedPeriods);
+                  const period = Math.max(0, ...arrivedPeriods);
                   const latestPbpRow = document.querySelector(
                     '.pbp .dataList, [class*="pbp"] [class~="dataList"]'
                   );
@@ -1943,55 +1164,11 @@ class AiscoreScraper:
                     || Number(nuxtMatch.statusId) === 10
                   );
 
-                  const boxscore = window.__NUXT__
-                    && window.__NUXT__.state
-                    && window.__NUXT__.state.basketball
-                    && window.__NUXT__.state.basketball._boxscoreData;
-                  const lineup = boxscore && boxscore.lineup ? boxscore.lineup : {};
-                  const homeTotals = lineup.homePlayerTotals
-                    && lineup.homePlayerTotals.bkDetail
-                    ? lineup.homePlayerTotals.bkDetail : {};
-                  const awayTotals = lineup.awayPlayerTotals
-                    && lineup.awayPlayerTotals.bkDetail
-                    ? lineup.awayPlayerTotals.bkDetail : {};
-                  const rawHasStats = nuxtMatch && nuxtMatch.competition
-                    ? nuxtMatch.competition.hasStats
-                    : null;
-                  const visiblePbpRows = Array.from(document.querySelectorAll(
-                    '.pbp .dataList, [class*="pbp"] [class~="dataList"]'
-                  )).filter(el => el.offsetParent !== null);
-                  const flowTexts = visiblePbpRows.map(el => text(el.innerText));
-                  const currentPeriodFlow = {
-                    period,
-                    row_count: flowTexts.length,
-                    foul_events: flowTexts.filter(value =>
-                      /\bFoul\b/i.test(value) && !/\bReceived\s+Foul\b/i.test(value)
-                    ).length,
-                    free_throw_events: flowTexts.filter(value => /\bFree\s+Throw\b/i.test(value)).length,
-                    turnover_events: flowTexts.filter(value => /\bTurn\s*Over\b/i.test(value)).length,
-                  };
-                  const teamStats = {
-                    source: 'nuxt_boxscore_team_totals',
-                    has_stats: rawHasStats,
-                    home: homeTotals,
-                    away: awayTotals,
-                    current_period_flow: currentPeriodFlow,
-                  };
-
-                  return {
-                    status,
-                    score,
-                    quarterScores,
-                    playByPlayStatus,
-                    teamStats,
-                    isFinished: nuxtFinished,
-                  };
+                  return {status, score, playByPlayStatus, isFinished: nuxtFinished};
                 }
             """)
             if not result.get("status"):
-                fallback = _status_from_play_by_play_hint(
-                    result.get("playByPlayStatus")
-                )
+                fallback = _status_from_play_by_play_hint(result.get("playByPlayStatus"))
                 if fallback["status"]:
                     result["status"] = fallback["status"]
                     result["periodEnded"] = fallback["period_ended"]
@@ -2005,78 +1182,6 @@ class AiscoreScraper:
         except Exception as exc:
             logger.debug("Overview data fetch failed for %s: %s", url, exc)
             return {}
-
-    async def _fetch_h2h_body(self, page, url: str) -> str:
-        h2h_url = url.rstrip("/") + "/h2h"
-        try:
-            await page.goto(
-                h2h_url,
-                wait_until="domcontentloaded",
-                timeout=self.page_timeout_ms,
-            )
-            try:
-                await page.wait_for_function(
-                    r"""
-                    () => {
-                        if (!document.body || document.readyState === 'loading') return false;
-                        const text = (document.body.innerText || '').toLowerCase();
-                        return text.length > 800 && (
-                            text.includes('h2h') || text.includes('head to head')
-                            || text.includes('per game') || text.includes('points per match')
-                        );
-                    }
-                    """,
-                    timeout=min(7000, self.page_timeout_ms),
-                )
-            except Exception as exc:
-                logger.debug("H2H readiness wait ended without a marker for %s: %s", url, exc)
-            await page.wait_for_timeout(250)
-
-            # Try to click an H2H tab if the page lands on a different sub-section
-            try:
-                await page.evaluate(r"""
-                    () => {
-                        const text = s => (s || '').replace(/\s+/g, ' ').trim();
-                        const candidates = Array.from(document.querySelectorAll('a, button, div, span'))
-                            .filter(el => el.children.length <= 3);
-                        for (const el of candidates) {
-                            const t = text(el.innerText || '').toLowerCase();
-                            if (!t || t.length > 18) continue;
-                            if (/^h2h\b|head.?to.?head|karş.?la.?ma/.test(t)) {
-                                try { el.click(); return true; } catch(e) {}
-                            }
-                        }
-                        return false;
-                    }
-                """)
-            except Exception as exc:
-                logger.debug("H2H tab selection failed for %s: %s", url, exc)
-            await page.wait_for_timeout(300)
-            for _ in range(2):
-                await page.evaluate("window.scrollBy(0, document.body.scrollHeight / 3)")
-                await page.wait_for_timeout(200)
-
-            body = await page.evaluate(r"""
-                () => {
-                    const fullBody = (document.body.innerText || '').replace(/\s+/g, ' ').trim();
-                    // SF/son-form rows can live outside the narrow H2H stats block.
-                    // Return the full page text so the parser can extract both.
-                    return fullBody;
-                }
-            """)
-            body = body or ""
-            low = body.lower()
-            keyword_hits = sum(kw in low for kw in (
-                "per game", "points per match", "opponent points", "total points over", "h2h"
-            ))
-            logger.info(
-                "H2H body for %s: %d chars, %d/5 key markers | preview: %s",
-                url, len(body), keyword_hits, body[:300].replace("\n", " "),
-            )
-            return body
-        except Exception as exc:
-            logger.warning("H2H page fetch failed for %s: %s", url, exc)
-            return ""
 
     @staticmethod
     def _extract_match_id(url: str) -> str:

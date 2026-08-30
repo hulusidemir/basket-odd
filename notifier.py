@@ -14,52 +14,6 @@ from telegram.error import TelegramError
 logger = logging.getLogger(__name__)
 
 
-def _float_text(value, digits: int = 2) -> str:
-    try:
-        return f"{float(value):.{digits}f}"
-    except (TypeError, ValueError):
-        return "-"
-
-
-def _quarter_score_text(analysis: dict) -> str:
-    scores = analysis.get("quarter_scores") if isinstance(analysis, dict) else {}
-    if not isinstance(scores, dict):
-        return "-"
-    home = scores.get("home") if isinstance(scores.get("home"), list) else []
-    away = scores.get("away") if isinstance(scores.get("away"), list) else []
-    rows = []
-    for index, (h, a) in enumerate(zip(home, away), start=1):
-        try:
-            rows.append(f"Q{index} {int(h)}-{int(a)}")
-        except (TypeError, ValueError):
-            continue
-        if len(rows) >= 4:
-            break
-    return " | ".join(rows) if rows else "-"
-
-
-def _quarter_ppm_text(analysis: dict) -> str:
-    ppm_values = analysis.get("quarter_ppm") if isinstance(analysis, dict) else []
-    if not isinstance(ppm_values, list) or not ppm_values:
-        return "-"
-    rows = []
-    for index, value in enumerate(ppm_values[:4], start=1):
-        text = _float_text(value)
-        if text != "-":
-            rows.append(f"Q{index} {text}")
-    return " | ".join(rows) if rows else "-"
-
-
-def _match_ppm_text(analysis: dict) -> str:
-    components = analysis.get("projection_components") if isinstance(analysis, dict) else {}
-    if not isinstance(components, dict):
-        components = {}
-    value = analysis.get("match_ppm") if isinstance(analysis, dict) else None
-    if value is None:
-        value = components.get("current_pace_per_min")
-    return _float_text(value)
-
-
 def _build_alert_text(
     *,
     match_name: str,
@@ -72,14 +26,8 @@ def _build_alert_text(
     score: str,
     signal_count: int,
     prematch: float | None,
-    analysis: dict,
     period: int | None,
 ) -> str:
-    fair_line = analysis.get("fair_line")
-    fair_edge = analysis.get("fair_edge")
-    projected = analysis.get("projected_total")
-    h2h_total = analysis.get("h2h_total")
-
     status_text = (status or "").strip()
     if status_text and period and not status_text.upper().startswith(f"Q{period}"):
         when = f"Q{period} {status_text}"
@@ -92,48 +40,16 @@ def _build_alert_text(
 
     repeat = f" · {signal_count}. sinyal" if signal_count > 1 else ""
 
-    fair_text = "-"
-    if fair_line is not None:
-        fair_text = f"{float(fair_line):.1f}"
-        if fair_edge is not None:
-            fair_text += f" (canlıya göre {float(fair_edge):+.1f})"
-
-    proj_text = f"{float(projected):.1f}" if projected is not None else "-"
-    h2h_text = f"{float(h2h_total):.1f}" if h2h_total is not None else "-"
-    evidence = analysis.get("market_evidence") if isinstance(analysis.get("market_evidence"), dict) else {}
-    evidence_symbol = str(evidence.get("symbol") or "?").strip()
-    evidence_label = str(evidence.get("label") or "İSTATİSTİK YETERSİZ").strip()
-    evidence_reason = str(evidence.get("primary_reason") or "Sinyal anına ait doğrulanmış takım istatistiği yok.").strip()
-    quarter_score_text = _quarter_score_text(analysis)
-    match_ppm_text = _match_ppm_text(analysis)
-    quarter_ppm_text = _quarter_ppm_text(analysis)
     prematch_text = f" → {float(prematch):.1f}" if prematch is not None else ""
-    final_direction = str(
-        analysis.get("final_direction")
-        or analysis.get("direction")
-        or direction
-    ).strip().upper().replace("UST", "ÜST")
-    if final_direction not in {"ALT", "ÜST"}:
-        final_direction = direction
-
-    evidence_headline = f"{escape(evidence_symbol)} <b>{escape(evidence_label)}</b>"
-    signal_headline = f"📊 <b>{final_direction}</b>{repeat}"
+    signal_headline = f"📊 <b>{escape(direction)}</b>{repeat}"
 
     return (
-        f"{evidence_headline}\n"
         f"{signal_headline}\n"
         f"🏀 <b>{escape(match_name)}</b>\n"
         f"🏆 {escape(tournament or '-')}\n\n"
-        f"<b>İstatistiksel kanıt:</b> {escape(evidence_reason)}\n"
         f"<b>Skor:</b> {escape(score or '-')}\n"
         f"<b>Ne zaman geldi:</b> {when}\n"
-        f"<b>Çeyrek Skorları:</b> {escape(quarter_score_text)}\n"
-        f"<b>Maç hızı:</b> {escape(match_ppm_text)} sayı/dakika\n"
-        f"<b>Çeyrek hızları:</b> {escape(quarter_ppm_text)}\n"
-        f"<b>Barem değişimi:</b> {opening:.1f}{prematch_text} → {live:.1f} ({diff:+.1f})\n"
-        f"<b>Adil barem:</b> {fair_text}\n"
-        f"<b>Tempo aynı kalırsa:</b> {proj_text}\n"
-        f"<b>Geçmiş maç ortalaması:</b> {h2h_text}"
+        f"<b>Barem değişimi:</b> {opening:.1f}{prematch_text} → {live:.1f} ({diff:+.1f})"
     )
 
 
@@ -191,12 +107,10 @@ class TelegramNotifier:
         score: str = "",
         signal_count: int = 1,
         prematch: float | None = None,
-        analysis: dict | None = None,
         period: int | None = None,
         followed_upcoming: bool = False,
         pending_recipient_keys: set[str] | None = None,
     ) -> dict:
-        analysis = analysis or {}
         text = _build_alert_text(
             match_name=match_name,
             tournament=tournament,
@@ -208,7 +122,6 @@ class TelegramNotifier:
             score=score,
             signal_count=signal_count,
             prematch=prematch,
-            analysis=analysis,
             period=period,
         )
         if followed_upcoming:
@@ -239,8 +152,8 @@ class TelegramNotifier:
         try:
             await self._send_to_all(
                 "🤖 <b>Basket Tahmin Botu başlatıldı.</b>\n"
-                "Canlı barem hareketleri izleniyor. Eşiği geçen tüm sinyaller "
-                "istatistiksel kanıt etiketi ve kısa gerekçesiyle gönderilir."
+                "Canlı açılış-barem farkları izleniyor. Eşiği geçen ham barem "
+                "hareketleri doğrudan gönderilir."
             )
         except TelegramError as e:
             logger.error(f"Failed to send startup message: {e}")

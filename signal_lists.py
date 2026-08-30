@@ -1,41 +1,6 @@
 from db import Database
 
 
-def _normalize_direction(value) -> str:
-    text = str(value or "").strip().upper().replace("UST", "ÜST")
-    return text if text in {"ALT", "ÜST"} else (text or "-")
-
-
-def _safe_float(value, default=None):
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def build_quality_tag(alert: dict) -> dict:
-    direction = _normalize_direction(alert.get("direction"))
-    opening = _safe_float(alert.get("opening"))
-    live = _safe_float(alert.get("live"))
-    fair = _safe_float(alert.get("fair_line"))
-    empty = {"label": "-", "tone": "empty", "title": "Kalite kuralı uygulanmadı.", "rank": 0}
-    if opening is None or live is None or fair is None:
-        return empty
-    if opening < 170 and direction == "ÜST":
-        if fair < live:
-            return {"label": "FADE", "tone": "fade", "title": "Açılış <170 ve ÜST; adil barem canlının altında.", "rank": 3}
-        return {"label": "PAS", "tone": "neutral", "title": "Açılış <170 ve ÜST.", "rank": 1}
-    if opening > 180 and direction == "ALT":
-        gap = live - fair
-        if live > fair + 8:
-            return {"label": "FADE", "tone": "fade", "title": "Canlı barem adil baremin 8+ üstünde.", "rank": 3}
-        if 0 <= gap <= 8:
-            return {"label": "İZLE", "tone": "neutral", "title": "Canlı-adil farkı 0-8 aralığında.", "rank": 1}
-        if live < fair:
-            return {"label": "✓", "tone": "red-check", "title": "Canlı barem adil baremin altında.", "rank": 2}
-    return empty
-
-
 def build_signal_list_profile(entries: list[dict]) -> dict:
     profile = {
         "black": {"team": set(), "league": set()},

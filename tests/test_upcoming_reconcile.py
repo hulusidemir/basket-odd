@@ -17,7 +17,6 @@ def upcoming_row(match_id: str) -> dict:
         "kickoff": f"{date.today().isoformat()} 20:00",
         "opening_total": 160.0,
         "prematch_total": 161.0,
-        "expected_total": 166.0,
         "url": f"https://example.test/{match_id}",
     }
 
@@ -32,13 +31,13 @@ class UpcomingReconcileTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_partial_detail_scrape_does_not_delete_other_current_rows(self):
-        self.db.save_upcoming_matches_and_signals([
+        self.db.save_upcoming_matches([
             upcoming_row("match-a"),
             upcoming_row("match-b"),
         ])
         self.db.set_upcoming_match_statuses("match-b", followed=True)
 
-        summary = self.db.save_upcoming_matches_and_signals([
+        summary = self.db.save_upcoming_matches([
             upcoming_row("match-a"),
         ])
 
@@ -50,13 +49,13 @@ class UpcomingReconcileTests(unittest.TestCase):
         self.assertTrue(self.db.get_upcoming_match_action_status("match-b")["followed"])
 
     def test_authoritative_listing_reconcile_preserves_user_action(self):
-        self.db.save_upcoming_matches_and_signals([
+        self.db.save_upcoming_matches([
             upcoming_row("match-a"),
             upcoming_row("match-b"),
         ])
         self.db.set_upcoming_match_statuses("match-b", followed=True)
 
-        summary = self.db.save_upcoming_matches_and_signals(
+        summary = self.db.save_upcoming_matches(
             [upcoming_row("match-a")],
             seen_match_ids={"match-a"},
             reconcile=True,
@@ -77,7 +76,7 @@ class UpcomingReconcileTests(unittest.TestCase):
         inside["kickoff"] = (now + timedelta(hours=23)).strftime("%Y-%m-%d %H:%M")
         outside["kickoff"] = (now + timedelta(hours=25)).strftime("%Y-%m-%d %H:%M")
 
-        summary = self.db.save_upcoming_matches_and_signals([inside, outside])
+        summary = self.db.save_upcoming_matches([inside, outside])
 
         self.assertEqual(summary["removed_expired"], 1)
         self.assertEqual(

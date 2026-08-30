@@ -18,15 +18,8 @@ from aiscore_scraper import AiscoreScraper
 from config import Config
 from db import Database
 from notifier import TelegramNotifier
-from pace_tracker import PaceTracker
-from projection import game_clock, parse_score
-from signal_analysis import build_signal_analysis
+from match_state import game_clock
 from signal_lists import build_signal_blacklist_matches, build_signal_list_profile
-from signal_quality import (
-    build_league_signal_profile,
-    calculate_signal_quality,
-    league_stats_for_signal,
-)
 from signal_repeat import live_total_delta
 
 
@@ -167,9 +160,6 @@ async def process_match(
     db: Database,
     notifier: TelegramNotifier,
     config: Config,
-    pace_tracker: PaceTracker | None = None,
-    backtest_profile: dict | None = None,
-    league_signal_profile: dict | None = None,
     signal_list_profile: dict | None = None,
 ) -> None:
     match = _normalize_match_payload(match)
@@ -212,8 +202,6 @@ async def process_match(
 
     clock = game_clock(status, match_name, tournament)
     period = clock["period"]
-    remaining_min = clock["remaining_min"]
-    quarter_length = clock["quarter_length"]
 
     if period is None:
         # Status boş ise yayın henüz canlı sayfaya gelmemiş demek (gürültü değil).
@@ -230,27 +218,6 @@ async def process_match(
             )
         return
 
-    if period == 4 and remaining_min is not None and remaining_min < 5:
-        log.debug("Skipped (Q4 under 5:00): %s", match_name)
-        return
-
-    if period == 1 and remaining_min is not None and (quarter_length - remaining_min) < 4:
-        log.debug("Skipped (Q1 first 4:00 — pace unstable): %s", match_name)
-        return
-
-    # Çeyrek hız takibini güncelle
-    pace_data: dict | None = None
-    if pace_tracker is not None and period is not None:
-        home_score, away_score = parse_score(match.get("score", ""))
-        if home_score is not None and away_score is not None:
-            pace_data = pace_tracker.update(
-                match_id,
-                period,
-                home_score + away_score,
-                quarter_length,
-                remaining_min=remaining_min,
-            )
-
     diff = inplay_total - opening_total
     abs_diff = abs(diff)
 
@@ -262,7 +229,7 @@ async def process_match(
     if abs_diff < config.THRESHOLD:
         return
 
-    legacy_direction = "ALT" if diff > 0 else "ÜST"
+    direction = "ALT" if diff > 0 else "ÜST"
 
     total_alerts = db.count_match_alerts(match_id)
     if total_alerts >= config.MAX_SIGNALS_PER_MATCH:
@@ -278,54 +245,6 @@ async def process_match(
         return
 
     signal_count = total_alerts + 1
-    context = {"h2h": {"body_text": match.get("h2h_body_text", "")}}
-    analysis = build_signal_analysis(
-        {
-            **match,
-            "direction": legacy_direction,
-            "opening_total": opening_total,
-            "inplay_total": inplay_total,
-            "prematch_total": prematch_total,
-            "signal_count": signal_count,
-        },
-        context,
-        config.THRESHOLD,
-        pace_data=pace_data,
-        backtest_profile=backtest_profile,
-    )
-    direction = analysis.get("direction") or legacy_direction
-    previous_directions = []
-    active_alerts_for_match = getattr(db, "active_alerts_for_match", None)
-    if callable(active_alerts_for_match):
-        previous_directions = [
-            row.get("direction")
-            for row in active_alerts_for_match(match_id)
-            if row.get("direction")
-        ]
-    quality = calculate_signal_quality(
-        {
-            **match,
-            **analysis,
-            "opening": opening_total,
-            "prematch": prematch_total,
-            "live": inplay_total,
-            "direction": direction,
-            "signal_count": signal_count,
-            "previous_directions": previous_directions,
-            "league_signal_stats": league_stats_for_signal(
-                league_signal_profile,
-                tournament,
-                direction,
-            ),
-        }
-    )
-    analysis = {
-        **analysis,
-        "direction": direction,
-        "final_direction": direction,
-        "signal_quality": quality,
-    }
-
     previous_same_direction = db.latest_match_alert_in_direction(match_id, direction)
     if previous_same_direction:
         previous_live = previous_same_direction.get("live")
@@ -348,7 +267,6 @@ async def process_match(
         match_id, match_name, opening_total, inplay_total, direction, abs_diff,
         tournament=tournament, status=status, url=url, score=score,
         signal_count=signal_count, prematch=prematch_total,
-        ai_analysis=json.dumps(analysis, ensure_ascii=False),
         alert_period=period,
         alert_moment=" | ".join(p for p in (status, score) if p),
         telegram_required=True,
@@ -360,7 +278,7 @@ async def process_match(
     try:
         delivered = await notifier.send_alert(
             match_name, tournament, opening_total, inplay_total, direction, diff, status,
-            score=score, signal_count=signal_count, prematch=prematch_total, analysis=analysis,
+            score=score, signal_count=signal_count, prematch=prematch_total,
             period=period,
             followed_upcoming=followed_upcoming,
         )
@@ -381,10 +299,10 @@ async def process_match(
         )
 
     log.info(
-        "Signal saved (telegram=%s%s): alert_id=%s match_id=%s | %s | %s | diff=%.2f | fair_line=%s",
+        "Signal saved (telegram=%s%s): alert_id=%s match_id=%s | %s | %s | diff=%.2f",
         "sent" if message_ids else "not-sent",
         " · followed" if followed_upcoming else "",
-        alert_id, match_id, match_name, direction, abs_diff, analysis.get("fair_line"),
+        alert_id, match_id, match_name, direction, abs_diff,
     )
 
 
@@ -393,9 +311,6 @@ async def process_match_batch(
     db: Database,
     notifier: TelegramNotifier,
     config: Config,
-    pace_tracker: PaceTracker,
-    backtest_profile: dict | None = None,
-    league_signal_profile: dict | None = None,
     signal_list_profile: dict | None = None,
 ) -> dict:
     """Process every scraper item independently and return cycle health counts."""
@@ -414,9 +329,6 @@ async def process_match_batch(
                 db,
                 notifier,
                 config,
-                pace_tracker,
-                backtest_profile,
-                league_signal_profile,
                 signal_list_profile,
             )
             processed_count += 1
@@ -432,19 +344,10 @@ async def process_match_batch(
                 exc,
             )
 
-    active_match_ids = {
-        str(match.get("match_id") or "").strip()
-        for match in matches
-        if isinstance(match, dict) and str(match.get("match_id") or "").strip()
-    }
-    pruned_count = pace_tracker.prune(
-        active_match_ids=active_match_ids if matches else None
-    )
     return {
         "received": len(matches),
         "processed": processed_count,
         "failed": failed_count,
-        "pace_states_pruned": pruned_count,
     }
 
 
@@ -491,15 +394,7 @@ async def retry_pending_telegram_deliveries(
         if not isinstance(stored_message_ids, dict):
             stored_message_ids = {}
         try:
-            analysis = json.loads(row.get("ai_analysis") or "{}")
-            if not isinstance(analysis, dict):
-                raise ValueError("stored analysis is not an object")
-            direction = str(
-                analysis.get("final_direction")
-                or analysis.get("direction")
-                or row.get("direction")
-                or ""
-            )
+            direction = str(row.get("direction") or "")
             clock = game_clock(
                 str(row.get("status") or ""),
                 str(row.get("match_name") or ""),
@@ -525,7 +420,6 @@ async def retry_pending_telegram_deliveries(
                 score=str(row.get("score") or ""),
                 signal_count=int(row.get("signal_count") or 1),
                 prematch=row.get("prematch"),
-                analysis=analysis,
                 period=clock.get("period"),
                 followed_upcoming=db.is_upcoming_followed(str(row.get("match_id") or "")),
                 **send_kwargs,
@@ -584,9 +478,7 @@ async def run():
         max_matches_per_cycle=config.MAX_MATCHES_PER_CYCLE,
         page_timeout_ms=config.PAGE_TIMEOUT_MS,
         concurrency=config.AISCORE_CONCURRENCY,
-        stats_threshold=config.THRESHOLD,
     )
-    pace_tracker = PaceTracker()
 
     await notifier.send_startup()
     log.info(
@@ -621,15 +513,7 @@ async def run():
                 db,
                 notifier,
                 config,
-                pace_tracker,
-                None,
-                build_league_signal_profile(db.recent_deleted_alerts(limit=None)),
             )
-            if cycle_summary["pace_states_pruned"]:
-                log.info(
-                    "Pruned %s stale pace-tracker state(s).",
-                    cycle_summary["pace_states_pruned"],
-                )
 
             health = _scraper_health_summary(scraper)
             if health is not None:

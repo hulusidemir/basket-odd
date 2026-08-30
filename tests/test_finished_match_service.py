@@ -172,7 +172,7 @@ class FinishedMatchServiceTests(unittest.TestCase):
         self.assertEqual(archived["final_status"], "Full Time")
         self.assertEqual(archived["final_score"], "90 - 90")
 
-    def test_settlement_direction_prefers_frozen_display_snapshot(self):
+    def test_settlement_uses_stored_raw_signal_direction(self):
         alert_id = self.db.save_alert(
             "match-1",
             "Home - Away",
@@ -183,7 +183,6 @@ class FinishedMatchServiceTests(unittest.TestCase):
             status="Full Time",
             score="90 - 90",
             url="https://example.test/match-1",
-            ai_analysis=json.dumps({"final_direction": "ALT"}),
         )
         self.db.save_active_alert_display_snapshots({
             alert_id: {
@@ -200,7 +199,7 @@ class FinishedMatchServiceTests(unittest.TestCase):
         row = self.db.get_deleted_alert_by_id(alert_id)
         self.assertEqual(row["direction"], "ALT")
         self.assertEqual(json.loads(row["display_snapshot"])["direction"], "ÜST")
-        self.assertEqual(row["result"], "Başarılı")
+        self.assertEqual(row["result"], "Başarısız")
 
     def test_one_archive_failure_does_not_stop_later_finished_matches(self):
         first_id = self.db.save_alert(

@@ -2,17 +2,8 @@
 upcoming_scraper.py — Fetches upcoming basketball matches from AIScore.
 
 Self-contained module. Does not modify the existing live-match pipeline.
-For each upcoming match it returns:
-  - match name, tournament, kickoff time
-  - opening total, pre-match total
-  - last-6 form (PPG/OPPG/avg) for both teams via H2H page
-  - cross-paired expected total (SF average) like the dashboard does
-
-Implementation notes:
-  - Reuses signal_analysis._extract_h2h_metrics for the SF computation so that
-    "Son 6 maç" numbers match exactly what the dashboard already shows.
-  - Browser automation mirrors aiscore_scraper.py patterns but runs against
-    the Schedule/Upcoming tab and tolerates a missing in-play total.
+For each upcoming match it returns only listing facts and available total lines:
+match name, tournament, kickoff time, opening total and pre-match total.
 """
 
 import asyncio
@@ -21,12 +12,13 @@ import os
 import re
 from datetime import date, datetime, timedelta, timezone
 from math import ceil
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from camoufox.async_api import AsyncNewBrowser
 from playwright.async_api import async_playwright
 
-from signal_analysis import _split_match_name, extract_h2h_metrics
+from signal_lists import split_match_teams
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +35,7 @@ def _bounded_int(value, default: int, *, minimum: int, maximum: int) -> int:
 class UpcomingScraper:
     def __init__(
         self,
-        aiscore_url: str = "https://www.aiscore.com/basketball",
+        aiscore_url: str = "https://m.aiscore.com/basketball",
         page_timeout_ms: int = 35000,
         max_matches: int | None = None,
         days_ahead: int | None = None,
@@ -51,7 +43,7 @@ class UpcomingScraper:
         concurrency: int | None = None,
         match_timeout_seconds: int | None = None,
     ):
-        self.aiscore_url = aiscore_url
+        self.aiscore_url = self._mobile_url(aiscore_url)
         self.page_timeout_ms = _bounded_int(
             page_timeout_ms,
             35000,
@@ -105,15 +97,12 @@ class UpcomingScraper:
                 proxy_server = os.getenv("PLAYWRIGHT_PROXY")
                 launch_kwargs: dict = {
                     "headless": True,
-                    "args": [
-                        "--disable-blink-features=AutomationControlled",
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage",
-                    ],
+                    "humanize": True,
+                    "locale": "en-US",
                 }
                 if proxy_server:
                     launch_kwargs["proxy"] = {"server": proxy_server}
-                browser = await p.chromium.launch(**launch_kwargs)
+                browser = await AsyncNewBrowser(p, **launch_kwargs)
                 context = await self._new_context(browser)
                 try:
                     return await self._fetch_with_context(context)
@@ -216,9 +205,7 @@ class UpcomingScraper:
                 "match_name",
                 "kickoff",
                 "opening_total",
-                "expected_total",
-                "home_last6",
-                "away_last6",
+                "prematch_total",
             )
         }
         listing_complete = self._listing_is_complete()
@@ -314,13 +301,14 @@ class UpcomingScraper:
 
     # ── Browser plumbing ──────────────────────────────────────────────
 
+    @staticmethod
+    def _mobile_url(value: str) -> str:
+        parsed = urlsplit(str(value or ""))
+        return urlunsplit(("https", "m.aiscore.com", parsed.path or "/basketball", parsed.query, ""))
+
     async def _new_context(self, browser):
         context = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-            ),
-            viewport={"width": 1920, "height": 1080},
+            viewport={"width": 430, "height": 932},
             locale="en-US",
             timezone_id=self.timezone_id,
         )
@@ -342,7 +330,7 @@ class UpcomingScraper:
         for attempt in range(1, max(1, attempts) + 1):
             try:
                 response = await page.goto(
-                    url,
+                    self._mobile_url(url),
                     wait_until="domcontentloaded",
                     timeout=self.page_timeout_ms,
                 )
@@ -364,32 +352,6 @@ class UpcomingScraper:
         logger.warning("%s could not be loaded: %s", label, last_error)
         return False
 
-    @staticmethod
-    def _verified_total_from_markets(markets) -> float | None:
-        """Accept a Nuxt line only when its market explicitly identifies totals."""
-        total_pattern = re.compile(
-            r"\btotal(?:\s+points?)?\b|\bo\s*/\s*u\b|over\s*[/&-]?\s*under|üst\s*[/&-]?\s*alt|\bou\b",
-            re.I,
-        )
-        candidates: list[float] = []
-        for market in markets or []:
-            if not isinstance(market, dict):
-                continue
-            evidence = str(market.get("market") or "").strip()
-            if not evidence or not total_pattern.search(evidence):
-                continue
-            values = market.get("values")
-            if not isinstance(values, list):
-                values = [values]
-            for raw in values:
-                try:
-                    value = float(raw)
-                except (TypeError, ValueError):
-                    continue
-                if 100 <= value <= 400:
-                    candidates.append(value)
-        return candidates[-1] if candidates else None
-
     # ── Listing: collect upcoming match links from AiScore ─────────────
 
     async def _collect_upcoming_links(self, context) -> list[str]:
@@ -403,15 +365,9 @@ class UpcomingScraper:
         else:
             today_links = []
             self._record_listing_source("today_matches", status="skipped")
-        # The scheduled source explicitly loads both calendar dates touched by
-        # the rolling 24-hour window. The homepage footer is not authoritative
-        # or complete enough to represent that window.
-        future_links = []
-        self._record_listing_source("future", status="skipped")
-
         links: list[str] = []
         seen: set[str] = set()
-        for href in [*scheduled_links, *today_links, *future_links]:
+        for href in [*scheduled_links, *today_links]:
             if not href or href in seen:
                 continue
             seen.add(href)
@@ -426,163 +382,133 @@ class UpcomingScraper:
         return links
 
     async def _collect_homepage_scheduled_links(self, context) -> list[str]:
-        """Collect every scheduled match in the rolling next-24-hour window."""
+        """Collect the next 24 hours from the mobile Schedule tab."""
         page = await context.new_page()
         page.set_default_timeout(self.page_timeout_ms)
         try:
-            listing_url = re.sub(r"/\d{8}/?$", "", self.aiscore_url.rstrip("/"))
-            if not await self._goto_with_retry(
-                page,
-                listing_url,
-                label="upcoming scheduled listing",
-            ):
-                self._record_listing_source(
-                    "scheduled", status="failed", error="navigation failed"
-                )
-                return []
-            try:
-                await page.wait_for_function(
-                    r"""
-                    () => {
-                        const b = (window.__NUXT__ && window.__NUXT__.state && window.__NUXT__.state.basketball) || {};
-                        return !!(window.$nuxt && window.$nuxt.$store)
-                            && b.loading === false
-                            && Array.isArray(b.matchesData_matches)
-                            && Array.isArray(b.matchesData_teams);
-                    }
-                    """,
-                    timeout=min(10000, self.page_timeout_ms),
-                )
-            except Exception as exc:
-                logger.warning("Scheduled Nuxt payload was not available: %s", exc)
-                self._record_listing_source(
-                    "scheduled", status="failed", error="Nuxt payload unavailable"
-                )
-                return []
-
             window_start, window_end = self._window_bounds()
-            target_dates = []
+            target_dates: list[date] = []
             cursor = window_start.date()
             while cursor <= window_end.date():
                 target_dates.append(cursor)
                 cursor += timedelta(days=1)
-            offset = window_start.strftime("%z")
-            timezone_offset = f"{offset[:3]}:{offset[3:]}" if len(offset) == 5 else ""
 
+            base = re.sub(r"/\d{8}/?$", "", self.aiscore_url.rstrip("/"))
             rows: list[dict] = []
             source_errors: list[str] = []
             date_counts: dict[str, int] = {}
+
             for target_date in target_dates:
                 date_key = target_date.strftime("%Y%m%d")
+                listing_url = f"{base}/{date_key}"
+                if not await self._goto_with_retry(
+                    page,
+                    listing_url,
+                    label=f"mobile Schedule listing {date_key}",
+                ):
+                    source_errors.append(f"{date_key}: navigation failed")
+                    continue
                 try:
-                    date_rows = await page.evaluate(
-                    r"""
-                async ({ dateKey, timezoneOffset, windowStart, windowEnd }) => {
-                    const store = window.$nuxt && window.$nuxt.$store;
-                    if (!store) throw new Error('Nuxt store unavailable');
-                    await store.dispatch('basketball/fetchIndexDataAction', {
-                        date: dateKey,
-                        sport_id: 2,
-                        lang: 2,
-                        tz: timezoneOffset,
-                    });
-                    const b = store.state.basketball || {};
-                    const matches = Array.isArray(b.matchesData_matches) ? b.matchesData_matches : [];
-                    const teams = Array.isArray(b.matchesData_teams) ? b.matchesData_teams : [];
-                    const comps = Array.isArray(b.matchesData_competitions) ? b.matchesData_competitions : [];
-                    const teamMap = new Map(teams.map(t => [t.id, t]));
-                    const compMap = new Map(comps.map(c => [c.id, c]));
-                    const pad2 = n => String(n).padStart(2, '0');
-                    const localStamp = ts => {
-                        const d = new Date((Number(ts) || 0) * 1000);
-                        if (!Number.isFinite(d.getTime())) return '';
-                        return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-                    };
-                    const oddsMarkets = match => {
-                        const items = match?.ext?.odds?.oddItems || [];
-                        return items.map(item => ({
-                            market: [
-                                item?.name, item?.market, item?.marketName, item?.type,
-                                item?.typeName, item?.marketType, item?.betType,
-                                item?.title, item?.key,
-                            ].filter(v => typeof v === 'string').join(' '),
-                            values: Array.isArray(item?.odd) ? item.odd : [],
-                        }));
-                    };
-                    const out = [];
-                    for (const match of matches) {
-                        if (!match?.id || Number(match.statusId) !== 1 || Number(match.matchStatus) !== 1) continue;
-                        const matchMs = Number(match.matchTime) * 1000;
-                        if (!Number.isFinite(matchMs) || matchMs < windowStart || matchMs > windowEnd) continue;
-                        const home = teamMap.get(match?.homeTeam?.id);
-                        const away = teamMap.get(match?.awayTeam?.id);
-                        if (!home?.slug || !away?.slug) continue;
-                        const kickoff = localStamp(match.matchTime);
-                        const comp = compMap.get(match?.competition?.id) || {};
-                        const compName = comp?.name || '';
-                        const country = comp?.category?.name || comp?.country?.name || '';
-                        const promoRe = /standings|popular|trending|featured/i;
-                        const safeCountry = country && !promoRe.test(country) ? country : '';
-                        const safeName = compName && !promoRe.test(compName) ? compName : '';
-                        const tournament = [safeCountry, safeName].filter(Boolean).join(' : ');
-                        out.push({
-                            match_id: match.id,
-                            url: `/basketball/match-${home.slug}-${away.slug}/${match.id}`,
-                            match_name: `${home.name || home.shortName || home.slug} - ${away.name || away.shortName || away.slug}`,
-                            home_team: home.name || home.shortName || '',
-                            away_team: away.name || away.shortName || '',
-                            tournament,
-                            kickoff,
-                            _odds_markets: oddsMarkets(match),
-                        });
-                    }
-                    return out;
-                }
-                    """,
-                        {
-                            "dateKey": date_key,
-                            "timezoneOffset": timezone_offset,
-                            "windowStart": int(window_start.timestamp() * 1000),
-                            "windowEnd": int(window_end.timestamp() * 1000),
-                        },
+                    schedule = page.get_by_text("Schedule", exact=True)
+                    if not await schedule.count():
+                        raise RuntimeError("Schedule tab unavailable")
+                    await schedule.first.click()
+                    await page.wait_for_function(
+                        r"""
+                        () => {
+                            const visible = el => {
+                                const style = window.getComputedStyle(el);
+                                const rect = el.getBoundingClientRect();
+                                return style.display !== 'none'
+                                    && style.visibility !== 'hidden'
+                                    && rect.width > 0 && rect.height > 0;
+                            };
+                            return Array.from(
+                                document.querySelectorAll('a[href*="/basketball/match-"]')
+                            ).some(visible);
+                        }
+                        """,
+                        timeout=min(8000, self.page_timeout_ms),
                     )
-                    date_rows = date_rows if isinstance(date_rows, list) else []
-                    date_counts[date_key] = len(date_rows)
-                    rows.extend(date_rows)
                 except Exception as exc:
-                    logger.warning("Scheduled listing parse failed for %s: %s", date_key, exc)
-                    source_errors.append(f"{date_key}: {exc}")
+                    logger.warning("Mobile Schedule tab failed for %s: %s", date_key, exc)
+                    source_errors.append(f"{date_key}: Schedule unavailable")
+                    continue
 
+                date_rows = await page.evaluate(
+                    r"""
+                    () => {
+                        const text = s => (s || '').replace(/\s+/g, ' ').trim();
+                        const visible = el => {
+                            const style = window.getComputedStyle(el);
+                            const rect = el.getBoundingClientRect();
+                            return style.display !== 'none'
+                                && style.visibility !== 'hidden'
+                                && rect.width > 0 && rect.height > 0;
+                        };
+                        const out = [];
+                        const seen = new Set();
+                        for (const anchor of document.querySelectorAll(
+                            'a[href*="/basketball/match-"]'
+                        )) {
+                            if (!visible(anchor)) continue;
+                            const href = anchor.getAttribute('href') || '';
+                            if (!href || seen.has(href)) continue;
+                            const rowText = text(anchor.innerText);
+                            const time = rowText.match(/\b(\d{1,2}:\d{2})\s*(AM|PM)?\b/i);
+                            if (!time) continue;
+                            seen.add(href);
+                            out.push({
+                                href,
+                                kickoff_time: time[1],
+                                meridiem: (time[2] || '').toUpperCase(),
+                            });
+                        }
+                        return out;
+                    }
+                    """
+                )
+                date_rows = date_rows if isinstance(date_rows, list) else []
+                date_counts[date_key] = len(date_rows)
+                for row in date_rows:
+                    hour_text = str(row.get("kickoff_time") or "")
+                    meridiem = str(row.get("meridiem") or "")
+                    try:
+                        parsed_time = datetime.strptime(
+                            f"{hour_text} {meridiem}".strip(),
+                            "%I:%M %p" if meridiem else "%H:%M",
+                        ).time()
+                    except ValueError:
+                        continue
+                    kickoff = datetime.combine(target_date, parsed_time).replace(
+                        tzinfo=window_start.tzinfo
+                    )
+                    if window_start <= kickoff <= window_end:
+                        rows.append({
+                            "href": row.get("href"),
+                            "kickoff": kickoff.strftime("%Y-%m-%d %H:%M"),
+                        })
+
+            suffix_re = re.compile(r"/(h2h|odds|stats|lineups|standings|summary)/?$")
             links: list[str] = []
             seen: set[str] = set()
-            verified_total_count = 0
-            suffix_re = re.compile(r"/(h2h|odds|stats|lineups|standings|summary)/?$")
-            for row in rows or []:
-                href = row.get("url")
-                match_id = str(row.get("match_id") or "").strip()
-                if not href or not match_id:
-                    continue
+            for row in rows:
+                href = str(row.get("href") or "")
                 cleaned = suffix_re.sub("", urljoin(page.url, href))
-                if cleaned in seen:
+                if "/basketball/match-" not in cleaned or cleaned in seen:
                     continue
                 seen.add(cleaned)
-                total = self._verified_total_from_markets(row.pop("_odds_markets", []))
-                if total is not None:
-                    verified_total_count += 1
-                row = {
-                    **row,
+                match_id = self._extract_match_id(cleaned)
+                self._listing_rows_by_id[match_id] = {
+                    "match_id": match_id,
                     "url": cleaned,
-                    "listing_source": "scheduled_nuxt",
-                    "kickoff_source": "scheduled_nuxt",
-                    # The listing payload exposes a current market line, not a
-                    # documented opening snapshot. Do not relabel it as opening.
-                    "opening_total": None,
-                    "prematch_total": total,
-                    "odds_source": "scheduled_nuxt_total_market" if total is not None else "",
+                    "kickoff": row["kickoff"],
+                    "listing_source": "scheduled_mobile",
+                    "kickoff_source": "scheduled_mobile",
                 }
-                self._listing_rows_by_id[match_id] = row
-                self._listing_source_by_id[match_id] = "scheduled_nuxt"
+                self._listing_source_by_id[match_id] = "scheduled_mobile"
                 links.append(cleaned)
+
             source_status = "ok" if not source_errors else "partial" if links else "failed"
             self._record_listing_source(
                 "scheduled",
@@ -590,124 +516,10 @@ class UpcomingScraper:
                 count=len(links),
                 error="; ".join(source_errors) if source_errors else None,
             )
-            self._listing_source_reports["scheduled"]["verified_totals"] = verified_total_count
             self._listing_source_reports["scheduled"]["date_counts"] = date_counts
             self._listing_source_reports["scheduled"]["window_start"] = window_start.isoformat()
             self._listing_source_reports["scheduled"]["window_end"] = window_end.isoformat()
-            logger.info("Rolling 24-hour payload produced %s upcoming rows.", len(links))
-            return links
-        finally:
-            if not page.is_closed():
-                await page.close()
-
-    async def _collect_homepage_future_links(self, context) -> list[str]:
-        """Read the homepage 'future/upcoming' payload and build match URLs.
-
-        The visible homepage footer may render these as head-to-head SEO links,
-        but Nuxt state includes the real match ids plus team slugs. Those ids
-        are the links we need for `/odds` and `/h2h`.
-        """
-        page = await context.new_page()
-        page.set_default_timeout(self.page_timeout_ms)
-        try:
-            if not await self._goto_with_retry(
-                page,
-                self.aiscore_url,
-                label="upcoming future listing",
-            ):
-                self._record_listing_source(
-                    "future", status="failed", error="navigation failed"
-                )
-                return []
-            try:
-                await page.wait_for_function(
-                    r"""
-                    () => {
-                        const state = (window.__NUXT__ && window.__NUXT__.state) || {};
-                        const future = state.matchesFuture || {};
-                        return Array.isArray(future.matches) && Array.isArray(future.teams);
-                    }
-                    """,
-                    timeout=min(10000, self.page_timeout_ms),
-                )
-                await page.wait_for_timeout(400)
-            except Exception as exc:
-                logger.warning("Future Nuxt payload was not available: %s", exc)
-                self._record_listing_source(
-                    "future", status="failed", error="Nuxt payload unavailable"
-                )
-                return []
-
-            try:
-                rows = await page.evaluate(
-                    r"""
-                ({ daysAhead }) => {
-                    const state = (window.__NUXT__ && window.__NUXT__.state) || {};
-                    const future = state.matchesFuture || {};
-                    const matches = Array.isArray(future.matches) ? future.matches : [];
-                    const teams = Array.isArray(future.teams) ? future.teams : [];
-                    const byId = new Map(teams.map(t => [t.id, t]));
-                    const pad2 = n => String(n).padStart(2, '0');
-                    const localStamp = ts => {
-                        const d = new Date((Number(ts) || 0) * 1000);
-                        if (!Number.isFinite(d.getTime())) return '';
-                        return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-                    };
-                    const todayDate = new Date();
-                    const endDate = new Date();
-                    endDate.setDate(endDate.getDate() + Number(daysAhead || 0));
-                    const dateKey = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-                    const today = dateKey(todayDate);
-                    const end = dateKey(endDate);
-                    const rows = [];
-                    for (const match of matches) {
-                        const home = byId.get(match?.homeTeam?.id);
-                        const away = byId.get(match?.awayTeam?.id);
-                        if (!match?.id || !home?.slug || !away?.slug) continue;
-                        const kickoff = localStamp(match.matchTime);
-                        const day = kickoff.slice(0, 10);
-                        if (!day || day < today || day > end) continue;
-                        rows.push({
-                            match_id: match.id,
-                            url: `/basketball/match-${home.slug}-${away.slug}/${match.id}`,
-                            match_name: `${home.name || home.shortName || home.slug} - ${away.name || away.shortName || away.slug}`,
-                            home_team: home.name || home.shortName || '',
-                            away_team: away.name || away.shortName || '',
-                            kickoff,
-                        });
-                    }
-                    return rows;
-                }
-                    """,
-                    {"daysAhead": self.days_ahead},
-                )
-            except Exception as exc:
-                logger.warning("Future listing parse failed: %s", exc)
-                self._record_listing_source("future", status="failed", error=str(exc))
-                return []
-            suffix_re = re.compile(r"/(h2h|odds|stats|lineups|standings|summary)/?$")
-            links: list[str] = []
-            seen: set[str] = set()
-            for row in rows or []:
-                href = row.get("url") if isinstance(row, dict) else None
-                match_id = str(row.get("match_id") or "").strip() if isinstance(row, dict) else ""
-                if not href:
-                    continue
-                cleaned = suffix_re.sub("", urljoin(page.url, href))
-                if "/basketball/match-" not in cleaned or cleaned in seen:
-                    continue
-                seen.add(cleaned)
-                listing_row = {
-                    **row,
-                    "url": cleaned,
-                    "listing_source": "future_nuxt",
-                    "kickoff_source": "future_nuxt",
-                }
-                if match_id and match_id not in self._listing_rows_by_id:
-                    self._listing_rows_by_id[match_id] = listing_row
-                    self._listing_source_by_id[match_id] = "future_nuxt"
-                links.append(cleaned)
-            self._record_listing_source("future", status="ok", count=len(links))
+            logger.info("Mobile Schedule produced %s upcoming rows.", len(links))
             return links
         finally:
             if not page.is_closed():
@@ -718,7 +530,7 @@ class UpcomingScraper:
         # currently renders the real match link on the `VS` score anchor; the
         # surrounding row markup has changed over time, so row detection is
         # intentionally tolerant and does not depend on a specific class name.
-        listing_url = "https://www.aiscore.com/today-matches/basketball"
+        listing_url = "https://m.aiscore.com/today-matches/basketball"
         page = await context.new_page()
         page.set_default_timeout(self.page_timeout_ms)
         try:
@@ -987,29 +799,10 @@ class UpcomingScraper:
                 # report a data-complete generation when the core market is absent.
                 data_warnings.append("total_market_unavailable")
 
-            h2h_text = await self._read_h2h_page(page, link)
             if not detail_page_loaded:
                 data_warnings.append("odds_detail_unavailable_listing_fallback")
-            if not h2h_text:
-                data_warnings.append("h2h_unavailable")
             match_name = odds_data.get("match_name") or ""
-            home_team, away_team = _split_match_name(match_name)
-
-            metrics = {}
-            if h2h_text:
-                try:
-                    metrics = extract_h2h_metrics(h2h_text, match_name) or {}
-                except Exception as exc:
-                    logger.warning("H2H metrics failed for %s: %s", link, exc)
-                    metrics = {}
-
-            home_last6 = metrics.get("home_last6") or {}
-            away_last6 = metrics.get("away_last6") or {}
-            expected_total = metrics.get("expected_total")
-            h2h_avg_total = metrics.get("h2h_avg_total")
-            h2h_games = metrics.get("h2h_games")
-            if h2h_text and expected_total is None:
-                data_warnings.append("h2h_metrics_unavailable")
+            home_team, away_team = split_match_teams(match_name)
 
             return {
                 "match_id": match_id,
@@ -1024,11 +817,6 @@ class UpcomingScraper:
                 "opening_total": opening,
                 "prematch_total": prematch,
                 "url": link,
-                "home_last6": home_last6,
-                "away_last6": away_last6,
-                "expected_total": expected_total,
-                "h2h_avg_total": h2h_avg_total,
-                "h2h_games": h2h_games,
                 "data_status": "partial" if data_warnings else "complete",
                 "data_warnings": data_warnings,
             }
@@ -1338,51 +1126,6 @@ class UpcomingScraper:
             """
         )
 
-    async def _read_h2h_page(self, page, url: str) -> str:
-        h2h_url = url.rstrip("/") + "/h2h"
-        try:
-            if not await self._goto_with_retry(page, h2h_url, label="upcoming H2H detail"):
-                return ""
-            try:
-                await page.wait_for_selector(
-                    "body",
-                    timeout=min(5000, self.page_timeout_ms),
-                )
-            except Exception as exc:
-                logger.info("H2H body readiness wait failed (%s): %s", url, exc)
-            try:
-                await page.evaluate(
-                    r"""
-                    () => {
-                        const text = s => (s || '').replace(/\s+/g, ' ').trim();
-                        const candidates = Array.from(document.querySelectorAll('a, button, div, span'))
-                            .filter(el => el.children.length <= 3);
-                        for (const el of candidates) {
-                            const t = text(el.innerText || '').toLowerCase();
-                            if (!t || t.length > 18) continue;
-                            if (/^h2h\b|head.?to.?head|karş.?la.?ma/.test(t)) {
-                                el.click();
-                                return;
-                            }
-                        }
-                    }
-                    """
-                )
-            except Exception as exc:
-                logger.info("H2H tab interaction failed (%s): %s", url, exc)
-            await page.wait_for_timeout(400)
-            for _ in range(2):
-                await page.evaluate("window.scrollBy(0, document.body.scrollHeight / 3)")
-                await page.wait_for_timeout(250)
-            return await page.evaluate(
-                r"""
-                () => (document.body.innerText || '').replace(/\s+/g, ' ').trim()
-                """
-            )
-        except Exception as exc:
-            logger.warning("H2H read failed (%s): %s", url, exc)
-            return ""
-
     @staticmethod
     def _extract_match_id(url: str) -> str:
         cleaned = re.sub(
@@ -1436,7 +1179,3 @@ class UpcomingScraper:
             return datetime.now(ZoneInfo(self.timezone_id)).date()
         except ZoneInfoNotFoundError:
             return date.today()
-
-    def _dated_aiscore_url(self) -> str:
-        base = re.sub(r"/\d{8}/?$", "", self.aiscore_url.rstrip("/"))
-        return f"{base}/{self._today().strftime('%Y%m%d')}"

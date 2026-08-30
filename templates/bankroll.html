@@ -39,68 +39,11 @@
       min-height: 100vh;
     }
 
-    .app-shell {
-      width: calc(100% - 4px);
-      max-width: none;
-      margin: 2px auto 12px;
-    }
-
-    .topbar,
     .section-shell {
       background: rgba(17, 17, 24, 0.96);
       border: 1px solid var(--border);
       box-shadow: var(--shadow);
     }
-
-    .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 14px;
-      padding: 16px;
-      border-radius: 18px;
-      margin-bottom: 14px;
-      flex-wrap: wrap;
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .brand-title {
-      font-size: 19px;
-      font-weight: 900;
-      letter-spacing: -0.3px;
-      background: linear-gradient(90deg, #a78bfa, #e879f9);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    .brand-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
-
-    .status-pill {
-      width: 38px;
-      height: 38px;
-      border-radius: 12px;
-      background: rgba(124, 92, 246, 0.15);
-      border: 1px solid rgba(124, 92, 246, 0.35);
-      position: relative;
-      flex: 0 0 auto;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .status-pill::before {
-      content: "";
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #7c5cf6;
-      box-shadow: 0 0 10px rgba(124, 92, 246, 0.8);
-    }
-
-    .top-action,
     .btn,
     .preset-btn,
     .proj-btn,
@@ -112,61 +55,11 @@
       transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
     }
 
-    .top-action {
-      padding: 11px 15px;
-      border-radius: 14px;
-      font-size: 13px;
-      font-weight: 700;
-      text-decoration: none;
-      white-space: nowrap;
-    }
-
-    .top-action:hover,
     .btn:hover,
     .preset-btn:hover,
     .proj-btn:hover,
     .step-btn:hover {
       border-color: rgba(124, 92, 246, 0.45);
-    }
-
-    .nav-links {
-      display: flex;
-      align-items: center;
-      gap: 2px;
-      flex-wrap: wrap;
-      background: rgba(8,7,14,0.75);
-      border: 1px solid rgba(120,100,220,0.15);
-      border-radius: 13px;
-      padding: 4px;
-    }
-    .nav-link {
-      padding: 7px 14px;
-      border-radius: 9px;
-      font-size: 13px;
-      font-weight: 600;
-      text-decoration: none;
-      color: rgba(180,170,240,0.55);
-      transition: color 0.15s, background 0.15s;
-      white-space: nowrap;
-      letter-spacing: 0.01em;
-    }
-    .topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .nav-link:hover { color: rgba(220,215,255,0.9); background: rgba(124,92,246,0.12); }
-    .nav-link.active {
-      color: #fff;
-      background: linear-gradient(135deg, #5c30d0, #7c5cf6);
-      box-shadow: 0 2px 8px rgba(92,48,208,0.45), inset 0 1px 0 rgba(255,255,255,0.1);
-      cursor: default;
-      font-weight: 700;
-    }
-
-    .top-action.primary {
-      background: rgba(30, 24, 60, 0.96);
-    }
-
-    .top-action.danger {
-      background: rgba(60, 20, 40, 0.95);
-      border-color: rgba(255, 126, 126, 0.24);
     }
 
     .section-shell {
@@ -531,12 +424,6 @@
     }
 
     @media (max-width: 768px) {
-      .app-shell {
-        width: calc(100% - 4px);
-        margin: 2px auto 12px;
-      }
-
-      .topbar,
       .section-shell,
       .setup-panel,
       .presets,
@@ -545,13 +432,6 @@
         border-radius: 10px;
       }
 
-      .topbar {
-        flex-direction: column;
-        align-items: stretch;
-      }
-
-      .brand { justify-content: space-between; }
-
       .setup-panel { flex-direction: column; align-items: stretch; }
       .setup-group input, .setup-group select { min-width: unset; }
       .groups-container { flex-direction: column; }
@@ -559,30 +439,32 @@
       .step-note-input { width: 100%; }
     }
   </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
 </head>
-<body>
-  <div class="app-shell">
-    <div class="topbar">
+<body class="bankroll-page">
+  <main class="app-shell">
+    <header class="topbar">
       <div class="brand">
-        <div class="status-pill"></div>
-        <div>
-          <div class="brand-title">Basket Sinyal</div>
-          <div class="brand-sub">Bankroll Yönetimi</div>
-        </div>
+        <div class="brand-mark">B</div>
+        <div class="brand-title">Basket Signal</div>
       </div>
-      <div class="topbar-right">
-        <nav class="nav-links">
-          <a href="/" class="nav-link">Canlı</a>
-          <a href="/deleted-matches" class="nav-link">Silinen</a>
-          <a href="/upcoming/" class="nav-link">Gelecek Maçlar</a>
-          <span class="nav-link active">Bankroll</span>
-          <a href="/balance-tracker/" class="nav-link">Bakiye Takip</a>
-        </nav>
-      </div>
-    </div>
+      <nav class="nav" aria-label="Ana menü">
+        <a class="nav-link" href="/">Canlı sinyaller</a>
+        <a class="nav-link" href="/upcoming/">Gelecek maçlar</a>
+        <a class="nav-link" href="/deleted-matches">Geçmiş</a>
+        <span class="nav-link active">Bankroll</span>
+      </nav>
+    </header>
 
-    <div class="section-shell">
-      <div class="nav-tabs"></div>
+    <section class="hero">
+      <div><h1>Bankroll</h1></div>
+    </section>
+
+    <section class="panel section-shell bankroll-workspace">
+      <div class="panel-header">
+        <div><h2 class="panel-title">Bankroll oturumu</h2><div class="panel-subtitle">Bütçe, grup ve oran ayarları</div></div>
+      </div>
+      <div class="bankroll-content">
 
   <!-- Setup -->
   <div class="setup-panel" id="setupPanel">
@@ -645,8 +527,9 @@
 
   <!-- Groups -->
   <div class="groups-container" id="groupsContainer"></div>
-    </div>
-  </div>
+      </div>
+    </section>
+  </main>
 
   <!-- Save indicator -->
   <div class="save-indicator" id="saveIndicator">✓ Kaydedildi</div>

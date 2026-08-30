@@ -4,33 +4,22 @@ Used by both the background worker and manual UI-triggered checks.
 """
 
 import asyncio
-import json
 import logging
 import os
 import re
 import time
 
 try:
+    from camoufox.async_api import AsyncNewBrowser
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
     from playwright.async_api import async_playwright
 except ModuleNotFoundError:
+    AsyncNewBrowser = None
     PlaywrightTimeoutError = TimeoutError
     async_playwright = None
 
 
 logger = logging.getLogger("finished_match_service")
-
-
-def _parse_analysis(raw) -> dict:
-    if not raw:
-        return {}
-    if isinstance(raw, dict):
-        return raw
-    try:
-        parsed = json.loads(raw)
-    except Exception:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
 
 
 def _normalize_direction(value) -> str:
@@ -79,13 +68,7 @@ def _float_or_none(value) -> float | None:
 
 def canonical_alert_direction(alert: dict) -> str:
     """Return the stored playable direction for result settlement."""
-    snapshot = _parse_analysis(alert.get("display_snapshot"))
-    analysis = _parse_analysis(alert.get("ai_analysis"))
-    return (
-        _normalize_direction(snapshot.get("final_direction") or snapshot.get("direction"))
-        or _normalize_direction(analysis.get("final_direction") or analysis.get("direction"))
-        or _normalize_direction(alert.get("direction"))
-    )
+    return _normalize_direction(alert.get("direction"))
 
 
 def _empty_result_summary(tracked_count: int = 0) -> dict:
@@ -94,7 +77,6 @@ def _empty_result_summary(tracked_count: int = 0) -> dict:
         "checked_count": 0,
         "finished_match_count": 0,
         "updated_count": 0,
-        "trial_updated_count": 0,
         "successful_count": 0,
         "failed_count": 0,
         "push_count": 0,
@@ -124,8 +106,7 @@ def _settle_deleted_match_from_final_score(
         if force
         else db.get_deleted_alerts_for_result_check(match_id)
     )
-    trials = db.signal_trials_for_match(match_id, unresolved_only=not force)
-    if not alerts and not trials:
+    if not alerts:
         return False
 
     final_label = final_status_label(final_status)
@@ -184,37 +165,6 @@ def _settle_deleted_match_from_final_score(
             "result": signal_result,
         })
 
-    # A manual dashboard label must not become model evidence, but it must not
-    # prevent the scheduled checker from settling the separate trial ledger.
-    # Reload after alert updates because those settle their linked trial in the
-    # same DB transaction.
-    remaining_trials = db.signal_trials_for_match(
-        match_id,
-        unresolved_only=not force,
-    )
-    for trial in remaining_trials:
-        playable_direction = _normalize_direction(trial.get("direction"))
-        live_line = _float_or_none(trial.get("live_line"))
-        if live_line is None:
-            continue
-        trial_result = evaluate_signal_result(
-            playable_direction,
-            live_line,
-            final_total,
-        )
-        if not trial_result:
-            continue
-        if not db.update_signal_trial_final_result(
-            trial["id"],
-            result=trial_result,
-            final_score=final_score,
-            final_status=final_label,
-            force=force,
-        ):
-            continue
-        mark_match_updated()
-        summary["trial_updated_count"] += 1
-
     return updated_any
 
 
@@ -226,15 +176,10 @@ def _deleted_result_message(summary: dict) -> str:
             f"{summary['tracked_count']} maç kontrol listesinde, ancak maç sayfasına ulaşılamadı "
             "ve kayıtlı final skor bulunamadı. Biraz sonra tekrar deneyin."
         )
-    trial_note = (
-        f" {summary.get('trial_updated_count', 0)} kanıt denemesi sonuçlandı."
-        if summary.get("trial_updated_count")
-        else ""
-    )
     return (
         f"{summary['checked_count']} maç kontrol edildi, "
         f"{summary['finished_match_count']} maç bitmiş bulundu, "
-        f"{summary['updated_count']} sinyal güncellendi.{trial_note}"
+        f"{summary['updated_count']} sinyal güncellendi."
     )
 
 
@@ -254,22 +199,15 @@ class AiscoreFinishedMatchChecker:
             proxy_server = os.getenv("PLAYWRIGHT_PROXY")
             launch_kwargs: dict = {
                 "headless": True,
-                "args": [
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                ],
+                "humanize": True,
+                "locale": "en-US",
             }
             if proxy_server:
                 launch_kwargs["proxy"] = {"server": proxy_server}
                 logger.info("Finished-match checker proxy enabled.")
-            browser = await playwright.chromium.launch(**launch_kwargs)
+            browser = await AsyncNewBrowser(playwright, **launch_kwargs)
             context = await browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-                ),
-                viewport={"width": 1600, "height": 1000},
+                viewport={"width": 430, "height": 932},
                 locale="en-US",
             )
             await context.add_init_script("""
@@ -278,15 +216,14 @@ class AiscoreFinishedMatchChecker:
             return browser, context, True
         except Exception as exc:
             raise RuntimeError(
-                "Headless Chromium could not be started. "
-                "Run 'playwright install chromium' on the server."
+                "Camoufox could not be started. Run 'python -m camoufox fetch'."
             ) from exc
 
     async def check_matches(self, tracked_matches: list[dict]) -> list[dict]:
         if not tracked_matches:
             return []
-        if async_playwright is None:
-            raise RuntimeError("Playwright is not installed. Run 'pip install playwright' and 'playwright install chromium'.")
+        if async_playwright is None or AsyncNewBrowser is None:
+            raise RuntimeError("Camoufox is not installed. Run 'python -m camoufox fetch'.")
 
         results = []
         async with async_playwright() as playwright:
@@ -317,7 +254,12 @@ class AiscoreFinishedMatchChecker:
                 "Cache-Control": "no-cache",
                 "Pragma": "no-cache",
             })
-            target_url = str(match["url"])
+            target_url = re.sub(
+                r"^https?://(?:www\.)?aiscore\.com",
+                "https://m.aiscore.com",
+                str(match["url"]),
+                flags=re.IGNORECASE,
+            )
             sep = "&" if "?" in target_url else "?"
             await page.goto(f"{target_url}{sep}_fresh_check={int(time.time() * 1000)}", wait_until="domcontentloaded")
             await page.wait_for_timeout(2500)

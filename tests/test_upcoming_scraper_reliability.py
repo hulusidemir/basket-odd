@@ -96,29 +96,6 @@ class UpcomingScraperSettingsTests(unittest.TestCase):
         # nav attempts across two generations and bounded readiness overhead.
         self.assertGreaterEqual(scraper.estimated_outer_timeout_seconds(), 160)
 
-    def test_nuxt_total_requires_explicit_total_market_evidence(self):
-        scraper = UpcomingScraper()
-
-        self.assertIsNone(
-            scraper._verified_total_from_markets(
-                [{"market": "Winning Margin", "values": [178.5]}]
-            )
-        )
-        self.assertIsNone(
-            scraper._verified_total_from_markets(
-                [{"market": "2", "values": [178.5]}]
-            )
-        )
-        self.assertEqual(
-            scraper._verified_total_from_markets(
-                [
-                    {"market": "Moneyline", "values": [180]},
-                    {"market": "Total Points O/U", "values": [166.5, 168.5]},
-                ]
-            ),
-            168.5,
-        )
-
     def test_kickoff_provenance_rejects_unlisted_time_only_detail(self):
         scraper = UpcomingScraper()
 
@@ -270,7 +247,7 @@ class UpcomingScraperAsyncTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_parsed_fallback_row_still_marks_generation_partial(self):
         scraper = UpcomingScraper(max_matches=None)
-        link = "https://www.aiscore.com/basketball/match-a-b/id-a"
+        link = "https://m.aiscore.com/basketball/match-a-b/id-a"
 
         async def collect(_context):
             scraper._listing_source_reports = {
@@ -336,6 +313,7 @@ class UpcomingScraperAsyncTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_total_market_marks_detail_row_partial(self):
         scraper = UpcomingScraper(max_matches=None)
+        scraper._kickoff_in_allowed_window = lambda _value: True
         link = "https://www.aiscore.com/basketball/match-a-b/id-a"
         scraper._listing_rows_by_id["id-a"] = {
             "match_id": "id-a",
@@ -356,13 +334,7 @@ class UpcomingScraperAsyncTests(unittest.IsolatedAsyncioTestCase):
                 "is_finished": False,
             }
         )
-        scraper._read_h2h_page = AsyncMock(return_value="usable h2h body")
-
-        with patch(
-            "upcoming_scraper.extract_h2h_metrics",
-            return_value={"expected_total": 165.5},
-        ):
-            row = await scraper._extract_one(_DetailContext(), link)
+        row = await scraper._extract_one(_DetailContext(), link)
 
         self.assertEqual(row["data_status"], "partial")
         self.assertIn("total_market_unavailable", row["data_warnings"])

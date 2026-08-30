@@ -39,12 +39,12 @@ class Config:
     SAME_DIRECTION_MIN_LIVE_DELTA: float = _float_env("SAME_DIRECTION_MIN_LIVE_DELTA", 10.0)
     DB_PATH: str = os.getenv("DB_PATH", "basketball.db")
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-    AISCORE_URL: str = os.getenv("AISCORE_URL", "https://www.aiscore.com/basketball")
+    AISCORE_URL: str = os.getenv("AISCORE_URL", "https://m.aiscore.com/basketball")
     AISCORE_TIMEZONE: str = os.getenv("AISCORE_TIMEZONE", "Europe/Istanbul")
     UPCOMING_DAYS_AHEAD: int = _int_env("UPCOMING_DAYS_AHEAD", 0)
     MAX_MATCHES_PER_CYCLE: int = _int_env("MAX_MATCHES_PER_CYCLE", 80)
     PAGE_TIMEOUT_MS: int = _int_env("PAGE_TIMEOUT_MS", 30000)
-    AISCORE_CONCURRENCY: int = _int_env("AISCORE_CONCURRENCY", 2)
+    AISCORE_CONCURRENCY: int = _int_env("AISCORE_CONCURRENCY", 1)
     UPCOMING_CONCURRENCY: int = _int_env("UPCOMING_CONCURRENCY", 2)
     BLACKLIST: list = [b.strip().lower() for b in os.getenv("BLACKLIST", "").split(",") if b.strip()]
 

@@ -14,14 +14,6 @@ class TelegramOutboxTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.db = Database(str(Path(self.temp_dir.name) / "test.db"))
         self.db.init()
-        analysis = {
-            "direction": "ALT",
-            "final_direction": "ALT",
-            "signal_gate": {
-                "state": "BLOCKED",
-                "telegram_allowed": False,
-            },
-        }
         self.alert_id = self.db.save_alert(
             "match-1",
             "Home - Away",
@@ -32,7 +24,6 @@ class TelegramOutboxTests(unittest.TestCase):
             tournament="FIBA",
             status="Q2 05:00",
             score="40 - 35",
-            ai_analysis=json.dumps(analysis),
             telegram_required=True,
         )
 

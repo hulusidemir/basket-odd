@@ -31,12 +31,11 @@ class _FakeDatabase:
     def init(self):
         return None
 
-    def save_upcoming_matches_and_signals(self, matches, **kwargs):
+    def save_upcoming_matches(self, matches, **kwargs):
         self.save_call = (matches, kwargs)
         return {
             "matches": matches,
             "saved_matches": len(matches),
-            "saved_signals": 0,
             "reconciled": bool(kwargs.get("reconcile")),
             "removed_missing": 0,
             "removed_expired": 0,
@@ -77,7 +76,6 @@ class UpcomingAppReliabilityTests(unittest.TestCase):
                     "matches": [],
                     "count": 0,
                     "saved_matches": 0,
-                    "saved_signals": 0,
                     "report": None,
                     "error": None,
                 }

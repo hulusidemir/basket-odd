@@ -55,7 +55,6 @@ _fetch_state = {
     "matches": [],
     "count": 0,
     "saved_matches": 0,
-    "saved_signals": 0,
     "report": None,
     "timeout_seconds": FETCH_TIMEOUT_SECONDS,
     "error": None,
@@ -95,7 +94,6 @@ def upcoming_api_fetch():
                 "started_at": _now_iso(),
                 "finished_at": None,
                 "saved_matches": 0,
-                "saved_signals": 0,
                 "report": {
                     "status": "running",
                     "started_at": _now_iso(),
@@ -128,7 +126,6 @@ def upcoming_api_list():
     db = Database(config.DB_PATH)
     db.init()
     matches = db.list_upcoming_matches(limit=500)
-    saved_signals = sum(1 for match in matches if match.get("signal_direction"))
     state = _public_state()
     freshness = _freshness_summary(matches)
     return jsonify(
@@ -136,7 +133,6 @@ def upcoming_api_list():
             "matches": matches,
             "count": len(matches),
             "saved_matches": len(matches),
-            "saved_signals": saved_signals,
             "running": state["running"],
             "started_at": state["started_at"],
             "finished_at": state["finished_at"],
@@ -162,7 +158,6 @@ def upcoming_api_clear():
                 "matches": [],
                 "count": 0,
                 "saved_matches": 0,
-                "saved_signals": 0,
             }
         )
     return jsonify({"cleared": True, **summary})
@@ -355,7 +350,7 @@ def _run_fetch_job(
         reconcile = _reconcile_allowed(report)
         db = Database(db_path)
         db.init()
-        saved = db.save_upcoming_matches_and_signals(
+        saved = db.save_upcoming_matches(
             matches,
             seen_match_ids=seen_match_ids,
             reconcile=reconcile,
@@ -380,7 +375,6 @@ def _run_fetch_job(
                 "running": False,
                 "finished_at": _now_iso(),
                 "saved_matches": 0,
-                "saved_signals": 0,
                 "report": report,
                 "error": message,
             },
@@ -403,7 +397,6 @@ def _run_fetch_job(
                 "running": False,
                 "finished_at": _now_iso(),
                 "saved_matches": 0,
-                "saved_signals": 0,
                 "report": report,
                 "error": str(exc),
             },
@@ -418,7 +411,6 @@ def _run_fetch_job(
             "matches": matches,
             "count": len(matches),
             "saved_matches": saved["saved_matches"],
-            "saved_signals": saved["saved_signals"],
             "report": {
                 **report,
                 "reconciled": bool(saved.get("reconciled")),
@@ -464,7 +456,6 @@ def _expire_stale_fetch_locked() -> None:
             "running": False,
             "finished_at": _now_iso(),
             "saved_matches": 0,
-            "saved_signals": 0,
             "report": {
                 **(_fetch_state.get("report") or {}),
                 "status": "failed",
@@ -538,7 +529,6 @@ def _public_state():
             "matches": matches,
             "count": _fetch_state["count"],
             "saved_matches": _fetch_state["saved_matches"],
-            "saved_signals": _fetch_state["saved_signals"],
             "report": dict(_fetch_state.get("report") or {}) or None,
             "timeout_seconds": _fetch_state.get("timeout_seconds"),
             "error": _fetch_state["error"],
