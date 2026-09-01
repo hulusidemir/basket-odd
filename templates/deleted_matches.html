@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#08090f">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
@@ -12,7 +12,7 @@
 <main class="app-shell">
   <header class="topbar">
     <div class="brand"><div class="brand-mark">B</div><div class="brand-title">Basket Signal</div></div>
-    <nav class="nav"><a class="nav-link" href="/">Canlı sinyaller</a><a class="nav-link" href="/upcoming/">Gelecek maçlar</a><a class="nav-link active" href="/deleted-matches">Geçmiş</a><a class="nav-link" href="/bankroll">Bankroll</a></nav>
+    <nav class="nav"><a class="nav-link" href="/">Canlı sinyaller</a><a class="nav-link active" href="/deleted-matches">Geçmiş</a><a class="nav-link" href="/upcoming/">Gelecek maçlar</a><a class="nav-link" href="/bankroll">Bankroll</a></nav>
   </header>
 
   <section class="hero">
@@ -26,25 +26,37 @@
       <button class="button icon-action danger archive-delete-button" id="clearBtn" title="Tüm geçmişi sil" aria-label="Tüm geçmişi sil"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"></path></svg></button>
     </div>
     <div class="report-grid">
-      <button type="button" class="report-item report-filter active" data-result="all"><span>Toplam</span><strong><b id="reportTotal">0</b><small id="reportTotalUnique">(0 benzersiz)</small></strong></button>
-      <button type="button" class="report-item report-filter" data-result="resolved"><span>Sonuçlanan</span><strong><b id="reportResolved">0</b><small id="reportResolvedUnique">(0 benzersiz)</small></strong></button>
-      <button type="button" class="report-item report-filter" data-result="Başarılı"><span>Başarılı</span><strong style="color:var(--green)"><b id="reportSuccess">0</b><small id="reportSuccessUnique">(0 benzersiz)</small></strong></button>
-      <button type="button" class="report-item report-filter" data-result="Başarısız"><span>Başarısız</span><strong style="color:var(--red)"><b id="reportFailed">0</b><small id="reportFailedUnique">(0 benzersiz)</small></strong></button>
-      <button type="button" class="report-item report-filter" data-result="İade"><span>İade</span><strong style="color:var(--yellow)"><b id="reportPush">0</b><small id="reportPushUnique">(0 benzersiz)</small></strong></button>
+      <section class="report-item report-total-card active" data-report-total>
+        <button type="button" class="report-direction-total" data-summary-direction="all" data-summary-result="all" data-summary-period="current"><span>Toplam sinyal</span><strong><b id="reportTotal">0</b><small id="reportTotalUnique">(0 benzersiz)</small><small class="report-inline-rate" id="reportTotalRate">(– başarı)</small></strong></button>
+        <span class="report-result-breakdown"><button type="button" class="success report-outcome-filter" data-summary-direction="all" data-summary-result="Başarılı" data-summary-period="current"><span>Toplam başarılı</span><span class="report-result-value"><b id="reportSuccess">0</b><small id="reportSuccessUnique">(0 benzersiz)</small></span></button><button type="button" class="failed report-outcome-filter" data-summary-direction="all" data-summary-result="Başarısız" data-summary-period="current"><span>Toplam başarısız</span><span class="report-result-value"><b id="reportFailed">0</b><small id="reportFailedUnique">(0 benzersiz)</small></span></button></span>
+      </section>
+      <section class="report-item report-direction-card" data-report-direction="ÜST">
+        <button type="button" class="report-direction-total" data-summary-direction="ÜST" data-summary-result="all" data-summary-period="current"><span>ÜST sinyalleri</span><strong><b id="reportUstTotal">0</b><small id="reportUstTotalUnique">(0 benzersiz)</small><small class="report-inline-rate" id="reportUstRate">(– başarı)</small></strong></button>
+        <span class="report-result-breakdown"><button type="button" class="success report-outcome-filter" data-summary-direction="ÜST" data-summary-result="Başarılı" data-summary-period="current"><span>Başarılı</span><span class="report-result-value"><b id="reportUstSuccess">0</b><small id="reportUstSuccessUnique">(0 benzersiz)</small></span></button><button type="button" class="failed report-outcome-filter" data-summary-direction="ÜST" data-summary-result="Başarısız" data-summary-period="current"><span>Başarısız</span><span class="report-result-value"><b id="reportUstFailed">0</b><small id="reportUstFailedUnique">(0 benzersiz)</small></span></button></span>
+      </section>
+      <section class="report-item report-direction-card" data-report-direction="ALT">
+        <button type="button" class="report-direction-total" data-summary-direction="ALT" data-summary-result="all" data-summary-period="current"><span>ALT sinyalleri</span><strong><b id="reportAltTotal">0</b><small id="reportAltTotalUnique">(0 benzersiz)</small><small class="report-inline-rate" id="reportAltRate">(– başarı)</small></strong></button>
+        <span class="report-result-breakdown"><button type="button" class="success report-outcome-filter" data-summary-direction="ALT" data-summary-result="Başarılı" data-summary-period="current"><span>Başarılı</span><span class="report-result-value"><b id="reportAltSuccess">0</b><small id="reportAltSuccessUnique">(0 benzersiz)</small></span></button><button type="button" class="failed report-outcome-filter" data-summary-direction="ALT" data-summary-result="Başarısız" data-summary-period="current"><span>Başarısız</span><span class="report-result-value"><b id="reportAltFailed">0</b><small id="reportAltFailedUnique">(0 benzersiz)</small></span></button></span>
+      </section>
+      <section class="report-item report-rate-card">
+        <span>Başarı oranı</span>
+        <span class="report-rate-grid"><span><span>Tüm sinyaller</span><strong id="reportSuccessRate">–</strong></span><span><span>Benzersiz sinyaller</span><strong id="reportUniqueSuccessRate">–</strong></span></span>
+      </section>
     </div>
     <div class="toolbar">
       <input class="search" id="searchInput" type="search" placeholder="Arşivde maç veya lig ara…">
-      <div class="filters archive-filters" aria-label="Geçmiş sinyal filtreleri">
-        <button class="button filter-button active" data-result="all">Tümü</button>
-        <button class="button filter-button" data-result="Başarılı">Başarılı</button>
-        <button class="button filter-button" data-result="Başarısız">Başarısız</button>
+      <div class="archive-filter-groups" aria-label="Geçmiş sinyal filtreleri">
+        <div class="archive-filter-group"><span>Sonuç</span><div class="filters"><button class="button filter-button active" data-filter-result="all"><span>Tümü</span><b id="filterResultAllCount">0</b></button><button class="button filter-button" data-filter-result="Başarılı"><span>Başarılı</span><b id="filterResultSuccessCount">0</b></button><button class="button filter-button" data-filter-result="Başarısız"><span>Başarısız</span><b id="filterResultFailedCount">0</b></button></div></div>
+        <div class="archive-filter-group"><span>Yön</span><div class="filters"><button class="button filter-button active" data-filter-direction="all"><span>Tümü</span><b id="filterDirectionAllCount">0</b></button><button class="button filter-button" data-filter-direction="ALT"><span>ALT</span><b id="filterDirectionAltCount">0</b></button><button class="button filter-button" data-filter-direction="ÜST"><span>ÜST</span><b id="filterDirectionUstCount">0</b></button></div></div>
+        <div class="archive-filter-group"><span>Çeyrek</span><div class="filters"><button class="button filter-button active" data-filter-period="all"><span>Tümü</span><b id="filterPeriodAllCount">0</b></button><button class="button filter-button" data-filter-period="1"><span>Q1</span><b id="filterPeriod1Count">0</b></button><button class="button filter-button" data-filter-period="2"><span>Q2</span><b id="filterPeriod2Count">0</b></button><button class="button filter-button" data-filter-period="3"><span>Q3</span><b id="filterPeriod3Count">0</b></button><button class="button filter-button" data-filter-period="4"><span>Q4</span><b id="filterPeriod4Count">0</b></button></div></div>
+        <button class="button filter-button reset-filter-button" id="resetFiltersBtn">Filtreyi sıfırla</button>
         <button class="button filter-button unique-toggle" id="uniqueBtn">Tekrarları gizle</button>
       </div>
     </div>
     <div class="panel-header archive-status-row"><div class="status-line" id="status"></div></div>
     <div class="table-wrap">
       <table class="data-table archive-table">
-        <thead><tr><th>Maç</th><th>Sinyal anı</th><th class="num">Barem hareketi</th><th class="num">Fark</th><th>Yön</th><th class="num">Projeksiyon</th><th class="sortable-column" aria-sort="none"><button type="button" class="table-sort-button" id="qualitySortBtn">SKS <span id="qualitySortIndicator">↕</span></button></th><th>Final</th><th>Sonuç</th><th>Arşiv</th><th></th></tr></thead>
+        <thead><tr><th>Maç</th><th>Sinyal anı</th><th class="num">Barem hareketi</th><th class="num">Fark</th><th>Yön</th><th class="num">Projeksiyon</th><th>Final</th><th>Sonuç</th><th>Arşiv</th><th></th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="empty" id="empty" hidden><span class="empty-symbol">⌁</span><strong id="emptyTitle">Arşiv boş</strong><span id="emptyText">Arşivlenen sinyaller burada gösterilecek.</span></div>
@@ -57,63 +69,64 @@
   </section>
 </main>
 
-<div class="signal-modal-backdrop" id="qualityModal" hidden role="dialog" aria-modal="true" aria-labelledby="qualityModalTitle" onclick="if(event.target === this) closeQualityModal()">
-  <section class="signal-modal-card quality-modal-card">
-    <header class="signal-modal-header">
-      <div><h2 id="qualityModalTitle">Sinyal Kalite Skoru</h2></div>
-      <button class="signal-modal-close" type="button" onclick="closeQualityModal()" aria-label="Kapat">×</button>
-    </header>
-    <div class="signal-modal-body quality-modal-body" id="qualityModalBody"></div>
-  </section>
-</div>
 <script>
   const $=id=>document.getElementById(id);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmt=v=>Number.isFinite(Number(v))?Number(v).toFixed(1):'–';
   let archiveRows=[];
   let resultFilter='all';
+  let directionFilter='all';
+  let periodFilter='all';
+  let matchFilter='';
   let uniqueOnly=false;
-  let qualitySortDirection='';
   const pageSize=25;
   let currentPage=1;
   function desktopMatchUrl(value){try{const url=new URL(String(value??''));if(!['http:','https:'].includes(url.protocol))return '';if(url.hostname.toLowerCase()==='m.aiscore.com')url.hostname='www.aiscore.com';return url.toString()}catch(_){return ''}}
+  function archiveMatchCell(alert){const matchId=String(alert.match_id||'');const filterActive=matchFilter===matchId;const filterButton=`<button class="match-filter-button ${filterActive?'active':''}" data-match-id="${esc(matchId)}" onclick="toggleMatchFilter(this)" title="${filterActive?'Maç filtresini temizle':'Yalnızca bu maçın sinyallerini göster'}" aria-label="${filterActive?'Maç filtresini temizle':'Bu maça göre filtrele'}" aria-pressed="${filterActive}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"></path></svg></button>`;const signalCount=Number(alert.signal_count||1);const signalNumber=signalCount>1?`<span class="signal-sequence">${signalCount}. sinyal</span>`:'';const meta=`<span class="match-meta"><span>${esc(alert.tournament||'Lig bilgisi yok')}</span>${signalNumber}</span>`;const desktopUrl=desktopMatchUrl(alert.url);const name=esc(alert.match_name||'–');const matchName=desktopUrl?`<a class="match-link" href="${esc(desktopUrl)}" target="_blank" rel="noopener">${name}</a>`:`<span class="plain-match">${name}</span>`;return `<div class="match-cell">${filterButton}<div class="match-info">${matchName}${meta}</div></div>`}
+  function toggleMatchFilter(button){const matchId=String(button.dataset.matchId||'');matchFilter=matchFilter===matchId?'':matchId;currentPage=1;render()}
   async function call(url,options={}){const r=await fetch(url,{headers:{'Content-Type':'application/json'},...options});const d=await r.json();if(!r.ok)throw new Error(d.error||'İşlem başarısız');return d}
   async function purge(id){if(confirm('Bu kayıt silinsin mi?')){await call(`/api/deleted-matches/${id}`,{method:'DELETE'});await load()}}
-  function uniqueSignalKey(row){return `${String(row.match_id||`alert:${row.id||''}`)}\u0000${String(row.direction||'').toLocaleUpperCase('tr-TR')}`}
+  function uniqueSignalKey(row){return `${String(row.match_id||`alert:${row.id||''}`)}\u0000${normalizedDirection(row.direction)||String(row.direction||'').toLocaleUpperCase('tr-TR')}`}
   function uniqueSignals(rows){const chosen=new Map();rows.forEach((row,index)=>{const key=uniqueSignalKey(row);const number=Number(row.signal_count||1);const current=chosen.get(key);if(!current||number<current.number)chosen.set(key,{row,number,index})});return rows.filter(row=>chosen.get(uniqueSignalKey(row))?.row===row)}
-  function matchesResult(row){if(resultFilter==='all')return true;if(resultFilter==='resolved')return ['Başarılı','Başarısız','İade'].includes(row.result);return row.result===resultFilter}
-  function filtered(){const q=$('searchInput').value.trim().toLocaleLowerCase('tr-TR');const matches=archiveRows.filter(a=>matchesResult(a)&&(!q||`${a.match_name||''} ${a.tournament||''}`.toLocaleLowerCase('tr-TR').includes(q)));return uniqueOnly?uniqueSignals(matches):matches}
-  function sortedByQuality(rows){if(!qualitySortDirection)return rows;const direction=qualitySortDirection==='desc'?-1:1;return [...rows].sort((left,right)=>{const leftScore=Number(left.signal_quality?.score);const rightScore=Number(right.signal_quality?.score);const leftAvailable=left.signal_quality?.score!==null&&left.signal_quality?.score!==''&&Number.isFinite(leftScore);const rightAvailable=right.signal_quality?.score!==null&&right.signal_quality?.score!==''&&Number.isFinite(rightScore);if(leftAvailable!==rightAvailable)return leftAvailable?-1:1;if(!leftAvailable)return 0;return(leftScore-rightScore)*direction})}
-  function toggleQualitySort(){qualitySortDirection=qualitySortDirection==='desc'?'asc':'desc';currentPage=1;$('qualitySortIndicator').textContent=qualitySortDirection==='desc'?'↓':'↑';$('qualitySortBtn').closest('th').setAttribute('aria-sort',qualitySortDirection==='desc'?'descending':'ascending');render()}
-  function qualityButton(alert){const quality=alert.signal_quality||{};const score=Number(quality.score);const available=quality.score!==null&&quality.score!==''&&Number.isFinite(score);const tones=['strong','good','uncertain','weak'];const tone=available&&tones.includes(quality.tone)?quality.tone:'unavailable';const label=available?String(quality.label||'SKS'):'Veri yok';return `<button type="button" class="quality-score-trigger ${tone}" onclick="openQualityModal(event,${Number(alert.id)})" title="Arşivlenen kalite açıklamasını aç" aria-label="Arşivlenen sinyal kalite skoru: ${available?Math.round(score):'hesaplanamadı'}"><strong>${available?Math.round(score):'–'}</strong><span>${esc(label)}</span></button>`}
-  function openQualityModal(event,alertId){event?.stopPropagation();const alert=archiveRows.find(item=>Number(item.id)===Number(alertId));if(!alert)return;const quality=alert.signal_quality||{};const score=Number(quality.score);const available=quality.score!==null&&quality.score!==''&&Number.isFinite(score);const tones=['strong','good','uncertain','weak'];const tone=available&&tones.includes(quality.tone)?quality.tone:'unavailable';const factors=Array.isArray(quality.factors)?quality.factors:[];const factorRows=factors.map(factor=>{const states=['support','against','neutral'];const state=states.includes(factor.state)?factor.state:'neutral';const symbol=state==='support'?'✓':state==='against'?'!':'–';return `<div class="quality-factor ${state}"><span class="quality-factor-symbol">${symbol}</span><div><strong>${esc(factor.label||'')}</strong><p>${esc(factor.text||'')}</p></div></div>`}).join('');$('qualityModalTitle').textContent=`SKS · ${alert.match_name||'Sinyal'}`;$('qualityModalBody').innerHTML=`<div class="quality-summary ${tone}"><strong>${available?Math.round(score):'–'}</strong><div><span>Sinyal Kalite Skoru</span><b>${esc(quality.label||'Hesaplanamadı')}</b></div></div><p class="quality-verdict">${esc(quality.verdict||'Bu arşiv kaydında SKS bulunmuyor.')}</p>${factorRows?`<div class="quality-factor-list">${factorRows}</div>`:''}<p class="quality-note">${esc(quality.note||'Eski arşiv kayıtları için yeniden hesaplama yapılmaz.')}</p>`;$('qualityModal').hidden=false;document.body.classList.add('modal-open')}
-  function closeQualityModal(){$('qualityModal').hidden=true;document.body.classList.remove('modal-open')}
-  function statusText(total,start,end,totalPages){const parts=[total?`${total} kayıttan ${start+1}–${end} gösteriliyor`:'0 kayıt',`Sayfa ${currentPage} / ${totalPages}`];if(resultFilter!=='all')parts.push(resultFilter==='resolved'?'Sonuçlanan':resultFilter);if(uniqueOnly)parts.push('tekrarlar gizli');return parts.join(' · ')}
-  function syncResultFilters(){document.querySelectorAll('[data-result]').forEach(item=>{const active=item.dataset.result===resultFilter;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))})}
-  function chooseResultFilter(value){resultFilter=value;currentPage=1;syncResultFilters();render()}
-  function render(){const filteredRows=sortedByQuality(filtered());const totalPages=Math.max(1,Math.ceil(filteredRows.length/pageSize));currentPage=Math.min(Math.max(1,currentPage),totalPages);const start=(currentPage-1)*pageSize;const rows=filteredRows.slice(start,start+pageSize);const end=start+rows.length;$('empty').hidden=filteredRows.length>0;$('emptyTitle').textContent=archiveRows.length?'Filtreye uygun kayıt yok':'Arşiv boş';$('emptyText').textContent=archiveRows.length?'Seçili filtreleri değiştirerek diğer sinyalleri görebilirsiniz.':'Arşivlenen sinyaller burada gösterilecek.';$('rows').innerHTML=rows.map(a=>{const change=Number(a.barem_change);const changeAvailable=a.barem_change!==null&&a.barem_change!==''&&Number.isFinite(change);const signed=changeAvailable?`${change>0?'+':''}${change.toFixed(1)}`:'–';const projection=Number(a.pace_projection);const projectionAvailable=a.pace_projection!==null&&a.pace_projection!==''&&Number.isFinite(projection);const resultClass=a.result==='Başarılı'?'success':a.result==='Başarısız'?'failed':a.result==='İade'?'push':a.result==='Devam Ediyor'?'in-progress':'unresolved';const desktopUrl=desktopMatchUrl(a.url);const link=desktopUrl?`<a class="match-link" href="${esc(desktopUrl)}" target="_blank" rel="noopener">${esc(a.match_name)}</a>`:`<span class="plain-match">${esc(a.match_name)}</span>`;return `<tr>
-    <td class="primary-cell"><div class="match-cell"><div class="match-info">${link}<span class="match-meta">${esc(a.tournament||'Lig bilgisi yok')}</span></div></div></td>
+  function matchesSearch(row){const q=$('searchInput').value.trim().toLocaleLowerCase('tr-TR');return !q||`${row.match_name||''} ${row.tournament||''}`.toLocaleLowerCase('tr-TR').includes(q)}
+  function selectedRows(rows,{result=resultFilter,direction=directionFilter,period=periodFilter}={}){return rows.filter(row=>(result==='all'||row.result===result)&&(direction==='all'||normalizedDirection(row.direction)===direction)&&(period==='all'||String(row.alert_period||'')===period)&&(!matchFilter||String(row.match_id||'')===matchFilter)&&matchesSearch(row))}
+  function visibleRows(rows){return uniqueOnly?uniqueSignals(rows):rows}
+  function filtered(){return visibleRows(selectedRows(archiveRows))}
+  function statusText(total,start,end,totalPages){const parts=[total?`${total} kayıttan ${start+1}–${end} gösteriliyor`:'0 kayıt',`Sayfa ${currentPage} / ${totalPages}`];if(matchFilter)parts.push('Maç filtresi aktif');if(resultFilter!=='all')parts.push(resultFilter);if(directionFilter!=='all')parts.push(directionFilter);if(periodFilter!=='all')parts.push(`Q${periodFilter}`);if(uniqueOnly)parts.push('tekrarlar gizli');return parts.join(' · ')}
+  function syncFilters(){document.querySelectorAll('[data-filter-result]').forEach(item=>{const active=item.dataset.filterResult===resultFilter;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))});document.querySelectorAll('[data-filter-direction]').forEach(item=>{const active=item.dataset.filterDirection===directionFilter;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))});document.querySelectorAll('[data-filter-period]').forEach(item=>{const active=item.dataset.filterPeriod===periodFilter;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))});document.querySelectorAll('[data-summary-result]').forEach(item=>{const summaryPeriod=item.dataset.summaryPeriod==='current'?periodFilter:item.dataset.summaryPeriod;const active=item.dataset.summaryResult===resultFilter&&item.dataset.summaryDirection===directionFilter&&summaryPeriod===periodFilter;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))});document.querySelectorAll('[data-report-direction]').forEach(item=>item.classList.toggle('active',item.dataset.reportDirection===directionFilter));document.querySelectorAll('[data-report-total]').forEach(item=>item.classList.toggle('active',directionFilter==='all'))}
+  function applyFilters({result=resultFilter,direction=directionFilter,period=periodFilter}){resultFilter=result;directionFilter=direction;periodFilter=period;currentPage=1;syncFilters();render()}
+  function render(){updateReport();updateFilterCounts();const filteredRows=filtered();const totalPages=Math.max(1,Math.ceil(filteredRows.length/pageSize));currentPage=Math.min(Math.max(1,currentPage),totalPages);const start=(currentPage-1)*pageSize;const rows=filteredRows.slice(start,start+pageSize);const end=start+rows.length;$('empty').hidden=filteredRows.length>0;$('emptyTitle').textContent=archiveRows.length?'Filtreye uygun kayıt yok':'Arşiv boş';$('emptyText').textContent=archiveRows.length?'Seçili filtreleri değiştirerek diğer sinyalleri görebilirsiniz.':'Arşivlenen sinyaller burada gösterilecek.';$('rows').innerHTML=rows.map(a=>{const change=Number(a.barem_change);const changeAvailable=a.barem_change!==null&&a.barem_change!==''&&Number.isFinite(change);const signed=changeAvailable?`${change>0?'+':''}${change.toFixed(1)}`:'–';const projection=Number(a.pace_projection);const projectionAvailable=a.pace_projection!==null&&a.pace_projection!==''&&Number.isFinite(projection);const direction=normalizedDirection(a.direction);const resultClass=a.result==='Başarılı'?'success':a.result==='Başarısız'?'failed':a.result==='Devam Ediyor'?'in-progress':'unresolved';return `<tr>
+    <td class="primary-cell">${archiveMatchCell(a)}</td>
     <td data-label="Sinyal anı"><strong>${esc(a.score||'–')}</strong><span class="match-meta">${esc(a.status||'–')}</span></td>
     <td data-label="Barem" class="num"><span class="line-stack">${fmt(a.opening)} <span class="line-arrow">→</span> ${fmt(a.live)}</span></td>
     <td data-label="Fark" class="num"><span class="change-pill ${changeAvailable?(change>0?'positive':'negative'):''}">${signed}</span></td>
-    <td data-label="Yön"><span class="direction-pill ${a.direction==='ALT'?'alt':'ust'}">${esc(a.direction||'–')}</span></td>
+    <td data-label="Yön"><span class="direction-pill ${direction==='ALT'?'alt':'ust'}">${esc(direction||'–')}</span></td>
     <td data-label="Projeksiyon" class="num projection-cell"><span class="projection-pill ${projectionAvailable?'':'unavailable'}">${projectionAvailable?fmt(projection):'–'}</span></td>
-    <td data-label="SKS">${qualityButton(a)}</td>
     <td data-label="Final"><strong>${esc(a.final_score||'–')}</strong><span class="match-meta">${esc(a.final_status||'')}</span></td>
     <td data-label="Sonuç"><span class="result-pill result-readonly ${resultClass}">${esc(a.result||'Sonuç bekliyor')}</span></td>
     <td data-label="Arşiv"><span class="match-meta">${esc(a.deleted_at||'–')}</span></td>
     <td data-label="İşlem"><button class="button icon-action danger archive-delete-button" onclick="purge(${a.id})" title="Kaydı sil" aria-label="Kaydı sil"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"></path></svg></button></td></tr>`}).join('');$('pagination').hidden=filteredRows.length<=pageSize;$('previousPage').disabled=currentPage===1;$('nextPage').disabled=currentPage===totalPages;$('pageInfo').textContent=`Sayfa ${currentPage} / ${totalPages}`;$('status').textContent=statusText(filteredRows.length,start,end,totalPages)}
-  function setReportValue(id,value,unique){$(id).textContent=value||0;$(`${id}Unique`).textContent=`(${unique||0} benzersiz)`}
-  async function load(){try{archiveRows=await call('/api/deleted-matches');const report=await call('/api/deleted-matches/report');setReportValue('reportTotal',report.total,report.unique_total);setReportValue('reportResolved',report.resolved,report.unique_resolved);setReportValue('reportSuccess',report.successful,report.unique_successful);setReportValue('reportFailed',report.failed,report.unique_failed);setReportValue('reportPush',report.push,report.unique_push);$('summary').textContent='Güncel sonuç dağılımı';render()}catch(e){$('status').textContent=e.message;$('status').classList.add('error')}}
+  function normalizedDirection(value){const direction=String(value||'').trim().toLocaleUpperCase('tr-TR').replace('UST','ÜST');return ['ALT','ÜST'].includes(direction)?direction:''}
+  function directionReport(rows,direction){const selected=rows.filter(row=>normalizedDirection(row.direction)===direction);const unique=uniqueSignals(selected);return {total:selected.length,uniqueTotal:unique.length,successful:selected.filter(row=>row.result==='Başarılı').length,uniqueSuccessful:unique.filter(row=>row.result==='Başarılı').length,failed:selected.filter(row=>row.result==='Başarısız').length,uniqueFailed:unique.filter(row=>row.result==='Başarısız').length}}
+  function setReportCount(id,value,unique){$(id).textContent=value;$(`${id}Unique`).textContent=`(${unique} benzersiz)`}
+  function successRate(successful,total){return total?`${(successful*100/total).toFixed(1).replace('.',',')}%`:'–'}
+  function setInlineRate(id,successful,total){$(id).textContent=`(${successRate(successful,total)} başarı)`}
+  function settledRows(){return archiveRows.filter(row=>['Başarılı','Başarısız'].includes(row.result))}
+  function updateReport(){const selectedContext=selectedRows(settledRows());const uniqueContext=uniqueSignals(selectedContext);const context=visibleRows(selectedContext);const successful=context.filter(row=>row.result==='Başarılı').length;const uniqueSuccessful=uniqueContext.filter(row=>row.result==='Başarılı').length;const alt=directionReport(context,'ALT');const ust=directionReport(context,'ÜST');setReportCount('reportTotal',context.length,uniqueContext.length);setInlineRate('reportTotalRate',successful,context.length);setReportCount('reportSuccess',successful,uniqueSuccessful);setReportCount('reportFailed',context.length-successful,uniqueContext.length-uniqueSuccessful);$('reportSuccessRate').textContent=successRate(successful,context.length);$('reportUniqueSuccessRate').textContent=successRate(uniqueSuccessful,uniqueContext.length);setReportCount('reportAltTotal',alt.total,alt.uniqueTotal);setInlineRate('reportAltRate',alt.successful,alt.total);setReportCount('reportAltSuccess',alt.successful,alt.uniqueSuccessful);setReportCount('reportAltFailed',alt.failed,alt.uniqueFailed);setReportCount('reportUstTotal',ust.total,ust.uniqueTotal);setInlineRate('reportUstRate',ust.successful,ust.total);setReportCount('reportUstSuccess',ust.successful,ust.uniqueSuccessful);setReportCount('reportUstFailed',ust.failed,ust.uniqueFailed);$('summary').textContent=periodFilter==='all'?'Başarılı ve başarısız sinyallerin yön dağılımı':`Q${periodFilter} sinyallerinin yön ve sonuç dağılımı`}
+  function setFilterCount(id,rows){$(id).textContent=visibleRows(rows).length}
+  function updateFilterCounts(){const settled=settledRows();setFilterCount('filterResultAllCount',selectedRows(settled,{result:'all',direction:directionFilter,period:periodFilter}));setFilterCount('filterResultSuccessCount',selectedRows(settled,{result:'Başarılı',direction:directionFilter,period:periodFilter}));setFilterCount('filterResultFailedCount',selectedRows(settled,{result:'Başarısız',direction:directionFilter,period:periodFilter}));setFilterCount('filterDirectionAllCount',selectedRows(settled,{result:resultFilter,direction:'all',period:periodFilter}));setFilterCount('filterDirectionAltCount',selectedRows(settled,{result:resultFilter,direction:'ALT',period:periodFilter}));setFilterCount('filterDirectionUstCount',selectedRows(settled,{result:resultFilter,direction:'ÜST',period:periodFilter}));setFilterCount('filterPeriodAllCount',selectedRows(settled,{result:resultFilter,direction:directionFilter,period:'all'}));[1,2,3,4].forEach(period=>setFilterCount(`filterPeriod${period}Count`,selectedRows(settled,{result:resultFilter,direction:directionFilter,period:String(period)})))}
+  async function load(){try{archiveRows=await call('/api/deleted-matches');render()}catch(e){$('status').textContent=e.message;$('status').classList.add('error')}}
   $('searchInput').addEventListener('input',()=>{currentPage=1;render()});
-  document.querySelectorAll('[data-result]').forEach(button=>button.addEventListener('click',()=>chooseResultFilter(button.dataset.result)));
+  document.querySelectorAll('[data-filter-result]').forEach(button=>button.addEventListener('click',()=>applyFilters({result:button.dataset.filterResult})));
+  document.querySelectorAll('[data-filter-direction]').forEach(button=>button.addEventListener('click',()=>applyFilters({direction:button.dataset.filterDirection})));
+  document.querySelectorAll('[data-filter-period]').forEach(button=>button.addEventListener('click',()=>applyFilters({period:button.dataset.filterPeriod})));
+  document.querySelectorAll('[data-summary-result]').forEach(button=>button.addEventListener('click',()=>applyFilters({result:button.dataset.summaryResult,direction:button.dataset.summaryDirection,period:button.dataset.summaryPeriod==='current'?periodFilter:button.dataset.summaryPeriod})));
+  $('resetFiltersBtn').onclick=()=>{resultFilter='all';directionFilter='all';periodFilter='all';matchFilter='';uniqueOnly=false;currentPage=1;$('searchInput').value='';$('uniqueBtn').classList.remove('active');$('uniqueBtn').textContent='Tekrarları gizle';syncFilters();render()};
   $('uniqueBtn').onclick=()=>{uniqueOnly=!uniqueOnly;currentPage=1;$('uniqueBtn').classList.toggle('active',uniqueOnly);$('uniqueBtn').textContent=uniqueOnly?'Tekrarları göster':'Tekrarları gizle';render()};
-  $('qualitySortBtn').onclick=toggleQualitySort;
   $('previousPage').onclick=()=>{if(currentPage>1){currentPage-=1;render()}};
   $('nextPage').onclick=()=>{const totalPages=Math.max(1,Math.ceil(filtered().length/pageSize));if(currentPage<totalPages){currentPage+=1;render()}};
   $('checkBtn').onclick=async()=>{$('status').textContent='Sonuçlar kontrol ediliyor…';await call('/api/deleted-matches/check-results',{method:'POST',body:'{}'});await load()};
   $('clearBtn').onclick=async()=>{if(confirm('Tüm arşiv silinsin mi?')){await call('/api/deleted-matches/clear',{method:'POST',body:'{}'});await load()}};
-  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('qualityModal').hidden)closeQualityModal()});
   load();
 </script>
 </body>

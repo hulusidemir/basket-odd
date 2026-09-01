@@ -19,16 +19,14 @@ class DashboardRawTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def test_live_dto_strips_legacy_analysis_and_keeps_raw_change(self):
+    def test_live_dto_strips_internal_snapshot_and_keeps_raw_change(self):
         row = self.dashboard._raw_alert({
             "opening": 160,
             "live": 171,
             "direction": "ALT",
-            "ai_analysis": '{"fair_line": 166}',
-            "display_snapshot": '{"projected_total": 180}',
+            "display_snapshot": '{"pace_projection": 180}',
         })
         self.assertEqual(row["barem_change"], 11)
-        self.assertNotIn("ai_analysis", row)
         self.assertNotIn("display_snapshot", row)
 
     def test_live_dto_adds_current_pace_projection(self):
@@ -44,8 +42,6 @@ class DashboardRawTests(unittest.TestCase):
 
         self.assertEqual(row["pace_projection"], 200.0)
         self.assertEqual(row["pace_elapsed_minutes"], 15)
-        self.assertIsInstance(row["signal_quality"]["score"], int)
-        self.assertIn(row["signal_quality"]["tone"], {"strong", "good", "uncertain", "weak"})
 
     def test_deleted_dto_uses_frozen_snapshot_without_live_recalculation(self):
         stored = {
@@ -64,7 +60,6 @@ class DashboardRawTests(unittest.TestCase):
                 "status": "Q2 05:00",
                 "barem_change": 11,
                 "pace_projection": 200.0,
-                "signal_quality": {"score": 72, "label": "İyi", "tone": "good"},
                 "list_markers": [{"type": "black", "value": "Home"}],
             }),
         }
@@ -73,10 +68,6 @@ class DashboardRawTests(unittest.TestCase):
             self.dashboard,
             "current_pace_projection",
             side_effect=AssertionError("deleted rows must never recalculate"),
-        ), patch.object(
-            self.dashboard,
-            "calculate_signal_quality",
-            side_effect=AssertionError("deleted SKS must never recalculate"),
         ):
             row = self.dashboard._frozen_deleted_alert(stored)
 
@@ -84,11 +75,10 @@ class DashboardRawTests(unittest.TestCase):
         self.assertEqual(row["status"], "Q2 05:00")
         self.assertEqual(row["barem_change"], 11)
         self.assertEqual(row["pace_projection"], 200.0)
-        self.assertEqual(row["signal_quality"]["score"], 72)
         self.assertEqual(row["final_score"], "101 - 100")
         self.assertEqual(row["result"], "Başarılı")
 
-    def test_legacy_deleted_dto_leaves_missing_computed_fields_empty(self):
+    def test_deleted_dto_leaves_missing_snapshot_fields_empty(self):
         row = self.dashboard._frozen_deleted_alert({
             "id": 92,
             "match_id": "legacy-match",
@@ -101,7 +91,6 @@ class DashboardRawTests(unittest.TestCase):
 
         self.assertIsNone(row["barem_change"])
         self.assertIsNone(row["pace_projection"])
-        self.assertIsNone(row["signal_quality"])
         self.assertEqual(row["list_markers"], [])
 
     def test_archive_pipeline_freezes_projection_for_deleted_page(self):
@@ -121,9 +110,8 @@ class DashboardRawTests(unittest.TestCase):
         self.assertEqual(self.dashboard._archive_active_match("projection-freeze-match"), 1)
         stored = self.dashboard.db.get_deleted_alert_by_id(alert_id)
         snapshot = json.loads(stored["display_snapshot"])
-        self.assertEqual(snapshot["snapshot_meta"]["schema_version"], 4)
+        self.assertEqual(snapshot["snapshot_meta"]["schema_version"], 1)
         self.assertEqual(snapshot["pace_projection"], 200.0)
-        self.assertIn("signal_quality", snapshot)
 
         with patch.object(
             self.dashboard,
@@ -139,7 +127,14 @@ class DashboardRawTests(unittest.TestCase):
             (root / name).read_text(encoding="utf-8")
             for name in ("dashboard.html", "deleted_matches.html", "upcoming_matches.html")
         )
-        for removed in ("fair_line", "market_evidence", "projected_total", "h2h_avg_total"):
+        for removed in (
+            "fair_line",
+            "market_evidence",
+            "projected_total",
+            "h2h_avg_total",
+            "signal_quality",
+            "SKS",
+        ):
             self.assertNotIn(removed, combined)
 
     def test_all_pages_share_shell_navigation_and_table_layout(self):
@@ -154,6 +149,10 @@ class DashboardRawTests(unittest.TestCase):
             self.assertIn('class="topbar"', content)
             self.assertIn('class="nav"', content)
             self.assertIn('class="hero"', content)
+            nav_start = content.index('<nav class="nav"')
+            nav = content[nav_start:content.index("</nav>", nav_start)]
+            self.assertLess(nav.index("Canlı sinyaller"), nav.index("Geçmiş"))
+            self.assertLess(nav.index("Geçmiş"), nav.index("Gelecek maçlar"))
         for name in ("dashboard.html", "deleted_matches.html", "upcoming_matches.html"):
             self.assertIn('class="data-table', templates[name])
         self.assertNotIn("min-width:1240px", templates["deleted_matches.html"])
@@ -170,6 +169,18 @@ class DashboardRawTests(unittest.TestCase):
         self.assertIn("function desktopMatchUrl(value)", template)
         self.assertIn("url.hostname = 'www.aiscore.com'", template)
         self.assertIn('class="match-mobile-link"', template)
+
+    def test_upcoming_fetch_button_stays_disabled_while_fetch_is_running(self):
+        template = (Path(self.dashboard.app.template_folder) / "upcoming_matches.html").read_text(encoding="utf-8")
+
+        self.assertIn("let fetchRequestPending=false;let fetchRunning=false", template)
+        self.assertIn("function updateFetchButton(running=fetchRunning)", template)
+        self.assertIn("function fetchUpcomingMatches()", template)
+        self.assertIn("if(fetchRequestPending||fetchRunning)return", template)
+        self.assertIn("button.disabled=busy", template)
+        self.assertIn("button.textContent=busy?'Güncelleniyor…'", template)
+        self.assertIn("fetchRunning=Boolean(d.running)", template)
+        self.assertIn("$('fetchBtn').onclick=fetchUpcomingMatches", template)
 
     def test_dashboard_has_match_filter_signal_badge_and_row_action_states(self):
         template = (Path(self.dashboard.app.template_folder) / "dashboard.html").read_text(encoding="utf-8")
@@ -213,34 +224,6 @@ class DashboardRawTests(unittest.TestCase):
         self.assertNotIn('id="listForm"', template)
         self.assertNotIn('class="panel list-panel"', template)
 
-    def test_dashboard_has_sks_column_and_plain_language_quality_modal(self):
-        template = (Path(self.dashboard.app.template_folder) / "dashboard.html").read_text(encoding="utf-8")
-        stylesheet = (Path(self.dashboard.app.static_folder) / "dashboard.css").read_text(encoding="utf-8")
-
-        self.assertIn('id="qualitySortBtn">SKS', template)
-        self.assertIn('</button></th><th>İşlemler</th>', template)
-        self.assertIn('id="qualityModal"', template)
-        self.assertIn("function qualityButton(alert)", template)
-        self.assertIn("function openQualityModal(event, alertId)", template)
-        self.assertIn('data-label="SKS">${qualityButton(a)}', template)
-        self.assertIn("quality-score-trigger", stylesheet)
-        self.assertIn("quality-factor-list", stylesheet)
-        self.assertIn('id="qualitySortBtn"', template)
-        self.assertIn("function sortedByQuality(rows)", template)
-        self.assertIn("function toggleQualitySort()", template)
-
-    def test_dashboard_can_recalculate_all_live_sks_values(self):
-        template = (Path(self.dashboard.app.template_folder) / "dashboard.html").read_text(encoding="utf-8")
-        client = self.dashboard.app.test_client()
-
-        response = client.post("/api/alerts/recalculate-quality", json={})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(all("signal_quality" in row for row in response.get_json()))
-        self.assertIn('id="qualityRefreshBtn"', template)
-        self.assertIn("function recalculateQuality()", template)
-        self.assertIn("/api/alerts/recalculate-quality", template)
-
     def test_dashboard_opens_modal_only_from_signal_button(self):
         template = (Path(self.dashboard.app.template_folder) / "dashboard.html").read_text(encoding="utf-8")
         stylesheet = (Path(self.dashboard.app.static_folder) / "dashboard.css").read_text(encoding="utf-8")
@@ -251,17 +234,66 @@ class DashboardRawTests(unittest.TestCase):
         self.assertIn(".signal-table tbody tr { cursor: default; }", stylesheet)
         self.assertIn(".signal-modal-trigger {", stylesheet)
 
-    def test_archive_has_result_and_unique_signal_filters(self):
+    def test_archive_has_direction_result_period_and_unique_filters(self):
         template = (Path(self.dashboard.app.template_folder) / "deleted_matches.html").read_text(encoding="utf-8")
 
-        self.assertIn('data-result="Başarılı"', template)
-        self.assertIn('data-result="Başarısız"', template)
+        self.assertIn('data-filter-result="Başarılı"', template)
+        self.assertIn('data-filter-result="Başarısız"', template)
+        self.assertIn('data-filter-direction="ALT"', template)
+        self.assertIn('data-filter-direction="ÜST"', template)
+        for period in range(1, 5):
+            self.assertIn(f'data-filter-period="{period}"', template)
+            self.assertIn(f'<span>Q{period}</span>', template)
+            self.assertIn(f'id="filterPeriod{period}Count"', template)
         self.assertIn('id="uniqueBtn"', template)
+        self.assertIn('id="resetFiltersBtn"', template)
+        self.assertLess(template.index('id="resetFiltersBtn"'), template.index('id="uniqueBtn"'))
+        self.assertIn("resultFilter='all';directionFilter='all';periodFilter='all';matchFilter='';uniqueOnly=false", template)
+        self.assertIn("$('searchInput').value=''", template)
         self.assertIn("function uniqueSignalKey(row)", template)
         self.assertIn("function uniqueSignals(rows)", template)
-        self.assertIn('class="report-item report-filter" data-result="Başarılı"', template)
-        self.assertIn('class="report-item report-filter" data-result="Başarısız"', template)
-        self.assertIn("function chooseResultFilter(value)", template)
+        self.assertIn("function visibleRows(rows)", template)
+        self.assertIn("const context=visibleRows(selectedContext)", template)
+        self.assertIn("setFilterCount(id,rows){$(id).textContent=visibleRows(rows).length}", template)
+        self.assertIn('data-summary-direction="ALT" data-summary-result="all"', template)
+        self.assertIn('data-summary-direction="ÜST" data-summary-result="all"', template)
+        self.assertIn('data-summary-direction="all" data-summary-result="Başarılı"', template)
+        self.assertIn('data-summary-direction="all" data-summary-result="Başarısız"', template)
+        self.assertIn('class="success report-outcome-filter" data-summary-direction="ALT" data-summary-result="Başarılı"', template)
+        self.assertIn('class="failed report-outcome-filter" data-summary-direction="ÜST" data-summary-result="Başarısız"', template)
+        self.assertIn('id="reportAltTotal"', template)
+        self.assertIn('id="reportUstTotal"', template)
+        for counter in (
+            "reportTotal", "reportSuccess", "reportFailed",
+            "reportAltTotal", "reportAltSuccess", "reportAltFailed",
+            "reportUstTotal", "reportUstSuccess", "reportUstFailed",
+        ):
+            self.assertIn(f'id="{counter}Unique"', template)
+        self.assertNotIn("P1 sinyalleri", template)
+        self.assertIn("function applyFilters(", template)
+        self.assertIn("function updateFilterCounts()", template)
+        self.assertIn("function updateReport()", template)
+        self.assertIn("function successRate(successful,total)", template)
+        self.assertIn("function setInlineRate(id,successful,total)", template)
+        self.assertIn('id="reportSuccessRate"', template)
+        self.assertIn('id="reportUniqueSuccessRate"', template)
+        for rate in ("reportTotalRate", "reportAltRate", "reportUstRate"):
+            self.assertIn(f'id="{rate}"', template)
+        self.assertIn("const selectedContext=selectedRows(settledRows());", template)
+        self.assertIn("data-summary-period=\"current\"", template)
+        self.assertNotIn("Sonuçlanan", template)
+        self.assertNotIn("İade", template)
+
+    def test_archive_has_match_filter_and_signal_sequence_badge(self):
+        template = (Path(self.dashboard.app.template_folder) / "deleted_matches.html").read_text(encoding="utf-8")
+
+        self.assertIn("let matchFilter='';", template)
+        self.assertIn("function toggleMatchFilter(button)", template)
+        self.assertIn('class="match-filter-button ${filterActive?\'active\':\'\'}"', template)
+        self.assertIn("signalCount>1", template)
+        self.assertIn('class="signal-sequence"', template)
+        self.assertIn("String(row.match_id||'')===matchFilter", template)
+        self.assertIn("matchFilter=''", template)
 
     def test_archive_has_client_side_pagination(self):
         template = (Path(self.dashboard.app.template_folder) / "deleted_matches.html").read_text(encoding="utf-8")
@@ -271,18 +303,15 @@ class DashboardRawTests(unittest.TestCase):
         self.assertIn('id="previousPage"', template)
         self.assertIn('id="nextPage"', template)
         self.assertIn("filteredRows.slice(start,start+pageSize)", template)
-        self.assertIn("currentPage=1;syncResultFilters();render()", template)
+        self.assertIn("currentPage=1;syncFilters();render()", template)
 
-    def test_archive_displays_and_sorts_only_frozen_sks(self):
+    def test_archive_does_not_include_removed_quality_features(self):
         template = (Path(self.dashboard.app.template_folder) / "deleted_matches.html").read_text(encoding="utf-8")
 
-        self.assertIn('id="qualitySortBtn"', template)
-        self.assertIn("function sortedByQuality(rows)", template)
-        self.assertIn("function toggleQualitySort()", template)
-        self.assertIn("function qualityButton(alert)", template)
-        self.assertIn('id="qualityModal"', template)
-        self.assertIn('data-label="SKS">${qualityButton(a)}', template)
-        self.assertNotIn("/api/alerts/recalculate-quality", template)
+        self.assertNotIn("signal_quality", template)
+        self.assertNotIn("qualitySortBtn", template)
+        self.assertNotIn("qualityModal", template)
+        self.assertNotIn("SKS", template)
 
     def test_archive_uses_trash_icons_without_permanent_delete_text(self):
         template = (Path(self.dashboard.app.template_folder) / "deleted_matches.html").read_text(encoding="utf-8")
@@ -318,23 +347,48 @@ class DashboardRawTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
-    def test_result_report_counts_unique_match_direction_pairs(self):
+    def test_result_report_counts_only_settled_direction_results(self):
         rows = [
-            {"id": 2, "match_id": "m1", "direction": "ALT", "signal_count": 2, "result": "Başarılı"},
-            {"id": 1, "match_id": "m1", "direction": "ALT", "signal_count": 1, "result": "Başarılı"},
-            {"id": 3, "match_id": "m1", "direction": "ÜST", "signal_count": 3, "result": "Başarısız"},
-            {"id": 4, "match_id": "m1", "direction": "ÜST", "signal_count": 4, "result": "Başarısız"},
-            {"id": 5, "match_id": "m2", "direction": "ALT", "signal_count": 1, "result": "Başarılı"},
-            {"id": 6, "match_id": "m3", "direction": "ALT", "signal_count": 1, "result": ""},
+            {"id": 2, "match_id": "m1", "direction": "ALT", "alert_period": 2, "signal_count": 2, "result": "Başarılı"},
+            {"id": 1, "match_id": "m1", "direction": "ALT", "alert_period": 1, "signal_count": 1, "result": "Başarılı"},
+            {"id": 3, "match_id": "m1", "direction": "ÜST", "alert_period": 3, "signal_count": 3, "result": "Başarısız"},
+            {"id": 4, "match_id": "m1", "direction": "ÜST", "alert_period": 4, "signal_count": 4, "result": "Başarısız"},
+            {"id": 5, "match_id": "m2", "direction": "ALT", "alert_period": 1, "signal_count": 1, "result": "Başarılı"},
+            {"id": 6, "match_id": "m3", "direction": "ALT", "alert_period": 4, "signal_count": 1, "result": "Başarısız"},
+            {"id": 7, "match_id": "m4", "direction": "ÜST", "alert_period": 2, "signal_count": 1, "result": ""},
         ]
 
         report = self.dashboard._basic_result_report(rows)
 
         self.assertEqual(report["total"], 6)
+        self.assertEqual(report["directions"]["ALT"]["successful"], 3)
+        self.assertEqual(report["directions"]["ALT"]["failed"], 1)
+        self.assertEqual(report["directions"]["ALT"]["total"], 4)
+        self.assertEqual(report["directions"]["ALT"]["unique_total"], 3)
+        self.assertEqual(report["directions"]["ALT"]["unique_successful"], 2)
+        self.assertEqual(report["directions"]["ALT"]["unique_failed"], 1)
+        self.assertEqual(report["directions"]["ALT"]["success_rate"], 75.0)
+        self.assertAlmostEqual(
+            report["directions"]["ALT"]["unique_success_rate"], 66.7
+        )
+        self.assertEqual(report["directions"]["ÜST"]["successful"], 0)
+        self.assertEqual(report["directions"]["ÜST"]["failed"], 2)
+        self.assertEqual(report["directions"]["ÜST"]["total"], 2)
+        self.assertEqual(report["directions"]["ÜST"]["unique_total"], 1)
+        self.assertEqual(report["directions"]["ÜST"]["success_rate"], 0.0)
         self.assertEqual(report["unique_total"], 4)
-        self.assertEqual(report["unique_resolved"], 3)
-        self.assertEqual(report["unique_successful"], 2)
-        self.assertEqual(report["unique_failed"], 1)
+        self.assertEqual(report["success_rate"], 50.0)
+        self.assertEqual(report["unique_success_rate"], 50.0)
+        self.assertEqual(
+            report["total"],
+            report["directions"]["ALT"]["total"]
+            + report["directions"]["ÜST"]["total"],
+        )
+        self.assertNotIn("resolved", report)
+        self.assertNotIn("push", report)
+        empty_report = self.dashboard._basic_result_report([])
+        self.assertIsNone(empty_report["success_rate"])
+        self.assertIsNone(empty_report["unique_success_rate"])
         chosen = {
             (row["match_id"], row["direction"]): row["id"]
             for row in self.dashboard._unique_signal_rows(rows)

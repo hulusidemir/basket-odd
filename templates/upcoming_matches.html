@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#08090f">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
@@ -12,7 +12,7 @@
 <main class="app-shell">
   <header class="topbar">
     <div class="brand"><div class="brand-mark">B</div><div class="brand-title">Basket Signal</div></div>
-    <nav class="nav"><a class="nav-link" href="/">Canlı sinyaller</a><a class="nav-link active" href="/upcoming/">Gelecek maçlar</a><a class="nav-link" href="/deleted-matches">Geçmiş</a><a class="nav-link" href="/bankroll">Bankroll</a></nav>
+    <nav class="nav"><a class="nav-link" href="/">Canlı sinyaller</a><a class="nav-link" href="/deleted-matches">Geçmiş</a><a class="nav-link active" href="/upcoming/">Gelecek maçlar</a><a class="nav-link" href="/bankroll">Bankroll</a></nav>
   </header>
 
   <section class="hero">
@@ -46,20 +46,23 @@
   const $=id=>document.getElementById(id);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmt=v=>Number.isFinite(Number(v))?Number(v).toFixed(1):'–';
-  let matches=[];let view='all';
+  let matches=[];let view='all';let fetchRequestPending=false;let fetchRunning=false;let fetchPollTimer=null;
   function desktopMatchUrl(value){try{const url=new URL(String(value??''));if(!['http:','https:'].includes(url.protocol))return '';if(url.hostname.toLowerCase()==='m.aiscore.com')url.hostname='www.aiscore.com';return url.toString()}catch(_){return ''}}
   async function call(url,options={}){const r=await fetch(url,{headers:{'Content-Type':'application/json'},...options});const d=await r.json();if(!r.ok)throw new Error(d.error||'İşlem başarısız');return d}
   async function action(id,name){await call(`/upcoming/api/matches/${encodeURIComponent(id)}/${name}`,{method:'POST',body:'{}'});await load()}
   function filtered(){const q=$('searchInput').value.trim().toLocaleLowerCase('tr-TR');return matches.filter(m=>(view==='all'||m.followed)&&(!q||`${m.match_name||''} ${m.tournament||''}`.toLocaleLowerCase('tr-TR').includes(q)))}
   function render(){const rows=filtered();$('empty').hidden=rows.length>0;$('rows').innerHTML=rows.map(m=>{const desktopUrl=desktopMatchUrl(m.url);const name=desktopUrl?`<a class="match-link" href="${esc(desktopUrl)}" target="_blank" rel="noopener">${esc(m.match_name)}</a>`:`<span class="plain-match">${esc(m.match_name)}</span>`;const state=m.followed?'<span class="result-pill success">Takipte</span>':m.ignored?'<span class="result-pill failed">Yoksayıldı</span>':'<span class="match-meta">Normal</span>';return `<tr>
-    <td><strong>${esc(m.kickoff||'–')}</strong></td>
+    <td data-label="Saat"><strong>${esc(m.kickoff||'–')}</strong></td>
     <td data-label="Maç" class="primary-cell"><div class="match-cell"><div class="match-info">${name}<span class="match-meta">${esc(m.tournament||'Lig bilgisi yok')}</span></div></div></td>
     <td data-label="Açılış" class="num"><strong>${fmt(m.opening_total)}</strong></td><td data-label="Maç önü" class="num"><strong>${fmt(m.prematch_total)}</strong></td>
     <td data-label="Durum">${state}</td>
     <td data-label="İşlemler"><div class="row-actions"><button class="button ${m.followed?'active':''}" onclick="action('${esc(m.match_id)}','follow')">Takip</button><button class="button ${m.ignored?'active':''}" onclick="action('${esc(m.match_id)}','ignore')">Yoksay</button><button class="button danger" onclick="action('${esc(m.match_id)}','delete')">Sil</button></div></td></tr>`}).join('');$('statTotal').textContent=matches.length;$('statFollowed').textContent=matches.filter(m=>m.followed).length;$('statIgnored').textContent=matches.filter(m=>m.ignored).length;$('statLines').textContent=matches.filter(m=>Number.isFinite(Number(m.opening_total))).length}
-  async function load(){try{const d=await call('/upcoming/api/list');matches=d.matches||[];render();const state=d.running?'AiScore çekimi sürüyor':`${filtered().length} maç gösteriliyor`;$('status').textContent=`${state} · ${d.report?.status||'hazır'}`;if(d.running)setTimeout(load,3000)}catch(e){$('status').textContent=e.message;$('status').classList.add('error')}}
+  function updateFetchButton(running=fetchRunning){fetchRunning=Boolean(running);const busy=fetchRequestPending||fetchRunning;const button=$('fetchBtn');button.disabled=busy;button.textContent=busy?'Güncelleniyor…':"AiScore'dan güncelle";button.setAttribute('aria-busy',String(busy))}
+  function scheduleFetchPoll(){if(fetchPollTimer)clearTimeout(fetchPollTimer);fetchPollTimer=setTimeout(()=>{fetchPollTimer=null;load()},3000)}
+  async function load(){try{const d=await call('/upcoming/api/list');matches=d.matches||[];render();fetchRunning=Boolean(d.running);updateFetchButton(fetchRunning);const state=fetchRunning?'AiScore çekimi sürüyor':`${filtered().length} maç gösteriliyor`;$('status').classList.remove('error');$('status').textContent=`${state} · ${d.report?.status||'hazır'}`;if(fetchRunning)scheduleFetchPoll();else if(fetchPollTimer){clearTimeout(fetchPollTimer);fetchPollTimer=null}}catch(e){$('status').textContent=e.message;$('status').classList.add('error');updateFetchButton(fetchRunning);if(fetchRunning)scheduleFetchPoll()}}
+  async function fetchUpcomingMatches(){if(fetchRequestPending||fetchRunning)return;fetchRequestPending=true;updateFetchButton(fetchRunning);$('status').classList.remove('error');$('status').textContent='Gelecek maçlar güncelleniyor…';try{const state=await call('/upcoming/api/fetch',{method:'POST',body:'{}'});fetchRunning=Boolean(state.running);await load()}catch(e){fetchRunning=false;$('status').textContent=e.message;$('status').classList.add('error')}finally{fetchRequestPending=false;updateFetchButton(fetchRunning)}}
   $('searchInput').addEventListener('input',render);document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',()=>{view=button.dataset.view;document.querySelectorAll('[data-view]').forEach(item=>item.classList.toggle('active',item===button));render()}));
-  $('fetchBtn').onclick=async()=>{await call('/upcoming/api/fetch',{method:'POST',body:'{}'});await load()};$('refreshBtn').onclick=load;$('clearBtn').onclick=async()=>{if(confirm('Gelecek maç listesi temizlensin mi?')){await call('/upcoming/api/clear',{method:'POST',body:'{}'});await load()}};load();
+  $('fetchBtn').onclick=fetchUpcomingMatches;$('refreshBtn').onclick=load;$('clearBtn').onclick=async()=>{if(confirm('Gelecek maç listesi temizlensin mi?')){await call('/upcoming/api/clear',{method:'POST',body:'{}'});await load()}};load();
 </script>
 </body>
 </html>

@@ -1,29 +1,9 @@
 import json
-import logging
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
-
-logger = logging.getLogger(__name__)
-
-
-def _run_compatible_migration(
-    conn: sqlite3.Connection,
-    statement: str,
-    *,
-    ignored_errors: tuple[str, ...],
-) -> None:
-    """Ignore only known schema-compatibility outcomes, never I/O/lock errors."""
-    try:
-        conn.execute(statement)
-    except sqlite3.OperationalError as exc:
-        message = str(exc).lower()
-        if any(expected in message for expected in ignored_errors):
-            return
-        raise
 
 
 class Database:
@@ -45,39 +25,39 @@ class Database:
 
     def init(self):
         with self._conn() as conn:
-            # Journal mode is persistent for the database file; setting it once
-            # at schema initialization avoids a lock-taking pragma per query.
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS alerts (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    match_id     TEXT NOT NULL,
-                    match_name   TEXT NOT NULL,
-                    tournament   TEXT NOT NULL DEFAULT '',
-                    status       TEXT NOT NULL DEFAULT '',
-                    opening      REAL NOT NULL,
-                    prematch     REAL,
-                    live         REAL NOT NULL,
-                    direction    TEXT NOT NULL,
-                    diff         REAL NOT NULL,
-                    url          TEXT NOT NULL DEFAULT '',
-                    score        TEXT NOT NULL DEFAULT '',
-                    final_status TEXT NOT NULL DEFAULT '',
-                    final_score  TEXT NOT NULL DEFAULT '',
-                    signal_count INTEGER NOT NULL DEFAULT 1,
-                    display_snapshot TEXT NOT NULL DEFAULT '',
-                    telegram_status TEXT NOT NULL DEFAULT 'not_required',
+                    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                    match_id                 TEXT NOT NULL,
+                    match_name               TEXT NOT NULL,
+                    tournament               TEXT NOT NULL DEFAULT '',
+                    status                   TEXT NOT NULL DEFAULT '',
+                    opening                  REAL NOT NULL,
+                    prematch                 REAL,
+                    live                     REAL NOT NULL,
+                    direction                TEXT NOT NULL,
+                    diff                     REAL NOT NULL,
+                    url                      TEXT NOT NULL DEFAULT '',
+                    score                    TEXT NOT NULL DEFAULT '',
+                    signal_count             INTEGER NOT NULL DEFAULT 1,
+                    alert_period             INTEGER,
+                    alert_moment             TEXT NOT NULL DEFAULT '',
+                    display_snapshot         TEXT NOT NULL DEFAULT '',
+                    telegram_status          TEXT NOT NULL DEFAULT 'not_required',
                     telegram_retry_count INTEGER NOT NULL DEFAULT 0,
-                    telegram_last_error TEXT NOT NULL DEFAULT '',
-                    telegram_message_ids TEXT NOT NULL DEFAULT '',
-                    bet_placed   INTEGER NOT NULL DEFAULT 0,
-                    ignored      INTEGER NOT NULL DEFAULT 0,
-                    followed     INTEGER NOT NULL DEFAULT 0,
-                    deleted_at   TIMESTAMP,
-                    result       TEXT NOT NULL DEFAULT '',
-                    result_source TEXT NOT NULL DEFAULT '',
-                    settled_at   TIMESTAMP,
-                    alerted_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    telegram_last_error      TEXT NOT NULL DEFAULT '',
+                    telegram_message_ids     TEXT NOT NULL DEFAULT '',
+                    bet_placed               INTEGER NOT NULL DEFAULT 0,
+                    ignored                  INTEGER NOT NULL DEFAULT 0,
+                    followed                 INTEGER NOT NULL DEFAULT 0,
+                    deleted_at               TIMESTAMP,
+                    result                   TEXT NOT NULL DEFAULT '',
+                    result_source            TEXT NOT NULL DEFAULT '',
+                    final_status             TEXT NOT NULL DEFAULT '',
+                    final_score              TEXT NOT NULL DEFAULT '',
+                    settled_at               TIMESTAMP,
+                    alerted_at               TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
                 CREATE TABLE IF NOT EXISTS match_actions (
@@ -103,9 +83,6 @@ class Database:
                     fetched_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
-                CREATE INDEX IF NOT EXISTS idx_upcoming_matches_fetched_at
-                ON upcoming_matches(fetched_at DESC);
-
                 CREATE TABLE IF NOT EXISTS upcoming_match_actions (
                     match_id    TEXT PRIMARY KEY,
                     bet_placed  INTEGER NOT NULL DEFAULT 0,
@@ -123,9 +100,6 @@ class Database:
                     created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
-                CREATE INDEX IF NOT EXISTS idx_saved_match_lists_created_at
-                ON saved_match_lists(created_at DESC, id DESC);
-
                 CREATE TABLE IF NOT EXISTS signal_lists (
                     id               INTEGER PRIMARY KEY AUTOINCREMENT,
                     list_type        TEXT NOT NULL,
@@ -136,167 +110,46 @@ class Database:
                     UNIQUE(list_type, scope, normalized_value)
                 );
 
+                CREATE TABLE IF NOT EXISTS bankroll_sessions (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name         TEXT NOT NULL DEFAULT '',
+                    budget       REAL NOT NULL,
+                    group_count  INTEGER NOT NULL,
+                    default_rate REAL NOT NULL,
+                    state_json   TEXT NOT NULL,
+                    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_alerts_deleted_at
+                ON alerts(deleted_at);
+
+                CREATE INDEX IF NOT EXISTS idx_alerts_match_period_state
+                ON alerts(match_id, deleted_at, alert_period);
+
+                CREATE INDEX IF NOT EXISTS idx_alerts_match_direction_state
+                ON alerts(match_id, direction, deleted_at, alerted_at DESC);
+
+                CREATE INDEX IF NOT EXISTS idx_alerts_deleted_result_match
+                ON alerts(deleted_at, result, match_id);
+
+                CREATE INDEX IF NOT EXISTS idx_alerts_telegram_delivery
+                ON alerts(telegram_status, telegram_retry_count, deleted_at, alerted_at);
+
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_active_match_period
+                ON alerts(match_id, alert_period)
+                WHERE (deleted_at IS NULL OR deleted_at = '')
+                  AND alert_period > 0;
+
+                CREATE INDEX IF NOT EXISTS idx_upcoming_matches_fetched_at
+                ON upcoming_matches(fetched_at DESC);
+
+                CREATE INDEX IF NOT EXISTS idx_saved_match_lists_created_at
+                ON saved_match_lists(created_at DESC, id DESC);
+
                 CREATE INDEX IF NOT EXISTS idx_signal_lists_lookup
                 ON signal_lists(list_type, scope, normalized_value);
-
             """)
-            # Backward-compatible migrations for older DB files. New installs
-            # get the clean schema above; old installs keep their extra quality_*
-            # columns as ignored dead data — we don't try to DROP them because
-            # SQLite support varies by version.
-            for alter in (
-                "ALTER TABLE alerts ADD COLUMN tournament TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN status TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN url TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN final_status TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN final_score TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN bet_placed INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE alerts ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE alerts ADD COLUMN followed INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE alerts ADD COLUMN score TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN signal_count INTEGER NOT NULL DEFAULT 1",
-                "ALTER TABLE alerts ADD COLUMN display_snapshot TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN telegram_status TEXT NOT NULL DEFAULT 'not_required'",
-                "ALTER TABLE alerts ADD COLUMN telegram_retry_count INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE alerts ADD COLUMN telegram_last_error TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN telegram_message_ids TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN deleted_at TIMESTAMP",
-                "ALTER TABLE alerts ADD COLUMN prematch REAL",
-                "ALTER TABLE alerts ADD COLUMN result TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN result_source TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE alerts ADD COLUMN settled_at TIMESTAMP",
-                "ALTER TABLE alerts ADD COLUMN alert_period INTEGER",
-                "ALTER TABLE alerts ADD COLUMN alert_moment TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE match_actions ADD COLUMN note TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE match_actions ADD COLUMN deleted_at TIMESTAMP",
-            ):
-                _run_compatible_migration(
-                    conn,
-                    alter,
-                    ignored_errors=("duplicate column name",),
-                )
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_deleted_at ON alerts(deleted_at)")
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_alerts_match_period_state
-                ON alerts(match_id, deleted_at, alert_period)
-                """
-            )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_alerts_match_direction_state
-                ON alerts(match_id, direction, deleted_at, alerted_at DESC)
-                """
-            )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_alerts_deleted_result_match
-                ON alerts(deleted_at, result, match_id)
-                """
-            )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_alerts_telegram_delivery
-                ON alerts(telegram_status, telegram_retry_count, deleted_at, alerted_at)
-                """
-            )
-            duplicate_period = conn.execute(
-                """
-                SELECT match_id, alert_period, COUNT(*) AS duplicate_count
-                FROM alerts
-                WHERE (deleted_at IS NULL OR deleted_at = '')
-                  AND alert_period > 0
-                GROUP BY match_id, alert_period
-                HAVING COUNT(*) > 1
-                LIMIT 1
-                """
-            ).fetchone()
-            if duplicate_period:
-                # Do not delete or rewrite a user's legacy signals merely to
-                # satisfy a new index. BEGIN IMMEDIATE + the period recheck in
-                # save_alert still prevents any new duplicate. Once the legacy
-                # conflict is archived/removed, the next init installs the
-                # defensive unique index automatically.
-                logger.warning(
-                    "Legacy active period duplicate preserved; unique index "
-                    "postponed for match=%s period=%s count=%s",
-                    duplicate_period["match_id"],
-                    duplicate_period["alert_period"],
-                    duplicate_period["duplicate_count"],
-                )
-            else:
-                conn.execute(
-                    """
-                    CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_active_match_period
-                    ON alerts(match_id, alert_period)
-                    WHERE (deleted_at IS NULL OR deleted_at = '')
-                      AND alert_period > 0
-                    """
-                )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS signal_lists (
-                    id               INTEGER PRIMARY KEY AUTOINCREMENT,
-                    list_type        TEXT NOT NULL,
-                    scope            TEXT NOT NULL,
-                    value            TEXT NOT NULL,
-                    normalized_value TEXT NOT NULL,
-                    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(list_type, scope, normalized_value)
-                )
-                """
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_signal_lists_lookup ON signal_lists(list_type, scope, normalized_value)"
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS upcoming_matches (
-                    match_id       TEXT PRIMARY KEY,
-                    match_name     TEXT NOT NULL,
-                    home_team      TEXT NOT NULL DEFAULT '',
-                    away_team      TEXT NOT NULL DEFAULT '',
-                    tournament     TEXT NOT NULL DEFAULT '',
-                    kickoff        TEXT NOT NULL DEFAULT '',
-                    opening_total  REAL,
-                    prematch_total REAL,
-                    url            TEXT NOT NULL DEFAULT '',
-                    payload_json   TEXT NOT NULL DEFAULT '',
-                    fetched_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_upcoming_matches_fetched_at ON upcoming_matches(fetched_at DESC)"
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS upcoming_match_actions (
-                    match_id    TEXT PRIMARY KEY,
-                    bet_placed  INTEGER NOT NULL DEFAULT 0,
-                    ignored     INTEGER NOT NULL DEFAULT 0,
-                    followed    INTEGER NOT NULL DEFAULT 0,
-                    deleted_at  TIMESTAMP,
-                    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-            conn.execute(
-                """
-                UPDATE alerts
-                SET alert_moment = TRIM(
-                    CASE
-                        WHEN COALESCE(status, '') != '' AND COALESCE(score, '') != ''
-                            THEN status || ' | ' || score
-                        WHEN COALESCE(status, '') != '' THEN status
-                        WHEN COALESCE(score, '') != '' THEN score
-                        ELSE ''
-                    END
-                )
-                WHERE COALESCE(alert_moment, '') = ''
-                  AND TRIM(COALESCE(result, '')) = ''
-                """
-            )
 
     # ---------- signal black/white lists ----------
 

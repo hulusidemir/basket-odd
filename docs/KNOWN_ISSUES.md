@@ -5,5 +5,5 @@
   kabul etmez.
 - Proxy/Tor erişimi çalışmıyorsa tarama başarısız olur; ardışık hata alarmı bunu
   Telegram üzerinden bir kez bildirir ve sağlıklı çevrimden sonra yeniden kurulur.
-- Eski SQLite dosyalarında artık kullanılmayan model sütunları veya
-  `signal_trials` tablosu bulunabilir. Bunlar yalnız tarihsel veri olarak kalır.
+- Biten maç kontrolü proxy kararlılığı için sıralı çalışır. Aktif maç sayısı
+  yüksekse dashboard isteğinin tamamlanması birkaç dakika sürebilir.

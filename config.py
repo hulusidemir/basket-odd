@@ -44,6 +44,8 @@ class Config:
     UPCOMING_DAYS_AHEAD: int = _int_env("UPCOMING_DAYS_AHEAD", 0)
     MAX_MATCHES_PER_CYCLE: int = _int_env("MAX_MATCHES_PER_CYCLE", 80)
     PAGE_TIMEOUT_MS: int = _int_env("PAGE_TIMEOUT_MS", 30000)
+    FINISHED_PAGE_TIMEOUT_MS: int = _int_env("FINISHED_PAGE_TIMEOUT_MS", 20000)
+    FINISHED_RETRY_ATTEMPTS: int = _int_env("FINISHED_RETRY_ATTEMPTS", 1)
     AISCORE_CONCURRENCY: int = _int_env("AISCORE_CONCURRENCY", 1)
     UPCOMING_CONCURRENCY: int = _int_env("UPCOMING_CONCURRENCY", 2)
     BLACKLIST: list = [b.strip().lower() for b in os.getenv("BLACKLIST", "").split(",") if b.strip()]
@@ -69,6 +71,10 @@ class Config:
             raise ValueError("MAX_MATCHES_PER_CYCLE 0'dan büyük olmalı.")
         if self.PAGE_TIMEOUT_MS < 5000 or self.PAGE_TIMEOUT_MS > 120000:
             raise ValueError("PAGE_TIMEOUT_MS 5000 ile 120000 arasında olmalı.")
+        if self.FINISHED_PAGE_TIMEOUT_MS < 5000 or self.FINISHED_PAGE_TIMEOUT_MS > 60000:
+            raise ValueError("FINISHED_PAGE_TIMEOUT_MS 5000 ile 60000 arasında olmalı.")
+        if not 0 <= self.FINISHED_RETRY_ATTEMPTS <= 2:
+            raise ValueError("FINISHED_RETRY_ATTEMPTS 0 ile 2 arasında olmalı.")
         if self.UPCOMING_DAYS_AHEAD < 0 or self.UPCOMING_DAYS_AHEAD > 14:
             raise ValueError("UPCOMING_DAYS_AHEAD 0 ile 14 arasında olmalı.")
         if not 1 <= self.AISCORE_CONCURRENCY <= 8:

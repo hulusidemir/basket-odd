@@ -9,9 +9,10 @@ Bir sinyal yalnız şu koşulla oluşur:
 abs(canlı toplam - açılış toplam) >= THRESHOLD
 ```
 
-Canlı barem açılıştan yüksekse yön `ALT`, düşükse `ÜST` olur. Uygulama
-projeksiyon, adil barem, H2H, takım formu, tempo, kalite puanı veya kanıt skoru
-hesaplamaz.
+Canlı barem açılıştan yüksekse yön `ALT`, düşükse `ÜST` olur. Uygulama adil
+barem, H2H, takım formu, kalite puanı veya kanıt skoru hesaplamaz.
+Dashboard'daki tempo projeksiyonu yalnız mevcut skor ve oynanan sürenin basit
+doğrusal gösterimidir; sinyal üretimine katılmaz.
 
 ## Korunan operasyonel kurallar
 
@@ -21,6 +22,8 @@ hesaplamaz.
 - Kara listedeki takım/lig sinyal ve bekleyen Telegram gönderimini engeller.
 - Sinyaller SQLite'a yazılır; Telegram teslimatı kalıcı outbox ile tekrar denenir.
 - Final skorlar otomatik kontrol edilerek arşivlenen sinyaller sonuçlandırılır.
+- Biten maçlar mobil kaynaktan sıralı ve yeniden denemeli kontrol edilir; manuel
+  buton ile saat başındaki görev aynı akışı kullanır.
 - Dashboard aktif sinyalleri, arşivi, yaklaşan maçları ve takip işlemlerini gösterir.
 
 ## Kurulum
@@ -41,6 +44,8 @@ AISCORE_URL=https://m.aiscore.com/basketball
 THRESHOLD=10
 DB_PATH=basketball.db
 PLAYWRIGHT_PROXY=socks5://127.0.0.1:9050
+FINISHED_PAGE_TIMEOUT_MS=20000
+FINISHED_RETRY_ATTEMPTS=1
 ```
 
 Canlı bot `python main.py`, birleşik dashboard `python run.py` ile çalışır.

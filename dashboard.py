@@ -24,7 +24,6 @@ from signal_lists import (
     build_signal_list_profile,
     split_match_teams,
 )
-from signal_quality_score import calculate_signal_quality
 from upcoming_app import upcoming_bp
 
 
@@ -67,10 +66,8 @@ def _raw_alert(row: dict, list_profile: dict | None = None) -> dict:
     item["pace_score_total"] = pace["score_total"]
     item["pace_elapsed_minutes"] = pace["elapsed_minutes"]
     item["pace_game_minutes"] = pace["game_minutes"]
-    item["signal_quality"] = calculate_signal_quality(item)
     item["list_markers"] = build_signal_list_markers(item, list_profile)
     for key in (
-        "ai_analysis",
         "display_snapshot",
         "telegram_message_ids",
         "telegram_last_error",
@@ -94,7 +91,7 @@ def _dashboard_snapshot_payloads(rows: list[dict]) -> dict[int, dict]:
     for row in rows:
         payload = dict(row)
         payload["snapshot_meta"] = {
-            "schema_version": 4,
+            "schema_version": 1,
             "source": "raw_line_dashboard",
             "captured_at": captured_at,
         }
@@ -171,12 +168,9 @@ def _frozen_deleted_alert(row: dict) -> dict:
         item["pace_game_minutes"] = None
     if "barem_change" not in snapshot:
         item["barem_change"] = None
-    if "signal_quality" not in snapshot:
-        item["signal_quality"] = None
     if "list_markers" not in snapshot:
         item["list_markers"] = []
     for key in (
-        "ai_analysis",
         "display_snapshot",
         "telegram_message_ids",
         "telegram_last_error",
@@ -201,12 +195,6 @@ def deleted_matches():
 
 @app.route("/api/alerts")
 def api_alerts():
-    return jsonify(_build_live_dashboard_rows(db.recent_alerts(limit=500)))
-
-
-@app.route("/api/alerts/recalculate-quality", methods=["POST"])
-def api_recalculate_signal_quality():
-    """Rebuild display-only SKS values from stored signal-time facts."""
     return jsonify(_build_live_dashboard_rows(db.recent_alerts(limit=500)))
 
 
@@ -331,26 +319,50 @@ def _unique_signal_rows(rows: list[dict]) -> list[dict]:
 
 
 def _basic_result_report(rows: list[dict]) -> dict:
-    resolved = [row for row in rows if row.get("result") in {"Başarılı", "Başarısız", "İade"}]
-    unique_rows = _unique_signal_rows(rows)
-    unique_resolved = [
-        row for row in unique_rows
-        if row.get("result") in {"Başarılı", "Başarısız", "İade"}
+    settled_rows = [
+        row for row in rows
+        if row.get("result") in {"Başarılı", "Başarısız"}
     ]
-    successful = sum(row.get("result") == "Başarılı" for row in resolved)
-    failed = sum(row.get("result") == "Başarısız" for row in resolved)
-    push = sum(row.get("result") == "İade" for row in resolved)
+
+    def breakdown(selected_rows: list[dict]) -> dict:
+        unique_rows = _unique_signal_rows(selected_rows)
+        successful = sum(
+            row.get("result") == "Başarılı" for row in selected_rows
+        )
+        unique_successful = sum(
+            row.get("result") == "Başarılı" for row in unique_rows
+        )
+        return {
+            "total": len(selected_rows),
+            "successful": successful,
+            "failed": sum(
+                row.get("result") == "Başarısız" for row in selected_rows
+            ),
+            "success_rate": (
+                round(successful * 100 / len(selected_rows), 1)
+                if selected_rows else None
+            ),
+            "unique_total": len(unique_rows),
+            "unique_successful": unique_successful,
+            "unique_failed": sum(
+                row.get("result") == "Başarısız" for row in unique_rows
+            ),
+            "unique_success_rate": (
+                round(unique_successful * 100 / len(unique_rows), 1)
+                if unique_rows else None
+            ),
+        }
+
+    directions = {
+        direction: breakdown([
+            row for row in settled_rows
+            if _normalize_direction(row.get("direction")) == direction
+        ])
+        for direction in ("ALT", "ÜST")
+    }
     return {
-        "total": len(rows),
-        "resolved": len(resolved),
-        "successful": successful,
-        "failed": failed,
-        "push": push,
-        "unique_total": len(unique_rows),
-        "unique_resolved": len(unique_resolved),
-        "unique_successful": sum(row.get("result") == "Başarılı" for row in unique_resolved),
-        "unique_failed": sum(row.get("result") == "Başarısız" for row in unique_resolved),
-        "unique_push": sum(row.get("result") == "İade" for row in unique_resolved),
+        **breakdown(settled_rows),
+        "directions": directions,
     }
 
 

@@ -7,6 +7,7 @@ import asyncio
 import logging
 import os
 import re
+import threading
 import time
 
 try:
@@ -20,6 +21,16 @@ except ModuleNotFoundError:
 
 
 logger = logging.getLogger("finished_match_service")
+_active_finished_scan_lock = threading.Lock()
+
+
+def _check_failure(match: dict, error_code: str, *, attempts: int = 1) -> dict:
+    return {
+        "match_id": str(match.get("match_id") or ""),
+        "match_name": str(match.get("match_name") or ""),
+        "_check_error": error_code,
+        "_check_attempts": max(1, int(attempts)),
+    }
 
 
 def _normalize_direction(value) -> str:
@@ -75,6 +86,11 @@ def _empty_result_summary(tracked_count: int = 0) -> dict:
     return {
         "tracked_count": tracked_count,
         "checked_count": 0,
+        "check_failed_count": 0,
+        "retry_count": 0,
+        "coverage_percent": 100.0 if tracked_count == 0 else 0.0,
+        "failure_counts": {},
+        "check_failures": [],
         "finished_match_count": 0,
         "updated_count": 0,
         "successful_count": 0,
@@ -83,6 +99,59 @@ def _empty_result_summary(tracked_count: int = 0) -> dict:
         "in_progress_count": 0,
         "details": [],
     }
+
+
+def _finished_checker(config) -> "AiscoreFinishedMatchChecker":
+    return AiscoreFinishedMatchChecker(
+        page_timeout_ms=getattr(
+            config,
+            "FINISHED_PAGE_TIMEOUT_MS",
+            min(int(config.PAGE_TIMEOUT_MS), 20000),
+        ),
+        # The proxy is substantially more reliable with one match page at a
+        # time. Sequential checks prioritize complete coverage over raw speed.
+        concurrency=1,
+        retry_attempts=getattr(config, "FINISHED_RETRY_ATTEMPTS", 1),
+    )
+
+
+def _merge_checker_report(
+    summary: dict,
+    checker: "AiscoreFinishedMatchChecker",
+    attempted_count: int,
+    results: list[dict],
+) -> None:
+    report = checker.last_report
+    if report.get("attempted_count") == attempted_count:
+        checked_count = int(report.get("checked_count", len(results)))
+        failed_count = int(
+            report.get("check_failed_count", max(0, attempted_count - checked_count))
+        )
+        retry_count = int(report.get("retry_count", 0))
+        failure_counts = dict(report.get("failure_counts") or {})
+        failures = list(report.get("failures") or [])
+    else:
+        # Keep custom checker implementations and tests compatible without
+        # describing missing results as successfully checked.
+        checked_count = len(results)
+        failed_count = max(0, attempted_count - checked_count)
+        retry_count = 0
+        failure_counts = {"unknown_error": failed_count} if failed_count else {}
+        failures = []
+
+    summary["checked_count"] += checked_count
+    summary["check_failed_count"] += failed_count
+    summary["retry_count"] += retry_count
+    for error_code, count in failure_counts.items():
+        summary["failure_counts"][error_code] = (
+            summary["failure_counts"].get(error_code, 0) + int(count)
+        )
+    summary["check_failures"].extend(failures)
+    summary["coverage_percent"] = (
+        round(summary["checked_count"] / summary["tracked_count"] * 100, 1)
+        if summary["tracked_count"]
+        else 100.0
+    )
 
 
 def _settle_deleted_match_from_final_score(
@@ -169,6 +238,11 @@ def _settle_deleted_match_from_final_score(
 
 
 def _deleted_result_message(summary: dict) -> str:
+    summary["coverage_percent"] = (
+        round(summary["checked_count"] / summary["tracked_count"] * 100, 1)
+        if summary["tracked_count"]
+        else 100.0
+    )
     if summary["tracked_count"] == 0:
         return "Kontrol edilecek silinen maç bulunamadı."
     if summary["checked_count"] == 0:
@@ -189,10 +263,20 @@ class AiscoreFinishedMatchChecker:
         self,
         *,
         page_timeout_ms: int,
-        concurrency: int = 4,
+        concurrency: int = 1,
+        retry_attempts: int = 1,
     ):
         self.page_timeout_ms = page_timeout_ms
-        self.concurrency = concurrency
+        self.concurrency = max(1, int(concurrency))
+        self.retry_attempts = max(0, int(retry_attempts))
+        self.last_report = {
+            "attempted_count": 0,
+            "checked_count": 0,
+            "check_failed_count": 0,
+            "retry_count": 0,
+            "failure_counts": {},
+            "failures": [],
+        }
 
     async def _launch_headless_context(self, playwright):
         try:
@@ -221,35 +305,105 @@ class AiscoreFinishedMatchChecker:
 
     async def check_matches(self, tracked_matches: list[dict]) -> list[dict]:
         if not tracked_matches:
+            self.last_report = {
+                "attempted_count": 0,
+                "checked_count": 0,
+                "check_failed_count": 0,
+                "retry_count": 0,
+                "failure_counts": {},
+                "failures": [],
+            }
             return []
         if async_playwright is None or AsyncNewBrowser is None:
             raise RuntimeError("Camoufox is not installed. Run 'python -m camoufox fetch'.")
 
         results = []
+        failures = []
+        retry_count = 0
         async with async_playwright() as playwright:
             browser, context, should_close_browser = await self._launch_headless_context(playwright)
             try:
                 for index in range(0, len(tracked_matches), self.concurrency):
                     batch = tracked_matches[index:index + self.concurrency]
                     batch_results = await asyncio.gather(
-                        *(self._check_single(context, match) for match in batch),
+                        *(self._check_single_with_retry(context, match) for match in batch),
                         return_exceptions=True,
                     )
-                    for item in batch_results:
-                        if isinstance(item, dict):
+                    for match, item in zip(batch, batch_results):
+                        if isinstance(item, dict) and not item.get("_check_error"):
                             results.append(item)
+                            retry_count += max(0, int(item.pop("_check_attempts", 1)) - 1)
+                        elif isinstance(item, dict):
+                            failures.append(item)
+                            retry_count += max(0, int(item.get("_check_attempts", 1)) - 1)
                         elif isinstance(item, Exception):
-                            logger.debug("Finished check skipped due to error: %s", item)
+                            failures.append(_check_failure(match, "unexpected_error"))
+                            logger.warning(
+                                "Finished check failed unexpectedly: match_id=%s error=%s",
+                                match.get("match_id"),
+                                type(item).__name__,
+                            )
             finally:
                 if should_close_browser:
                     await browser.close()
+
+        failure_counts: dict[str, int] = {}
+        for failure in failures:
+            error_code = str(failure.get("_check_error") or "unknown_error")
+            failure_counts[error_code] = failure_counts.get(error_code, 0) + 1
+        self.last_report = {
+            "attempted_count": len(tracked_matches),
+            "checked_count": len(results),
+            "check_failed_count": len(failures),
+            "retry_count": retry_count,
+            "failure_counts": failure_counts,
+            "failures": [
+                {
+                    "match_id": failure.get("match_id", ""),
+                    "error_code": failure.get("_check_error", "unknown_error"),
+                    "attempts": int(failure.get("_check_attempts", 1)),
+                }
+                for failure in failures[:20]
+            ],
+        }
+        if failures:
+            logger.warning(
+                "Finished-match coverage incomplete: checked=%s attempted=%s failures=%s",
+                len(results),
+                len(tracked_matches),
+                failure_counts,
+            )
         return results
 
-    async def _check_single(self, context, match: dict) -> dict | None:
-        page = await context.new_page()
-        page.set_default_timeout(self.page_timeout_ms)
+    async def _check_single_with_retry(self, context, match: dict) -> dict:
+        last_failure = _check_failure(match, "unknown_error")
+        total_attempts = self.retry_attempts + 1
+        for attempt in range(1, total_attempts + 1):
+            try:
+                result = await self._check_single(context, match)
+            except Exception:
+                logger.exception(
+                    "Unexpected finished-match check error: match_id=%s attempt=%s",
+                    match.get("match_id"),
+                    attempt,
+                )
+                result = _check_failure(match, "unexpected_error")
+            if result and not result.get("_check_error"):
+                result["_check_attempts"] = attempt
+                return result
+            if isinstance(result, dict):
+                last_failure = result
+            if attempt < total_attempts:
+                await asyncio.sleep(0.35 * attempt)
+        last_failure["_check_attempts"] = total_attempts
+        return last_failure
+
+    async def _check_single(self, context, match: dict) -> dict:
+        page = None
 
         try:
+            page = await context.new_page()
+            page.set_default_timeout(self.page_timeout_ms)
             await page.set_extra_http_headers({
                 "Cache-Control": "no-cache",
                 "Pragma": "no-cache",
@@ -414,56 +568,75 @@ class AiscoreFinishedMatchChecker:
                 """
             )
             if not parsed:
-                return None
+                return _check_failure(match, "empty_page")
             parsed_title = parsed.get("title") or ""
             if re.search(r"just a moment|access denied|verify you are human", parsed_title, re.IGNORECASE):
-                return None
+                return _check_failure(match, "blocked")
             if not (parsed.get("status") or parsed.get("score")):
-                return None
+                return _check_failure(match, "parse_failed")
+
+            status = parsed.get("status") or ""
+            score = parsed.get("score") or ""
+            finished = bool(parsed.get("isFinished")) and is_final_status(status)
+            if finished and parse_score_total(score) is None:
+                return _check_failure(match, "final_score_parse_failed")
 
             return {
                 "match_id": match["match_id"],
                 "match_name": parsed_title or match.get("match_name", ""),
-                "status": parsed.get("status") or "",
-                "score": parsed.get("score") or "",
-                "is_finished": bool(parsed.get("isFinished")) and is_final_status(parsed.get("status") or ""),
+                "status": status,
+                "score": score,
+                "is_finished": finished,
+                "source": "mobile",
             }
         except PlaywrightTimeoutError:
-            logger.debug("Finished match check timeout: %s", match.get("url"))
-            return None
+            return _check_failure(match, "timeout")
         except Exception as exc:
             logger.debug("Could not check match %s: %s", match.get("match_id"), exc)
-            return None
+            return _check_failure(match, "browser_error")
         finally:
-            await page.close()
+            if page is not None:
+                try:
+                    await page.close()
+                except Exception:
+                    logger.debug("Could not close finished-match page", exc_info=True)
 
 
 async def run_active_match_finished_scan(db, config, before_delete=None) -> dict:
     """Scan active (not-yet-deleted) alerts for matches that have ended, and
     soft-delete them so they flow into the finished-match result pipeline."""
+    if not _active_finished_scan_lock.acquire(blocking=False):
+        return {
+            **_empty_result_summary(),
+            "busy": True,
+            "archive_failed_count": 0,
+            "moved_count": 0,
+            "message": (
+                "Biten maç kontrolü zaten çalışıyor. "
+                "Mevcut tarama tamamlanınca tekrar deneyin."
+            ),
+        }
+    try:
+        return await _run_active_match_finished_scan(db, config, before_delete)
+    finally:
+        _active_finished_scan_lock.release()
+
+
+async def _run_active_match_finished_scan(db, config, before_delete=None) -> dict:
     tracked_matches = db.get_active_matches_with_urls()
     summary = {
-        "tracked_count": len(tracked_matches),
-        "checked_count": 0,
+        **_empty_result_summary(tracked_count=len(tracked_matches)),
         "finished_match_count": 0,
         "moved_count": 0,
-        "updated_count": 0,
-        "successful_count": 0,
-        "failed_count": 0,
-        "push_count": 0,
         "archive_failed_count": 0,
-        "details": [],
     }
     if not tracked_matches:
         summary["message"] = "Taranacak aktif maç bulunamadı."
         return summary
 
-    checker = AiscoreFinishedMatchChecker(
-        page_timeout_ms=config.PAGE_TIMEOUT_MS,
-        concurrency=4,
-    )
+    checker = _finished_checker(config)
     results = await checker.check_matches(tracked_matches)
-    summary["checked_count"] = len(results)
+    _merge_checker_report(summary, checker, len(tracked_matches), results)
 
     for result in results:
         if not result.get("is_finished"):
@@ -524,14 +697,20 @@ async def run_active_match_finished_scan(db, config, before_delete=None) -> dict
                 exc,
             )
 
+    coverage = f"{summary['checked_count']}/{summary['tracked_count']} maç doğrulandı"
+    if summary["check_failed_count"]:
+        coverage += (
+            f"; {summary['check_failed_count']} maça ulaşılamadı ve aktif bırakıldı"
+        )
+
     if summary["moved_count"] == 0 and summary["finished_match_count"] == 0:
         summary["message"] = (
-            f"{summary['tracked_count']} maç tarandı, biten maç bulunamadı."
+            f"{coverage}. Biten maç bulunamadı."
         )
     else:
         summary["message"] = (
             f"{summary['moved_count']} biten maç Silinen Maçlar'a taşındı "
-            f"({summary['tracked_count']} maç tarandı)."
+            f"({coverage})."
         )
     return summary
 
@@ -572,12 +751,9 @@ async def run_single_deleted_match_result_check(db, config, alert_id: int) -> di
             summary["message"] = _deleted_result_message(summary)
             return summary
 
-    checker = AiscoreFinishedMatchChecker(
-        page_timeout_ms=config.PAGE_TIMEOUT_MS,
-        concurrency=1,
-    )
+    checker = _finished_checker(config)
     results = await checker.check_matches([tracked_match])
-    summary["checked_count"] = len(results)
+    _merge_checker_report(summary, checker, 1, results)
 
     if not results:
         summary["message"] = "Maç sayfasına ulaşılamadı."
@@ -632,12 +808,9 @@ async def _run_deleted_match_result_check_for_matches(db, config, tracked_matche
         summary["message"] = _deleted_result_message(summary)
         return summary
 
-    checker = AiscoreFinishedMatchChecker(
-        page_timeout_ms=config.PAGE_TIMEOUT_MS,
-        concurrency=4,
-    )
+    checker = _finished_checker(config)
     results = await checker.check_matches(remaining_matches)
-    summary["checked_count"] += len(results)
+    _merge_checker_report(summary, checker, len(remaining_matches), results)
 
     for result in results:
         if not result.get("is_finished"):

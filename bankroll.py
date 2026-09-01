@@ -15,28 +15,9 @@ from config import Config
 
 config = Config()
 db = Database(config.DB_PATH)
+db.init()
 
 bankroll_bp = Blueprint("bankroll", __name__, template_folder="templates")
-
-
-def _init_bankroll_table():
-    """Create bankroll_sessions table if not exists."""
-    with db._conn() as conn:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS bankroll_sessions (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                name        TEXT NOT NULL DEFAULT '',
-                budget      REAL NOT NULL,
-                group_count INTEGER NOT NULL,
-                default_rate REAL NOT NULL,
-                state_json  TEXT NOT NULL,
-                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-
-
-_init_bankroll_table()
 
 
 @bankroll_bp.route("/bankroll")

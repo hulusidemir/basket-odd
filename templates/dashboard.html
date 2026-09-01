@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#08090f">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
@@ -17,8 +17,8 @@
     </div>
     <nav class="nav" aria-label="Ana menü">
       <a class="nav-link active" href="/">Canlı sinyaller</a>
-      <a class="nav-link" href="/upcoming/">Gelecek maçlar</a>
       <a class="nav-link" href="/deleted-matches">Geçmiş</a>
+      <a class="nav-link" href="/upcoming/">Gelecek maçlar</a>
       <a class="nav-link" href="/bankroll">Bankroll</a>
     </nav>
   </header>
@@ -38,7 +38,7 @@
   <section class="panel">
     <div class="panel-header">
       <div><h2 class="panel-title">Sinyal akışı</h2><div class="panel-subtitle">Açılış → canlı barem hareketleri</div></div>
-      <div class="actions"><button class="button" id="qualityRefreshBtn">SKS yenile</button><button class="button" id="finishedBtn">Bitenleri kontrol et</button><button class="button danger" id="clearBtn">Listeyi arşivle</button></div>
+      <div class="actions"><button class="button" id="finishedBtn">Bitenleri kontrol et</button><button class="button danger" id="clearBtn">Listeyi arşivle</button></div>
     </div>
     <div class="toolbar">
       <input class="search" id="searchInput" type="search" placeholder="Maç veya lig ara…" autocomplete="off">
@@ -52,7 +52,7 @@
     <div class="panel-header" style="padding-top:9px;padding-bottom:9px"><div class="status-line" id="status">Yükleniyor…</div></div>
     <div class="table-wrap">
       <table class="data-table signal-table">
-        <thead><tr><th>Sinyal</th><th>Maç</th><th>Skor / zaman</th><th class="num">Barem hareketi</th><th class="num">Projeksiyon</th><th class="sortable-column" aria-sort="none"><button type="button" class="table-sort-button" id="qualitySortBtn">SKS <span id="qualitySortIndicator">↕</span></button></th><th>İşlemler</th></tr></thead>
+        <thead><tr><th>Sinyal</th><th>Maç</th><th>Skor / zaman</th><th class="num">Barem hareketi</th><th class="num">Projeksiyon</th><th>İşlemler</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="empty" id="empty" hidden><span class="empty-symbol">◎</span><strong>Aktif sinyal yok</strong>Filtreye uygun bir sinyal geldiğinde burada görünecek.</div>
@@ -71,15 +71,7 @@
   </section>
 </div>
 
-<div class="signal-modal-backdrop" id="qualityModal" hidden role="dialog" aria-modal="true" aria-labelledby="qualityModalTitle" onclick="if(event.target === this) closeQualityModal()">
-  <section class="signal-modal-card quality-modal-card">
-    <header class="signal-modal-header">
-      <div><h2 id="qualityModalTitle">Sinyal Kalite Skoru</h2></div>
-      <button class="signal-modal-close" type="button" onclick="closeQualityModal()" aria-label="Kapat">×</button>
-    </header>
-    <div class="signal-modal-body quality-modal-body" id="qualityModalBody"></div>
-  </section>
-</div>
+
 
 <script>
   const $ = id => document.getElementById(id);
@@ -89,7 +81,7 @@
   let signalLists = [];
   let directionFilter = 'all';
   let matchFilter = '';
-  let qualitySortDirection = '';
+
   let activeModalAlertId = null;
   let activeModalHistory = null;
 
@@ -164,15 +156,7 @@
     return `<div class="match-cell">${filterButton}${markers}<div class="match-info"><a class="match-link" href="${esc(desktopUrl)}" target="_blank" rel="noopener">${name}</a>${meta}</div>${mobileLink}</div>`;
   }
 
-  function qualityButton(alert) {
-    const quality = alert.signal_quality || {};
-    const score = Number(quality.score);
-    const available = quality.score !== null && quality.score !== '' && Number.isFinite(score);
-    const tones = ['strong', 'good', 'uncertain', 'weak'];
-    const tone = available && tones.includes(quality.tone) ? quality.tone : 'unavailable';
-    const label = available ? String(quality.label || 'SKS') : 'Veri yok';
-    return `<button type="button" class="quality-score-trigger ${tone}" onclick="openQualityModal(event, ${Number(alert.id)})" title="Sinyal kalite açıklamasını aç" aria-label="Sinyal kalite skoru: ${available ? Math.round(score) : 'hesaplanamadı'}"><strong>${available ? Math.round(score) : '–'}</strong><span>${esc(label)}</span></button>`;
-  }
+
 
   function visibleCountText() {
     return `${filteredAlerts().length} kayıt gösteriliyor${matchFilter ? ' · Maç filtresi aktif' : ''}`;
@@ -315,39 +299,7 @@
       </div>`;
   }
 
-  function openQualityModal(event, alertId) {
-    event?.stopPropagation();
-    const alert = alerts.find(item => Number(item.id) === Number(alertId));
-    if (!alert) return;
-    const quality = alert.signal_quality || {};
-    const score = Number(quality.score);
-    const available = quality.score !== null && quality.score !== '' && Number.isFinite(score);
-    const tones = ['strong', 'good', 'uncertain', 'weak'];
-    const tone = available && tones.includes(quality.tone) ? quality.tone : 'unavailable';
-    const factors = Array.isArray(quality.factors) ? quality.factors : [];
-    const factorRows = factors.map(factor => {
-      const states = ['support', 'against', 'neutral'];
-      const state = states.includes(factor.state) ? factor.state : 'neutral';
-      const symbol = state === 'support' ? '✓' : state === 'against' ? '!' : '–';
-      return `<div class="quality-factor ${state}"><span class="quality-factor-symbol">${symbol}</span><div><strong>${esc(factor.label || '')}</strong><p>${esc(factor.text || '')}</p></div></div>`;
-    }).join('');
-    $('qualityModalTitle').textContent = `SKS · ${alert.match_name || 'Sinyal'}`;
-    $('qualityModalBody').innerHTML = `
-      <div class="quality-summary ${tone}">
-        <strong>${available ? Math.round(score) : '–'}</strong>
-        <div><span>Sinyal Kalite Skoru</span><b>${esc(quality.label || 'Hesaplanamadı')}</b></div>
-      </div>
-      <p class="quality-verdict">${esc(quality.verdict || 'Bu sinyal için kalite açıklaması oluşturulamadı.')}</p>
-      ${factorRows ? `<div class="quality-factor-list">${factorRows}</div>` : ''}
-      <p class="quality-note">${esc(quality.note || '')}</p>`;
-    $('qualityModal').hidden = false;
-    document.body.classList.add('modal-open');
-  }
 
-  function closeQualityModal() {
-    $('qualityModal').hidden = true;
-    document.body.classList.remove('modal-open');
-  }
 
   async function openSignalModal(event, alertId) {
     if (event?.target?.closest('a, button') && !event.target.closest('.signal-modal-trigger')) return;
@@ -403,29 +355,12 @@
     });
   }
 
-  function sortedByQuality(rows) {
-    if (!qualitySortDirection) return rows;
-    const direction = qualitySortDirection === 'desc' ? -1 : 1;
-    return [...rows].sort((left, right) => {
-      const leftScore = Number(left.signal_quality?.score);
-      const rightScore = Number(right.signal_quality?.score);
-      const leftAvailable = left.signal_quality?.score !== null && left.signal_quality?.score !== '' && Number.isFinite(leftScore);
-      const rightAvailable = right.signal_quality?.score !== null && right.signal_quality?.score !== '' && Number.isFinite(rightScore);
-      if (leftAvailable !== rightAvailable) return leftAvailable ? -1 : 1;
-      if (!leftAvailable) return 0;
-      return (leftScore - rightScore) * direction;
-    });
-  }
 
-  function toggleQualitySort() {
-    qualitySortDirection = qualitySortDirection === 'desc' ? 'asc' : 'desc';
-    $('qualitySortIndicator').textContent = qualitySortDirection === 'desc' ? '↓' : '↑';
-    $('qualitySortBtn').closest('th').setAttribute('aria-sort', qualitySortDirection === 'desc' ? 'descending' : 'ascending');
-    render();
-  }
+
+
 
   function render() {
-    const rows = sortedByQuality(filteredAlerts());
+    const rows = filteredAlerts();
     $('empty').hidden = rows.length > 0;
     $('rows').innerHTML = rows.map(a => {
       const change = Number(a.barem_change);
@@ -445,7 +380,7 @@
         <td data-label="Skor / zaman"><strong>${esc(a.score || '–')}</strong><span class="match-meta">${esc(a.status || 'Zaman yok')}</span></td>
         <td data-label="Barem hareketi" class="num"><span class="line-stack"><span>${fmt(a.opening)}</span><span class="line-arrow">→</span><span>${fmt(a.live)}</span><span class="change-text ${changeClass}">${signed}</span></span></td>
         <td data-label="Projeksiyon" class="num projection-cell" title="${esc(projectionTitle)}"><span class="projection-pill ${projectionAvailable ? '' : 'unavailable'}">${projectionAvailable ? fmt(projection) : '–'}</span></td>
-        <td data-label="SKS">${qualityButton(a)}</td>
+
         <td data-label="İşlemler"><div class="row-actions icon-only">
           <button class="button icon-action bet-action ${a.bet_placed ? 'active' : ''}" onclick="toggle(${a.id},'bet')" title="Bahis oynandı" aria-label="Bahis oynandı"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"></path></svg></button>
           <button class="button icon-action follow-action ${a.followed ? 'active' : ''}" onclick="toggle(${a.id},'follow')" title="Takip et" aria-label="Takip et"><svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path><circle cx="12" cy="12" r="2.5"></circle></svg></button>
@@ -471,23 +406,7 @@
     } catch (error) { $('status').classList.add('error'); $('status').textContent = error.message; $('liveState').textContent = 'Bağlantı sorunu'; }
   }
 
-  async function recalculateQuality() {
-    const button = $('qualityRefreshBtn');
-    button.disabled = true;
-    $('status').classList.remove('error');
-    $('status').textContent = 'SKS yeniden hesaplanıyor…';
-    try {
-      alerts = await call('/api/alerts/recalculate-quality', {method:'POST', body:'{}'});
-      updateStats();
-      render();
-      $('status').textContent = `SKS yenilendi · ${visibleCountText()}`;
-    } catch (error) {
-      $('status').classList.add('error');
-      $('status').textContent = error.message || 'SKS yenilenemedi.';
-    } finally {
-      button.disabled = false;
-    }
-  }
+
 
   async function loadLists() {
     signalLists = await call('/api/signal-lists');
@@ -496,16 +415,38 @@
   $('searchInput').addEventListener('input', () => { render(); $('status').textContent = visibleCountText(); });
   document.querySelectorAll('[data-direction]').forEach(button => button.addEventListener('click', () => { directionFilter = button.dataset.direction; document.querySelectorAll('[data-direction]').forEach(item => item.classList.toggle('active', item === button)); render(); $('status').textContent = visibleCountText(); }));
   $('refreshBtn').onclick = load;
-  $('qualityRefreshBtn').onclick = recalculateQuality;
-  $('qualitySortBtn').onclick = toggleQualitySort;
-  $('finishedBtn').onclick = async () => { $('status').textContent='Biten maçlar kontrol ediliyor…'; await call('/api/alerts/check-finished',{method:'POST',body:'{}'}); await load(); };
+
+  let autoRefreshTimer = null;
+  function startAutoRefresh() { stopAutoRefresh(); autoRefreshTimer = setInterval(load, 20000); }
+  function stopAutoRefresh() { if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; } }
+
+  $('finishedBtn').onclick = async () => {
+    const button = $('finishedBtn');
+    button.disabled = true;
+    button.textContent = 'Kontrol ediliyor…';
+    $('status').classList.remove('error');
+    $('status').textContent = 'Biten maçlar kontrol ediliyor… (bu birkaç dakika sürebilir)';
+    stopAutoRefresh();
+    try {
+      const result = await call('/api/alerts/check-finished', {method:'POST', body:'{}'});
+      await load();
+      $('status').classList.remove('error');
+      $('status').textContent = result.message || 'Kontrol tamamlandı.';
+    } catch (error) {
+      $('status').classList.add('error');
+      $('status').textContent = error.message || 'Biten maçlar kontrol edilemedi.';
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Bitenleri kontrol et';
+      startAutoRefresh();
+    }
+  };
   $('clearBtn').onclick = async () => { if(confirm('Tüm aktif sinyaller arşivlensin mi?')) { await call('/api/clear',{method:'POST',body:'{}'}); await load(); } };
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
-    if (!$('qualityModal').hidden) closeQualityModal();
-    else if (!$('signalModal').hidden) closeSignalModal();
+    if (!$('signalModal').hidden) closeSignalModal();
   });
-  load(); loadLists(); setInterval(load, 20000);
+  load(); loadLists(); startAutoRefresh();
 </script>
 </body>
 </html>

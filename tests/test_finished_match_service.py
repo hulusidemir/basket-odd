@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, patch
 
 from db import Database
 from finished_match_service import (
+    AiscoreFinishedMatchChecker,
+    _active_finished_scan_lock,
     _empty_result_summary,
     _settle_deleted_match_from_final_score,
     run_active_match_finished_scan,
@@ -48,6 +50,97 @@ class FinishedMatchServiceTests(unittest.TestCase):
         self.assertEqual(row["result"], "Başarılı")
         self.assertEqual(row["status"], "Full Time")
         self.assertEqual(row["score"], "70 - 80")
+        self.assertEqual(summary["coverage_percent"], 100.0)
+
+    def test_checker_retries_a_transient_failure(self):
+        checker = AiscoreFinishedMatchChecker(
+            page_timeout_ms=100,
+            retry_attempts=1,
+        )
+        match = {
+            "match_id": "match-retry",
+            "match_name": "A - B",
+            "url": "https://example.test/retry",
+        }
+        success = {
+            "match_id": "match-retry",
+            "status": "Q4 01:00",
+            "score": "",
+            "is_finished": False,
+        }
+        checker._check_single = AsyncMock(side_effect=[
+            {"match_id": "match-retry", "_check_error": "timeout"},
+            success,
+        ])
+
+        with patch("finished_match_service.asyncio.sleep", new=AsyncMock()):
+            result = asyncio.run(checker._check_single_with_retry(None, match))
+
+        self.assertEqual(result["match_id"], "match-retry")
+        self.assertEqual(result["_check_attempts"], 2)
+        self.assertEqual(checker._check_single.await_count, 2)
+
+    def test_active_scan_reports_partial_coverage_without_archiving_failed_match(self):
+        for match_id in ("match-ok", "match-failed"):
+            self.db.save_alert(
+                match_id,
+                f"{match_id} Home - Away",
+                160,
+                170,
+                "ALT",
+                10,
+                status="Q4 01:00",
+                score="70 - 70",
+                url=f"https://example.test/{match_id}",
+            )
+
+        checker = AiscoreFinishedMatchChecker(page_timeout_ms=100)
+        checker.check_matches = AsyncMock(return_value=[{
+            "match_id": "match-ok",
+            "match_name": "Home - Away",
+            "status": "Q4 01:00",
+            "score": "",
+            "is_finished": False,
+        }])
+        checker.last_report = {
+            "attempted_count": 2,
+            "checked_count": 1,
+            "check_failed_count": 1,
+            "retry_count": 1,
+            "failure_counts": {"timeout": 1},
+            "failures": [{
+                "match_id": "match-failed",
+                "error_code": "timeout",
+                "attempts": 2,
+            }],
+        }
+
+        with patch(
+            "finished_match_service.AiscoreFinishedMatchChecker",
+            return_value=checker,
+        ):
+            summary = asyncio.run(run_active_match_finished_scan(self.db, _Config()))
+
+        self.assertEqual(summary["checked_count"], 1)
+        self.assertEqual(summary["check_failed_count"], 1)
+        self.assertEqual(summary["retry_count"], 1)
+        self.assertEqual(summary["coverage_percent"], 50.0)
+        self.assertEqual(summary["failure_counts"], {"timeout": 1})
+        self.assertIn("ulaşılamadı ve aktif bırakıldı", summary["message"])
+        active_ids = {
+            row["match_id"] for row in self.db.get_active_matches_with_urls()
+        }
+        self.assertIn("match-failed", active_ids)
+
+    def test_overlapping_active_scan_returns_busy_instead_of_starting_browser(self):
+        self.assertTrue(_active_finished_scan_lock.acquire(blocking=False))
+        try:
+            summary = asyncio.run(run_active_match_finished_scan(self.db, _Config()))
+        finally:
+            _active_finished_scan_lock.release()
+
+        self.assertTrue(summary["busy"])
+        self.assertIn("zaten çalışıyor", summary["message"])
 
     def test_deleted_result_cycle_does_not_settle_non_final_stored_score(self):
         alert_id = self.db.save_alert(
