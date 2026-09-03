@@ -25,6 +25,10 @@ class _MatchSkip:
     retryable: bool = False
 
 
+class _TransientNavigationError(RuntimeError):
+    """AiScore could not be reached after bounded browser retries."""
+
+
 def _redact_proxy_url(value: str) -> str:
     """Keep proxy diagnostics useful without logging embedded credentials."""
     text = str(value or "").strip()
@@ -119,6 +123,41 @@ def _status_from_play_by_play_hint(value) -> dict:
             }
 
     return {"status": "", "period_ended": False}
+
+
+def _detail_status_from_top_text(value) -> dict:
+    """Classify AiScore's odds header without treating a quarter end as final."""
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    explicit_final = re.search(r"\b(?:Full Time|FT|Finished|Final)\b", text, re.IGNORECASE)
+    clock = re.search(
+        r"\b(Q[1-4]|[1-4]Q|OT)\s*[-\s]?\s*(\d{1,2}:\d{2})\b",
+        text,
+        re.IGNORECASE,
+    )
+    period_ended = re.search(
+        r"\b(?:Q([1-4])|([1-4])Q|([1-4])(?:st|nd|rd|th)(?:\s+Quarter)?)"
+        r"\s*[-\s]?\s*Ended\b",
+        text,
+        re.IGNORECASE,
+    )
+    standalone_ended = bool(re.search(r"\bEnded\b", text, re.IGNORECASE)) and not period_ended
+
+    if explicit_final or standalone_ended:
+        return {"status": "Full Time", "is_finished": True, "period_ended": False}
+    if clock:
+        return {
+            "status": f"{clock.group(1).upper()} {clock.group(2)}",
+            "is_finished": False,
+            "period_ended": False,
+        }
+    if period_ended:
+        period = period_ended.group(1) or period_ended.group(2) or period_ended.group(3)
+        return {
+            "status": f"Q{period}-Ended",
+            "is_finished": False,
+            "period_ended": True,
+        }
+    return {"status": "", "is_finished": False, "period_ended": False}
 
 
 def _valid_market_lines(values) -> list[float]:
@@ -269,6 +308,56 @@ class AiscoreScraper:
 
     async def _close_browser(self, browser):
         await browser.close()
+
+    @staticmethod
+    def _is_transient_navigation_error(exc: Exception) -> bool:
+        message = str(exc or "").upper()
+        return any(marker in message for marker in (
+            "NS_ERROR_CONNECTION_REFUSED",
+            "NS_ERROR_NET_TIMEOUT",
+            "NS_ERROR_NET_RESET",
+            "ERR_CONNECTION_REFUSED",
+            "ERR_CONNECTION_RESET",
+            "ERR_CONNECTION_CLOSED",
+            "ERR_PROXY_CONNECTION_FAILED",
+            "ERR_TIMED_OUT",
+            "TIMED OUT",
+            "TIMEOUT",
+        ))
+
+    async def _goto_detail_with_retry(
+        self,
+        page,
+        url: str,
+        *,
+        wait_until: str = "commit",
+        attempts: int = 3,
+    ):
+        """Retry transient AiScore/Tor navigation failures without bypassing proxy."""
+        bounded_attempts = max(1, min(3, int(attempts)))
+        last_error: Exception | None = None
+        for attempt in range(1, bounded_attempts + 1):
+            try:
+                return await page.goto(
+                    url,
+                    wait_until=wait_until,
+                    timeout=self.page_timeout_ms,
+                )
+            except Exception as exc:
+                if not self._is_transient_navigation_error(exc):
+                    raise
+                last_error = exc
+                logger.warning(
+                    "Transient AIScore navigation failure (%s/%s): %s",
+                    attempt,
+                    bounded_attempts,
+                    type(exc).__name__,
+                )
+                if attempt < bounded_attempts:
+                    await page.wait_for_timeout(350 * attempt)
+        raise _TransientNavigationError(
+            f"AIScore bağlantısı geçici olarak kurulamadı; {bounded_attempts} otomatik deneme başarısız oldu."
+        ) from last_error
 
     async def _wait_for_listing_ready(self, page) -> None:
         try:
@@ -914,10 +1003,10 @@ class AiscoreScraper:
     async def _extract_match(self, page, url: str) -> dict | _MatchSkip:
         clean_url = self._mobile_url(url.rstrip("/"))
         odds_url = clean_url if clean_url.endswith("/odds") else clean_url + "/odds"
-        await page.goto(
+        await self._goto_detail_with_retry(
+            page,
             odds_url,
             wait_until="commit",
-            timeout=self.page_timeout_ms,
         )
         await self._wait_for_odds_ready(page)
 
@@ -978,16 +1067,11 @@ class AiscoreScraper:
                 }
 
                 const top = text(document.querySelector('.topBox')?.innerText);
-                const statusMatch = top.match(/\b(Q[1-4]|[1-4]Q|OT)\s*[-\s]?\s*(\d{1,2}:\d{2})\b/i);
-                const finalMatch = top.match(/\b(Full Time|FT|Finished|Ended|Final)\b/i);
                 const scoreMatches = Array.from(top.matchAll(/\b(\d{1,3})\s*[-–]\s*(\d{1,3})\b/g));
                 const scoreMatch = scoreMatches.length
                     ? scoreMatches[scoreMatches.length - 1]
                     : null;
                 const score = scoreMatch ? `${scoreMatch[1]} - ${scoreMatch[2]}` : '';
-                const status = finalMatch
-                    ? 'Full Time'
-                    : statusMatch ? `${statusMatch[1].toUpperCase()} ${statusMatch[2]}` : '';
 
                 const title = text(document.title || '');
                 const matchName = title
@@ -1008,9 +1092,8 @@ class AiscoreScraper:
                 return {
                     matchName,
                     tournament,
-                    status,
+                    topText: top,
                     score,
-                    isFinished: Boolean(finalMatch),
                     hasLockedRows: boxes.length > 0 && lockedRows === boxes.length,
                     oddsSnapshot: {
                         opening_lines: openingLines,
@@ -1023,6 +1106,11 @@ class AiscoreScraper:
             }
             """
         )
+
+        detail_status = _detail_status_from_top_text(parsed.get("topText"))
+        parsed["status"] = detail_status["status"]
+        parsed["isFinished"] = detail_status["is_finished"]
+        parsed["periodEnded"] = detail_status["period_ended"]
 
         if parsed.get("isFinished"):
             return _MatchSkip("finished")
@@ -1057,7 +1145,7 @@ class AiscoreScraper:
         clock = game_clock(status, match_name, tournament)
         home_score, away_score = parse_score(score)
 
-        if overview_data.get("periodEnded"):
+        if parsed.get("periodEnded") or overview_data.get("periodEnded"):
             is_last_period = (
                 clock.get("period") is not None
                 and clock.get("period") == clock.get("period_count")
@@ -1097,10 +1185,10 @@ class AiscoreScraper:
 
     async def _fetch_overview_data(self, page, url: str) -> dict:
         try:
-            await page.goto(
+            await self._goto_detail_with_retry(
+                page,
                 self._mobile_url(url.rstrip("/")),
                 wait_until="commit",
-                timeout=self.page_timeout_ms,
             )
             await self._wait_for_match_page_ready(page)
             result = await page.evaluate(r"""

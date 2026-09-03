@@ -305,6 +305,14 @@ class DashboardRawTests(unittest.TestCase):
         self.assertIn("filteredRows.slice(start,start+pageSize)", template)
         self.assertIn("currentPage=1;syncFilters();render()", template)
 
+    def test_archive_shows_final_total_below_final_score(self):
+        template = (Path(self.dashboard.app.template_folder) / "deleted_matches.html").read_text(encoding="utf-8")
+
+        self.assertIn("function finalScoreTotal(value)", template)
+        self.assertIn("const finalTotal=finalScoreTotal(a.final_score)", template)
+        self.assertIn('<span class="match-meta">(${finalTotal})</span>', template)
+        self.assertNotIn("esc(a.final_status||'')", template)
+
     def test_archive_does_not_include_removed_quality_features(self):
         template = (Path(self.dashboard.app.template_folder) / "deleted_matches.html").read_text(encoding="utf-8")
 
