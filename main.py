@@ -18,7 +18,7 @@ from aiscore_scraper import AiscoreScraper
 from config import Config
 from db import Database
 from notifier import TelegramNotifier
-from match_state import game_clock
+from match_state import game_clock, normalize_quarter_scores
 from signal_lists import build_signal_blacklist_matches, build_signal_list_profile
 from signal_repeat import live_total_delta
 
@@ -99,6 +99,11 @@ def _normalize_match_payload(match: dict) -> dict:
             else None
         )
 
+    normalized["quarter_scores"] = normalize_quarter_scores(
+        match.get("quarter_scores"),
+        normalized.get("score", ""),
+    )
+
     return normalized
 
 
@@ -172,6 +177,7 @@ async def process_match(
     status = match.get("status", "Canlı")
     url = match.get("url", "")
     score = match.get("score", "")
+    quarter_scores = match.get("quarter_scores") or {}
 
     log = logging.getLogger("main")
 
@@ -270,6 +276,7 @@ async def process_match(
         alert_period=period,
         alert_moment=" | ".join(p for p in (status, score) if p),
         telegram_required=True,
+        quarter_scores=quarter_scores,
     )
 
     followed_upcoming = db.is_upcoming_followed(match_id)

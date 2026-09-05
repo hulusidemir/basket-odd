@@ -22,5 +22,5 @@ AGENTS.md
 CODEX.md
 docs/
 exports/
-test/
+tests/
 .pytest_cache/

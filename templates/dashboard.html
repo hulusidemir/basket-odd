@@ -52,7 +52,7 @@
     <div class="panel-header" style="padding-top:9px;padding-bottom:9px"><div class="status-line" id="status">Yükleniyor…</div></div>
     <div class="table-wrap">
       <table class="data-table signal-table">
-        <thead><tr><th>Sinyal</th><th>Maç</th><th>Skor / zaman</th><th class="num">Barem hareketi</th><th class="num">Projeksiyon</th><th>İşlemler</th></tr></thead>
+        <thead><tr><th>Sinyal</th><th>Maç</th><th>Skor / zaman</th><th class="num">Barem hareketi</th><th class="num">PPM</th><th class="num">Projeksiyon</th><th>İşlemler</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="empty" id="empty" hidden><span class="empty-symbol">◎</span><strong>Aktif sinyal yok</strong>Filtreye uygun bir sinyal geldiğinde burada görünecek.</div>
@@ -77,6 +77,7 @@
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const fmt = value => Number.isFinite(Number(value)) ? Number(value).toFixed(1) : '–';
+  const fmtPpm = value => Number.isFinite(Number(value)) ? Number(value).toFixed(2) : '–';
   let alerts = [];
   let signalLists = [];
   let directionFilter = 'all';
@@ -262,6 +263,25 @@
     </article>`;
   }
 
+  function quarterPaceSection(alert) {
+    const periods = Array.isArray(alert.quarter_pace_periods) ? alert.quarter_pace_periods : [];
+    const cards = periods.length ? periods.map(period => {
+      const currentBadge = period.is_current ? '<span class="period-live-badge">Canlı</span>' : '<span class="period-complete-badge">Tamamlandı</span>';
+      return `<article class="period-pace-card">
+        <div class="period-pace-head"><strong>${esc(period.label || `Q${period.period || ''}`)}</strong>${currentBadge}</div>
+        <div class="period-score"><strong>${Number(period.home)} - ${Number(period.away)}</strong><span>Toplam ${fmt(period.total)}</span></div>
+        <div class="period-pace-facts">
+          <div><span>Oynanan süre</span><strong>${fmt(period.played_minutes)} dk</strong></div>
+          <div><span>Çeyrek PPM</span><strong>${fmtPpm(period.ppm)}</strong></div>
+          <div><span>Devam tahmini</span><strong>${fmt(period.continuation_total)}</strong></div>
+        </div>
+      </article>`;
+    }).join('') : '<div class="period-pace-empty">Çeyrek skorları bu sinyal anında güvenilir biçimde okunamadı.</div>';
+    return `<h3 class="modal-section-title">Çeyrek temposu</h3>
+      <p class="period-pace-note">Devam tahmini, sinyal anındaki toplam skora kalan sürenin ilgili çeyrek PPM’iyle oynanacağı varsayılarak hesaplanır.</p>
+      <div class="period-pace-grid">${cards}</div>`;
+  }
+
   function renderSignalModal(error='') {
     const alert = alerts.find(item => Number(item.id) === Number(activeModalAlertId));
     if (!alert) { closeSignalModal(); return; }
@@ -287,6 +307,7 @@
         <div><span>Değişim</span><strong>${signedChange}</strong></div>
         <div><span>Sinyal</span><strong>${esc(alert.direction || '–')} · ${Number(alert.signal_count || 1)}.</strong></div>
       </div>
+      ${quarterPaceSection(alert)}
       <h3 class="modal-section-title">Takım geçmişi</h3>
       <div class="modal-team-grid">${teamCards}</div>
       <div class="modal-blacklist-section">
@@ -374,11 +395,17 @@
       const projectionTitle = projectionAvailable && elapsedAvailable
         ? `${fmt(a.pace_score_total)} sayı / ${fmt(a.pace_elapsed_minutes)} dk × ${fmt(a.pace_game_minutes)} dk`
         : 'Skor veya maç saati güvenilir okunamadı';
+      const ppm = Number(a.pace_ppm);
+      const ppmAvailable = a.pace_ppm !== null && a.pace_ppm !== '' && Number.isFinite(ppm);
+      const ppmTitle = ppmAvailable && elapsedAvailable
+        ? `Sinyal anı: ${fmt(a.pace_score_total)} sayı / ${fmt(a.pace_elapsed_minutes)} dakika · Çeyrek detayını aç`
+        : 'PPM veya çeyrek detayı okunamadı';
       return `<tr class="${rowState}" data-alert-id="${Number(a.id)}">
         <td data-label="Sinyal"><button type="button" class="signal-modal-trigger" onclick="openSignalModal(event, ${Number(a.id)})" title="Sinyal istatistiklerini aç" aria-label="${esc(a.direction || 'Sinyal')} sinyali istatistiklerini aç"><span class="direction-pill ${directionClass}">${esc(a.direction || '–')}</span></button></td>
         <td class="primary-cell">${matchCell(a)}</td>
         <td data-label="Skor / zaman"><strong>${esc(a.score || '–')}</strong><span class="match-meta">${esc(a.status || 'Zaman yok')}</span></td>
         <td data-label="Barem hareketi" class="num"><span class="line-stack"><span>${fmt(a.opening)}</span><span class="line-arrow">→</span><span>${fmt(a.live)}</span><span class="change-text ${changeClass}">${signed}</span></span></td>
+        <td data-label="PPM" class="num ppm-cell"><button type="button" class="signal-modal-trigger ppm-modal-trigger ${ppmAvailable ? '' : 'unavailable'}" onclick="openSignalModal(event, ${Number(a.id)})" title="${esc(ppmTitle)}" aria-label="${ppmAvailable ? `${fmtPpm(ppm)} PPM, çeyrek detayını aç` : 'Çeyrek detayını aç'}">${ppmAvailable ? fmtPpm(ppm) : '–'}</button></td>
         <td data-label="Projeksiyon" class="num projection-cell" title="${esc(projectionTitle)}"><span class="projection-pill ${projectionAvailable ? '' : 'unavailable'}">${projectionAvailable ? fmt(projection) : '–'}</span></td>
 
         <td data-label="İşlemler"><div class="row-actions icon-only">

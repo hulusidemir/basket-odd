@@ -11,7 +11,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from camoufox.async_api import AsyncNewBrowser
 from playwright.async_api import async_playwright
-from match_state import game_clock, parse_score
+from match_state import game_clock, normalize_quarter_scores, parse_score
 
 logger = logging.getLogger(__name__)
 
@@ -1073,6 +1073,64 @@ class AiscoreScraper:
                     : null;
                 const score = scoreMatch ? `${scoreMatch[1]} - ${scoreMatch[2]}` : '';
 
+                const extractQuarterScores = scoreValue => {
+                    const empty = {home: [], away: [], source: '', quality: 0};
+                    const scoreParts = scoreValue
+                        .split(/\s*[-–]\s*/)
+                        .map(value => Number.parseInt(value, 10));
+                    if (scoreParts.length !== 2 || scoreParts.some(value => !Number.isFinite(value))) {
+                        return empty;
+                    }
+                    const [scoreHome, scoreAway] = scoreParts;
+                    const parsePeriodRow = (value, total) => {
+                        const numbers = (text(value).match(/\b\d{1,3}\b/g) || [])
+                            .map(number => Number.parseInt(number, 10));
+                        if (numbers.length < 2) return null;
+                        const totalIndex = numbers.lastIndexOf(total);
+                        if (totalIndex < 1) return null;
+                        const periods = numbers.slice(Math.max(0, totalIndex - 4), totalIndex);
+                        if (!periods.length || periods.some(number => number < 0 || number > 100)) {
+                            return null;
+                        }
+                        const sum = periods.reduce((left, right) => left + right, 0);
+                        return Math.abs(sum - total) <= 4 ? periods : null;
+                    };
+                    const findPair = rows => {
+                        let home = null;
+                        let away = null;
+                        let homeIndex = -1;
+                        for (let index = 0; index < rows.length; index += 1) {
+                            const homeCandidate = parsePeriodRow(rows[index], scoreHome);
+                            const awayCandidate = parsePeriodRow(rows[index], scoreAway);
+                            if (homeCandidate && !home) {
+                                home = homeCandidate;
+                                homeIndex = index;
+                            }
+                            if (awayCandidate && !away && index !== homeIndex) away = awayCandidate;
+                        }
+                        return home && away && home.length === away.length ? {home, away} : null;
+                    };
+
+                    const detailBox = document.querySelector(
+                        '.scoresDetails, [class*="scoresDetails"], [class*="scoreDetail"]'
+                    );
+                    if (detailBox) {
+                        const rows = Array.from(
+                            detailBox.querySelectorAll('.content, [class*="content"]')
+                        ).map(element => text(element.innerText)).filter(Boolean);
+                        const pair = findPair(rows);
+                        if (pair) return {...pair, source: 'scoreboard_dom', quality: 90};
+                    }
+
+                    const bodyRows = (document.body.innerText || '')
+                        .split(/\n+/).map(text).filter(Boolean).slice(0, 220);
+                    const pair = findPair(bodyRows);
+                    return pair
+                        ? {...pair, source: 'scoreboard_rows', quality: 75}
+                        : empty;
+                };
+                const quarterScores = extractQuarterScores(score);
+
                 const title = text(document.title || '');
                 const matchName = title
                     .replace(/\s*\|.*/, '')
@@ -1094,6 +1152,7 @@ class AiscoreScraper:
                     tournament,
                     topText: top,
                     score,
+                    quarterScores,
                     hasLockedRows: boxes.length > 0 && lockedRows === boxes.length,
                     oddsSnapshot: {
                         opening_lines: openingLines,
@@ -1124,8 +1183,12 @@ class AiscoreScraper:
                 return _MatchSkip("odds_locked", retryable=True)
             return _MatchSkip("totals_missing", retryable=True)
 
+        parsed_quarter_scores = normalize_quarter_scores(
+            parsed.get("quarterScores"),
+            parsed.get("score") or "",
+        )
         overview_data = {}
-        if not parsed.get("status") or not parsed.get("score"):
+        if not parsed.get("status") or not parsed.get("score") or not parsed_quarter_scores:
             overview_data = await self._fetch_overview_data(page, clean_url)
             if overview_data.get("status"):
                 parsed["status"] = overview_data["status"]
@@ -1142,6 +1205,14 @@ class AiscoreScraper:
         status = str(parsed.get("status") or "").strip()
         score = str(parsed.get("score") or "").strip()
         match_name = str(parsed.get("matchName") or f"Match {match_id}").strip()
+        overview_quarter_scores = normalize_quarter_scores(
+            overview_data.get("quarterScores"),
+            score,
+        )
+        quarter_scores = overview_quarter_scores or normalize_quarter_scores(
+            parsed_quarter_scores,
+            score,
+        )
         clock = game_clock(status, match_name, tournament)
         home_score, away_score = parse_score(score)
 
@@ -1179,6 +1250,7 @@ class AiscoreScraper:
             "inplay_total": float(inplay),
             "url": clean_url,
             "score": score,
+            "quarter_scores": quarter_scores,
             "has_prematch": prematch is not None,
             "odds_snapshot": odds_snapshot,
         }
@@ -1222,6 +1294,64 @@ class AiscoreScraper:
                     score = `${left.txt} - ${right.txt}`;
                   }
 
+                  const extractQuarterScores = scoreValue => {
+                    const empty = {home: [], away: [], source: '', quality: 0};
+                    const scoreParts = scoreValue
+                      .split(/\s*[-–]\s*/)
+                      .map(value => Number.parseInt(value, 10));
+                    if (scoreParts.length !== 2 || scoreParts.some(value => !Number.isFinite(value))) {
+                      return empty;
+                    }
+                    const [scoreHome, scoreAway] = scoreParts;
+                    const parsePeriodRow = (value, total) => {
+                      const numbers = (text(value).match(/\b\d{1,3}\b/g) || [])
+                        .map(number => Number.parseInt(number, 10));
+                      if (numbers.length < 2) return null;
+                      const totalIndex = numbers.lastIndexOf(total);
+                      if (totalIndex < 1) return null;
+                      const periods = numbers.slice(Math.max(0, totalIndex - 4), totalIndex);
+                      if (!periods.length || periods.some(number => number < 0 || number > 100)) {
+                        return null;
+                      }
+                      const sum = periods.reduce((left, right) => left + right, 0);
+                      return Math.abs(sum - total) <= 4 ? periods : null;
+                    };
+                    const findPair = rows => {
+                      let home = null;
+                      let away = null;
+                      let homeIndex = -1;
+                      for (let index = 0; index < rows.length; index += 1) {
+                        const homeCandidate = parsePeriodRow(rows[index], scoreHome);
+                        const awayCandidate = parsePeriodRow(rows[index], scoreAway);
+                        if (homeCandidate && !home) {
+                          home = homeCandidate;
+                          homeIndex = index;
+                        }
+                        if (awayCandidate && !away && index !== homeIndex) away = awayCandidate;
+                      }
+                      return home && away && home.length === away.length ? {home, away} : null;
+                    };
+
+                    const detailBox = document.querySelector(
+                      '.scoresDetails, [class*="scoresDetails"], [class*="scoreDetail"]'
+                    );
+                    if (detailBox) {
+                      const rows = Array.from(
+                        detailBox.querySelectorAll('.content, [class*="content"]')
+                      ).map(element => text(element.innerText)).filter(Boolean);
+                      const pair = findPair(rows);
+                      if (pair) return {...pair, source: 'overview_scoreboard_dom', quality: 90};
+                    }
+
+                    const bodyRows = (document.body.innerText || '')
+                      .split(/\n+/).map(text).filter(Boolean).slice(0, 220);
+                    const pair = findPair(bodyRows);
+                    return pair
+                      ? {...pair, source: 'overview_scoreboard_rows', quality: 75}
+                      : empty;
+                  };
+                  const quarterScores = extractQuarterScores(score);
+
                   const arrivedPeriods = Array.from(document.querySelectorAll(
                     '.Qn button.matchArrive, .Qn .matchArrive'
                   ))
@@ -1252,7 +1382,13 @@ class AiscoreScraper:
                     || Number(nuxtMatch.statusId) === 10
                   );
 
-                  return {status, score, playByPlayStatus, isFinished: nuxtFinished};
+                  return {
+                    status,
+                    score,
+                    quarterScores,
+                    playByPlayStatus,
+                    isFinished: nuxtFinished,
+                  };
                 }
             """)
             if not result.get("status"):

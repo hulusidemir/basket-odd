@@ -40,6 +40,7 @@ class Database:
                     diff                     REAL NOT NULL,
                     url                      TEXT NOT NULL DEFAULT '',
                     score                    TEXT NOT NULL DEFAULT '',
+                    quarter_scores_json      TEXT NOT NULL DEFAULT '',
                     signal_count             INTEGER NOT NULL DEFAULT 1,
                     alert_period             INTEGER,
                     alert_moment             TEXT NOT NULL DEFAULT '',
@@ -150,6 +151,17 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_signal_lists_lookup
                 ON signal_lists(list_type, scope, normalized_value);
             """)
+            # Main bot and dashboard can start together after a deployment.
+            # Serialize this additive migration so both processes cannot race.
+            conn.execute("BEGIN IMMEDIATE")
+            alert_columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(alerts)")
+            }
+            if "quarter_scores_json" not in alert_columns:
+                conn.execute(
+                    "ALTER TABLE alerts "
+                    "ADD COLUMN quarter_scores_json TEXT NOT NULL DEFAULT ''"
+                )
 
     # ---------- signal black/white lists ----------
 
@@ -291,7 +303,13 @@ class Database:
         alert_period: int | None = None,
         alert_moment: str = "",
         telegram_required: bool = False,
+        quarter_scores: dict | None = None,
     ) -> int:
+        quarter_scores_json = (
+            json.dumps(quarter_scores, ensure_ascii=False, separators=(",", ":"))
+            if isinstance(quarter_scores, dict) and quarter_scores
+            else ""
+        )
         with self._conn() as conn:
             conn.execute("BEGIN IMMEDIATE")
             action = conn.execute(
@@ -336,15 +354,15 @@ class Database:
                 """
                 INSERT INTO alerts (
                     match_id, match_name, opening, prematch, live, direction, diff,
-                    tournament, status, url, score, signal_count,
+                    tournament, status, url, score, quarter_scores_json, signal_count,
                     bet_placed, ignored, followed, alert_period, alert_moment,
                     telegram_status
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     match_id, match_name, opening, prematch, live, direction, diff,
-                    tournament, status, url, score, signal_count,
+                    tournament, status, url, score, quarter_scores_json, signal_count,
                     bet, ign, fol, alert_period, alert_moment,
                     "pending" if telegram_required else "not_required",
                 ),

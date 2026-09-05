@@ -48,6 +48,18 @@ def _sanitize_tournament(value: str) -> str:
     return text
 
 
+def _stored_quarter_scores(value) -> dict:
+    if isinstance(value, dict):
+        return value
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(str(value))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
 def _raw_alert(row: dict, list_profile: dict | None = None) -> dict:
     item = dict(row)
     item["direction"] = _normalize_direction(item.get("direction"))
@@ -61,14 +73,18 @@ def _raw_alert(row: dict, list_profile: dict | None = None) -> dict:
         str(item.get("status") or ""),
         str(item.get("match_name") or ""),
         str(item.get("tournament") or ""),
+        quarter_scores=_stored_quarter_scores(item.get("quarter_scores_json")),
     )
     item["pace_projection"] = pace["total"]
+    item["pace_ppm"] = pace["ppm"]
     item["pace_score_total"] = pace["score_total"]
     item["pace_elapsed_minutes"] = pace["elapsed_minutes"]
     item["pace_game_minutes"] = pace["game_minutes"]
+    item["quarter_pace_periods"] = pace["periods"]
     item["list_markers"] = build_signal_list_markers(item, list_profile)
     for key in (
         "display_snapshot",
+        "quarter_scores_json",
         "telegram_message_ids",
         "telegram_last_error",
     ):
@@ -166,12 +182,17 @@ def _frozen_deleted_alert(row: dict) -> dict:
         item["pace_score_total"] = None
         item["pace_elapsed_minutes"] = None
         item["pace_game_minutes"] = None
+    if "pace_ppm" not in snapshot:
+        item["pace_ppm"] = None
+    if "quarter_pace_periods" not in snapshot:
+        item["quarter_pace_periods"] = []
     if "barem_change" not in snapshot:
         item["barem_change"] = None
     if "list_markers" not in snapshot:
         item["list_markers"] = []
     for key in (
         "display_snapshot",
+        "quarter_scores_json",
         "telegram_message_ids",
         "telegram_last_error",
     ):
