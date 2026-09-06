@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from statistics import median
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
+from aiscore_scoreboard import QUARTER_SCORES_JS
 from camoufox.async_api import AsyncNewBrowser
 from playwright.async_api import async_playwright
 from match_state import game_clock, normalize_quarter_scores, parse_score
@@ -175,70 +176,23 @@ def _valid_market_lines(values) -> list[float]:
 
 
 def _normalize_market_snapshot(value) -> dict:
-    """Calculate bookmaker consensus without removing duplicate observations."""
+    """Keep the paired lines used by the live scraper and the pre-match median."""
     raw = value if isinstance(value, dict) else {}
     opening_lines = _valid_market_lines(raw.get("opening_lines"))
     prematch_lines = _valid_market_lines(raw.get("prematch_lines"))
     inplay_lines = _valid_market_lines(raw.get("inplay_lines"))
 
-    def _median(lines: list[float]) -> float | None:
-        return round(float(median(lines)), 1) if lines else None
-
-    try:
-        bookmaker_count = max(0, int(raw.get("bookmaker_count") or 0))
-    except (TypeError, ValueError):
-        bookmaker_count = 0
-    try:
-        paired_bookmaker_count = max(
-            0,
-            # A legacy bookmaker_count did not prove opening/in-play values
-            # were observed from the same bookmakers.
-            int(raw.get("paired_bookmaker_count") or 0),
-        )
-    except (TypeError, ValueError):
-        paired_bookmaker_count = 0
-    paired_bookmaker_count = min(
-        paired_bookmaker_count,
-        len(opening_lines),
-        len(inplay_lines),
-    )
     return {
-        **raw,
         "opening_lines": opening_lines,
-        "prematch_lines": prematch_lines,
         "inplay_lines": inplay_lines,
-        "opening_median": _median(opening_lines),
-        "prematch_median": _median(prematch_lines),
-        "inplay_median": _median(inplay_lines),
-        "opening_min": min(opening_lines) if opening_lines else None,
-        "opening_max": max(opening_lines) if opening_lines else None,
-        "inplay_min": min(inplay_lines) if inplay_lines else None,
-        "inplay_max": max(inplay_lines) if inplay_lines else None,
-        "bookmaker_count": bookmaker_count,
-        "paired_bookmaker_count": paired_bookmaker_count,
+        "prematch_median": round(float(median(prematch_lines)), 1) if prematch_lines else None,
     }
 
 
-def _select_market_line(parsed: dict, snapshot: dict, name: str) -> float | None:
-    """Use the first readable bookmaker line; keep median only as a fallback."""
-    lines = _valid_market_lines(snapshot.get(f"{name}_lines"))
-    median_value = snapshot.get(f"{name}_median")
-    raw_value = parsed.get(name)
-    try:
-        median_line = float(median_value) if median_value is not None else None
-    except (TypeError, ValueError):
-        median_line = None
-    try:
-        raw_line = float(raw_value) if raw_value is not None else None
-    except (TypeError, ValueError):
-        raw_line = None
-
-    selected_line = lines[0] if lines else median_line
-    # A large conflict with the explicit DOM row indicates that positional
-    # parsing selected a neighbouring pre-match/odds row.
-    if selected_line is not None and raw_line is not None and abs(selected_line - raw_line) > 12:
-        return raw_line
-    return selected_line if selected_line is not None else raw_line
+def _select_market_line(snapshot: dict, name: str) -> float | None:
+    """Use the first readable paired bookmaker row."""
+    lines = snapshot[f"{name}_lines"]
+    return lines[0] if lines else None
 
 
 class AiscoreScraper:
@@ -1073,62 +1027,7 @@ class AiscoreScraper:
                     : null;
                 const score = scoreMatch ? `${scoreMatch[1]} - ${scoreMatch[2]}` : '';
 
-                const extractQuarterScores = scoreValue => {
-                    const empty = {home: [], away: [], source: '', quality: 0};
-                    const scoreParts = scoreValue
-                        .split(/\s*[-–]\s*/)
-                        .map(value => Number.parseInt(value, 10));
-                    if (scoreParts.length !== 2 || scoreParts.some(value => !Number.isFinite(value))) {
-                        return empty;
-                    }
-                    const [scoreHome, scoreAway] = scoreParts;
-                    const parsePeriodRow = (value, total) => {
-                        const numbers = (text(value).match(/\b\d{1,3}\b/g) || [])
-                            .map(number => Number.parseInt(number, 10));
-                        if (numbers.length < 2) return null;
-                        const totalIndex = numbers.lastIndexOf(total);
-                        if (totalIndex < 1) return null;
-                        const periods = numbers.slice(Math.max(0, totalIndex - 4), totalIndex);
-                        if (!periods.length || periods.some(number => number < 0 || number > 100)) {
-                            return null;
-                        }
-                        const sum = periods.reduce((left, right) => left + right, 0);
-                        return Math.abs(sum - total) <= 4 ? periods : null;
-                    };
-                    const findPair = rows => {
-                        let home = null;
-                        let away = null;
-                        let homeIndex = -1;
-                        for (let index = 0; index < rows.length; index += 1) {
-                            const homeCandidate = parsePeriodRow(rows[index], scoreHome);
-                            const awayCandidate = parsePeriodRow(rows[index], scoreAway);
-                            if (homeCandidate && !home) {
-                                home = homeCandidate;
-                                homeIndex = index;
-                            }
-                            if (awayCandidate && !away && index !== homeIndex) away = awayCandidate;
-                        }
-                        return home && away && home.length === away.length ? {home, away} : null;
-                    };
-
-                    const detailBox = document.querySelector(
-                        '.scoresDetails, [class*="scoresDetails"], [class*="scoreDetail"]'
-                    );
-                    if (detailBox) {
-                        const rows = Array.from(
-                            detailBox.querySelectorAll('.content, [class*="content"]')
-                        ).map(element => text(element.innerText)).filter(Boolean);
-                        const pair = findPair(rows);
-                        if (pair) return {...pair, source: 'scoreboard_dom', quality: 90};
-                    }
-
-                    const bodyRows = (document.body.innerText || '')
-                        .split(/\n+/).map(text).filter(Boolean).slice(0, 220);
-                    const pair = findPair(bodyRows);
-                    return pair
-                        ? {...pair, source: 'scoreboard_rows', quality: 75}
-                        : empty;
-                };
+                const extractQuarterScores = __QUARTER_SCORES_READER__;
                 const quarterScores = extractQuarterScores(score);
 
                 const title = text(document.title || '');
@@ -1158,12 +1057,10 @@ class AiscoreScraper:
                         opening_lines: openingLines,
                         prematch_lines: prematchLines,
                         inplay_lines: inplayLines,
-                        bookmaker_count: Math.min(openingLines.length, inplayLines.length),
-                        paired_bookmaker_count: Math.min(openingLines.length, inplayLines.length),
                     },
                 };
             }
-            """
+            """.replace("__QUARTER_SCORES_READER__", QUARTER_SCORES_JS)
         )
 
         detail_status = _detail_status_from_top_text(parsed.get("topText"))
@@ -1175,8 +1072,8 @@ class AiscoreScraper:
             return _MatchSkip("finished")
 
         odds_snapshot = _normalize_market_snapshot(parsed.get("oddsSnapshot"))
-        opening = _select_market_line({}, odds_snapshot, "opening")
-        inplay = _select_market_line({}, odds_snapshot, "inplay")
+        opening = _select_market_line(odds_snapshot, "opening")
+        inplay = _select_market_line(odds_snapshot, "inplay")
         prematch = odds_snapshot.get("prematch_median")
         if opening is None or inplay is None:
             if parsed.get("hasLockedRows"):
@@ -1188,11 +1085,12 @@ class AiscoreScraper:
             parsed.get("score") or "",
         )
         overview_data = {}
-        if not parsed.get("status") or not parsed.get("score") or not parsed_quarter_scores:
+        needs_overview_core = not parsed.get("status") or not parsed.get("score")
+        if needs_overview_core or not parsed_quarter_scores:
             overview_data = await self._fetch_overview_data(page, clean_url)
-            if overview_data.get("status"):
+            if needs_overview_core and overview_data.get("status"):
                 parsed["status"] = overview_data["status"]
-            if overview_data.get("score"):
+            if needs_overview_core and overview_data.get("score"):
                 parsed["score"] = overview_data["score"]
         if overview_data.get("isFinished"):
             return _MatchSkip("finished")
@@ -1252,7 +1150,6 @@ class AiscoreScraper:
             "score": score,
             "quarter_scores": quarter_scores,
             "has_prematch": prematch is not None,
-            "odds_snapshot": odds_snapshot,
         }
 
     async def _fetch_overview_data(self, page, url: str) -> dict:
@@ -1263,6 +1160,19 @@ class AiscoreScraper:
                 wait_until="commit",
             )
             await self._wait_for_match_page_ready(page)
+            try:
+                # Period cells may hydrate after the headline score appears.
+                await page.wait_for_function(
+                    r"""() => Array.from(document.querySelectorAll(
+                        '.scoresDetails, [class*="scoresDetails"], [class*="scoreDetail"]'
+                    )).some(root => Array.from(root.querySelectorAll('*')).filter(
+                        el => !el.children.length && /^\d{1,3}$/.test((el.textContent || '').trim())
+                    ).length >= 4)""",
+                    timeout=min(2500, self.page_timeout_ms),
+                )
+            except Exception:
+                # Missing quarter coverage must not replace valid headline data.
+                pass
             result = await page.evaluate(r"""
                 () => {
                   const text = s => (s || '').replace(/\s+/g, ' ').trim();
@@ -1294,62 +1204,7 @@ class AiscoreScraper:
                     score = `${left.txt} - ${right.txt}`;
                   }
 
-                  const extractQuarterScores = scoreValue => {
-                    const empty = {home: [], away: [], source: '', quality: 0};
-                    const scoreParts = scoreValue
-                      .split(/\s*[-–]\s*/)
-                      .map(value => Number.parseInt(value, 10));
-                    if (scoreParts.length !== 2 || scoreParts.some(value => !Number.isFinite(value))) {
-                      return empty;
-                    }
-                    const [scoreHome, scoreAway] = scoreParts;
-                    const parsePeriodRow = (value, total) => {
-                      const numbers = (text(value).match(/\b\d{1,3}\b/g) || [])
-                        .map(number => Number.parseInt(number, 10));
-                      if (numbers.length < 2) return null;
-                      const totalIndex = numbers.lastIndexOf(total);
-                      if (totalIndex < 1) return null;
-                      const periods = numbers.slice(Math.max(0, totalIndex - 4), totalIndex);
-                      if (!periods.length || periods.some(number => number < 0 || number > 100)) {
-                        return null;
-                      }
-                      const sum = periods.reduce((left, right) => left + right, 0);
-                      return Math.abs(sum - total) <= 4 ? periods : null;
-                    };
-                    const findPair = rows => {
-                      let home = null;
-                      let away = null;
-                      let homeIndex = -1;
-                      for (let index = 0; index < rows.length; index += 1) {
-                        const homeCandidate = parsePeriodRow(rows[index], scoreHome);
-                        const awayCandidate = parsePeriodRow(rows[index], scoreAway);
-                        if (homeCandidate && !home) {
-                          home = homeCandidate;
-                          homeIndex = index;
-                        }
-                        if (awayCandidate && !away && index !== homeIndex) away = awayCandidate;
-                      }
-                      return home && away && home.length === away.length ? {home, away} : null;
-                    };
-
-                    const detailBox = document.querySelector(
-                      '.scoresDetails, [class*="scoresDetails"], [class*="scoreDetail"]'
-                    );
-                    if (detailBox) {
-                      const rows = Array.from(
-                        detailBox.querySelectorAll('.content, [class*="content"]')
-                      ).map(element => text(element.innerText)).filter(Boolean);
-                      const pair = findPair(rows);
-                      if (pair) return {...pair, source: 'overview_scoreboard_dom', quality: 90};
-                    }
-
-                    const bodyRows = (document.body.innerText || '')
-                      .split(/\n+/).map(text).filter(Boolean).slice(0, 220);
-                    const pair = findPair(bodyRows);
-                    return pair
-                      ? {...pair, source: 'overview_scoreboard_rows', quality: 75}
-                      : empty;
-                  };
+                  const extractQuarterScores = __QUARTER_SCORES_READER__;
                   const quarterScores = extractQuarterScores(score);
 
                   const arrivedPeriods = Array.from(document.querySelectorAll(
@@ -1390,7 +1245,7 @@ class AiscoreScraper:
                     isFinished: nuxtFinished,
                   };
                 }
-            """)
+            """.replace("__QUARTER_SCORES_READER__", QUARTER_SCORES_JS))
             if not result.get("status"):
                 fallback = _status_from_play_by_play_hint(result.get("playByPlayStatus"))
                 if fallback["status"]:

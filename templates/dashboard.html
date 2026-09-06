@@ -35,6 +35,22 @@
     <article class="stat-card yellow"><div class="stat-label">Oynanan <span class="stat-icon">✓</span></div><strong class="stat-value" id="statBet">0</strong></article>
   </section>
 
+  <details class="panel signal-lists-panel" id="signalListsPanel">
+    <summary class="signal-lists-summary"><span><strong>Takım ve lig listeleri</strong><small>Kara / beyaz liste yönetimi</small></span><span id="listCounts">Yükleniyor…</span></summary>
+    <div class="signal-lists-content">
+      <p class="list-rules">Kara takım her zaman engellenir. Beyaz takım, kara lig için istisnadır. Beyaz lig tercih işaretidir. Listede olmayan maçlar normal kurallara tabidir.</p>
+      <form id="signalListForm" class="signal-list-form">
+        <label>Liste<select id="listType"><option value="black">Kara liste</option><option value="white">Beyaz liste</option></select></label>
+        <label>Tür<select id="listScope"><option value="team">Takım</option><option value="league">Lig</option></select></label>
+        <label class="list-name-field">Tam adı<input id="listValue" placeholder="Takım veya lig adı" maxlength="200" required autocomplete="off"></label>
+        <button class="button" type="submit">Ekle</button>
+      </form>
+      <div class="list-view-tools"><input id="listSearch" type="search" placeholder="Listelerde ara…" aria-label="Listelerde ara"><select id="listScopeFilter" aria-label="Liste kayıt türü"><option value="all">Takım ve ligler</option><option value="team">Takımlar</option><option value="league">Ligler</option></select><button class="button" type="button" id="listRefreshBtn">Yenile</button></div>
+      <div class="list-manager-grid"><section class="list-manager-column black"><h3>Kara liste <span id="blackListCount">0</span></h3><div id="blackListRows" class="list-manager-rows"></div></section><section class="list-manager-column white"><h3>Beyaz liste <span id="whiteListCount">0</span></h3><div id="whiteListRows" class="list-manager-rows"></div></section></div>
+      <p class="list-status" id="listStatus" role="status" aria-live="polite"></p>
+    </div>
+  </details>
+
   <section class="panel">
     <div class="panel-header">
       <div><h2 class="panel-title">Sinyal akışı</h2><div class="panel-subtitle">Açılış → canlı barem hareketleri</div></div>
@@ -52,7 +68,7 @@
     <div class="panel-header" style="padding-top:9px;padding-bottom:9px"><div class="status-line" id="status">Yükleniyor…</div></div>
     <div class="table-wrap">
       <table class="data-table signal-table">
-        <thead><tr><th>Sinyal</th><th>Maç</th><th>Skor / zaman</th><th class="num">Barem hareketi</th><th class="num">PPM</th><th class="num">Projeksiyon</th><th>İşlemler</th></tr></thead>
+        <thead><tr><th>Sinyal</th><th>Maç</th><th>Skor / zaman</th><th class="num">Barem hareketi</th><th class="ppm-heading">PPM</th><th class="num">Projeksiyon</th><th>İşlemler</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="empty" id="empty" hidden><span class="empty-symbol">◎</span><strong>Aktif sinyal yok</strong>Filtreye uygun bir sinyal geldiğinde burada görünecek.</div>
@@ -73,13 +89,19 @@
 
 
 
+<script src="{{ url_for('static', filename='signal_display.js') }}"></script>
+<script src="{{ url_for('static', filename='table_sort.js') }}"></script>
 <script>
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-  const fmt = value => Number.isFinite(Number(value)) ? Number(value).toFixed(1) : '–';
-  const fmtPpm = value => Number.isFinite(Number(value)) ? Number(value).toFixed(2) : '–';
+  const fmt = value => hasMetric(value) ? Number(value).toFixed(1) : '–';
   let alerts = [];
   let signalLists = [];
+  let listsReady = false;
+  let listsBusy = false;
+  let listReadVersion = 0;
+  let listMessage = '';
+  let listError = false;
   let directionFilter = 'all';
   let matchFilter = '';
 
@@ -126,25 +148,15 @@
     } catch (_) { return ''; }
   }
 
-  function signalTime(value) {
-    const raw = String(value || '').trim();
-    if (!raw) return '';
-    let iso = raw.replace(' ', 'T');
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(iso)) iso += 'Z';
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit', hour12:false, timeZone:'Europe/Istanbul'});
-  }
-
   function matchCell(alert) {
     const name = esc(alert.match_name || '-');
-    const markers = (alert.list_markers || []).map(m => `<span class="marker" title="${esc(m.title)}">●</span>`).join('');
+    const markers = (alert.list_markers || []).map(m => `<span class="marker ${m.type === 'black' ? 'list-black-marker' : 'list-white-marker'}" title="${esc(m.title)}">●</span>`).join('');
     const matchId = String(alert.match_id || '');
     const filterActive = matchFilter === matchId;
     const filterButton = `<button class="match-filter-button ${filterActive ? 'active' : ''}" data-match-id="${esc(matchId)}" onclick="toggleMatchFilter(this)" title="${filterActive ? 'Maç filtresini temizle' : 'Yalnızca bu maçın sinyallerini göster'}" aria-label="${filterActive ? 'Maç filtresini temizle' : 'Bu maça göre filtrele'}" aria-pressed="${filterActive}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"></path></svg></button>`;
     const signalCount = Number(alert.signal_count || 1);
     const signalNumber = signalCount > 1 ? `<span class="signal-sequence">${signalCount}. sinyal</span>` : '';
-    const arrivalTime = signalTime(alert.alerted_at);
+    const arrivalTime = alert.signal_time;
     const timeBadge = arrivalTime ? `<span class="signal-time" title="Sinyalin geliş saati">${arrivalTime}</span>` : '';
     const meta = `<span class="match-meta"><span>${esc(alert.tournament || 'Lig bilgisi yok')}</span>${signalNumber}${timeBadge}</span>`;
     const desktopUrl = desktopMatchUrl(alert.url);
@@ -178,127 +190,85 @@
   }
 
   function normalizedListValue(value) {
-    return String(value || '').trim().toLowerCase()
-      .replaceAll('ı', 'i').replaceAll('ş', 's').replaceAll('ğ', 'g')
-      .replaceAll('ü', 'u').replaceAll('ö', 'o').replaceAll('ç', 'c');
+    return String(value || '').toLowerCase().replaceAll('ı', 'i').normalize('NFKD')
+      .replace(/\p{M}/gu, '').trim().replace(/\s+/g, ' ');
   }
 
-  function isBlacklisted(scope, value) {
+  function listEntry(scope, value) {
     const normalized = normalizedListValue(value);
-    return signalLists.some(row => row.list_type === 'black' && row.scope === scope && row.normalized_value === normalized);
+    return signalLists.find(row => row.scope === scope && row.normalized_value === normalized);
   }
 
-  function blacklistButton(scope, value, label) {
+  function listActionButtons(scope, value) {
+    const entry = listEntry(scope, value);
+    return ['black', 'white'].map(type => {
+      const selected = entry?.list_type === type;
+      const label = type === 'black' ? 'Kara' : 'Beyaz';
+      const action = selected ? `${label} listeden çıkar` : `${label} listeye ${entry ? 'taşı' : 'ekle'}`;
+      return `<button class="modal-list-button ${type} ${selected ? 'listed' : ''}" type="button" data-list-mutation data-list-type="${type}" data-scope="${esc(scope)}" data-value="${esc(value)}" onclick="toggleSignalList(this)" aria-pressed="${selected}" aria-label="${esc(value)}: ${action}" title="${action}" ${listsBusy || !listsReady ? 'disabled' : ''}>${selected ? '✓ ' : '+ '}${label}${selected ? ' · Çıkar' : ''}</button>`;
+    }).join('');
+  }
+
+  function modalListRow(scope, value, label) {
     if (!String(value || '').trim()) return '';
-    const listed = isBlacklisted(scope, value);
-    return `<button class="modal-list-button ${listed ? 'listed' : ''}" type="button" data-scope="${esc(scope)}" data-value="${esc(value)}" onclick="addModalBlacklist(this)" ${listed ? 'disabled' : ''}>${listed ? 'Kara listede' : `${esc(label)} kara listeye ekle`}</button>`;
+    return `<div class="modal-list-row"><div class="list-entity"><small>${esc(label)}</small><strong title="${esc(value)}">${esc(value)}</strong></div><div class="modal-list-actions">${listActionButtons(scope, value)}</div></div>`;
   }
 
-  function resultClass(value) {
-    if (value === 'Başarılı') return 'success';
-    if (value === 'Başarısız') return 'failed';
-    return '';
+  function renderModalLists() {
+    const container = $('modalListRows');
+    if (!container) return;
+    const alert = alerts.find(item => Number(item.id) === activeModalAlertId);
+    if (!alert) return;
+    const name = String(alert.match_name || '');
+    const separator = name.indexOf(' - ');
+    const home = (separator < 0 ? name : name.slice(0, separator)).trim();
+    const away = separator < 0 ? '' : name.slice(separator + 3).trim();
+    container.innerHTML = modalListRow('team', home, 'Ev') + modalListRow('team', away, 'Deplasman') + modalListRow('league', alert.tournament || '', 'Lig');
+    renderListStatus();
   }
 
-  function finalScoreTotal(value) {
-    const match = String(value || '').match(/^\s*(\d{1,3})\s*[-–]\s*(\d{1,3})\s*$/);
-    if (!match) return null;
-    const total = Number(match[1]) + Number(match[2]);
-    return total >= 60 && total <= 400 ? total : null;
-  }
-
-  function historyVerdict(match, finalTotal) {
-    const direction = String(match.direction || '').toLocaleUpperCase('tr-TR').replace('UST', 'ÜST');
-    const line = Number(match.live);
-    if (!Number.isFinite(finalTotal) || !Number.isFinite(line) || !['ALT', 'ÜST'].includes(direction)) {
-      return '<span>Sonuç hesabı için final toplam veya sinyal baremi bulunamadı.</span>';
+  function renderListStatus() {
+    for (const id of ['listStatus', 'modalListStatus']) {
+      const node = $(id);
+      if (!node) continue;
+      node.textContent = listsBusy ? 'Kaydediliyor…' : listMessage;
+      node.classList.toggle('error', listError && !listsBusy);
     }
-    const relation = finalTotal === line ? '=' : finalTotal > line ? '>' : '<';
-    const margin = Math.abs(finalTotal - line);
-    const won = direction === 'ALT' ? finalTotal < line : finalTotal > line;
-    const verdict = finalTotal === line ? 'İade' : `${direction} ${won ? 'tuttu' : 'kaybetti'}`;
-    const tone = finalTotal === line ? '' : won ? 'success' : 'failed';
-    return `<span class="history-verdict ${tone}"><strong>${fmt(finalTotal)} ${relation} ${fmt(line)}</strong> · ${verdict}${margin ? ` (${fmt(margin)} sayı fark)` : ''}</span>`;
+    $('signalListForm').querySelectorAll('input, select, button').forEach(node => { node.disabled = listsBusy || !listsReady; });
+    document.querySelectorAll('[data-list-mutation]').forEach(node => { node.disabled = listsBusy || !listsReady; });
   }
 
-  function historyTeamCard(team) {
-    const summary = team.summary || {};
-    const decided = Number(summary.successful || 0) + Number(summary.failed || 0);
-    const successRate = decided ? `${Math.round(Number(summary.successful || 0) * 100 / decided)}%` : '–';
-    const matches = Array.isArray(team.matches) ? team.matches.slice(0, 5) : [];
-    const matchRows = matches.length ? matches.map(match => {
-      const direction = String(match.direction || '–').toLocaleUpperCase('tr-TR').replace('UST', 'ÜST');
-      const directionClass = direction === 'ALT' ? 'alt' : 'ust';
-      const finalScore = String(match.final_score || '').trim();
-      const total = finalScoreTotal(finalScore);
-      const change = Number(match.barem_change);
-      const signedChange = Number.isFinite(change) ? `${change > 0 ? '+' : ''}${change.toFixed(1)}` : '–';
-      const historyUrl = desktopMatchUrl(match.url);
-      const rowOpen = historyUrl ? `<a class="modal-history-row history-match-link" href="${esc(historyUrl)}" target="_blank" rel="noopener noreferrer" title="Maç detayını ve çeyrek skorlarını aç">` : '<div class="modal-history-row">';
-      const rowClose = historyUrl ? '</a>' : '</div>';
-      return `${rowOpen}
-        <div class="history-row-head">
-          <div class="history-match-title"><strong class="history-match-name">${esc(match.match_name || 'Maç')}</strong>${historyUrl ? '<span class="history-open-label">Çeyrek skorlarını aç ↗</span>' : ''}</div>
-          <div class="history-badges">
-            <span class="direction-pill ${directionClass}">${esc(direction)} ${fmt(match.live)}</span>
-            <span class="result-pill ${resultClass(match.result)}">${esc(match.result || 'Sonuç bekliyor')}</span>
-          </div>
-        </div>
-        <div class="history-facts">
-          <div><span>Barem hareketi</span><strong>${fmt(match.opening)} → ${fmt(match.live)} <small>(${signedChange})</small></strong></div>
-          <div><span>Final skor</span><strong>${esc(finalScore || 'Final skor yok')}</strong>${Number.isFinite(total) ? `<small>Toplam ${fmt(total)}</small>` : ''}</div>
-        </div>
-        ${historyVerdict(match, total)}
-      ${rowClose}`;
-    }).join('') : '<div class="modal-history-empty">Henüz sonuçlandırılmış geçmiş sinyal yok.</div>';
-    return `<article class="modal-team-card">
-      <div class="modal-team-heading"><span>${esc(team.role || 'Takım')}</span><strong>${esc(team.name || 'Takım ayrıştırılamadı')}</strong></div>
-      <div class="modal-team-stats">
-        <div><span>Geçmiş sinyal</span><strong>${Number(summary.total || 0)}</strong></div>
-        <div><span>Başarılı</span><strong class="positive-text">${Number(summary.successful || 0)}</strong></div>
-        <div><span>Başarısız</span><strong class="negative-text">${Number(summary.failed || 0)}</strong></div>
-        <div><span>Başarı oranı</span><strong>${successRate}</strong></div>
-      </div>
-      <div class="modal-history-list">${matchRows}</div>
-    </article>`;
-  }
-
-  function quarterPaceSection(alert) {
-    const periods = Array.isArray(alert.quarter_pace_periods) ? alert.quarter_pace_periods : [];
-    const cards = periods.length ? periods.map(period => {
-      const currentBadge = period.is_current ? '<span class="period-live-badge">Canlı</span>' : '<span class="period-complete-badge">Tamamlandı</span>';
-      return `<article class="period-pace-card">
-        <div class="period-pace-head"><strong>${esc(period.label || `Q${period.period || ''}`)}</strong>${currentBadge}</div>
-        <div class="period-score"><strong>${Number(period.home)} - ${Number(period.away)}</strong><span>Toplam ${fmt(period.total)}</span></div>
-        <div class="period-pace-facts">
-          <div><span>Oynanan süre</span><strong>${fmt(period.played_minutes)} dk</strong></div>
-          <div><span>Çeyrek PPM</span><strong>${fmtPpm(period.ppm)}</strong></div>
-          <div><span>Devam tahmini</span><strong>${fmt(period.continuation_total)}</strong></div>
-        </div>
-      </article>`;
-    }).join('') : '<div class="period-pace-empty">Çeyrek skorları bu sinyal anında güvenilir biçimde okunamadı.</div>';
-    return `<h3 class="modal-section-title">Çeyrek temposu</h3>
-      <p class="period-pace-note">Devam tahmini, sinyal anındaki toplam skora kalan sürenin ilgili çeyrek PPM’iyle oynanacağı varsayılarak hesaplanır.</p>
-      <div class="period-pace-grid">${cards}</div>`;
+  function renderListManager() {
+    const query = normalizedListValue($('listSearch').value);
+    const scope = $('listScopeFilter').value;
+    const counts = {};
+    for (const type of ['black', 'white']) {
+      const entries = signalLists.filter(row => row.list_type === type);
+      counts[type] = entries.length;
+      $(type + 'ListCount').textContent = entries.length;
+      const visible = entries.filter(row => (scope === 'all' || row.scope === scope) && normalizedListValue(row.value).includes(query));
+      $(type + 'ListRows').innerHTML = visible.map(row => `<div class="list-manager-row"><div><span class="list-scope-badge">${row.scope === 'team' ? 'Takım' : 'Lig'}</span><span class="list-entry-name">${esc(row.value)}</span></div><button type="button" class="list-remove" data-list-mutation data-entry-id="${Number(row.id)}" onclick="removeSignalList(this)" aria-label="${esc(row.value)}: listeden çıkar">Çıkar <span aria-hidden="true">×</span></button></div>`).join('') || `<p class="list-empty">${!listsReady ? 'Liste yüklenemedi.' : entries.length ? 'Eşleşen kayıt yok.' : 'Henüz kayıt yok.'}</p>`;
+    }
+    $('listCounts').textContent = listsReady ? `Kara ${counts.black} · Beyaz ${counts.white}` : 'Listeler yüklenemedi';
+    renderListStatus();
   }
 
   function renderSignalModal(error='') {
     const alert = alerts.find(item => Number(item.id) === Number(activeModalAlertId));
     if (!alert) { closeSignalModal(); return; }
     const change = Number(alert.barem_change);
-    const signedChange = Number.isFinite(change) ? `${change > 0 ? '+' : ''}${change.toFixed(1)}` : '–';
+    const signedChange = hasMetric(alert.barem_change) ? `${change > 0 ? '+' : ''}${change.toFixed(1)}` : '–';
     const teams = Array.isArray(activeModalHistory?.teams) ? activeModalHistory.teams : [];
     const teamCards = error
       ? `<div class="modal-error">${esc(error)}</div>`
       : teams.length
         ? teams.map(historyTeamCard).join('')
         : '<div class="modal-loading">İstatistikler yükleniyor…</div>';
-    const fallbackTeams = String(alert.match_name || '').split(' - ', 2).map(value => value.trim());
-    const home = teams[0]?.name || fallbackTeams[0] || '';
-    const away = teams[1]?.name || fallbackTeams[1] || '';
     $('signalModalTitle').textContent = alert.match_name || 'Maç istatistikleri';
     $('signalModalBody').innerHTML = `
-      <div class="signal-modal-subtitle">${esc(alert.tournament || 'Lig bilgisi yok')}</div>
+      ${ppmComparisonSection(alert)}
+      <section class="modal-section">
+      <div class="modal-section-head"><h3 class="modal-section-title">Maç özeti</h3><span class="signal-modal-subtitle">${esc(alert.tournament || 'Lig bilgisi yok')}</span></div>
       <div class="modal-current-stats">
         <div><span>Skor</span><strong>${esc(alert.score || '–')}</strong></div>
         <div><span>Zaman</span><strong>${esc(alert.status || '–')}</strong></div>
@@ -307,17 +277,17 @@
         <div><span>Değişim</span><strong>${signedChange}</strong></div>
         <div><span>Sinyal</span><strong>${esc(alert.direction || '–')} · ${Number(alert.signal_count || 1)}.</strong></div>
       </div>
-      ${quarterPaceSection(alert)}
+      </section>
+      <section class="modal-section">
       <h3 class="modal-section-title">Takım geçmişi</h3>
       <div class="modal-team-grid">${teamCards}</div>
-      <div class="modal-blacklist-section">
-        <div><h3 class="modal-section-title">Kara liste</h3><p>Bu seçimler sonraki sinyallerin engellenmesinde kullanılır.</p></div>
-        <div class="modal-list-actions">
-          ${blacklistButton('team', home, 'Ev takımını')}
-          ${blacklistButton('team', away, 'Deplasman takımını')}
-          ${blacklistButton('league', alert.tournament || '', 'Ligi')}
-        </div>
-      </div>`;
+      </section>
+      <section class="modal-lists-section">
+        <div class="modal-section-head"><h3 class="modal-section-title">Takım ve lig listeleri</h3></div>
+        <div id="modalListRows"></div>
+        <p class="list-status" id="modalListStatus" role="status" aria-live="polite"></p>
+      </section>`;
+    renderModalLists();
   }
 
 
@@ -349,18 +319,42 @@
     activeModalHistory = null;
   }
 
-  async function addModalBlacklist(button) {
-    button.disabled = true;
+  async function mutateSignalList(url, options) {
+    if (listsBusy || !listsReady) return false;
+    listsBusy = true;
+    ++listReadVersion;
+    listError = false;
+    renderListStatus();
+    let saved = false;
     try {
-      await call('/api/signal-lists', {method:'POST', body:JSON.stringify({list_type:'black', scope:button.dataset.scope, value:button.dataset.value})});
+      await call(url, options);
+      saved = true;
       await loadLists();
-      renderSignalModal();
+      listMessage = 'Liste güncellendi. Seçim sonraki sinyallere uygulanır.';
       await load();
     } catch (error) {
-      button.disabled = false;
-      $('status').classList.add('error');
-      $('status').textContent = error.message || 'Kara listeye eklenemedi.';
+      listError = true;
+      listMessage = saved ? 'Seçim kaydedildi; listeler yenilenemedi. Yenile düğmesine basın.' : error.message || 'Liste güncellenemedi.';
+    } finally {
+      listsBusy = false;
+      renderListManager();
+      renderModalLists();
     }
+    return saved;
+  }
+
+  async function toggleSignalList(button) {
+    const {scope, value, listType} = button.dataset;
+    const entry = listEntry(scope, value);
+    if (entry?.list_type === listType) {
+      await mutateSignalList(`/api/signal-lists/${Number(entry.id)}`, {method:'DELETE'});
+    } else {
+      await mutateSignalList('/api/signal-lists', {method:'POST', body:JSON.stringify({list_type:listType, scope, value})});
+    }
+  }
+
+  async function removeSignalList(button) {
+    await mutateSignalList(`/api/signal-lists/${Number(button.dataset.entryId)}`, {method:'DELETE'});
   }
 
   async function toggle(id, action) { await call(`/api/alerts/${id}/${action}`, {method:'POST', body:'{}'}); await load(); }
@@ -381,7 +375,7 @@
 
 
   function render() {
-    const rows = filteredAlerts();
+    const rows = tableSorter.sort(filteredAlerts());
     $('empty').hidden = rows.length > 0;
     $('rows').innerHTML = rows.map(a => {
       const change = Number(a.barem_change);
@@ -395,17 +389,12 @@
       const projectionTitle = projectionAvailable && elapsedAvailable
         ? `${fmt(a.pace_score_total)} sayı / ${fmt(a.pace_elapsed_minutes)} dk × ${fmt(a.pace_game_minutes)} dk`
         : 'Skor veya maç saati güvenilir okunamadı';
-      const ppm = Number(a.pace_ppm);
-      const ppmAvailable = a.pace_ppm !== null && a.pace_ppm !== '' && Number.isFinite(ppm);
-      const ppmTitle = ppmAvailable && elapsedAvailable
-        ? `Sinyal anı: ${fmt(a.pace_score_total)} sayı / ${fmt(a.pace_elapsed_minutes)} dakika · Çeyrek detayını aç`
-        : 'PPM veya çeyrek detayı okunamadı';
       return `<tr class="${rowState}" data-alert-id="${Number(a.id)}">
         <td data-label="Sinyal"><button type="button" class="signal-modal-trigger" onclick="openSignalModal(event, ${Number(a.id)})" title="Sinyal istatistiklerini aç" aria-label="${esc(a.direction || 'Sinyal')} sinyali istatistiklerini aç"><span class="direction-pill ${directionClass}">${esc(a.direction || '–')}</span></button></td>
         <td class="primary-cell">${matchCell(a)}</td>
         <td data-label="Skor / zaman"><strong>${esc(a.score || '–')}</strong><span class="match-meta">${esc(a.status || 'Zaman yok')}</span></td>
-        <td data-label="Barem hareketi" class="num"><span class="line-stack"><span>${fmt(a.opening)}</span><span class="line-arrow">→</span><span>${fmt(a.live)}</span><span class="change-text ${changeClass}">${signed}</span></span></td>
-        <td data-label="PPM" class="num ppm-cell"><button type="button" class="signal-modal-trigger ppm-modal-trigger ${ppmAvailable ? '' : 'unavailable'}" onclick="openSignalModal(event, ${Number(a.id)})" title="${esc(ppmTitle)}" aria-label="${ppmAvailable ? `${fmtPpm(ppm)} PPM, çeyrek detayını aç` : 'Çeyrek detayını aç'}">${ppmAvailable ? fmtPpm(ppm) : '–'}</button></td>
+        <td data-label="Barem hareketi" class="num"><span class="line-stack">${openingLine(a)}<span class="line-arrow">→</span><span>${fmt(a.live)}</span><span class="change-text ${changeClass}">${signed}</span></span></td>
+        <td data-label="PPM" class="num ppm-cell">${ppmFlow(a)}</td>
         <td data-label="Projeksiyon" class="num projection-cell" title="${esc(projectionTitle)}"><span class="projection-pill ${projectionAvailable ? '' : 'unavailable'}">${projectionAvailable ? fmt(projection) : '–'}</span></td>
 
         <td data-label="İşlemler"><div class="row-actions icon-only">
@@ -436,8 +425,35 @@
 
 
   async function loadLists() {
-    signalLists = await call('/api/signal-lists');
+    const version = ++listReadVersion;
+    try {
+      const entries = await call('/api/signal-lists');
+      if (version !== listReadVersion) return;
+      signalLists = entries;
+      listsReady = true;
+      listError = false;
+      listMessage = '';
+    } catch (error) {
+      if (version !== listReadVersion) return;
+      listsReady = false;
+      listError = true;
+      listMessage = 'Listeler yüklenemedi. Yenile düğmesiyle tekrar deneyin.';
+      throw error;
+    } finally {
+      if (version === listReadVersion) { renderListManager(); renderModalLists(); }
+    }
   }
+
+  $('signalListForm').onsubmit = async event => {
+    event.preventDefault();
+    const saved = await mutateSignalList('/api/signal-lists', {method:'POST', body:JSON.stringify({list_type:$('listType').value, scope:$('listScope').value, value:$('listValue').value.trim()})});
+    if (saved) $('listValue').value = '';
+  };
+  $('listSearch').oninput = renderListManager;
+  $('listScopeFilter').onchange = renderListManager;
+  $('listRefreshBtn').onclick = () => { if (!listsBusy) loadLists().catch(() => {}); };
+  $('signalListsPanel').ontoggle = () => { if ($('signalListsPanel').open && !listsBusy) loadLists().catch(() => {}); };
+
 
   $('searchInput').addEventListener('input', () => { render(); $('status').textContent = visibleCountText(); });
   document.querySelectorAll('[data-direction]').forEach(button => button.addEventListener('click', () => { directionFilter = button.dataset.direction; document.querySelectorAll('[data-direction]').forEach(item => item.classList.toggle('active', item === button)); render(); $('status').textContent = visibleCountText(); }));
@@ -473,7 +489,17 @@
     if (event.key !== 'Escape') return;
     if (!$('signalModal').hidden) closeSignalModal();
   });
-  load(); loadLists(); startAutoRefresh();
+  const tableSorter = createTableSorter('.signal-table', [
+    {value: row => row.direction},
+    {value: row => row.match_name},
+    {value: row => row.score, hint: 'Skora göre sırala'},
+    {value: row => row.opening, numeric: true, hint: 'Açılış baremine göre sırala'},
+    {value: row => row.ppm_comparison?.required_change_pct, numeric: true, hint: 'Parantez içindeki yüzde farkına göre sırala'},
+    {value: row => row.pace_projection, numeric: true},
+    null,
+  ], render);
+  renderListStatus();
+  load(); loadLists().catch(() => {}); startAutoRefresh();
 </script>
 </body>
 </html>

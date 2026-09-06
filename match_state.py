@@ -1,5 +1,6 @@
 """Basketbol skor ve periyot metinlerini operasyonel amaçlarla ayrıştırır."""
 
+import math
 import re
 
 
@@ -38,9 +39,8 @@ def normalize_quarter_scores(value, score: str = "") -> dict:
 
     current_home, current_away = parse_score(score)
     if current_home is not None and current_away is not None:
-        # The scoreboard cells and headline can update a few seconds apart.
-        # Larger differences indicate that an unrelated numeric row was read.
-        if abs(sum(home) - current_home) > 4 or abs(sum(away) - current_away) > 4:
+        # Different score totals describe different moments of the match.
+        if sum(home) != current_home or sum(away) != current_away:
             return {}
 
     try:
@@ -142,6 +142,67 @@ def game_clock(status: str, match_name: str = "", tournament: str = "") -> dict:
     }
 
 
+def required_pace_comparison(live_total, score_total, elapsed_minutes, game_minutes) -> dict:
+    """Compare the regulation pace needed to reach the line with observed pace."""
+    result = {
+        "remaining_points": None,
+        "remaining_minutes": None,
+        "current_ppm": None,
+        "required_ppm": None,
+        "difference_ppm": None,
+        "required_change_pct": None,
+        "status": "unavailable",
+        "comment": "Skor, süre veya barem eksik olduğu için PPM karşılaştırılamıyor.",
+    }
+    values = (live_total, score_total, elapsed_minutes, game_minutes)
+    if any(value is None or isinstance(value, bool) for value in values):
+        return result
+    try:
+        line, score, elapsed, duration = map(float, values)
+    except (TypeError, ValueError):
+        return result
+    if (
+        not all(math.isfinite(value) for value in (line, score, elapsed, duration))
+        or line <= 0 or score < 0 or duration <= 0 or not 0 < elapsed <= duration
+    ):
+        return result
+
+    remaining = duration - elapsed
+    points = max(0.0, line - score)
+    current_ppm = score / elapsed
+    result.update(
+        remaining_points=round(points, 2),
+        remaining_minutes=round(remaining, 4),
+        current_ppm=round(current_ppm, 2),
+    )
+    if remaining == 0:
+        result.update(status="ended", comment="Normal süre doldu. Kalan süre için PPM hesaplanamaz.")
+        return result
+
+    required_ppm = points / remaining
+    difference = round(current_ppm - required_ppm, 2)
+    result.update(required_ppm=round(required_ppm, 2), difference_ppm=difference)
+    if current_ppm > 0:
+        result["required_change_pct"] = round((required_ppm / current_ppm - 1) * 100, 1)
+    if score > line:
+        result.update(status="exceeded", comment="Toplam skor baremi zaten aşmış.")
+    elif score == line:
+        result.update(status="reached", comment="Toplam skor bareme ulaştı. ÜST için baremin aşılması gerekir.")
+    elif difference > 0:
+        result.update(
+            status="above",
+            comment="Mevcut tempo gereken hızın üzerinde. Aynı hız sürerse toplam baremi aşar; ÜST yönünü destekler.",
+        )
+    elif difference < 0:
+        result.update(
+            status="below",
+            comment="Mevcut tempo gereken hızın altında. Bareme ulaşmak için hızlanma gerekir; mevcut gidiş ALT yönünü destekler.",
+        )
+    else:
+        result.update(status="level", comment="Mevcut tempo ile gereken hız çok yakın. PPM net bir yön göstermiyor.")
+    return result
+
+
 def current_pace_projection(
     score: str,
     status: str,
@@ -149,6 +210,7 @@ def current_pace_projection(
     tournament: str = "",
     *,
     quarter_scores: dict | None = None,
+    live_total: float | None = None,
 ) -> dict:
     """Project regulation pace and expose frozen per-period pace details."""
     home_score, away_score = parse_score(score)
@@ -172,6 +234,7 @@ def current_pace_projection(
             "elapsed_minutes": None,
             "game_minutes": quarter_length * period_count if quarter_length and period_count else None,
             "periods": [],
+            "comparison": required_pace_comparison(live_total, None, None, None),
         }
 
     elapsed_minutes = (period - 1) * quarter_length + (quarter_length - remaining_min)
@@ -228,6 +291,7 @@ def current_pace_projection(
         "elapsed_minutes": round(elapsed_minutes, 2),
         "game_minutes": game_minutes,
         "periods": period_rows,
+        "comparison": required_pace_comparison(live_total, score_total, elapsed_minutes, game_minutes),
     }
 
 

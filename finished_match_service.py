@@ -646,20 +646,13 @@ async def _run_active_match_finished_scan(db, config, before_delete=None) -> dic
         if not match_id:
             continue
         try:
-            archive_result = None
             if before_delete is not None:
-                archive_result = before_delete(match_id)
-
-            # The production callback captures the enriched live-dashboard rows
-            # and archives them atomically. None retains legacy snapshot-only
-            # callback compatibility.
-            if isinstance(archive_result, int):
-                affected = archive_result
+                # The dashboard callback freezes and archives rows atomically.
+                affected = before_delete(match_id)
+                if not isinstance(affected, int) or isinstance(affected, bool):
+                    raise ValueError("archive callback must return the archived row count")
             else:
-                affected = db.delete_match_data(
-                    match_id,
-                    require_display_snapshot=before_delete is not None,
-                )
+                affected = db.delete_match_data(match_id)
             if affected > 0:
                 summary["moved_count"] += 1
                 settlement = _empty_result_summary(tracked_count=1)
@@ -736,7 +729,7 @@ async def run_single_deleted_match_result_check(db, config, alert_id: int) -> di
     if not alert or not tracked_match:
         return {**empty_summary, "message": "Kontrol edilecek maç bulunamadı."}
     summary = _empty_result_summary(tracked_count=1)
-    # An unresolved legacy row may already carry a trustworthy final score. A
+    # An unresolved row may already carry a trustworthy final score. A
     # resolved row, however, was explicitly rechecked by the user and must be
     # fetched again; reusing its old final fields would only reproduce a stale
     # or previously misparsed result.

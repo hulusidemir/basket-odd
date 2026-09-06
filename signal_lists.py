@@ -62,9 +62,11 @@ def build_signal_list_markers(alert: dict, list_profile: dict | None) -> list[di
 
 
 def build_signal_blacklist_matches(alert: dict, list_profile: dict | None) -> list[dict]:
-    """Return the existing UI markers that must suppress signal creation."""
-    return [
-        marker
-        for marker in build_signal_list_markers(alert, list_profile)
-        if marker.get("type") == "black"
-    ]
+    """Team bans win; white teams may exempt an otherwise banned league."""
+    markers = build_signal_list_markers(alert, list_profile)
+    blocked_teams = [m for m in markers if m["type"] == "black" and m["scope"] == "team"]
+    if blocked_teams:
+        return blocked_teams
+    if any(m["type"] == "white" and m["scope"] == "team" for m in markers):
+        return []
+    return [m for m in markers if m["type"] == "black"]

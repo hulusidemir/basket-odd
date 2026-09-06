@@ -56,7 +56,7 @@
     <div class="panel-header archive-status-row"><div class="status-line" id="status"></div></div>
     <div class="table-wrap">
       <table class="data-table archive-table">
-        <thead><tr><th>Maç</th><th>Sinyal anı</th><th class="num">Barem hareketi</th><th class="num">Fark</th><th>Yön</th><th class="num">Projeksiyon</th><th>Final</th><th>Sonuç</th><th>Arşiv</th><th></th></tr></thead>
+        <thead><tr><th>Maç</th><th>Sinyal anı</th><th class="num">Barem hareketi</th><th class="num">Fark</th><th>Yön</th><th class="ppm-heading">PPM</th><th class="num">Projeksiyon</th><th>Final</th><th>Sonuç</th><th>Arşiv</th><th></th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="empty" id="empty" hidden><span class="empty-symbol">⌁</span><strong id="emptyTitle">Arşiv boş</strong><span id="emptyText">Arşivlenen sinyaller burada gösterilecek.</span></div>
@@ -69,11 +69,21 @@
   </section>
 </main>
 
+<div class="signal-modal-backdrop" id="signalModal" hidden role="dialog" aria-modal="true" aria-labelledby="signalModalTitle" onclick="if(event.target === this) closeSignalModal()">
+  <section class="signal-modal-card">
+    <header class="signal-modal-header">
+      <div><div class="eyebrow">Sinyal detayı</div><h2 id="signalModalTitle">Maç istatistikleri</h2></div>
+      <button class="signal-modal-close" type="button" onclick="closeSignalModal()" aria-label="Kapat">×</button>
+    </header>
+    <div class="signal-modal-body" id="signalModalBody"></div>
+  </section>
+</div>
+<script src="{{ url_for('static', filename='signal_display.js') }}"></script>
+<script src="{{ url_for('static', filename='table_sort.js') }}"></script>
 <script>
   const $=id=>document.getElementById(id);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const fmt=v=>Number.isFinite(Number(v))?Number(v).toFixed(1):'–';
-  function finalScoreTotal(value){const match=String(value||'').match(/^\s*(\d{1,3})\s*[-–]\s*(\d{1,3})\s*$/);if(!match)return null;const total=Number(match[1])+Number(match[2]);return total>=60&&total<=400?total:null}
+  const fmt=v=>hasMetric(v)?Number(v).toFixed(1):'–';
   let archiveRows=[];
   let resultFilter='all';
   let directionFilter='all';
@@ -83,7 +93,7 @@
   const pageSize=25;
   let currentPage=1;
   function desktopMatchUrl(value){try{const url=new URL(String(value??''));if(!['http:','https:'].includes(url.protocol))return '';if(url.hostname.toLowerCase()==='m.aiscore.com')url.hostname='www.aiscore.com';return url.toString()}catch(_){return ''}}
-  function archiveMatchCell(alert){const matchId=String(alert.match_id||'');const filterActive=matchFilter===matchId;const filterButton=`<button class="match-filter-button ${filterActive?'active':''}" data-match-id="${esc(matchId)}" onclick="toggleMatchFilter(this)" title="${filterActive?'Maç filtresini temizle':'Yalnızca bu maçın sinyallerini göster'}" aria-label="${filterActive?'Maç filtresini temizle':'Bu maça göre filtrele'}" aria-pressed="${filterActive}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"></path></svg></button>`;const signalCount=Number(alert.signal_count||1);const signalNumber=signalCount>1?`<span class="signal-sequence">${signalCount}. sinyal</span>`:'';const meta=`<span class="match-meta"><span>${esc(alert.tournament||'Lig bilgisi yok')}</span>${signalNumber}</span>`;const desktopUrl=desktopMatchUrl(alert.url);const name=esc(alert.match_name||'–');const matchName=desktopUrl?`<a class="match-link" href="${esc(desktopUrl)}" target="_blank" rel="noopener">${name}</a>`:`<span class="plain-match">${name}</span>`;return `<div class="match-cell">${filterButton}<div class="match-info">${matchName}${meta}</div></div>`}
+  function archiveMatchCell(alert){const matchId=String(alert.match_id||'');const filterActive=matchFilter===matchId;const filterButton=`<button class="match-filter-button ${filterActive?'active':''}" data-match-id="${esc(matchId)}" onclick="toggleMatchFilter(this)" title="${filterActive?'Maç filtresini temizle':'Yalnızca bu maçın sinyallerini göster'}" aria-label="${filterActive?'Maç filtresini temizle':'Bu maça göre filtrele'}" aria-pressed="${filterActive}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"></path></svg></button>`;const signalCount=Number(alert.signal_count||1);const signalNumber=signalCount>1?`<span class="signal-sequence">${signalCount}. sinyal</span>`:'';const meta=`<span class="match-meta"><span>${esc(alert.tournament||'Lig bilgisi yok')}</span>${signalNumber}${alert.signal_time ? `<span class="signal-time">${esc(alert.signal_time)}</span>` : ''}</span>`;const desktopUrl=desktopMatchUrl(alert.url);const name=esc(alert.match_name||'–');const matchName=desktopUrl?`<a class="match-link" href="${esc(desktopUrl)}" target="_blank" rel="noopener">${name}</a>`:`<span class="plain-match">${name}</span>`;return `<div class="match-cell">${filterButton}${frozenListMarkers(alert)}<div class="match-info">${matchName}${meta}</div></div>`}
   function toggleMatchFilter(button){const matchId=String(button.dataset.matchId||'');matchFilter=matchFilter===matchId?'':matchId;currentPage=1;render()}
   async function call(url,options={}){const r=await fetch(url,{headers:{'Content-Type':'application/json'},...options});const d=await r.json();if(!r.ok)throw new Error(d.error||'İşlem başarısız');return d}
   async function purge(id){if(confirm('Bu kayıt silinsin mi?')){await call(`/api/deleted-matches/${id}`,{method:'DELETE'});await load()}}
@@ -92,21 +102,56 @@
   function matchesSearch(row){const q=$('searchInput').value.trim().toLocaleLowerCase('tr-TR');return !q||`${row.match_name||''} ${row.tournament||''}`.toLocaleLowerCase('tr-TR').includes(q)}
   function selectedRows(rows,{result=resultFilter,direction=directionFilter,period=periodFilter}={}){return rows.filter(row=>(result==='all'||row.result===result)&&(direction==='all'||normalizedDirection(row.direction)===direction)&&(period==='all'||String(row.alert_period||'')===period)&&(!matchFilter||String(row.match_id||'')===matchFilter)&&matchesSearch(row))}
   function visibleRows(rows){return uniqueOnly?uniqueSignals(rows):rows}
-  function filtered(){return visibleRows(selectedRows(archiveRows))}
+  function filtered(){return tableSorter.sort(visibleRows(selectedRows(archiveRows)))}
   function statusText(total,start,end,totalPages){const parts=[total?`${total} kayıttan ${start+1}–${end} gösteriliyor`:'0 kayıt',`Sayfa ${currentPage} / ${totalPages}`];if(matchFilter)parts.push('Maç filtresi aktif');if(resultFilter!=='all')parts.push(resultFilter);if(directionFilter!=='all')parts.push(directionFilter);if(periodFilter!=='all')parts.push(`Q${periodFilter}`);if(uniqueOnly)parts.push('tekrarlar gizli');return parts.join(' · ')}
   function syncFilters(){document.querySelectorAll('[data-filter-result]').forEach(item=>{const active=item.dataset.filterResult===resultFilter;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))});document.querySelectorAll('[data-filter-direction]').forEach(item=>{const active=item.dataset.filterDirection===directionFilter;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))});document.querySelectorAll('[data-filter-period]').forEach(item=>{const active=item.dataset.filterPeriod===periodFilter;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))});document.querySelectorAll('[data-summary-result]').forEach(item=>{const summaryPeriod=item.dataset.summaryPeriod==='current'?periodFilter:item.dataset.summaryPeriod;const active=item.dataset.summaryResult===resultFilter&&item.dataset.summaryDirection===directionFilter&&summaryPeriod===periodFilter;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))});document.querySelectorAll('[data-report-direction]').forEach(item=>item.classList.toggle('active',item.dataset.reportDirection===directionFilter));document.querySelectorAll('[data-report-total]').forEach(item=>item.classList.toggle('active',directionFilter==='all'))}
   function applyFilters({result=resultFilter,direction=directionFilter,period=periodFilter}){resultFilter=result;directionFilter=direction;periodFilter=period;currentPage=1;syncFilters();render()}
-  function render(){updateReport();updateFilterCounts();const filteredRows=filtered();const totalPages=Math.max(1,Math.ceil(filteredRows.length/pageSize));currentPage=Math.min(Math.max(1,currentPage),totalPages);const start=(currentPage-1)*pageSize;const rows=filteredRows.slice(start,start+pageSize);const end=start+rows.length;$('empty').hidden=filteredRows.length>0;$('emptyTitle').textContent=archiveRows.length?'Filtreye uygun kayıt yok':'Arşiv boş';$('emptyText').textContent=archiveRows.length?'Seçili filtreleri değiştirerek diğer sinyalleri görebilirsiniz.':'Arşivlenen sinyaller burada gösterilecek.';$('rows').innerHTML=rows.map(a=>{const change=Number(a.barem_change);const changeAvailable=a.barem_change!==null&&a.barem_change!==''&&Number.isFinite(change);const signed=changeAvailable?`${change>0?'+':''}${change.toFixed(1)}`:'–';const projection=Number(a.pace_projection);const projectionAvailable=a.pace_projection!==null&&a.pace_projection!==''&&Number.isFinite(projection);const direction=normalizedDirection(a.direction);const resultClass=a.result==='Başarılı'?'success':a.result==='Başarısız'?'failed':a.result==='Devam Ediyor'?'in-progress':'unresolved';const finalTotal=finalScoreTotal(a.final_score);return `<tr>
+  function render(){updateReport();updateFilterCounts();const filteredRows=filtered();const totalPages=Math.max(1,Math.ceil(filteredRows.length/pageSize));currentPage=Math.min(Math.max(1,currentPage),totalPages);const start=(currentPage-1)*pageSize;const rows=filteredRows.slice(start,start+pageSize);const end=start+rows.length;$('empty').hidden=filteredRows.length>0;$('emptyTitle').textContent=archiveRows.length?'Filtreye uygun kayıt yok':'Arşiv boş';$('emptyText').textContent=archiveRows.length?'Seçili filtreleri değiştirerek diğer sinyalleri görebilirsiniz.':'Arşivlenen sinyaller burada gösterilecek.';$('rows').innerHTML=rows.map(a=>{const change=Number(a.barem_change);const changeAvailable=a.barem_change!==null&&a.barem_change!==''&&Number.isFinite(change);const signed=changeAvailable?`${change>0?'+':''}${change.toFixed(1)}`:'–';const projection=Number(a.pace_projection);const projectionAvailable=a.pace_projection!==null&&a.pace_projection!==''&&Number.isFinite(projection);const direction=normalizedDirection(a.direction);const resultClass=a.result==='Başarılı'?'success':a.result==='Başarısız'?'failed':a.result==='Devam Ediyor'?'in-progress':'unresolved';return `<tr data-alert-id="${Number(a.id)}" class="${a.ignored?'row-ignored':a.followed?'row-followed':a.bet_placed?'row-bet-placed':''}">
     <td class="primary-cell">${archiveMatchCell(a)}</td>
     <td data-label="Sinyal anı"><strong>${esc(a.score||'–')}</strong><span class="match-meta">${esc(a.status||'–')}</span></td>
-    <td data-label="Barem" class="num"><span class="line-stack">${fmt(a.opening)} <span class="line-arrow">→</span> ${fmt(a.live)}</span></td>
+    <td data-label="Barem" class="num"><span class="line-stack">${openingLine(a)} <span class="line-arrow">→</span> ${fmt(a.live)}</span></td>
     <td data-label="Fark" class="num"><span class="change-pill ${changeAvailable?(change>0?'positive':'negative'):''}">${signed}</span></td>
-    <td data-label="Yön"><span class="direction-pill ${direction==='ALT'?'alt':'ust'}">${esc(direction||'–')}</span></td>
+    <td data-label="Yön"><button type="button" class="signal-modal-trigger" onclick="openArchivedModal(event, ${Number(a.id)})" aria-label="Sinyal detayını aç"><span class="direction-pill ${direction==='ALT'?'alt':'ust'}">${esc(direction||'–')}</span></button></td>
+    <td data-label="PPM" class="num ppm-cell">${ppmFlow(a, 'openArchivedModal')}</td>
     <td data-label="Projeksiyon" class="num projection-cell"><span class="projection-pill ${projectionAvailable?'':'unavailable'}">${projectionAvailable?fmt(projection):'–'}</span></td>
-    <td data-label="Final"><strong>${esc(a.final_score||'–')}</strong>${Number.isFinite(finalTotal)?`<span class="match-meta">(${finalTotal})</span>`:''}</td>
+    <td data-label="Final"><strong>${esc(a.final_score||'–')}</strong>${hasMetric(a.final_total) ? `<span class="final-total"> (${esc(a.final_total)})</span>` : ''}</td>
     <td data-label="Sonuç"><span class="result-pill result-readonly ${resultClass}">${esc(a.result||'Sonuç bekliyor')}</span></td>
     <td data-label="Arşiv"><span class="match-meta">${esc(a.deleted_at||'–')}</span></td>
     <td data-label="İşlem"><button class="button icon-action danger archive-delete-button" onclick="purge(${a.id})" title="Kaydı sil" aria-label="Kaydı sil"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"></path></svg></button></td></tr>`}).join('');$('pagination').hidden=filteredRows.length<=pageSize;$('previousPage').disabled=currentPage===1;$('nextPage').disabled=currentPage===totalPages;$('pageInfo').textContent=`Sayfa ${currentPage} / ${totalPages}`;$('status').textContent=statusText(filteredRows.length,start,end,totalPages)}
+  function openArchivedModal(event, alertId) {
+    const alert = archiveRows.find(row => Number(row.id) === alertId);
+    if (!alert) return;
+    const teams = alert.team_history?.teams;
+    const teamCards = Array.isArray(teams) && teams.length ? teams.map(historyTeamCard).join('') : '<div class="modal-history-empty">–</div>';
+    const change = alert.barem_change;
+    const signed = hasMetric(change) ? `${Number(change) > 0 ? '+' : ''}${fmt(change)}` : '–';
+    const markers = (alert.list_markers || []).map(marker => `<span class="saved-status ${marker.type === 'black' ? 'negative-text' : 'positive-text'}">${esc(marker.title)}</span>`).join('');
+    $('signalModalTitle').textContent = alert.match_name || 'Sinyal detayı';
+    $('signalModalBody').innerHTML = `${ppmComparisonSection(alert)}
+      <section class="modal-section"><div class="modal-section-head"><h3 class="modal-section-title">Maç özeti</h3><span class="signal-modal-subtitle">${esc(alert.tournament || '–')}</span></div>
+      <div class="modal-current-stats">
+        <div><span>Skor</span><strong>${esc(alert.score || '–')}</strong></div>
+        <div><span>Zaman</span><strong>${esc(alert.status || '–')}</strong></div>
+        <div><span>Açılış</span><strong>${fmt(alert.opening)}</strong></div>
+        <div><span>Canlı barem</span><strong>${fmt(alert.live)}</strong></div>
+        <div><span>Değişim</span><strong>${signed}</strong></div>
+        <div><span>Sinyal</span><strong>${esc(alert.direction || '–')} · ${esc(alert.signal_count || '–')}.</strong></div>
+      </div>
+      <div class="archive-modal-extra"><span>Açılış PPM <strong>${ppmMetric(alert.opening_ppm)}</strong></span><span>Projeksiyon <strong>${fmt(alert.pace_projection)}</strong></span><span>Sinyal saati <strong>${esc(alert.signal_time || '–')}</strong></span></div>
+      </section>
+      <section class="modal-section"><h3 class="modal-section-title">Takım geçmişi</h3><div class="modal-team-grid">${teamCards}</div></section>
+      <section class="modal-section"><h3 class="modal-section-title">İşaretler</h3><div class="saved-statuses">${savedStatusLabels(alert) || '–'}</div></section>
+      <section class="modal-section"><h3 class="modal-section-title">Takım ve lig listeleri</h3><div class="saved-statuses">${markers || '–'}</div></section>
+      <section class="modal-section"><h3 class="modal-section-title">Final</h3><div class="archive-modal-extra"><span>${esc(alert.final_score || '–')}</span><span>${esc(alert.final_status || '–')}</span><span>${esc(alert.result || 'Sonuç bekliyor')}</span></div></section>`;
+    $('signalModal').hidden = false;
+    document.body.classList.add('modal-open');
+  }
+
+  function closeSignalModal() {
+    $('signalModal').hidden = true;
+    document.body.classList.remove('modal-open');
+  }
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') closeSignalModal(); });
   function normalizedDirection(value){const direction=String(value||'').trim().toLocaleUpperCase('tr-TR').replace('UST','ÜST');return ['ALT','ÜST'].includes(direction)?direction:''}
   function directionReport(rows,direction){const selected=rows.filter(row=>normalizedDirection(row.direction)===direction);const unique=uniqueSignals(selected);return {total:selected.length,uniqueTotal:unique.length,successful:selected.filter(row=>row.result==='Başarılı').length,uniqueSuccessful:unique.filter(row=>row.result==='Başarılı').length,failed:selected.filter(row=>row.result==='Başarısız').length,uniqueFailed:unique.filter(row=>row.result==='Başarısız').length}}
   function setReportCount(id,value,unique){$(id).textContent=value;$(`${id}Unique`).textContent=`(${unique} benzersiz)`}
@@ -128,6 +173,19 @@
   $('nextPage').onclick=()=>{const totalPages=Math.max(1,Math.ceil(filtered().length/pageSize));if(currentPage<totalPages){currentPage+=1;render()}};
   $('checkBtn').onclick=async()=>{$('status').textContent='Sonuçlar kontrol ediliyor…';await call('/api/deleted-matches/check-results',{method:'POST',body:'{}'});await load()};
   $('clearBtn').onclick=async()=>{if(confirm('Tüm arşiv silinsin mi?')){await call('/api/deleted-matches/clear',{method:'POST',body:'{}'});await load()}};
+  const tableSorter = createTableSorter('.archive-table', [
+    {value: row => row.match_name},
+    {value: row => row.score, hint: 'Sinyal anındaki skora göre sırala'},
+    {value: row => row.opening, numeric: true, hint: 'Açılış baremine göre sırala'},
+    {value: row => row.barem_change, numeric: true},
+    {value: row => row.direction},
+    {value: row => row.ppm_comparison?.required_change_pct, numeric: true, hint: 'Parantez içindeki yüzde farkına göre sırala'},
+    {value: row => row.pace_projection, numeric: true},
+    {value: row => row.final_total, numeric: true, hint: 'Final toplamına göre sırala'},
+    {value: row => row.result},
+    {value: row => row.deleted_at},
+    null,
+  ], () => { currentPage = 1; render(); });
   load();
 </script>
 </body>

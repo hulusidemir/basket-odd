@@ -1,6 +1,8 @@
 import json
 import os
+import re
 import sqlite3
+import unicodedata
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -162,17 +164,56 @@ class Database:
                     "ALTER TABLE alerts "
                     "ADD COLUMN quarter_scores_json TEXT NOT NULL DEFAULT ''"
                 )
+            if "final_total" not in alert_columns:
+                conn.execute("ALTER TABLE alerts ADD COLUMN final_total INTEGER")
+                final_rows = conn.execute("SELECT id, final_score FROM alerts WHERE final_score != ''").fetchall()
+                conn.executemany(
+                    "UPDATE alerts SET final_total = ? WHERE id = ?",
+                    [(self._final_score_total(row["final_score"]), row["id"]) for row in final_rows],
+                )
+            self._migrate_signal_lists(conn)
 
     # ---------- signal black/white lists ----------
 
+    def _migrate_signal_lists(self, conn):
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'index' "
+            "AND name = 'idx_signal_lists_entity'"
+        ).fetchone():
+            return
+        # Preserve the old effective rule when old lists conflict: black wins.
+        entries = conn.execute(
+            "SELECT * FROM signal_lists ORDER BY "
+            "CASE list_type WHEN 'black' THEN 0 ELSE 1 END, id"
+        ).fetchall()
+        winners = {}
+        for row in entries:
+            normalized = self.normalize_signal_list_value(row["value"])
+            key = (row["scope"], normalized)
+            if key in winners:
+                conn.execute("DELETE FROM signal_lists WHERE id = ?", (row["id"],))
+            else:
+                winners[key] = row
+        # Temporarily free old keys before assigning the new canonical keys.
+        for row in winners.values():
+            conn.execute(
+                "UPDATE signal_lists SET normalized_value = ? WHERE id = ?",
+                (f"\x00migrate:{row['id']}", row["id"]),
+            )
+        for (_, normalized), row in winners.items():
+            conn.execute(
+                "UPDATE signal_lists SET normalized_value = ? WHERE id = ?",
+                (normalized, row["id"]),
+            )
+        conn.execute(
+            "CREATE UNIQUE INDEX idx_signal_lists_entity "
+            "ON signal_lists(scope, normalized_value)"
+        )
+
     @staticmethod
     def normalize_signal_list_value(value: str) -> str:
-        return (
-            str(value or "").strip().lower()
-            .replace("ı", "i").replace("ş", "s")
-            .replace("ğ", "g").replace("ü", "u")
-            .replace("ö", "o").replace("ç", "c")
-        )
+        text = unicodedata.normalize("NFKD", str(value or "").lower().replace("ı", "i"))
+        return " ".join("".join(char for char in text if not unicodedata.combining(char)).split())
 
     @staticmethod
     def _clean_signal_list_type(value: str) -> str:
@@ -185,11 +226,13 @@ class Database:
         return text if text in {"team", "league"} else ""
 
     def add_signal_list_entry(self, list_type: str, scope: str, value: str) -> dict | None:
+        if not all(isinstance(item, str) for item in (list_type, scope, value)):
+            return None
         clean_type = self._clean_signal_list_type(list_type)
         clean_scope = self._clean_signal_list_scope(scope)
-        clean_value = str(value or "").strip()[:200]
+        clean_value = " ".join(value.split())
         normalized = self.normalize_signal_list_value(clean_value)
-        if not clean_type or not clean_scope or not normalized:
+        if not clean_type or not clean_scope or not normalized or len(clean_value) > 200:
             return None
 
         with self._conn() as conn:
@@ -197,8 +240,8 @@ class Database:
                 """
                 INSERT INTO signal_lists (list_type, scope, value, normalized_value)
                 VALUES (?, ?, ?, ?)
-                ON CONFLICT(list_type, scope, normalized_value)
-                DO UPDATE SET value = excluded.value
+                ON CONFLICT(scope, normalized_value)
+                DO UPDATE SET list_type = excluded.list_type, value = excluded.value
                 """,
                 (clean_type, clean_scope, clean_value, normalized),
             )
@@ -464,11 +507,6 @@ class Database:
                 FROM alerts a
                 LEFT JOIN match_actions ma ON ma.match_id = a.match_id
                 WHERE (a.deleted_at IS NULL OR a.deleted_at = '')
-                  AND NOT (
-                    COALESCE(a.alert_period, 0) = -1
-                    AND COALESCE(a.alert_moment, '') = 'Gelecek Maç'
-                  )
-                  AND COALESCE(a.status, '') != 'Gelecek'
                 ORDER BY a.alerted_at DESC
                 LIMIT ?
                 """,
@@ -477,7 +515,7 @@ class Database:
         return [dict(r) for r in rows]
 
     def all_active_alerts(self, limit: int | None = None) -> list:
-        """Return every active alert, including rows hidden from the live list."""
+        """Return every active alert in creation order."""
         with self._conn() as conn:
             sql = """
                 SELECT a.*, COALESCE(ma.note, '') AS note
@@ -506,24 +544,6 @@ class Database:
                 (match_id,),
             ).fetchall()
         return [dict(r) for r in rows]
-
-    def save_active_alert_display_snapshots(self, snapshots: dict[int, dict]) -> int:
-        if not snapshots:
-            return 0
-        updated = 0
-        with self._conn() as conn:
-            for alert_id, payload in snapshots.items():
-                cursor = conn.execute(
-                    """
-                    UPDATE alerts
-                    SET display_snapshot = ?
-                    WHERE id = ?
-                      AND (deleted_at IS NULL OR deleted_at = '')
-                    """,
-                    (json.dumps(payload, ensure_ascii=False), int(alert_id)),
-                )
-                updated += cursor.rowcount
-        return updated
 
     @staticmethod
     def _serialized_display_snapshots(snapshots: dict[int, dict]) -> dict[int, str]:
@@ -806,11 +826,6 @@ class Database:
                 FROM alerts
                 WHERE (deleted_at IS NULL OR deleted_at = '')
                   AND url != ''
-                  AND NOT (
-                    COALESCE(alert_period, 0) = -1
-                    AND COALESCE(alert_moment, '') = 'Gelecek Maç'
-                  )
-                  AND COALESCE(status, '') != 'Gelecek'
                 GROUP BY match_id
                 ) latest ON latest.latest_id = a.id
                 ORDER BY a.alerted_at DESC, a.id DESC
@@ -818,22 +833,8 @@ class Database:
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def delete_match_data(self, match_id: str, *, require_display_snapshot: bool = False) -> int:
+    def delete_match_data(self, match_id: str) -> int:
         with self._conn() as conn:
-            if require_display_snapshot:
-                conn.execute("BEGIN IMMEDIATE")
-                missing = conn.execute(
-                    """
-                    SELECT COUNT(*) AS cnt
-                    FROM alerts
-                    WHERE match_id = ?
-                      AND (deleted_at IS NULL OR deleted_at = '')
-                      AND TRIM(COALESCE(display_snapshot, '')) = ''
-                    """,
-                    (match_id,),
-                ).fetchone()
-                if int(missing["cnt"] if missing else 0) > 0:
-                    raise RuntimeError("active alert is missing its live dashboard snapshot")
             cursor = conn.execute(
                 """
                 UPDATE alerts
@@ -935,21 +936,10 @@ class Database:
             ).fetchone()
         return dict(row) if row else None
 
-    def update_deleted_alert_result(self, alert_id: int, result: str) -> bool:
-        with self._conn() as conn:
-            cursor = conn.execute(
-                """
-                UPDATE alerts
-                SET result = ?,
-                    result_source = CASE WHEN ? != '' THEN 'manual' ELSE '' END,
-                    settled_at = CASE WHEN ? != '' THEN CURRENT_TIMESTAMP ELSE NULL END
-                WHERE id = ?
-                  AND deleted_at IS NOT NULL
-                  AND deleted_at != ''
-                """,
-                (result, result, result, alert_id),
-            )
-        return cursor.rowcount > 0
+    @staticmethod
+    def _final_score_total(score: str) -> int | None:
+        match = re.fullmatch(r"\s*(\d+)\s*[-–]\s*(\d+)\s*", str(score or ""))
+        return sum(map(int, match.groups())) if match else None
 
     def update_deleted_alert_final_result(
         self,
@@ -967,6 +957,7 @@ class Database:
                 UPDATE alerts
                 SET result = ?,
                     final_score = CASE WHEN ? != '' THEN ? ELSE final_score END,
+                    final_total = CASE WHEN ? != '' THEN ? ELSE final_total END,
                     final_status = CASE WHEN ? != '' THEN ? ELSE final_status END,
                     result_source = 'automatic_final_score',
                     settled_at = CURRENT_TIMESTAMP
@@ -978,6 +969,7 @@ class Database:
                 (
                     result,
                     final_score, final_score,
+                    final_score, self._final_score_total(final_score),
                     final_status, final_status,
                     alert_id,
                 ),
@@ -991,12 +983,13 @@ class Database:
         final_score: str,
         final_status: str,
     ) -> int:
-        """Store final facts without changing a user's manual result label."""
+        """Store final facts without changing an already settled result."""
         with self._conn() as conn:
             cursor = conn.execute(
                 """
                 UPDATE alerts
                 SET final_score = CASE WHEN ? != '' THEN ? ELSE final_score END,
+                    final_total = CASE WHEN ? != '' THEN ? ELSE final_total END,
                     final_status = CASE WHEN ? != '' THEN ? ELSE final_status END
                 WHERE match_id = ?
                   AND deleted_at IS NOT NULL
@@ -1004,6 +997,7 @@ class Database:
                 """,
                 (
                     final_score, final_score,
+                    final_score, self._final_score_total(final_score),
                     final_status, final_status,
                     str(match_id or "").strip(),
                 ),
@@ -1016,7 +1010,8 @@ class Database:
                 """
                 UPDATE alerts
                 SET final_status = 'Devam Ediyor',
-                    final_score = ''
+                    final_score = '',
+                    final_total = NULL
                 WHERE match_id = ?
                   AND deleted_at IS NOT NULL
                   AND deleted_at != ''
@@ -1053,7 +1048,6 @@ class Database:
         """
         saved_matches = 0
         enriched: list[dict] = []
-        saved_match_ids: list[str] = []
 
         with self._conn() as conn:
             for raw in matches or []:
@@ -1102,7 +1096,6 @@ class Database:
                     ),
                 )
                 saved_matches += 1
-                saved_match_ids.append(match_id)
 
                 enriched.append(row)
 
@@ -1165,19 +1158,6 @@ class Database:
                     )
                     # Keep upcoming_match_actions: a transient listing miss or a
                     # later reappearance must not erase the user's decision.
-
-            legacy_ids = list({*saved_match_ids, *expired_ids, *missing_ids})
-            if legacy_ids:
-                placeholders = ", ".join("?" for _ in legacy_ids)
-                conn.execute(
-                    f"""
-                    DELETE FROM alerts
-                    WHERE match_id IN ({placeholders})
-                      AND alert_period = -1
-                      AND alert_moment = 'Gelecek Maç'
-                    """,
-                    tuple(legacy_ids),
-                )
 
         return {
             "matches": enriched,
@@ -1340,41 +1320,16 @@ class Database:
         with self._conn() as conn:
             upcoming_count = conn.execute("DELETE FROM upcoming_matches WHERE match_id = ?", (key,)).rowcount
             conn.execute("DELETE FROM upcoming_match_actions WHERE match_id = ?", (key,))
-            conn.execute(
-                """
-                DELETE FROM alerts
-                WHERE match_id = ?
-                  AND alert_period = -1
-                  AND alert_moment = 'Gelecek Maç'
-                """,
-                (key,),
-            )
         return int(upcoming_count or 0)
 
     def clear_upcoming_matches(self) -> dict:
         with self._conn() as conn:
-            rows = conn.execute("SELECT match_id FROM upcoming_matches").fetchall()
-            match_ids = [str(row["match_id"]) for row in rows if str(row["match_id"] or "").strip()]
             upcoming_count = conn.execute("DELETE FROM upcoming_matches").rowcount
             action_count = conn.execute("DELETE FROM upcoming_match_actions").rowcount
-
-            alert_count = 0
-            if match_ids:
-                placeholders = ", ".join("?" for _ in match_ids)
-                alert_count = conn.execute(
-                    f"""
-                    DELETE FROM alerts
-                    WHERE match_id IN ({placeholders})
-                      AND alert_period = -1
-                      AND alert_moment = 'Gelecek Maç'
-                    """,
-                    tuple(match_ids),
-                ).rowcount
 
         return {
             "deleted_upcoming": int(upcoming_count or 0),
             "deleted_actions": int(action_count or 0),
-            "deleted_alerts": int(alert_count or 0),
         }
 
     @staticmethod

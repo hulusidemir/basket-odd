@@ -5,9 +5,11 @@ import csv
 import io
 import json
 import logging
+import math
 import os
 import re
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from flask import Flask, Response, jsonify, render_template, request
 
@@ -74,6 +76,7 @@ def _raw_alert(row: dict, list_profile: dict | None = None) -> dict:
         str(item.get("match_name") or ""),
         str(item.get("tournament") or ""),
         quarter_scores=_stored_quarter_scores(item.get("quarter_scores_json")),
+        live_total=item.get("live"),
     )
     item["pace_projection"] = pace["total"]
     item["pace_ppm"] = pace["ppm"]
@@ -81,6 +84,31 @@ def _raw_alert(row: dict, list_profile: dict | None = None) -> dict:
     item["pace_elapsed_minutes"] = pace["elapsed_minutes"]
     item["pace_game_minutes"] = pace["game_minutes"]
     item["quarter_pace_periods"] = pace["periods"]
+    item["ppm_comparison"] = dict(pace["comparison"])
+    try:
+        opening_ppm = float(item["opening"]) / float(pace["game_minutes"])
+        item["opening_ppm"] = opening_ppm if math.isfinite(opening_ppm) else None
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        item["opening_ppm"] = None
+    comparison = item["ppm_comparison"]
+    minutes = comparison.get("remaining_minutes")
+    seconds = math.floor(minutes * 60 + 0.5) if isinstance(minutes, (int, float)) and math.isfinite(minutes) else None
+    comparison["remaining_time"] = f"{seconds // 60}:{seconds % 60:02d}" if seconds is not None else None
+    pace_direction = {"above": "ÜST", "below": "ALT"}.get(comparison.get("status"), "")
+    comparison["heading"] = f"Tempo {pace_direction} yönünde" if pace_direction else "Tempo yorumu"
+    comparison["signal_relation"] = None
+    comparison["signal_relation_tone"] = None
+    if pace_direction and item["direction"] in {"ALT", "ÜST"}:
+        aligned = pace_direction == item["direction"]
+        comparison["signal_relation"] = f"{item['direction']} sinyaliyle {'uyumlu' if aligned else 'ters'}"
+        comparison["signal_relation_tone"] = "aligned" if aligned else "opposed"
+    try:
+        timestamp = datetime.fromisoformat(str(item.get("alerted_at") or "").replace("Z", "+00:00"))
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        item["signal_time"] = timestamp.astimezone(ZoneInfo("Europe/Istanbul")).strftime("%H:%M")
+    except ValueError:
+        item["signal_time"] = None
     item["list_markers"] = build_signal_list_markers(item, list_profile)
     for key in (
         "display_snapshot",
@@ -104,10 +132,16 @@ def _build_live_dashboard_rows(rows: list[dict]) -> list[dict]:
 def _dashboard_snapshot_payloads(rows: list[dict]) -> dict[int, dict]:
     captured_at = datetime.now(timezone.utc).isoformat()
     snapshots: dict[int, dict] = {}
+    history_rows = _unique_signal_rows(_deleted_rows()) if rows else []
+    histories = {}
     for row in rows:
         payload = dict(row)
+        history_key = (str(row.get("match_name") or ""), str(row.get("match_id") or ""))
+        if history_key not in histories:
+            histories[history_key] = _team_history(*history_key, history_rows=history_rows)
+        payload["team_history"] = histories[history_key]
         payload["snapshot_meta"] = {
-            "schema_version": 1,
+            "schema_version": 2,
             "source": "raw_line_dashboard",
             "captured_at": captured_at,
         }
@@ -177,15 +211,20 @@ def _frozen_deleted_alert(row: dict) -> dict:
     ):
         if key in stored:
             item[key] = stored[key]
+    item["final_total"] = stored.get("final_total")
     if "pace_projection" not in snapshot:
         item["pace_projection"] = None
         item["pace_score_total"] = None
         item["pace_elapsed_minutes"] = None
         item["pace_game_minutes"] = None
+    for key in ("opening_ppm", "team_history", "signal_time"):
+        item[key] = snapshot.get(key)
     if "pace_ppm" not in snapshot:
         item["pace_ppm"] = None
     if "quarter_pace_periods" not in snapshot:
         item["quarter_pace_periods"] = []
+    if "ppm_comparison" not in snapshot:
+        item["ppm_comparison"] = None
     if "barem_change" not in snapshot:
         item["barem_change"] = None
     if "list_markers" not in snapshot:
@@ -227,20 +266,22 @@ def api_signal_lists():
 @app.route("/api/signal-lists", methods=["POST"])
 def api_add_signal_list_entry():
     payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Geçersiz liste kaydı."}), 400
     entry = db.add_signal_list_entry(
         payload.get("list_type") or "",
         payload.get("scope") or "",
         payload.get("value") or "",
     )
     if entry is None:
-        return jsonify({"error": "invalid_list_entry"}), 400
-    return jsonify({"entry": entry, "created": True})
+        return jsonify({"error": "Liste ve tür seçin; 1–200 karakterlik bir ad girin."}), 400
+    return jsonify({"entry": entry})
 
 
 @app.route("/api/signal-lists/<int:entry_id>", methods=["DELETE"])
 def api_delete_signal_list_entry(entry_id: int):
     if not db.delete_signal_list_entry(entry_id):
-        return jsonify({"error": "not_found"}), 404
+        return jsonify({"error": "Kayıt zaten kaldırılmış. Listeyi yenileyin."}), 404
     return jsonify({"id": entry_id, "deleted": True})
 
 
@@ -458,9 +499,35 @@ def api_delete_alert(alert_id: int):
     return jsonify({"id": alert_id, "match_id": alert["match_id"], "affected": affected})
 
 
-def _team_history(match_name: str, current_match_id: str) -> dict:
+def _history_display_row(row: dict) -> dict:
+    """Prepare live modal history facts once, before they become a snapshot."""
+    item = {key: row.get(key) for key in (
+        "id", "match_id", "match_name", "url", "direction", "opening", "live",
+        "barem_change", "final_score", "result",
+    )}
+    scores = re.fullmatch(r"\s*(\d{1,3})\s*[-–]\s*(\d{1,3})\s*", str(item.get("final_score") or ""))
+    total = sum(map(int, scores.groups())) if scores else None
+    item["final_total"] = total if total is not None and 60 <= total <= 400 else None
+    item["verdict"] = None
+    try:
+        line = float(item["live"])
+        direction = _normalize_direction(item["direction"])
+        if item["final_total"] is not None and math.isfinite(line) and direction:
+            won = total < line if direction == "ALT" else total > line
+            item["verdict"] = {
+                "relation": "=" if total == line else ">" if total > line else "<",
+                "margin": abs(total - line),
+                "label": "İade" if total == line else f"{direction} {'tuttu' if won else 'kaybetti'}",
+                "tone": "" if total == line else "success" if won else "failed",
+            }
+    except (TypeError, ValueError):
+        pass
+    return item
+
+
+def _team_history(match_name: str, current_match_id: str, *, history_rows=None) -> dict:
     teams = split_match_teams(match_name)
-    rows = _unique_signal_rows(_deleted_rows())
+    rows = _unique_signal_rows(_deleted_rows()) if history_rows is None else history_rows
     result = []
     for role, team in zip(("Ev", "Dep"), teams):
         matches = []
@@ -480,7 +547,8 @@ def _team_history(match_name: str, current_match_id: str) -> dict:
         result.append({
             "role": role,
             "name": team,
-            "matches": matches,
+            # Freeze only visible history facts, never nest whole snapshots.
+            "matches": [_history_display_row(row) for row in matches[:5]],
             "summary": _basic_result_report(matches),
         })
     return {"match_id": current_match_id, "match_name": match_name, "teams": result}
@@ -488,9 +556,13 @@ def _team_history(match_name: str, current_match_id: str) -> dict:
 
 @app.route("/api/alerts/<int:alert_id>/team-history")
 def api_alert_team_history(alert_id: int):
-    alert = db.get_alert(alert_id) or db.get_deleted_alert_by_id(alert_id)
+    alert = db.get_alert(alert_id)
     if not alert:
-        return jsonify({"error": "not_found"}), 404
+        archived = db.get_deleted_alert_by_id(alert_id)
+        if not archived:
+            return jsonify({"error": "not_found"}), 404
+        frozen = _frozen_deleted_alert(archived)
+        return jsonify({**(frozen.get("team_history") or {"teams": []}), "alert_id": alert_id})
     payload = _team_history(
         str(alert.get("match_name") or ""),
         str(alert.get("match_id") or ""),
