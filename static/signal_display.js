@@ -2,6 +2,7 @@
   const hasMetric = value => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
   const ppmMetric = (value, digits=2) => hasMetric(value) ? Number(value).toLocaleString('tr-TR', {minimumFractionDigits:digits, maximumFractionDigits:digits}) : '–';
   const ppmChange = value => hasMetric(value) ? `(${Number(value) > 0 ? '+' : Number(value) < 0 ? '−' : ''}%${ppmMetric(Math.abs(Number(value)), 1)})` : '';
+  const ppmChangeTone = value => { if (!hasMetric(value)) return ''; const n = Number(value); if (n > 0) return 'ppm-change-positive'; if (n < 0) return 'ppm-change-negative'; return 'ppm-change-neutral'; };
   function resultClass(value) {
     if (value === 'Başarılı') return 'success';
     if (value === 'Başarısız') return 'failed';
@@ -90,7 +91,8 @@
 
   function ppmFlow(alert, handler='openSignalModal') {
     const comparison = alert.ppm_comparison || {};
-    return `<button type="button" class="signal-modal-trigger ppm-modal-trigger ${hasMetric(alert.pace_ppm) ? '' : 'unavailable'}" onclick="${handler}(event, ${Number(alert.id)})" title="Tempo detayını aç" aria-label="Mevcut ${ppmMetric(alert.pace_ppm)}, gereken ${ppmMetric(comparison.required_ppm)} PPM. Tempo detayını aç"><span class="ppm-current">${ppmMetric(alert.pace_ppm)}</span><span class="ppm-flow-arrow" aria-hidden="true">→</span><span class="ppm-target">${ppmMetric(comparison.required_ppm)}</span><small class="ppm-flow-change">${ppmChange(comparison.required_change_pct)}</small></button>`;
+    const aligned = comparison.signal_relation_tone === 'aligned';
+    return `<button type="button" class="signal-modal-trigger ppm-modal-trigger ${hasMetric(alert.pace_ppm) ? '' : 'unavailable'}" onclick="${handler}(event, ${Number(alert.id)})" title="Tempo detayını aç" aria-label="Mevcut ${ppmMetric(alert.pace_ppm)}, gereken ${ppmMetric(comparison.required_ppm)} PPM. Tempo detayını aç"><span class="ppm-current">${ppmMetric(alert.pace_ppm)}</span><span class="ppm-flow-arrow" aria-hidden="true">→</span><span class="ppm-target">${ppmMetric(comparison.required_ppm)}</span><small class="ppm-flow-change ${ppmChangeTone(comparison.required_change_pct)}">${ppmChange(comparison.required_change_pct)}${aligned ? '<span class="ppm-aligned-tick" title="Tempo sinyal yönüyle uyumlu">✓</span>' : ''}</small></button>`;
   }
 
   function frozenListMarkers(alert) {

@@ -1,0 +1,24 @@
+body.ppm-calculator-open { overflow: hidden; }
+.ppm-calculator { width: min(500px, calc(100% - 28px)); max-height: calc(100dvh - 40px); margin: auto; padding: 0; color: var(--text); }
+.ppm-calculator:not([open]) { display: none; }
+.ppm-calculator::backdrop { background: rgba(3,4,9,.78); backdrop-filter: blur(8px); }
+.ppm-calculator .signal-modal-header h2 { overflow-wrap: anywhere; }
+.ppm-calculator-facts { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin: 20px 0 24px; }
+.ppm-calculator-facts span, .ppm-calculator-facts strong { display: block; }
+.ppm-calculator-facts span, .ppm-calculator-scale, .ppm-calculator-label small { color: var(--muted); font-size: 11px; }
+.ppm-calculator-facts strong { margin-top: 6px; font-size: 13px; }
+.ppm-calculator-label { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.ppm-calculator-label label { font-size: 14px; font-weight: 650; }
+.ppm-calculator-label small { display: block; margin-top: 5px; font-weight: 400; }
+#ppmCalculatorPace { width: 110px; min-width: 0; flex-shrink: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: rgba(139,108,255,.08); color: var(--purple-bright); font-size: 26px; font-weight: 750; font-variant-numeric: tabular-nums; text-align: right; }
+#ppmCalculatorPace:focus-visible { outline: 2px solid var(--purple-bright); outline-offset: 2px; }
+#ppmCalculatorPace[aria-invalid="true"] { border-color: var(--red); }
+#ppmCalculatorSlider { display: block; width: 100%; height: 36px; margin: 14px 0 0; padding: 0; accent-color: var(--purple-bright); cursor: pointer; }
+#ppmCalculatorSlider:focus-visible { outline: 2px solid var(--purple-bright); outline-offset: 3px; }
+.ppm-calculator-scale { display: flex; justify-content: space-between; margin-bottom: 16px; }
+.ppm-calculator-result { margin-top: 20px; padding: 20px 12px; border: 1px solid var(--border); border-radius: 12px; background: rgba(139,108,255,.08); text-align: center; }
+.ppm-calculator-result > span { color: var(--muted); font-size: 12px; }
+.ppm-calculator-result > strong { display: block; margin: 6px 0; font-size: 42px; font-variant-numeric: tabular-nums; }
+.ppm-calculator-result p { margin: 8px 0 0; font-size: 12px; line-height: 1.5; }
+#ppmCalculatorFormula { color: var(--muted); }
+.ppm-calculator-action { color: var(--purple-bright); }

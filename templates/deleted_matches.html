@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#08090f">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='ppm_calculator.css') }}">
   <title>Sinyal Geçmişi</title>
 </head>
 <body>
@@ -56,7 +57,7 @@
     <div class="panel-header archive-status-row"><div class="status-line" id="status"></div></div>
     <div class="table-wrap">
       <table class="data-table archive-table">
-        <thead><tr><th>Maç</th><th>Sinyal anı</th><th class="num">Barem hareketi</th><th class="num">Fark</th><th>Yön</th><th class="ppm-heading">PPM</th><th class="num">Projeksiyon</th><th>Final</th><th>Sonuç</th><th>Arşiv</th><th></th></tr></thead>
+        <thead><tr><th>Maç</th><th>Sinyal anı</th><th class="num">Barem hareketi</th><th class="num">Fark</th><th>Yön</th><th class="ppm-heading">PPM</th><th class="num">Projeksiyon</th><th>Final</th><th>Sonuç</th><th></th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="empty" id="empty" hidden><span class="empty-symbol">⌁</span><strong id="emptyTitle">Arşiv boş</strong><span id="emptyText">Arşivlenen sinyaller burada gösterilecek.</span></div>
@@ -78,6 +79,7 @@
     <div class="signal-modal-body" id="signalModalBody"></div>
   </section>
 </div>
+{% include '_ppm_calculator.html' %}
 <script src="{{ url_for('static', filename='signal_display.js') }}"></script>
 <script src="{{ url_for('static', filename='table_sort.js') }}"></script>
 <script>
@@ -85,6 +87,9 @@
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmt=v=>hasMetric(v)?Number(v).toFixed(1):'–';
   let archiveRows=[];
+  function openPpmCalculator(event, alertId) {
+    PpmCalculator.open(archiveRows.find(row => Number(row.id) === Number(alertId)), event.currentTarget);
+  }
   let resultFilter='all';
   let directionFilter='all';
   let periodFilter='all';
@@ -116,8 +121,8 @@
     <td data-label="Projeksiyon" class="num projection-cell"><span class="projection-pill ${projectionAvailable?'':'unavailable'}">${projectionAvailable?fmt(projection):'–'}</span></td>
     <td data-label="Final"><strong>${esc(a.final_score||'–')}</strong>${hasMetric(a.final_total) ? `<span class="final-total"> (${esc(a.final_total)})</span>` : ''}</td>
     <td data-label="Sonuç"><span class="result-pill result-readonly ${resultClass}">${esc(a.result||'Sonuç bekliyor')}</span></td>
-    <td data-label="Arşiv"><span class="match-meta">${esc(a.deleted_at||'–')}</span></td>
-    <td data-label="İşlem"><button class="button icon-action danger archive-delete-button" onclick="purge(${a.id})" title="Kaydı sil" aria-label="Kaydı sil"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"></path></svg></button></td></tr>`}).join('');$('pagination').hidden=filteredRows.length<=pageSize;$('previousPage').disabled=currentPage===1;$('nextPage').disabled=currentPage===totalPages;$('pageInfo').textContent=`Sayfa ${currentPage} / ${totalPages}`;$('status').textContent=statusText(filteredRows.length,start,end,totalPages)}
+
+    <td data-label="İşlem"><div class="row-actions icon-only">${PpmCalculator.button(a)}<button class="button icon-action danger archive-delete-button" onclick="purge(${a.id})" title="Kaydı sil" aria-label="Kaydı sil"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"></path></svg></button></div></td></tr>`}).join('');$('pagination').hidden=filteredRows.length<=pageSize;$('previousPage').disabled=currentPage===1;$('nextPage').disabled=currentPage===totalPages;$('pageInfo').textContent=`Sayfa ${currentPage} / ${totalPages}`;$('status').textContent=statusText(filteredRows.length,start,end,totalPages)}
   function openArchivedModal(event, alertId) {
     const alert = archiveRows.find(row => Number(row.id) === alertId);
     if (!alert) return;
@@ -171,8 +176,8 @@
   $('uniqueBtn').onclick=()=>{uniqueOnly=!uniqueOnly;currentPage=1;$('uniqueBtn').classList.toggle('active',uniqueOnly);$('uniqueBtn').textContent=uniqueOnly?'Tekrarları göster':'Tekrarları gizle';render()};
   $('previousPage').onclick=()=>{if(currentPage>1){currentPage-=1;render()}};
   $('nextPage').onclick=()=>{const totalPages=Math.max(1,Math.ceil(filtered().length/pageSize));if(currentPage<totalPages){currentPage+=1;render()}};
-  $('checkBtn').onclick=async()=>{$('status').textContent='Sonuçlar kontrol ediliyor…';await call('/api/deleted-matches/check-results',{method:'POST',body:'{}'});await load()};
-  $('clearBtn').onclick=async()=>{if(confirm('Tüm arşiv silinsin mi?')){await call('/api/deleted-matches/clear',{method:'POST',body:'{}'});await load()}};
+  $('checkBtn').onclick=async()=>{const btn=$('checkBtn');btn.disabled=true;btn.textContent='Kontrol ediliyor…';$('status').classList.remove('error');$('status').textContent='Sonuçlar kontrol ediliyor… (bu birkaç dakika sürebilir)';try{const result=await call('/api/deleted-matches/check-results',{method:'POST',body:'{}'});await load();$('status').classList.remove('error');$('status').textContent=result.message||'Kontrol tamamlandı.'}catch(e){$('status').classList.add('error');$('status').textContent=e.message||'Sonuçlar kontrol edilemedi.'}finally{btn.disabled=false;btn.textContent='Sonuçları kontrol et'}};
+  $('clearBtn').onclick=async()=>{if(confirm('Tüm arşiv silinsin mi?')){try{await call('/api/deleted-matches/clear',{method:'POST',body:'{}'});await load()}catch(e){$('status').classList.add('error');$('status').textContent=e.message||'Arşiv silinemedi.'}}};
   const tableSorter = createTableSorter('.archive-table', [
     {value: row => row.match_name},
     {value: row => row.score, hint: 'Sinyal anındaki skora göre sırala'},
@@ -183,7 +188,6 @@
     {value: row => row.pace_projection, numeric: true},
     {value: row => row.final_total, numeric: true, hint: 'Final toplamına göre sırala'},
     {value: row => row.result},
-    {value: row => row.deleted_at},
     null,
   ], () => { currentPage = 1; render(); });
   load();

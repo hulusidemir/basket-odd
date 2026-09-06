@@ -1,0 +1,28 @@
+<dialog class="signal-modal-card ppm-calculator" id="ppmCalculator" aria-labelledby="ppmCalculatorTitle" aria-describedby="ppmCalculatorHint">
+  <header class="signal-modal-header">
+    <div><div class="eyebrow">PPM hesaplayıcı</div><h2 id="ppmCalculatorTitle">Maç sonu hesabı</h2></div>
+    <button class="signal-modal-close" type="button" id="ppmCalculatorClose" aria-label="Hesaplayıcıyı kapat">×</button>
+  </header>
+  <div class="signal-modal-body">
+    <p class="signal-modal-subtitle" id="ppmCalculatorHint">Sinyal anından normal süre sonuna kadar seçtiğin hız sürerse…</p>
+    <div class="ppm-calculator-facts">
+      <div><span>Sinyal skoru</span><strong id="ppmCalculatorScore">–</strong></div>
+      <div><span>Kalan süre</span><strong id="ppmCalculatorTime">–</strong></div>
+      <div><span>Sinyal baremi</span><strong id="ppmCalculatorLine">–</strong></div>
+    </div>
+    <p class="modal-error" id="ppmCalculatorError" hidden></p>
+    <div id="ppmCalculatorControls">
+      <div class="ppm-calculator-label"><label for="ppmCalculatorSlider">Kalan sürede PPM <small>İki takımın toplam sayı/dakikası</small></label><input id="ppmCalculatorPace" type="text" inputmode="decimal" autocomplete="off" aria-label="PPM değerini yaz" value="0,00"></div>
+      <input id="ppmCalculatorSlider" type="range" min="0" max="12" step="0.01" value="0">
+      <div class="ppm-calculator-scale"><span>0 PPM</span><span id="ppmCalculatorMax">12 PPM</span></div>
+      <button class="button" type="button" id="ppmCalculatorReset">Mevcut PPM'e dön</button>
+      <div class="ppm-calculator-result" role="status" aria-live="polite" aria-atomic="true">
+        <span>Senaryo maç sonu toplamı</span>
+        <strong id="ppmCalculatorTotal">–</strong>
+        <p id="ppmCalculatorFormula"></p>
+        <p id="ppmCalculatorComparison"></p>
+      </div>
+    </div>
+  </div>
+</dialog>
+<script src="{{ url_for('static', filename='ppm_calculator.js') }}"></script>

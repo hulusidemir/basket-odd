@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#08090f">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='ppm_calculator.css') }}">
   <title>Basket Sinyal Dashboard</title>
 </head>
 <body>
@@ -89,6 +90,7 @@
 
 
 
+{% include '_ppm_calculator.html' %}
 <script src="{{ url_for('static', filename='signal_display.js') }}"></script>
 <script src="{{ url_for('static', filename='table_sort.js') }}"></script>
 <script>
@@ -96,6 +98,9 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const fmt = value => hasMetric(value) ? Number(value).toFixed(1) : '–';
   let alerts = [];
+  function openPpmCalculator(event, alertId) {
+    PpmCalculator.open(alerts.find(row => Number(row.id) === Number(alertId)), event.currentTarget);
+  }
   let signalLists = [];
   let listsReady = false;
   let listsBusy = false;
@@ -398,6 +403,7 @@
         <td data-label="Projeksiyon" class="num projection-cell" title="${esc(projectionTitle)}"><span class="projection-pill ${projectionAvailable ? '' : 'unavailable'}">${projectionAvailable ? fmt(projection) : '–'}</span></td>
 
         <td data-label="İşlemler"><div class="row-actions icon-only">
+          ${PpmCalculator.button(a)}
           <button class="button icon-action bet-action ${a.bet_placed ? 'active' : ''}" onclick="toggle(${a.id},'bet')" title="Bahis oynandı" aria-label="Bahis oynandı"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"></path></svg></button>
           <button class="button icon-action follow-action ${a.followed ? 'active' : ''}" onclick="toggle(${a.id},'follow')" title="Takip et" aria-label="Takip et"><svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path><circle cx="12" cy="12" r="2.5"></circle></svg></button>
           <button class="button icon-action ignore-action ${a.ignored ? 'active' : ''}" onclick="toggle(${a.id},'ignore')" title="Gözardı et" aria-label="Gözardı et"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="m6.4 6.4 11.2 11.2"></path></svg></button>

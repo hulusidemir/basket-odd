@@ -226,6 +226,10 @@ tbody tr:last-child td { border-bottom: 0; }
 .ppm-target { color: #87dce8; }
 .ppm-flow-arrow { color: var(--muted); font-weight: 400; }
 .ppm-flow-change { color: #cbc7de; font-size: 11px; font-weight: 500; text-align: left; }
+.ppm-flow-change.ppm-change-positive { color: #f5b070; }
+.ppm-flow-change.ppm-change-negative { color: #6dd8b7; }
+.ppm-flow-change.ppm-change-neutral { color: #a8a5bc; }
+.ppm-aligned-tick { margin-left: 3px; color: #91edce; font-size: 13px; font-weight: 850; }
 .ppm-modal-trigger:hover { background: transparent; filter: brightness(1.2); }
 .ppm-modal-trigger.unavailable { color: var(--muted); }
 .change-text { font-size: 10px; font-weight: 850; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -269,7 +273,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .signal-table th { font-size: 11px; letter-spacing: .045em; }
 .signal-table .ppm-modal-trigger { font-size: 15px; font-weight: 700; }
 .signal-table .ppm-flow-change { font-size: 12px; }
-.signal-table .projection-pill { min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; font-size: 16px; font-weight: 700; }
+.signal-table .projection-pill, .archive-table .projection-pill { min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; font-size: 16px; font-weight: 700; }
 .signal-table .line-stack { font-size: 15px; gap: 7px; }
 .signal-table .opening-ppm, .signal-table .change-text { font-size: 12px; }
 .signal-table .direction-pill { font-size: 12px; }
