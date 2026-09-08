@@ -29,40 +29,110 @@
 
   <section class="panel">
     <div class="panel-header">
-      <div><h2 class="panel-title">Maç programı</h2><div class="panel-subtitle" id="status">Yükleniyor…</div></div>
+      <div><h2 class="panel-title">Maç programı</h2><div class="panel-subtitle status-line" id="status" role="status" aria-live="polite">Yükleniyor…</div></div>
       <button class="button danger" id="clearBtn">Listeyi temizle</button>
     </div>
     <div class="toolbar"><input class="search" id="searchInput" type="search" placeholder="Maç veya lig ara…"><div class="filters"><button class="button filter-button active" data-view="all">Tümü</button><button class="button filter-button" data-view="followed">Takip</button></div></div>
+    <p class="panel-subtitle" style="padding: 0 16px">Bağımsız Alt/Üst analizi: her takımın son 10 tamamlanmış maçından en düşük 3 ve en yüksek 2 hücum skoru seçilir. Beş skorun toplamı 5’e bölünür. Takım A ev sahibi, Takım B deplasmandır. En az 5 geçerli maç gerekir; eşitlikte sinyal yoktur.</p>
     <div class="table-wrap">
       <table class="data-table upcoming-table">
-        <thead><tr><th>Saat</th><th>Maç</th><th class="num">Açılış</th><th class="num">Maç önü</th><th>Durum</th><th>İşlemler</th></tr></thead>
+        <thead><tr><th>Saat</th><th>Maç</th><th class="num">Açılış Baremi</th><th class="num">Takım A Ort.</th><th class="num">Takım B Ort.</th><th class="num">Tahmini Toplam</th><th class="num">Edge</th><th>Sinyal</th><th class="num">Maç önü</th><th>Durum</th><th>İşlemler</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
-      <div class="empty" id="empty" hidden><span class="empty-symbol">◷</span><strong>Yaklaşan maç yok</strong>Önümüzdeki 24 saat için kayıt bulunamadı.</div>
+      <div class="empty" id="empty" hidden><span class="empty-symbol">◷</span><strong id="emptyTitle">Yaklaşan maç yok</strong><span id="emptyText">Önümüzdeki 24 saat için kayıt bulunamadı.</span></div>
     </div>
   </section>
 </main>
 <script>
   const $=id=>document.getElementById(id);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const fmt=v=>Number.isFinite(Number(v))?Number(v).toFixed(1):'–';
+  const hasLine=v=>(typeof v==='number'||typeof v==='string'&&v.trim()!=='')&&Number.isFinite(Number(v))&&Number(v)>0;
+  const fmt=v=>hasLine(v)?Number(v).toFixed(1):'–';
+  const analysisNumber=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v).toFixed(1):'–';
+  function attackCell(team){
+    if(!team)return '–';
+    const selected=team.selected_matches||[];
+    const detail=selected.map(row=>`${row.date}: ${row.home_team} - ${row.away_team}, attığı ${row.points} (${row.selection==='low'?'en düşük':'en yüksek'})`).join(' / ');
+    return `<strong title="${esc(detail)}">${analysisNumber(team.average)}</strong><span class="match-meta">${esc(team.sample_count??0)} maç</span>`;
+  }
+  function analysisSignal(analysis){
+    if(!analysis)return '<span class="match-meta">Analiz için güncelle</span>';
+    if(analysis.status==='ready'&&['ALT','ÜST'].includes(analysis.signal))return `<span class="direction-pill ${analysis.signal==='ALT'?'alt':'ust'}">${esc(analysis.signal)}</span>`;
+    const labels={insufficient_history:'Yetersiz geçmiş',history_unavailable:'Geçmiş alınamadı',missing_opening:'Açılış baremi yok',equal:'Eşit · Sinyal yok'};
+    return `<span class="match-meta">${esc(labels[analysis.status]||'Analiz bekleniyor')}</span>`;
+  }
   let matches=[];let view='all';let fetchRequestPending=false;let fetchRunning=false;let fetchPollTimer=null;
+  let actionPending=false;let clearPending=false;let loadVersion=0;let lastList={};let statusError='';
   function desktopMatchUrl(value){try{const url=new URL(String(value??''));if(!['http:','https:'].includes(url.protocol))return '';if(url.hostname.toLowerCase()==='m.aiscore.com')url.hostname='www.aiscore.com';return url.toString()}catch(_){return ''}}
   async function call(url,options={}){const r=await fetch(url,{headers:{'Content-Type':'application/json'},...options});const d=await r.json();if(!r.ok)throw new Error(d.error||'İşlem başarısız');return d}
-  async function action(id,name){await call(`/upcoming/api/matches/${encodeURIComponent(id)}/${name}`,{method:'POST',body:'{}'});await load()}
+  async function action(button,name){
+    if(actionPending||clearPending)return;
+    actionPending=true;++loadVersion;statusError='';updateFetchButton();
+    try{await call(`/upcoming/api/matches/${encodeURIComponent(button.dataset.matchId)}/${name}`,{method:'POST',body:'{}'});await load()}
+    catch(e){statusError=e.message||'Maç işlemi tamamlanamadı.';renderStatus()}
+    finally{actionPending=false;updateFetchButton()}
+  }
   function filtered(){const q=$('searchInput').value.trim().toLocaleLowerCase('tr-TR');return matches.filter(m=>(view==='all'||m.followed)&&(!q||`${m.match_name||''} ${m.tournament||''}`.toLocaleLowerCase('tr-TR').includes(q)))}
-  function render(){const rows=filtered();$('empty').hidden=rows.length>0;$('rows').innerHTML=rows.map(m=>{const desktopUrl=desktopMatchUrl(m.url);const name=desktopUrl?`<a class="match-link" href="${esc(desktopUrl)}" target="_blank" rel="noopener">${esc(m.match_name)}</a>`:`<span class="plain-match">${esc(m.match_name)}</span>`;const state=m.followed?'<span class="result-pill success">Takipte</span>':m.ignored?'<span class="result-pill failed">Yoksayıldı</span>':'<span class="match-meta">Normal</span>';return `<tr>
+  function render(){const rows=filtered();$('empty').hidden=rows.length>0;$('rows').innerHTML=rows.map(m=>{const analysis=m.upcoming_analysis;const desktopUrl=desktopMatchUrl(m.url);const name=desktopUrl?`<a class="match-link" href="${esc(desktopUrl)}" target="_blank" rel="noopener">${esc(m.match_name)}</a>`:`<span class="plain-match">${esc(m.match_name)}</span>`;const state=m.followed?'<span class="result-pill success">Takipte</span>':m.ignored?'<span class="result-pill failed">Yoksayıldı</span>':'<span class="match-meta">Normal</span>';return `<tr>
     <td data-label="Saat"><strong>${esc(m.kickoff||'–')}</strong></td>
     <td data-label="Maç" class="primary-cell"><div class="match-cell"><div class="match-info">${name}<span class="match-meta">${esc(m.tournament||'Lig bilgisi yok')}</span></div></div></td>
-    <td data-label="Açılış" class="num"><strong>${fmt(m.opening_total)}</strong></td><td data-label="Maç önü" class="num"><strong>${fmt(m.prematch_total)}</strong></td>
+    <td data-label="Açılış Baremi" class="num"><strong title="${esc(m.bookmaker||'')}">${fmt(m.opening_total)}</strong></td>
+    <td data-label="Takım A Ort." class="num">${attackCell(analysis?.home)}</td>
+    <td data-label="Takım B Ort." class="num">${attackCell(analysis?.away)}</td>
+    <td data-label="Tahmini Toplam" class="num"><strong>${analysisNumber(analysis?.estimated_total)}</strong></td>
+    <td data-label="Edge" class="num"><strong>${analysis?.edge>0?'+':''}${analysisNumber(analysis?.edge)}</strong></td>
+    <td data-label="Sinyal">${analysisSignal(analysis)}</td>
+    <td data-label="Maç önü" class="num"><strong>${fmt(m.prematch_total)}</strong></td>
     <td data-label="Durum">${state}</td>
-    <td data-label="İşlemler"><div class="row-actions"><button class="button ${m.followed?'active':''}" onclick="action('${esc(m.match_id)}','follow')">Takip</button><button class="button ${m.ignored?'active':''}" onclick="action('${esc(m.match_id)}','ignore')">Yoksay</button><button class="button danger" onclick="action('${esc(m.match_id)}','delete')">Sil</button></div></td></tr>`}).join('');$('statTotal').textContent=matches.length;$('statFollowed').textContent=matches.filter(m=>m.followed).length;$('statIgnored').textContent=matches.filter(m=>m.ignored).length;$('statLines').textContent=matches.filter(m=>Number.isFinite(Number(m.opening_total))).length}
-  function updateFetchButton(running=fetchRunning){fetchRunning=Boolean(running);const busy=fetchRequestPending||fetchRunning;const button=$('fetchBtn');button.disabled=busy;button.textContent=busy?'Güncelleniyor…':"AiScore'dan güncelle";button.setAttribute('aria-busy',String(busy))}
+    <td data-label="İşlemler"><div class="row-actions"><button class="button ${m.followed?'active':''}" data-match-id="${esc(m.match_id)}" onclick="action(this,'follow')">Takip</button><button class="button ${m.ignored?'active':''}" data-match-id="${esc(m.match_id)}" onclick="action(this,'ignore')">Yoksay</button><button class="button danger" data-match-id="${esc(m.match_id)}" onclick="action(this,'delete')">Sil</button></div></td></tr>`}).join('');$('statTotal').textContent=matches.length;$('statFollowed').textContent=matches.filter(m=>m.followed).length;$('statIgnored').textContent=matches.filter(m=>m.ignored).length;$('statLines').textContent=matches.filter(m=>hasLine(m.opening_total)||hasLine(m.prematch_total)).length;const filtering=view!=='all'||$('searchInput').value.trim()!=='';$('emptyTitle').textContent=filtering?'Filtreye uygun maç yok':'Yaklaşan maç yok';$('emptyText').textContent=filtering?'Arama veya takip filtresini değiştirebilirsin.':'Önümüzdeki 24 saat için kayıt bulunamadı.';updateFetchButton();renderStatus()}
+  function updateFetchButton(running=fetchRunning){
+    fetchRunning=Boolean(running);
+    const busy=fetchRequestPending||fetchRunning;
+    const button=$('fetchBtn');button.disabled=busy||clearPending;button.textContent=busy?'Güncelleniyor…':"AiScore'dan güncelle";button.setAttribute('aria-busy',String(busy));
+    $('clearBtn').disabled=busy||actionPending||clearPending;
+    document.querySelectorAll('#rows button').forEach(button=>{button.disabled=actionPending||clearPending});
+  }
+  function renderStatus(){
+    const report=lastList.report||{};
+    const fetchError=fetchRunning?'':lastList.last_fetch_error||report.error||(report.status==='failed'?'Gelecek maç verisi alınamadı.':'');
+    const error=statusError||fetchError;
+    const parts=[fetchRunning?'AiScore çekimi sürüyor':`${filtered().length} maç gösteriliyor`];
+    if(error)parts.push(error);
+    else if(!fetchRunning&&report.status==='partial')parts.push('Güncelleme eksik; önceki kayıtlar korunuyor.');
+    if(!fetchRunning&&lastList.stale&&matches.length)parts.push(`${lastList.stale_row_count||matches.length} kaydın verisi eski; yeniden güncelleyebilirsin.`);
+    $('status').textContent=parts.join(' · ');$('status').classList.toggle('error',Boolean(error));
+  }
   function scheduleFetchPoll(){if(fetchPollTimer)clearTimeout(fetchPollTimer);fetchPollTimer=setTimeout(()=>{fetchPollTimer=null;load()},3000)}
-  async function load(){try{const d=await call('/upcoming/api/list');matches=d.matches||[];render();fetchRunning=Boolean(d.running);updateFetchButton(fetchRunning);const state=fetchRunning?'AiScore çekimi sürüyor':`${filtered().length} maç gösteriliyor`;$('status').classList.remove('error');$('status').textContent=`${state} · ${d.report?.status||'hazır'}`;if(fetchRunning)scheduleFetchPoll();else if(fetchPollTimer){clearTimeout(fetchPollTimer);fetchPollTimer=null}}catch(e){$('status').textContent=e.message;$('status').classList.add('error');updateFetchButton(fetchRunning);if(fetchRunning)scheduleFetchPoll()}}
-  async function fetchUpcomingMatches(){if(fetchRequestPending||fetchRunning)return;fetchRequestPending=true;updateFetchButton(fetchRunning);$('status').classList.remove('error');$('status').textContent='Gelecek maçlar güncelleniyor…';try{const state=await call('/upcoming/api/fetch',{method:'POST',body:'{}'});fetchRunning=Boolean(state.running);await load()}catch(e){fetchRunning=false;$('status').textContent=e.message;$('status').classList.add('error')}finally{fetchRequestPending=false;updateFetchButton(fetchRunning)}}
+  async function load(){
+    const version=++loadVersion;
+    try{
+      const d=await call('/upcoming/api/list');
+      if(version!==loadVersion)return;
+      if(!Array.isArray(d.matches))throw new Error('Sunucudan geçerli maç listesi alınamadı.');
+      lastList=d;matches=d.matches;fetchRunning=Boolean(d.running);statusError='';render();
+      if(fetchRunning)scheduleFetchPoll();else if(fetchPollTimer){clearTimeout(fetchPollTimer);fetchPollTimer=null}
+    }catch(e){
+      if(version!==loadVersion)return;
+      statusError=e.message||'Maç listesi alınamadı.';renderStatus();updateFetchButton();if(fetchRunning)scheduleFetchPoll();
+    }
+  }
+  async function fetchUpcomingMatches(){
+    if(fetchRequestPending||fetchRunning||clearPending)return;
+    fetchRequestPending=true;++loadVersion;statusError='';updateFetchButton();
+    $('status').classList.remove('error');$('status').textContent='Gelecek maçlar güncelleniyor…';
+    try{const state=await call('/upcoming/api/fetch',{method:'POST',body:'{}'});fetchRunning=Boolean(state.running);await load()}
+    catch(e){statusError=e.message||'Güncelleme başlatılamadı.';renderStatus()}
+    finally{fetchRequestPending=false;updateFetchButton()}
+  }
+  async function clearUpcomingMatches(){
+    if(fetchRunning||fetchRequestPending||actionPending||clearPending||!confirm('Gelecek maç listesi temizlensin mi?'))return;
+    clearPending=true;++loadVersion;statusError='';updateFetchButton();
+    try{await call('/upcoming/api/clear',{method:'POST',body:'{}'});await load()}
+    catch(e){statusError=e.message||'Gelecek maç listesi temizlenemedi.';renderStatus()}
+    finally{clearPending=false;updateFetchButton()}
+  }
   $('searchInput').addEventListener('input',render);document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',()=>{view=button.dataset.view;document.querySelectorAll('[data-view]').forEach(item=>item.classList.toggle('active',item===button));render()}));
-  $('fetchBtn').onclick=fetchUpcomingMatches;$('refreshBtn').onclick=load;$('clearBtn').onclick=async()=>{if(confirm('Gelecek maç listesi temizlensin mi?')){await call('/upcoming/api/clear',{method:'POST',body:'{}'});await load()}};load();
+  $('fetchBtn').onclick=fetchUpcomingMatches;$('refreshBtn').onclick=load;$('clearBtn').onclick=clearUpcomingMatches;load();
 </script>
 </body>
 </html>

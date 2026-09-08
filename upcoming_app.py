@@ -109,7 +109,17 @@ def upcoming_api_fetch():
         args=(job_id, scraper, timeout_seconds, config.DB_PATH),
         daemon=True,
     )
-    thread.start()
+    try:
+        thread.start()
+    except RuntimeError:
+        log.exception("Could not start upcoming fetch worker")
+        _finish_fetch_job(job_id, {
+            "running": False,
+            "finished_at": _now_iso(),
+            "report": {"status": "failed", "reconcile_safe": False},
+            "error": "Gelecek maç çekimi başlatılamadı. Lütfen yeniden deneyin.",
+        })
+        return jsonify(_public_state()), 503
     return jsonify(_public_state()), 202
 
 
@@ -147,6 +157,7 @@ def upcoming_api_list():
 @upcoming_bp.route("/api/clear", methods=["POST"])
 def upcoming_api_clear():
     with _fetch_lock:
+        _expire_stale_fetch_locked()
         if _fetch_state.get("running"):
             return jsonify({"error": "Çekim sürerken gelecek maçlar temizlenemez."}), 409
         config = Config()
@@ -346,17 +357,7 @@ def _run_fetch_job(
             asyncio.wait_for(scraper.fetch(), timeout=timeout_seconds)
         )
         report = dict(scraper.last_report or {})
-        seen_match_ids = report.get("discovered_match_ids") or []
-        reconcile = _reconcile_allowed(report)
-        db = Database(db_path)
-        db.init()
-        saved = db.save_upcoming_matches(
-            matches,
-            seen_match_ids=seen_match_ids,
-            reconcile=reconcile,
-        )
-        # A partial scrape must not make intact older rows disappear from the UI.
-        matches = db.list_upcoming_matches(limit=500)
+        _save_fetch_result(job_id, matches, report, db_path)
     except TimeoutError:
         message = f"Upcoming fetch timed out after {timeout_seconds} seconds."
         log.warning(message)
@@ -403,9 +404,25 @@ def _run_fetch_job(
         )
         return
 
-    _finish_fetch_job(
-        job_id,
-        {
+
+def _save_fetch_result(job_id: int, matches: list[dict], report: dict, db_path: str) -> None:
+    # Validate the generation before any DB write, and publish while still holding
+    # the lock so a clear/new fetch cannot interleave with persistence.
+    with _fetch_lock:
+        _expire_stale_fetch_locked()
+        if int(_fetch_state.get("job_id") or 0) != job_id or not _fetch_state["running"]:
+            log.info("Ignoring stale upcoming fetch data: job_id=%s", job_id)
+            return
+        db = Database(db_path)
+        db.init()
+        saved = db.save_upcoming_matches(
+            matches,
+            seen_match_ids=report.get("discovered_match_ids") or [],
+            reconcile=_reconcile_allowed(report),
+        )
+        # Partial results must retain intact older rows.
+        matches = db.list_upcoming_matches(limit=500)
+        _finish_fetch_job(job_id, {
             "running": False,
             "finished_at": _now_iso(),
             "matches": matches,
@@ -417,9 +434,9 @@ def _run_fetch_job(
                 "removed_missing": int(saved.get("removed_missing") or 0),
                 "removed_expired": int(saved.get("removed_expired") or 0),
             },
-            "error": None,
-        },
-    )
+            "error": (report.get("error") or "Gelecek maç verisi alınamadı.")
+            if report.get("status") == "failed" else None,
+        })
 
 
 def _finish_fetch_job(job_id: int, payload: dict) -> None:
@@ -521,6 +538,7 @@ def _freshness_summary(matches: list[dict], now: datetime | None = None) -> dict
 
 def _public_state():
     with _fetch_lock:
+        _expire_stale_fetch_locked()
         matches = list(_fetch_state["matches"])
         return {
             "running": _fetch_state["running"],

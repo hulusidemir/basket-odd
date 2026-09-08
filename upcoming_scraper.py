@@ -2,8 +2,7 @@
 upcoming_scraper.py — Fetches upcoming basketball matches from AIScore.
 
 Self-contained module. Does not modify the existing live-match pipeline.
-For each upcoming match it returns only listing facts and available total lines:
-match name, tournament, kickoff time, opening total and pre-match total.
+Returns listing facts, verified total lines and independent pre-game analysis.
 """
 
 import asyncio
@@ -19,6 +18,9 @@ from camoufox.async_api import AsyncNewBrowser
 from playwright.async_api import async_playwright
 
 from signal_lists import split_match_teams
+from upcoming_odds import TOTAL_MARKET_JS
+from upcoming_signals import analyze_upcoming
+from upcoming_history_scraper import HISTORY_TIMEOUT_SECONDS, fetch_team_histories
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +101,7 @@ class UpcomingScraper:
                     "headless": True,
                     "humanize": True,
                     "locale": "en-US",
+                    "main_world_eval": True,
                 }
                 if proxy_server:
                     launch_kwargs["proxy"] = {"server": proxy_server}
@@ -237,7 +240,9 @@ class UpcomingScraper:
         # Unlimited mode still needs a safe upper bound; the scraper itself
         # accepts at most 500 configured rows, so budget for that same ceiling.
         count = planned_matches or self.max_matches or 500
-        detail_budget = ceil(max(1, count) / self.concurrency) * self.match_timeout_seconds
+        detail_budget = ceil(max(1, count) / self.concurrency) * (
+            self.match_timeout_seconds + HISTORY_TIMEOUT_SECONDS
+        )
         listing_sources = 2 + int(self.days_ahead > 0)
         # A listing generation has two navigation attempts and the generation
         # itself is retried once when incomplete. Include readiness waits too.
@@ -656,7 +661,7 @@ class UpcomingScraper:
 
     async def _extract_one_with_timeout(self, context, link: str) -> dict | None:
         try:
-            return await asyncio.wait_for(
+            match = await asyncio.wait_for(
                 self._extract_one(context, link),
                 timeout=self.match_timeout_seconds,
             )
@@ -667,6 +672,23 @@ class UpcomingScraper:
                 link,
             )
             return None
+        if match is None:
+            return None
+        analysis_match = {**match, "kickoff": self._today_kickoff(match.get("kickoff") or "")}
+        # History errors must not discard an already fetched schedule/market row.
+        try:
+            histories = await asyncio.wait_for(
+                fetch_team_histories(context, match, self.timezone_id),
+                timeout=HISTORY_TIMEOUT_SECONDS,
+            )
+            match["upcoming_analysis"] = analyze_upcoming(analysis_match, histories)
+        except Exception as exc:
+            logger.warning("Upcoming team history unavailable: %s (%s)",
+                           match.get("match_id"), type(exc).__name__)
+            match["upcoming_analysis"] = {
+                **analyze_upcoming(analysis_match, {}), "status": "history_unavailable",
+            }
+        return match
 
     @staticmethod
     def _has_full_kickoff(value: str) -> bool:
@@ -726,7 +748,7 @@ class UpcomingScraper:
                 return None
             for key in (
                 "match_name", "home_team", "away_team", "tournament",
-                "opening_total", "prematch_total", "url",
+                "url",
             ):
                 if odds_data.get(key) in (None, "") and listing_data.get(key) not in (None, ""):
                     odds_data[key] = listing_data.get(key)
@@ -737,10 +759,6 @@ class UpcomingScraper:
                 odds_data["tournament"] = ""
             if not odds_data.get("tournament"):
                 odds_data["tournament"] = self._tournament_from_url(odds_data.get("url") or link)
-            if odds_data.get("opening") is None and listing_data.get("opening_total") is not None:
-                odds_data["opening"] = listing_data.get("opening_total")
-            if odds_data.get("prematch") is None and listing_data.get("prematch_total") is not None:
-                odds_data["prematch"] = listing_data.get("prematch_total")
             listing_source = str(
                 listing_data.get("listing_source")
                 or self._listing_source_by_id.get(match_id)
@@ -757,13 +775,17 @@ class UpcomingScraper:
                     retry_odds = await self._read_odds_page(retry_page, link)
                     if retry_odds:
                         detail_page_loaded = True
+                        market_keys = {"opening", "prematch", "inplay", "bookmaker", "odds_source", "market_verified"}
                         odds_data.update(
                             {
                                 key: value
                                 for key, value in retry_odds.items()
-                                if value not in (None, "")
+                                if key not in market_keys and value not in (None, "")
                             }
                         )
+                        # A new bookmaker observation replaces the whole market
+                        # tuple; never retain the previous company's pre-match line.
+                        odds_data.update({key: retry_odds.get(key) for key in market_keys})
                         opening = odds_data.get("opening")
                         prematch = odds_data.get("prematch")
                 finally:
@@ -793,7 +815,7 @@ class UpcomingScraper:
                 logger.info("Skipping match outside configured date window: %s kickoff=%s", link, kickoff)
                 return None
             data_warnings: list[str] = []
-            if opening is None and prematch is None:
+            if opening is None:
                 logger.info("No verified opening/prematch total is available: %s", link)
                 # Still keep the row — odds may not be open yet — but do not
                 # report a data-complete generation when the core market is absent.
@@ -813,7 +835,8 @@ class UpcomingScraper:
                 "kickoff": kickoff,
                 "listing_source": listing_source,
                 "kickoff_source": kickoff_source,
-                "odds_source": odds_data.get("odds_source") or listing_data.get("odds_source") or "",
+                "odds_source": odds_data.get("odds_source") or "",
+                "bookmaker": odds_data.get("bookmaker") or "",
                 "opening_total": opening,
                 "prematch_total": prematch,
                 "url": link,
@@ -844,134 +867,27 @@ class UpcomingScraper:
         except Exception as exc:
             logger.info("Odds detail readiness wait ended without a known root (%s): %s", url, exc)
 
-        # Try clicking a Total/O-U tab only when it looks like an actual compact
-        # tab/control. The odds table itself also contains a "Total Points"
-        # header; clicking that cell can make AiScore's DOM flaky.
         try:
-            await page.evaluate(
-                r"""
-                () => {
-                    const text = s => (s || '').replace(/\s+/g, ' ').trim();
-                    const tabs = Array.from(document.querySelectorAll('*')).filter(el => {
-                        const t = text(el.innerText || '').toLowerCase();
-                        const cls = (el.className || '').toString().toLowerCase();
-                        const role = (el.getAttribute && (el.getAttribute('role') || '').toLowerCase()) || '';
-                        return t.length < 30 && el.children.length <= 3
-                            && (role === 'tab' || /tab|market|filter|switch|select/.test(cls))
-                            && (/\btotal\b|\bo\/u\b|\bover.*under\b|\büst.*alt\b|\bou\b/i.test(t));
-                    });
-                    for (const tab of tabs) {
-                        tab.click();
-                        return;
-                    }
-                }
-                """
+            tab = page.locator(".oddTypesBox span", has_text=re.compile(r"^\s*Total Points\s*$", re.I))
+            if await tab.count():
+                await tab.first.click()
+            opening_toggle = page.locator('[role="checkbox"]', has_text="Opening odds")
+            if await opening_toggle.count() and await opening_toggle.first.get_attribute("aria-checked") == "false":
+                await opening_toggle.first.click()
+            await page.wait_for_function(
+                """() => [...document.querySelectorAll('.oddsContent')].some(el =>
+                    /total points/i.test(el.querySelector('.oddsType')?.innerText || '')
+                    && el.querySelector('.oddsBoxContent'))""",
+                timeout=min(8000, self.page_timeout_ms),
             )
-            await page.wait_for_timeout(500)
-        except Exception as exc:
-            logger.info("Total-market tab interaction failed (%s): %s", url, exc)
+        except Exception:
+            logger.info("Total market not ready; unverified values will remain empty.")
+        market = await page.evaluate(TOTAL_MARKET_JS)
 
-        return await page.evaluate(
+        metadata = await page.evaluate(
             r"""
             () => {
                 const text = s => (s || '').replace(/\s+/g, ' ').trim();
-
-                const findLine = (txt) => {
-                    const nums = (txt || '').match(/\d+\.?\d*/g);
-                    if (!nums) return null;
-                    for (const n of nums) {
-                        const v = parseFloat(n);
-                        if (v >= 100 && v <= 400) return v;
-                    }
-                    return null;
-                };
-                const isLocked = (el) => {
-                    const html = (el.innerHTML || '').toLowerCase();
-                    const txt = text(el.innerText || '').toLowerCase();
-                    if (html.includes('lock') || html.includes('🔒')) return true;
-                    if (txt === '-' || txt === '--' || txt === '—') return true;
-                    if (/suspend|locked|unavail/i.test(txt)) return true;
-                    return false;
-                };
-
-                let opening = null;
-                let prematch = null;
-                let inplay = null;
-
-                const container = document.querySelector('.newOdds')
-                                || document.querySelector('[class*="newOdds"]')
-                                || document.querySelector('[class*="oddsContent"]');
-                const selectedMarketText = Array.from(document.querySelectorAll(
-                    '[role="tab"][aria-selected="true"], [class*="tab"][class*="active"], [class*="market"][class*="active"]'
-                )).map(el => text(el.innerText || '')).join(' ');
-                const marketEvidence = `${selectedMarketText} ${text((container && container.innerText) || '').slice(0, 500)}`;
-                const marketVerified = /\btotal(?:\s+points?)?\b|\bo\s*\/\s*u\b|over\s*[/&-]?\s*under|üst\s*[/&-]?\s*alt|\bou\b/i.test(marketEvidence);
-
-                if (container && marketVerified) {
-                    const openingEls = container.querySelectorAll('[class*="openingBg"]');
-                    for (const el of openingEls) {
-                        if (isLocked(el)) continue;
-                        const v = findLine(text(el.innerText));
-                        if (v !== null) { opening = v; break; }
-                    }
-                    const inPlayEls = container.querySelectorAll('[class*="inPlayBg"]');
-                    for (const el of inPlayEls) {
-                        if (isLocked(el)) continue;
-                        const v = findLine(text(el.innerText));
-                        if (v !== null) { inplay = v; break; }
-                    }
-                    const contentDivs = container.querySelectorAll('.content');
-                    for (const content of contentDivs) {
-                        if (isLocked(content)) continue;
-                        const allRows = Array.from(content.children).filter(el => !isLocked(el));
-                        const preBgRows = allRows.filter(el => {
-                            const cls = (el.className || '').toString();
-                            return !cls.includes('openingBg') && !cls.includes('inPlayBg');
-                        });
-                        for (const el of preBgRows) {
-                            const v = findLine(text(el.innerText));
-                            if (v !== null) { prematch = v; break; }
-                        }
-                        if (prematch !== null) break;
-                    }
-                    // Positional fallback: if a bookmaker has 3 rows, the order is
-                    // opening / pre-match / in-play.
-                    if (opening === null || prematch === null) {
-                        for (const content of contentDivs) {
-                            if (isLocked(content)) continue;
-                            const rows = Array.from(content.children).filter(el => {
-                                return !isLocked(el) && findLine(text(el.innerText)) !== null;
-                            });
-                            if (rows.length >= 2) {
-                                if (opening === null) opening = findLine(text(rows[0].innerText));
-                                if (prematch === null && rows.length >= 2) {
-                                    prematch = findLine(text(rows[1].innerText));
-                                }
-                                if (inplay === null && rows.length >= 3) {
-                                    inplay = findLine(text(rows[2].innerText));
-                                }
-                            }
-                            if (opening !== null && prematch !== null) break;
-                        }
-                    }
-
-                    // Last-resort text fallback for AiScore layouts where the
-                    // class names are present but the odds cells are nested in
-                    // an unexpected way. The Total Points column lists opening
-                    // and pre-match totals in order.
-                    if (opening === null || prematch === null) {
-                        const oddsText = text(container.innerText || '');
-                        const totalIdx = oddsText.toLowerCase().indexOf('total points');
-                        if (totalIdx >= 0) {
-                            const scope = oddsText.slice(totalIdx);
-                            const totals = (scope.match(/\b\d{3}(?:\.\d)?\b/g) || [])
-                                .map(n => parseFloat(n))
-                                .filter(v => v >= 100 && v <= 400);
-                            if (opening === null && totals.length >= 1) opening = totals[0];
-                            if (prematch === null && totals.length >= 2) prematch = totals[1];
-                        }
-                    }
-                }
 
                 // Title / match name.
                 let matchName = text(document.title || '')
@@ -1108,23 +1024,20 @@ class UpcomingScraper:
                 }
 
                 return {
-                    opening, prematch, inplay,
                     match_name: matchName,
                     tournament,
                     kickoff,
                     kickoff_source: kickoff && /^\d{4}-\d{2}-\d{2}/.test(kickoff)
                         ? 'detail_header'
                         : (kickoff ? 'detail_header_time' : ''),
-                    odds_source: marketVerified && (opening !== null || prematch !== null)
-                        ? 'detail_total_market'
-                        : '',
-                    market_verified: marketVerified,
                     is_live: isLive,
                     is_finished: isFinished,
                 };
             }
             """
         )
+
+        return {**metadata, **market}
 
     @staticmethod
     def _extract_match_id(url: str) -> str:
