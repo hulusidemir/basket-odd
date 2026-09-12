@@ -288,6 +288,7 @@ class AiscoreFinishedMatchChecker:
             }
             if proxy_server:
                 launch_kwargs["proxy"] = {"server": proxy_server}
+                launch_kwargs["geoip"] = True
                 logger.info("Finished-match checker proxy enabled.")
             browser = await AsyncNewBrowser(playwright, **launch_kwargs)
             context = await browser.new_context(

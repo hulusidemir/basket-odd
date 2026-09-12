@@ -105,6 +105,7 @@ class UpcomingScraper:
                 }
                 if proxy_server:
                     launch_kwargs["proxy"] = {"server": proxy_server}
+                    launch_kwargs["geoip"] = True
                 browser = await AsyncNewBrowser(p, **launch_kwargs)
                 context = await self._new_context(browser)
                 try:

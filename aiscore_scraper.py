@@ -10,8 +10,7 @@ from statistics import median
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from aiscore_scoreboard import QUARTER_SCORES_JS
-from camoufox.async_api import AsyncNewBrowser
-from playwright.async_api import async_playwright
+from scrapling.fetchers import AsyncStealthySession
 from match_state import game_clock, normalize_quarter_scores, parse_score
 
 logger = logging.getLogger(__name__)
@@ -231,37 +230,30 @@ class AiscoreScraper:
             return m.group(1).replace("-", " ").title()
         return ""
 
-    async def _create_browser_context(self, playwright):
+    def _scrapling_session_options(self) -> dict:
         proxy_server = os.getenv("PLAYWRIGHT_PROXY")
-        launch_kwargs: dict = {
+        profile_dir = os.getenv(
+            "AISCORE_BROWSER_PROFILE_DIR",
+            os.path.join(
+                os.path.expanduser("~"),
+                ".cache",
+                "basket-odd",
+                "scrapling-profile",
+            ),
+        )
+        options: dict = {
             "headless": True,
-            "humanize": True,
-            "locale": "en-US",
+            "solve_cloudflare": True,
+            "block_webrtc": True,
+            "retries": 1,
+            "timeout": max(90_000, self.page_timeout_ms),
+            "max_pages": 1,
+            "user_data_dir": profile_dir,
         }
         if proxy_server:
-            launch_kwargs["proxy"] = {"server": proxy_server}
+            options["proxy"] = proxy_server
             logger.info("Using proxy: %s", _redact_proxy_url(proxy_server))
-        browser = await AsyncNewBrowser(playwright, **launch_kwargs)
-        context = await self._new_mobile_context(browser)
-        return browser, context
-
-    async def _new_mobile_context(self, browser):
-        context = await browser.new_context(
-            viewport={"width": 430, "height": 932},
-            locale="en-US",
-        )
-        async def block_heavy_assets(route):
-            if route.request.resource_type in {"image", "media", "font"}:
-                await route.abort()
-            else:
-                await route.continue_()
-
-        await context.route("**/*", block_heavy_assets)
-        await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
-        return context
-
-    async def _close_browser(self, browser):
-        await browser.close()
+        return options
 
     @staticmethod
     def _is_transient_navigation_error(exc: Exception) -> bool:
@@ -319,17 +311,24 @@ class AiscoreScraper:
                 r"""
                 () => {
                     if (!document.body || document.readyState === 'loading') return false;
-                    const body = (document.body.innerText || '').trim();
+                    if (/just a moment|attention required/i.test(document.title) ||
+                        document.querySelector('#challenge-running, #challenge-form')) return false;
                     const match = document.querySelector('a[href*="/basketball/match-"]');
                     const liveControl = Array.from(document.querySelectorAll('a, button, [role="tab"], li, div'))
                         .some(el => /^live(?:\s|\(|$)/i.test((el.innerText || '').trim()) && el.children.length <= 5);
-                    return !!match || liveControl || body.length > 500;
+                    return !!match || liveControl;
                 }
                 """,
-                timeout=min(8000, self.page_timeout_ms),
+                timeout=self.page_timeout_ms,
             )
         except Exception as exc:
             logger.debug("AIScore listing readiness wait ended without a signal: %s", exc)
+            title = await page.title()
+            if re.search(r"just a moment|attention required", title, re.IGNORECASE):
+                raise RuntimeError(
+                    "AIScore access verification did not complete before the page timeout; "
+                    "the source returned a challenge page instead of the match listing."
+                ) from exc
         await page.wait_for_timeout(350)
 
     async def _wait_for_odds_ready(self, page) -> None:
@@ -371,7 +370,6 @@ class AiscoreScraper:
         await page.wait_for_timeout(250)
 
     # ── Ana tarama ────────────────────────────────────────────────────
-
     async def get_live_basketball_totals(self) -> list[dict]:
         cycle_started = time.monotonic()
         report = {
@@ -394,77 +392,75 @@ class AiscoreScraper:
             "errors": [],
         }
         self.last_report = report
-        async with async_playwright() as p:
-            try:
-                browser, context = await self._create_browser_context(p)
-            except Exception as exc:
-                report["status"] = "error"
-                report["error"] = f"{type(exc).__name__}: {exc}"
-                report["duration_seconds"] = round(time.monotonic() - cycle_started, 2)
-                raise
+        session_options = self._scrapling_session_options()
 
-            try:
-                list_page = await context.new_page()
-            except Exception as exc:
-                report["status"] = "error"
-                report["error"] = f"{type(exc).__name__}: {exc}"
-                report["duration_seconds"] = round(time.monotonic() - cycle_started, 2)
-                try:
-                    await context.close()
-                finally:
-                    await self._close_browser(browser)
-                raise
-            list_page.set_default_timeout(self.page_timeout_ms)
-            try:
+        try:
+            async with AsyncStealthySession(**session_options) as session:
+                context = session.context
+                if context is None:
+                    raise RuntimeError("Scrapling browser context could not be created")
+
                 links = []
+                list_page = None
                 for attempt in range(1, 4):
                     report["listing_attempts"] = attempt
+                    state = {}
+
+                    async def parse_listing(page):
+                        state["page"] = page
+                        page.set_default_timeout(self.page_timeout_ms)
+                        try:
+                            await self._wait_for_listing_ready(page)
+                            state["links"] = await self._collect_match_links(page)
+                        except Exception as exc:
+                            state["error"] = exc
+
                     try:
-                        await list_page.goto(
+                        await session.fetch(
                             self._mobile_url(self.aiscore_url),
-                            wait_until="commit",
-                            timeout=self.page_timeout_ms,
+                            solve_cloudflare=True,
+                            page_action=parse_listing,
+                            timeout=max(90_000, self.page_timeout_ms),
                         )
                     except Exception as exc:
                         error = f"{type(exc).__name__}: {exc}"
                         report["listing_navigation_errors"].append(error)
                         logger.warning(
-                            "AIScore listing navigation failed (%s/3): %s",
+                            "AIScore protected listing navigation failed (%s/3): %s",
                             attempt,
                             exc,
                         )
-                        if attempt < 3:
-                            await list_page.wait_for_timeout(500 * attempt)
                         continue
-                    try:
-                        await self._wait_for_listing_ready(list_page)
-                        links = await self._collect_match_links(list_page)
-                    except Exception as exc:
-                        error = f"{type(exc).__name__}: {exc}"
+
+                    list_page = state.get("page")
+                    parse_error = state.get("error")
+                    if parse_error is not None:
+                        error = f"{type(parse_error).__name__}: {parse_error}"
                         report["listing_parse_errors"].append(error)
                         report["listing"] = dict(self._last_listing_diagnostics)
                         logger.warning(
                             "AIScore listing parse failed (%s/3): %s",
                             attempt,
-                            exc,
+                            parse_error,
                         )
-                        if attempt < 3:
-                            await list_page.wait_for_timeout(500 * attempt)
                         continue
+
+                    links = list(state.get("links") or [])
                     report["listing"] = dict(self._last_listing_diagnostics)
                     if links or bool(
                         (report.get("listing") or {}).get("authoritative_empty")
                     ):
                         break
-                    if attempt < 3:
-                        logger.warning("AIScore listing returned 0 links; retrying list load (%s/3).", attempt + 1)
+                    logger.warning(
+                        "AIScore listing returned 0 links; retrying list load (%s/3).",
+                        attempt + 1,
+                    )
 
                 if not links:
                     listing_failures = len(report["listing_navigation_errors"]) + len(
                         report["listing_parse_errors"]
                     )
                     if listing_failures >= report["listing_attempts"]:
-                        report["status"] = "error"
                         raise RuntimeError(
                             "AIScore listing could not be verified after "
                             f"{report['listing_attempts']} attempts"
@@ -472,31 +468,39 @@ class AiscoreScraper:
                     reported_live_count = int(
                         (report.get("listing") or {}).get("live_tab_reported_count") or 0
                     )
+                    report["reported_live_count"] = reported_live_count
+                    report["unverified_count"] = reported_live_count
                     if reported_live_count > 0:
-                        logger.warning(
+                        raise RuntimeError(
                             "AIScore live tab reported "
-                            f"{reported_live_count} matches but no verified links were collected. Assuming empty."
+                            f"{reported_live_count} matches but no verified links were collected."
                         )
-                    elif not bool((report.get("listing") or {}).get("authoritative_empty")):
-                        logger.warning(
-                            "AIScore empty live result was not explicitly verified. Assuming empty."
+                    if not bool((report.get("listing") or {}).get("authoritative_empty")):
+                        raise RuntimeError(
+                            "AIScore empty live result was not explicitly verified."
                         )
-                    try:
-                        page_title = await list_page.title()
-                    except Exception:
-                        page_title = ""
-                    page_url = list_page.url
-                    try:
-                        body_len = await list_page.evaluate("document.body?.innerText?.length || 0")
-                    except Exception:
-                        body_len = 0
-                    logger.warning(
-                        "No match links found on AIScore listing. "
+
+                    page_title = ""
+                    page_url = ""
+                    body_len = 0
+                    if list_page is not None:
+                        try:
+                            page_title = await list_page.title()
+                            page_url = list_page.url
+                            body_len = await list_page.evaluate(
+                                "document.body?.innerText?.length || 0"
+                            )
+                        except Exception:
+                            pass
+                    logger.info(
+                        "No live match links found on AIScore listing. "
                         "title=%s, url=%s, body_len=%s",
-                        page_title, page_url, body_len,
+                        page_title,
+                        page_url,
+                        body_len,
                     )
                     debug_path = os.getenv("AISCORE_DEBUG_SCREENSHOT")
-                    if debug_path:
+                    if debug_path and list_page is not None:
                         try:
                             await list_page.screenshot(path=debug_path, full_page=False)
                             logger.info("Debug screenshot: %s", debug_path)
@@ -519,10 +523,6 @@ class AiscoreScraper:
                     reported_live_count - len(links),
                 )
                 out = []
-
-                await list_page.close()
-                await context.close()
-                context = await self._new_mobile_context(browser)
 
                 if self.concurrency is None:
                     concurrent_tabs = _safe_env_int(
@@ -548,20 +548,22 @@ class AiscoreScraper:
                     batch = batch_links[i : i + concurrent_tabs]
                     tasks = [self._extract_single(context, link) for link in batch]
                     results = await asyncio.gather(*tasks, return_exceptions=True)
-                    for r in results:
-                        if isinstance(r, dict):
-                            out.append(r)
-                        elif isinstance(r, _MatchSkip):
-                            if r.degraded:
+                    for result in results:
+                        if isinstance(result, dict):
+                            out.append(result)
+                        elif isinstance(result, _MatchSkip):
+                            if result.degraded:
                                 report["failed_count"] += 1
-                                report["errors"].append(f"{r.reason}: match data incomplete")
+                                report["errors"].append(
+                                    f"{result.reason}: match data incomplete"
+                                )
                             else:
                                 report["skipped_count"] += 1
-                        elif isinstance(r, Exception):
+                        elif isinstance(result, Exception):
                             report["failed_count"] += 1
-                            error = f"{type(r).__name__}: {r}"
+                            error = f"{type(result).__name__}: {result}"
                             report["errors"].append(error)
-                            logger.warning("Parallel match error: %s", r)
+                            logger.warning("Parallel match error: %s", result)
                         else:
                             report["failed_count"] += 1
                             report["errors"].append("unexpected extraction result")
@@ -580,7 +582,6 @@ class AiscoreScraper:
                     else None
                 )
                 if links and not out and report["failed_count"] and not report["skipped_count"]:
-                    report["status"] = "error"
                     raise RuntimeError(
                         f"AIScore discovered {len(links)} live matches but parsed none"
                     )
@@ -592,8 +593,8 @@ class AiscoreScraper:
                     report["status"] = "partial"
                     logger.warning(
                         "AIScore live scrape was partial: reported=%s verified=%s "
-                        "unverified=%s attempted=%s parsed=%s skipped=%s failed=%s coverage=%.1f%% "
-                        "parse_coverage=%.1f%%",
+                        "unverified=%s attempted=%s parsed=%s skipped=%s failed=%s "
+                        "coverage=%.1f%% parse_coverage=%.1f%%",
                         reported_live_count or "unknown",
                         len(links),
                         report["unverified_count"],
@@ -607,25 +608,12 @@ class AiscoreScraper:
                 else:
                     report["status"] = "ok"
                 return out
-            except Exception as exc:
-                report["status"] = "error"
-                report["error"] = f"{type(exc).__name__}: {exc}"
-                raise
-            finally:
-                report["duration_seconds"] = round(time.monotonic() - cycle_started, 2)
-                try:
-                    if not list_page.is_closed():
-                        await list_page.close()
-                except Exception as exc:
-                    logger.warning("AIScore listing page cleanup failed: %s", exc)
-                try:
-                    await context.close()
-                except Exception as exc:
-                    logger.warning("AIScore browser context cleanup failed: %s", exc)
-                try:
-                    await self._close_browser(browser)
-                except Exception as exc:
-                    logger.warning("AIScore browser cleanup failed: %s", exc)
+        except Exception as exc:
+            report["status"] = "error"
+            report["error"] = f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            report["duration_seconds"] = round(time.monotonic() - cycle_started, 2)
 
     async def _extract_single(self, context, link: str) -> dict | _MatchSkip:
         """Open a single match in a new tab, read data, and close.

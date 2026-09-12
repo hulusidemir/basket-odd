@@ -57,6 +57,19 @@ def setup_logging(level: str):
     for logger_name in ("httpx", "httpcore", "telegram.request"):
         logging.getLogger(logger_name).setLevel(logging.WARNING)
 
+    # Scrapling installs its own handler and also propagates to the root logger,
+    # which duplicates every line. It also reports the normal "no challenge"
+    # case as ERROR. Keep real Scrapling errors while removing that false alarm.
+    scrapling_logger = logging.getLogger("scrapling")
+    scrapling_logger.propagate = False
+
+    class _ScraplingNoiseFilter(logging.Filter):
+        def filter(self, record):
+            return record.getMessage() != "No Cloudflare challenge found."
+
+    for handler in scrapling_logger.handlers:
+        handler.addFilter(_ScraplingNoiseFilter())
+
 
 def _normalize_match_payload(match: dict) -> dict:
     """Validate one scraper record without letting it poison the whole cycle."""
