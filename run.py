@@ -20,6 +20,16 @@ if __name__ == "__main__":
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    scrapling_logger = logging.getLogger("scrapling")
+    scrapling_logger.propagate = False
+
+    class _ScraplingNoiseFilter(logging.Filter):
+        def filter(self, record):
+            return record.getMessage() != "No Cloudflare challenge found."
+
+    for handler in scrapling_logger.handlers:
+        handler.addFilter(_ScraplingNoiseFilter())
+
     scheduled_tasks.start(before_active_delete=_archive_active_match)
     port = int(os.getenv("DASHBOARD_PORT", "5151"))
     app.run(host="0.0.0.0", port=port, debug=False)

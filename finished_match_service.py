@@ -11,13 +11,11 @@ import threading
 import time
 
 try:
-    from camoufox.async_api import AsyncNewBrowser
-    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-    from playwright.async_api import async_playwright
+    from patchright.async_api import TimeoutError as PlaywrightTimeoutError
+    from scrapling.fetchers import AsyncStealthySession
 except ModuleNotFoundError:
-    AsyncNewBrowser = None
+    AsyncStealthySession = None
     PlaywrightTimeoutError = TimeoutError
-    async_playwright = None
 
 
 logger = logging.getLogger("finished_match_service")
@@ -278,31 +276,31 @@ class AiscoreFinishedMatchChecker:
             "failures": [],
         }
 
-    async def _launch_headless_context(self, playwright):
-        try:
-            proxy_server = os.getenv("PLAYWRIGHT_PROXY")
-            launch_kwargs: dict = {
-                "headless": True,
-                "humanize": True,
-                "locale": "en-US",
-            }
-            if proxy_server:
-                launch_kwargs["proxy"] = {"server": proxy_server}
-                launch_kwargs["geoip"] = True
-                logger.info("Finished-match checker proxy enabled.")
-            browser = await AsyncNewBrowser(playwright, **launch_kwargs)
-            context = await browser.new_context(
-                viewport={"width": 430, "height": 932},
-                locale="en-US",
-            )
-            await context.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            """)
-            return browser, context, True
-        except Exception as exc:
-            raise RuntimeError(
-                "Camoufox could not be started. Run 'python -m camoufox fetch'."
-            ) from exc
+    def _scrapling_session_options(self) -> dict:
+        profile_dir = os.getenv(
+            "AISCORE_FINISHED_BROWSER_PROFILE_DIR",
+            os.path.join(
+                os.path.expanduser("~"),
+                ".cache",
+                "basket-odd",
+                "scrapling-finished-profile",
+            ),
+        )
+        options: dict = {
+            "headless": True,
+            "solve_cloudflare": True,
+            "block_webrtc": True,
+            "retries": 1,
+            "timeout": max(90_000, self.page_timeout_ms),
+            "max_pages": self.concurrency,
+            "user_data_dir": profile_dir,
+            "locale": "en-US",
+        }
+        proxy_server = os.getenv("PLAYWRIGHT_PROXY")
+        if proxy_server:
+            options["proxy"] = proxy_server
+            logger.info("Finished-match checker proxy enabled.")
+        return options
 
     async def check_matches(self, tracked_matches: list[dict]) -> list[dict]:
         if not tracked_matches:
@@ -315,38 +313,35 @@ class AiscoreFinishedMatchChecker:
                 "failures": [],
             }
             return []
-        if async_playwright is None or AsyncNewBrowser is None:
-            raise RuntimeError("Camoufox is not installed. Run 'python -m camoufox fetch'.")
+        if AsyncStealthySession is None:
+            raise RuntimeError("Scrapling is not installed.")
 
         results = []
         failures = []
         retry_count = 0
-        async with async_playwright() as playwright:
-            browser, context, should_close_browser = await self._launch_headless_context(playwright)
-            try:
-                for index in range(0, len(tracked_matches), self.concurrency):
-                    batch = tracked_matches[index:index + self.concurrency]
-                    batch_results = await asyncio.gather(
-                        *(self._check_single_with_retry(context, match) for match in batch),
-                        return_exceptions=True,
-                    )
-                    for match, item in zip(batch, batch_results):
-                        if isinstance(item, dict) and not item.get("_check_error"):
-                            results.append(item)
-                            retry_count += max(0, int(item.pop("_check_attempts", 1)) - 1)
-                        elif isinstance(item, dict):
-                            failures.append(item)
-                            retry_count += max(0, int(item.get("_check_attempts", 1)) - 1)
-                        elif isinstance(item, Exception):
-                            failures.append(_check_failure(match, "unexpected_error"))
-                            logger.warning(
-                                "Finished check failed unexpectedly: match_id=%s error=%s",
-                                match.get("match_id"),
-                                type(item).__name__,
-                            )
-            finally:
-                if should_close_browser:
-                    await browser.close()
+        async with AsyncStealthySession(**self._scrapling_session_options()) as session:
+            if session.context is None:
+                raise RuntimeError("Scrapling browser context could not be created")
+            for index in range(0, len(tracked_matches), self.concurrency):
+                batch = tracked_matches[index:index + self.concurrency]
+                batch_results = await asyncio.gather(
+                    *(self._check_single_with_retry(session, match) for match in batch),
+                    return_exceptions=True,
+                )
+                for match, item in zip(batch, batch_results):
+                    if isinstance(item, dict) and not item.get("_check_error"):
+                        results.append(item)
+                        retry_count += max(0, int(item.pop("_check_attempts", 1)) - 1)
+                    elif isinstance(item, dict):
+                        failures.append(item)
+                        retry_count += max(0, int(item.get("_check_attempts", 1)) - 1)
+                    elif isinstance(item, Exception):
+                        failures.append(_check_failure(match, "unexpected_error"))
+                        logger.warning(
+                            "Finished check failed unexpectedly: match_id=%s error=%s",
+                            match.get("match_id"),
+                            type(item).__name__,
+                        )
 
         failure_counts: dict[str, int] = {}
         for failure in failures:
@@ -376,12 +371,12 @@ class AiscoreFinishedMatchChecker:
             )
         return results
 
-    async def _check_single_with_retry(self, context, match: dict) -> dict:
+    async def _check_single_with_retry(self, session, match: dict) -> dict:
         last_failure = _check_failure(match, "unknown_error")
         total_attempts = self.retry_attempts + 1
         for attempt in range(1, total_attempts + 1):
             try:
-                result = await self._check_single(context, match)
+                result = await self._check_single(session, match)
             except Exception:
                 logger.exception(
                     "Unexpected finished-match check error: match_id=%s attempt=%s",
@@ -399,16 +394,8 @@ class AiscoreFinishedMatchChecker:
         last_failure["_check_attempts"] = total_attempts
         return last_failure
 
-    async def _check_single(self, context, match: dict) -> dict:
-        page = None
-
+    async def _check_single(self, session, match: dict) -> dict:
         try:
-            page = await context.new_page()
-            page.set_default_timeout(self.page_timeout_ms)
-            await page.set_extra_http_headers({
-                "Cache-Control": "no-cache",
-                "Pragma": "no-cache",
-            })
             target_url = re.sub(
                 r"^https?://(?:www\.)?aiscore\.com",
                 "https://m.aiscore.com",
@@ -416,9 +403,17 @@ class AiscoreFinishedMatchChecker:
                 flags=re.IGNORECASE,
             )
             sep = "&" if "?" in target_url else "?"
-            await page.goto(f"{target_url}{sep}_fresh_check={int(time.time() * 1000)}", wait_until="domcontentloaded")
-            await page.wait_for_timeout(2500)
-            parsed = await page.evaluate(
+            state: dict = {}
+
+            async def parse_match_page(page):
+                page.set_default_timeout(self.page_timeout_ms)
+                await page.set_extra_http_headers({
+                    "Cache-Control": "no-cache",
+                    "Pragma": "no-cache",
+                })
+                await page.wait_for_timeout(2500)
+                try:
+                    state["parsed"] = await page.evaluate(
                 r"""
                 () => {
                   const text = s => (s || '').replace(/\s+/g, ' ').trim();
@@ -563,15 +558,36 @@ class AiscoreFinishedMatchChecker:
                     .replace(/\s*live score.*/i, '')
                     .replace(/\s*betting odds.*/i, '')
                     .trim();
+                  const pageText = text(document.body ? document.body.innerText : '').slice(0, 600);
 
-                  return { status, score, isFinished, title };
+                  return { status, score, isFinished, title, pageText };
                 }
-                """
+                    """
+                    )
+                except Exception as exc:
+                    # Scrapling logs page_action errors instead of propagating
+                    # them, so retain the error and classify it below.
+                    state["error"] = exc
+
+            await session.fetch(
+                f"{target_url}{sep}_fresh_check={int(time.time() * 1000)}",
+                solve_cloudflare=True,
+                page_action=parse_match_page,
+                timeout=max(90_000, self.page_timeout_ms),
             )
+            if state.get("error") is not None:
+                raise state["error"]
+            parsed = state.get("parsed")
             if not parsed:
                 return _check_failure(match, "empty_page")
             parsed_title = parsed.get("title") or ""
-            if re.search(r"just a moment|access denied|verify you are human", parsed_title, re.IGNORECASE):
+            access_text = f"{parsed_title} {parsed.get('pageText') or ''}"
+            if re.search(
+                r"just a moment|access denied|verify you are human|"
+                r"erişime engellenmiştir|has been blocked by the decision",
+                access_text,
+                re.IGNORECASE,
+            ):
                 return _check_failure(match, "blocked")
             if not (parsed.get("status") or parsed.get("score")):
                 return _check_failure(match, "parse_failed")
@@ -595,12 +611,6 @@ class AiscoreFinishedMatchChecker:
         except Exception as exc:
             logger.debug("Could not check match %s: %s", match.get("match_id"), exc)
             return _check_failure(match, "browser_error")
-        finally:
-            if page is not None:
-                try:
-                    await page.close()
-                except Exception:
-                    logger.debug("Could not close finished-match page", exc_info=True)
 
 
 async def run_active_match_finished_scan(db, config, before_delete=None) -> dict:
