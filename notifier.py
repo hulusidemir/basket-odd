@@ -27,6 +27,14 @@ def _build_alert_text(
     signal_count: int,
     prematch: float | None,
     period: int | None,
+    reference_used: str | None = None,
+    reference_total: float | None = None,
+    effective_threshold: float | None = None,
+    pregame_ppm: float | None = None,
+    market_future_pace: float | None = None,
+    future_pace_lower: float | None = None,
+    future_pace_upper: float | None = None,
+    fair_total: float | None = None,
 ) -> str:
     status_text = (status or "").strip()
     if status_text and period and not status_text.upper().startswith(f"Q{period}"):
@@ -42,14 +50,26 @@ def _build_alert_text(
 
     prematch_text = f" → {float(prematch):.1f}" if prematch is not None else ""
     signal_headline = f"📊 <b>{escape(direction)}</b>{repeat}"
+    reference_text = ""
+    if reference_used in {"opening", "prematch"} and reference_total is not None:
+        label = "Maç önü" if reference_used == "prematch" else "Açılış"
+        reference_text = f"\n<b>Referans:</b> {label} {reference_total:.1f} · fark {diff:+.1f}"
+        if effective_threshold is not None:
+            reference_text += f" · eşik {effective_threshold:.2f}"
+    change_suffix = "" if reference_text else f" ({diff:+.1f})"
 
+    future_text = ""
+    if fair_total is not None:
+        future_text = f"\n\n<b>Adil Barem:</b> {fair_total:.1f}"
     return (
         f"{signal_headline}\n"
         f"🏀 <b>{escape(match_name)}</b>\n"
         f"🏆 {escape(tournament or '-')}\n\n"
         f"<b>Skor:</b> {escape(score or '-')}\n"
         f"<b>Ne zaman geldi:</b> {when}\n"
-        f"<b>Barem değişimi:</b> {opening:.1f}{prematch_text} → {live:.1f} ({diff:+.1f})"
+        f"<b>Barem değişimi:</b> {opening:.1f}{prematch_text} → {live:.1f}{change_suffix}"
+        f"{reference_text}"
+        f"{future_text}"
     )
 
 
@@ -110,6 +130,14 @@ class TelegramNotifier:
         period: int | None = None,
         followed_upcoming: bool = False,
         pending_recipient_keys: set[str] | None = None,
+        reference_used: str | None = None,
+        reference_total: float | None = None,
+        effective_threshold: float | None = None,
+        pregame_ppm: float | None = None,
+        market_future_pace: float | None = None,
+        future_pace_lower: float | None = None,
+        future_pace_upper: float | None = None,
+        fair_total: float | None = None,
     ) -> dict:
         text = _build_alert_text(
             match_name=match_name,
@@ -123,6 +151,14 @@ class TelegramNotifier:
             signal_count=signal_count,
             prematch=prematch,
             period=period,
+            reference_used=reference_used,
+            reference_total=reference_total,
+            effective_threshold=effective_threshold,
+            pregame_ppm=pregame_ppm,
+            market_future_pace=market_future_pace,
+            future_pace_lower=future_pace_lower,
+            future_pace_upper=future_pace_upper,
+            fair_total=fair_total,
         )
         if followed_upcoming:
             first_line, separator, remainder = text.partition("\n")
@@ -152,8 +188,8 @@ class TelegramNotifier:
         try:
             await self._send_to_all(
                 "🤖 <b>Basket Tahmin Botu başlatıldı.</b>\n"
-                "Canlı açılış-barem farkları izleniyor. Eşiği geçen ham barem "
-                "hareketleri doğrudan gönderilir."
+                "Canlı baremler maç önü (yoksa açılış) referansıyla izleniyor. "
+                "Dinamik eşik ve periyot filtrelerinden geçen sinyaller gönderilir."
             )
         except TelegramError as e:
             logger.error(f"Failed to send startup message: {e}")

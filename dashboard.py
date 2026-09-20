@@ -1,4 +1,4 @@
-"""Flask dashboard for raw opening-versus-live total-line signals."""
+"""Flask dashboard for live total-line signals and their recorded decisions."""
 
 import asyncio
 import csv
@@ -16,10 +16,11 @@ from flask import Flask, Response, jsonify, render_template, request
 from config import Config
 from db import Database
 from finished_match_service import (
-    run_active_match_finished_scan,
+    FinishedCheckBusy,
     run_deleted_match_result_cycle,
     run_single_deleted_match_result_check,
 )
+from finished_scan_jobs import active_scan_jobs, start_active_finished_scan
 from match_state import current_pace_projection
 from signal_lists import (
     build_signal_list_markers,
@@ -70,6 +71,13 @@ def _raw_alert(row: dict, list_profile: dict | None = None) -> dict:
         item["barem_change"] = round(float(item["live"]) - float(item["opening"]), 2)
     except (KeyError, TypeError, ValueError):
         item["barem_change"] = None
+    item["decision_change"] = None
+    if item.get("reference_used") in {"prematch", "opening"}:
+        try:
+            change = float(item["diff"]) * (1 if item["direction"] == "ALT" else -1)
+            item["decision_change"] = change if math.isfinite(change) else None
+        except (KeyError, TypeError, ValueError):
+            pass
     pace = current_pace_projection(
         str(item.get("score") or ""),
         str(item.get("status") or ""),
@@ -90,6 +98,13 @@ def _raw_alert(row: dict, list_profile: dict | None = None) -> dict:
         item["opening_ppm"] = opening_ppm if math.isfinite(opening_ppm) else None
     except (KeyError, TypeError, ValueError, ZeroDivisionError):
         item["opening_ppm"] = None
+    # Fair Total (calculated if not fully populated via snapshot/db yet)
+    try:
+        fair = float(item["fair_total"])
+        item["fair_total"] = fair if math.isfinite(fair) else None
+    except (KeyError, TypeError, ValueError):
+        item["fair_total"] = None
+
     comparison = item["ppm_comparison"]
     minutes = comparison.get("remaining_minutes")
     seconds = math.floor(minutes * 60 + 0.5) if isinstance(minutes, (int, float)) and math.isfinite(minutes) else None
@@ -174,7 +189,21 @@ def _archive_all_active_rows() -> int:
 
 def _run_async_dashboard_job(name: str, coroutine, failure_message: str):
     try:
-        return jsonify(asyncio.run(coroutine))
+        result = asyncio.run(coroutine)
+        status = 200
+        if result.get("busy"):
+            status = 409
+        elif result.get("check_failed_count") and not result.get("checked_count"):
+            status = 502
+        elif result.get("archive_failed_count") and not result.get("moved_count"):
+            status = 500
+        if status != 200:
+            result["error"] = result.get("message") or failure_message
+        return jsonify(result), status
+    except FinishedCheckBusy as exc:
+        return jsonify({"busy": True, "error": str(exc)}), 409
+    except TimeoutError:
+        return jsonify({"error": "Final kontrolü zaman aşımına uğradı. Tekrar deneyin."}), 504
     except Exception as exc:
         logger.exception("Dashboard job failed (%s): %s", name, exc)
         return jsonify({"error": failure_message}), 500
@@ -217,7 +246,11 @@ def _frozen_deleted_alert(row: dict) -> dict:
         item["pace_score_total"] = None
         item["pace_elapsed_minutes"] = None
         item["pace_game_minutes"] = None
-    for key in ("opening_ppm", "team_history", "signal_time"):
+    for key in (
+        "opening_ppm", "team_history", "signal_time", "decision_change",
+        "reference_used", "reference_total", "effective_threshold",
+        "fair_total",
+    ):
         item[key] = snapshot.get(key)
     if "pace_ppm" not in snapshot:
         item["pace_ppm"] = None
@@ -334,11 +367,13 @@ def api_purge_deleted_alert(alert_id: int):
 
 @app.route("/api/alerts/check-finished", methods=["POST"])
 def api_check_active_match_finished():
-    return _run_async_dashboard_job(
-        "active_finished",
-        run_active_match_finished_scan(db, config, before_delete=_archive_active_match),
-        "Biten maçlar kontrol edilemedi.",
-    )
+    job = start_active_finished_scan(db, config, _archive_active_match)
+    return jsonify(job), 202
+
+
+@app.route("/api/alerts/check-finished", methods=["GET"])
+def api_active_match_finished_status():
+    return jsonify(active_scan_jobs.status())
 
 
 @app.route("/api/deleted-matches/check-results", methods=["POST"])

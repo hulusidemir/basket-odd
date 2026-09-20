@@ -20,7 +20,5 @@ CLAUDE.md
 .codex/
 AGENTS.md
 CODEX.md
-docs/
 exports/
-tests/
 .pytest_cache/

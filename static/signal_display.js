@@ -85,6 +85,16 @@
     </section>`;
   }
 
+  function signalReferenceFacts(alert) {
+    if (!['prematch', 'opening'].includes(alert.reference_used) || !hasMetric(alert.reference_total)) return '';
+    const label = alert.reference_used === 'prematch' ? 'Maç önü' : 'Açılış';
+    const change = hasMetric(alert.decision_change)
+      ? `${Number(alert.decision_change) > 0 ? '+' : ''}${fmt(alert.decision_change)}` : '–';
+    return `<div><span>Sinyal referansı · ${label}</span><strong>${fmt(alert.reference_total)}</strong></div>
+      <div><span>Referansa göre fark</span><strong>${change}</strong></div>
+      <div><span>Uygulanan eşik</span><strong>${ppmMetric(alert.effective_threshold)} sayı</strong></div>`;
+  }
+
   function openingLine(alert) {
     return `<span class="opening-line">${fmt(alert.opening)}<small class="opening-ppm">${hasMetric(alert.opening_ppm) ? ` (${ppmMetric(alert.opening_ppm)} PPM)` : ''}</small></span>`;
   }

@@ -16,9 +16,9 @@ from datetime import datetime, timedelta
 from config import Config
 from db import Database
 from finished_match_service import (
-    run_active_match_finished_scan,
     run_deleted_match_result_cycle,
 )
+from finished_scan_jobs import start_active_finished_scan
 
 log = logging.getLogger("scheduled_tasks")
 
@@ -38,7 +38,9 @@ def _run_safe(name: str, coro_factory) -> None:
     try:
         log.info("Scheduled task başladı: %s", name)
         result = asyncio.run(coro_factory())
-        log.info("Scheduled task bitti: %s | %s", name, result)
+        log.info("Scheduled task bitti: %s | checked=%s updated=%s unavailable=%s",
+                 name, result.get("checked_count", 0), result.get("updated_count", 0),
+                 result.get("check_failed_count", 0))
     except Exception as exc:
         log.exception("Scheduled task başarısız (%s): %s", name, exc)
 
@@ -58,14 +60,11 @@ def _task_loop(task: str, minute: int) -> None:
         time.sleep(sleep_s)
 
         if task == "active":
-            _run_safe(
-                "active-match-finished-scan (saat başı)",
-                lambda: run_active_match_finished_scan(
-                    db,
-                    config,
-                    before_delete=_before_active_delete,
-                ),
-            )
+            try:
+                job = start_active_finished_scan(db, config, _before_active_delete, source="scheduled")
+                log.info("Saatlik aktif tarama: %s", job["state"])
+            except Exception as exc:
+                log.error("Saatlik aktif tarama başlatılamadı (%s)", type(exc).__name__)
         else:
             _run_safe(
                 "deleted-match-result-cycle (saat :10)",

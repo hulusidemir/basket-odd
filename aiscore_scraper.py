@@ -5,15 +5,85 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from contextlib import asynccontextmanager, aclosing
 from datetime import datetime, timezone
-from statistics import median
+from typing import Awaitable, Callable
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
+from aiscore_browser import session_options
+from aiscore_match_page import normalize_match_page
 from aiscore_scoreboard import QUARTER_SCORES_JS
 from scrapling.fetchers import AsyncStealthySession
 from match_state import game_clock, normalize_quarter_scores, parse_score
 
 logger = logging.getLogger(__name__)
+
+
+LIVE_TOTAL_MARKET_JS = r"""() => {
+    const text = el => (el?.innerText || '').replace(/\s+/g, ' ').trim();
+    const totalLabel = value =>
+        /^(?:total(?: points)?|o\s*\/\s*u|over\s*[/&-]?\s*under)$/i.test(value);
+    const locked = el => !el
+        || /(?:^|[^a-z])(?:lock(?:ed|icon)?|islocked|suspend(?:ed)?|unavailable|closed)/i
+            .test(`${el.className || ''} ${el.innerHTML || ''}`)
+        || /^[-–—]+$/.test(text(el));
+    const line = el => {
+        if (locked(el)) return null;
+        const leaves = [el, ...el.querySelectorAll('*')]
+            .filter(node => !node.children.length);
+        const values = leaves
+            .map(text)
+            .filter(value => /^(?:[ou]\s*)?\d+(?:\.\d+)?$/i.test(value))
+            .map(value => Number(value.replace(/^[ou]\s*/i, '')))
+            .filter(value => Number.isFinite(value) && value >= 100 && value <= 400);
+        const unique = [...new Set(values.map(value => Number(value.toFixed(1))))];
+        return unique.length === 1 ? unique[0] : null;
+    };
+    const result = {
+        market_verified: false,
+        has_locked_rows: false,
+        opening_lines: [],
+        prematch_lines: [],
+        inplay_lines: [],
+        bookmaker_lines: [],
+    };
+    for (const market of document.querySelectorAll('.oddsContent')) {
+        if (!totalLabel(text(market.querySelector('.oddsType')))) continue;
+        result.market_verified = true;
+        for (const [index, box] of [...market.querySelectorAll('.oddsBoxContent')].entries()) {
+            const openingCell = box.querySelector('.border1');
+            const prematchCell = box.querySelector('.border2');
+            const inplayCell = box.querySelector('.border3');
+            const opening = line(openingCell);
+            const prematch = line(prematchCell);
+            const inplay = line(inplayCell);
+            if (locked(inplayCell) || opening === null || inplay === null) {
+                result.has_locked_rows = true;
+                continue;
+            }
+            const company = box.closest('.oddsBox') || box.parentElement;
+            const bookmaker = text(company?.querySelector('.companyName, .company, .name'))
+                || company?.querySelector('img')?.getAttribute('alt')
+                || `row-${index + 1}`;
+            result.opening_lines.push(opening);
+            result.prematch_lines.push(prematch);
+            result.inplay_lines.push(inplay);
+            result.bookmaker_lines.push(bookmaker);
+        }
+    }
+    return result;
+}"""
+
+
+LIVE_TOTAL_MARKET_READY_JS = r"""() => {
+    const text = el => (el?.innerText || '').replace(/\s+/g, ' ').trim();
+    const exactTotal = value =>
+        /^(?:total(?: points)?|o\s*\/\s*u|over\s*[/&-]?\s*under)$/i.test(value);
+    return [...document.querySelectorAll('.oddsContent')].some(market =>
+        exactTotal(text(market.querySelector('.oddsType')))
+        && market.querySelector('.oddsBoxContent .border3')
+    );
+}"""
 
 
 @dataclass(frozen=True)
@@ -175,17 +245,30 @@ def _valid_market_lines(values) -> list[float]:
 
 
 def _normalize_market_snapshot(value) -> dict:
-    """Keep the paired lines used by the live scraper and the pre-match median."""
+    """Keep all totals aligned to the same bookmaker, including missing prematch."""
     raw = value if isinstance(value, dict) else {}
-    opening_lines = _valid_market_lines(raw.get("opening_lines"))
-    prematch_lines = _valid_market_lines(raw.get("prematch_lines"))
-    inplay_lines = _valid_market_lines(raw.get("inplay_lines"))
+    result = {f"{name}_lines": [] for name in ("opening", "prematch", "inplay")}
+    result["bookmaker_lines"] = []
 
-    return {
-        "opening_lines": opening_lines,
-        "inplay_lines": inplay_lines,
-        "prematch_median": round(float(median(prematch_lines)), 1) if prematch_lines else None,
-    }
+    def values(name):
+        value = raw.get(f"{name}_lines")
+        return value if isinstance(value, (list, tuple)) else []
+
+    prematches = values("prematch")
+    bookmakers = values("bookmaker")
+    for index, (opening, inplay) in enumerate(zip(values("opening"), values("inplay"))):
+        opening = _valid_market_lines([opening])
+        inplay = _valid_market_lines([inplay])
+        if not opening or not inplay:
+            continue
+        prematch = _valid_market_lines([prematches[index]]) if index < len(prematches) else []
+        result["opening_lines"].append(opening[0])
+        result["inplay_lines"].append(inplay[0])
+        result["prematch_lines"].append(prematch[0] if prematch else None)
+        result["bookmaker_lines"].append(
+            str(bookmakers[index]).strip() if index < len(bookmakers) else ""
+        )
+    return result
 
 
 def _select_market_line(snapshot: dict, name: str) -> float | None:
@@ -201,13 +284,90 @@ class AiscoreScraper:
         max_matches_per_cycle: int = 40,
         page_timeout_ms: int = 30000,
         concurrency: int | None = None,
+        match_timeout_seconds: float = 90.0,
+        stale_line_seconds: float = 90.0,
+        stale_score_delta: int = 10,
+        stale_game_minutes: float = 2.0,
+        persistent_session: bool = False,
     ):
         self.aiscore_url = aiscore_url
         self.max_matches_per_cycle = max_matches_per_cycle
         self.page_timeout_ms = page_timeout_ms
         self.concurrency = concurrency
+        self.match_timeout_seconds = max(10.0, float(match_timeout_seconds))
+        self.stale_line_seconds = max(10.0, float(stale_line_seconds))
+        self.stale_score_delta = max(1, int(stale_score_delta))
+        self.stale_game_minutes = max(0.5, float(stale_game_minutes))
         self.last_report: dict = {}
         self._last_listing_diagnostics: dict = {}
+        self._line_observations: dict[tuple[str, str], dict] = {}
+        self._effective_concurrency = min(2, self._concurrent_tabs())
+        self._healthy_concurrency_cycles = 0
+        self.persistent_session = persistent_session
+        self._session = None
+        self._session_started = 0.0
+
+    async def close(self):
+        session, self._session = self._session, None
+        if session is not None:
+            try:
+                await asyncio.wait_for(session.__aexit__(None, None, None), 15)
+            except Exception:
+                driver = getattr(session, "playwright", None)
+                if driver is not None:
+                    await asyncio.wait_for(driver.stop(), 15)
+                raise
+
+    @asynccontextmanager
+    async def _live_session(self):
+        # Renew periodically as well as after failed/cancelled cycles.
+        if self._session is not None and time.monotonic() - self._session_started > 1800:
+            await self.close()
+        try:
+            if self._session is None:
+                self._session = AsyncStealthySession(**self._scrapling_session_options())
+                await asyncio.wait_for(self._session.__aenter__(), 90)
+                self._session_started = time.monotonic()
+            yield self._session
+        except BaseException:
+            await self.close()
+            raise
+        else:
+            if not self.persistent_session or self.last_report.get("status") == "partial":
+                await self.close()
+
+    async def _detail_results(self, context, links):
+        """Refill vacant slots without waiting for the slowest page in a batch."""
+        pending = set()
+        iterator = iter(links)
+        exhausted = False
+        try:
+            while pending or not exhausted:
+                while not exhausted and len(pending) < self._effective_concurrency:
+                    link = next(iterator, None)
+                    if link is None:
+                        exhausted = True
+                        break
+                    pending.add(asyncio.create_task(self._extract_single_with_timeout(context, link)))
+                if not pending:
+                    break
+                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                results = []
+                for task in done:
+                    try:
+                        results.append(task.result())
+                    except Exception as exc:
+                        results.append(exc)
+                for result in results:
+                    if isinstance(result, _TransientNavigationError) or (
+                        isinstance(result, _MatchSkip) and result.reason == "match_timeout"
+                    ):
+                        self._reduce_concurrency()
+                    yield result
+        finally:
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
 
     @staticmethod
     def _mobile_url(value: str) -> str:
@@ -231,29 +391,104 @@ class AiscoreScraper:
         return ""
 
     def _scrapling_session_options(self) -> dict:
-        proxy_server = os.getenv("PLAYWRIGHT_PROXY")
-        profile_dir = os.getenv(
-            "AISCORE_BROWSER_PROFILE_DIR",
-            os.path.join(
-                os.path.expanduser("~"),
-                ".cache",
-                "basket-odd",
-                "scrapling-profile",
-            ),
+        return session_options(
+            "live",
+            self.page_timeout_ms,
+            max_pages=self._concurrent_tabs(),
         )
-        options: dict = {
-            "headless": True,
-            "solve_cloudflare": True,
-            "block_webrtc": True,
-            "retries": 1,
-            "timeout": max(90_000, self.page_timeout_ms),
-            "max_pages": 1,
-            "user_data_dir": profile_dir,
+
+    def _concurrent_tabs(self) -> int:
+        if self.concurrency is None:
+            return _safe_env_int("AISCORE_CONCURRENCY", 4, minimum=1, maximum=8)
+        try:
+            return max(1, min(8, int(self.concurrency)))
+        except (TypeError, ValueError):
+            logger.warning("Invalid scraper concurrency=%r; using 4.", self.concurrency)
+            return 4
+
+    def _reduce_concurrency(self) -> None:
+        previous = self._effective_concurrency
+        self._effective_concurrency = max(1, previous // 2)
+        self._healthy_concurrency_cycles = 0
+        if self._effective_concurrency < previous:
+            logger.warning(
+                "Reducing live detail concurrency after navigation failures: %s -> %s",
+                previous,
+                self._effective_concurrency,
+            )
+
+    def _record_healthy_concurrency_cycle(self) -> None:
+        ceiling = self._concurrent_tabs()
+        if self._effective_concurrency >= ceiling:
+            self._healthy_concurrency_cycles = 0
+            return
+        self._healthy_concurrency_cycles += 1
+        if self._healthy_concurrency_cycles < 3:
+            return
+        previous = self._effective_concurrency
+        self._effective_concurrency = min(ceiling, previous + 1)
+        self._healthy_concurrency_cycles = 0
+        logger.info(
+            "Increasing live detail concurrency after healthy cycles: %s -> %s",
+            previous,
+            self._effective_concurrency,
+        )
+
+    @staticmethod
+    def _elapsed_game_minutes(match: dict) -> float | None:
+        clock = game_clock(
+            str(match.get("status") or ""),
+            str(match.get("match_name") or ""),
+            str(match.get("tournament") or ""),
+        )
+        period = clock.get("period")
+        remaining = clock.get("remaining_min")
+        quarter_length = clock.get("quarter_length")
+        if period is None or remaining is None or not quarter_length:
+            return None
+        return (period - 1) * quarter_length + (quarter_length - remaining)
+
+    def _stale_line_skip(self, match: dict) -> _MatchSkip | None:
+        """Detect a line that stays frozen while both score and clock advance."""
+        home_score, away_score = parse_score(str(match.get("score") or ""))
+        elapsed = self._elapsed_game_minutes(match)
+        if home_score is None or away_score is None or elapsed is None:
+            return None
+
+        observed_at = float(match.get("_market_captured_monotonic") or time.monotonic())
+        bookmaker = str(match.get("bookmaker") or "unknown")
+        key = (str(match.get("match_id") or ""), bookmaker)
+        current = {
+            "line": float(match["inplay_total"]),
+            "score_total": home_score + away_score,
+            "elapsed": elapsed,
+            "observed_at": observed_at,
         }
-        if proxy_server:
-            options["proxy"] = proxy_server
-            logger.info("Using proxy: %s", _redact_proxy_url(proxy_server))
-        return options
+        previous = self._line_observations.get(key)
+        if previous is None or previous["line"] != current["line"]:
+            self._line_observations[key] = current
+            return None
+
+        stationary_seconds = observed_at - previous["observed_at"]
+        score_delta = current["score_total"] - previous["score_total"]
+        elapsed_delta = current["elapsed"] - previous["elapsed"]
+        if (
+            stationary_seconds >= self.stale_line_seconds
+            and score_delta >= self.stale_score_delta
+            and elapsed_delta >= self.stale_game_minutes
+        ):
+            logger.warning(
+                "Detected stale live total: match=%s bookmaker=%s line=%.1f "
+                "age=%.1fs score_delta=%s elapsed_delta=%.2f",
+                match.get("match_name"),
+                bookmaker,
+                current["line"],
+                stationary_seconds,
+                score_delta,
+                elapsed_delta,
+            )
+            return _MatchSkip("stale_inplay_total", degraded=True, retryable=False)
+        return None
 
     @staticmethod
     def _is_transient_navigation_error(exc: Exception) -> bool:
@@ -300,7 +535,9 @@ class AiscoreScraper:
                     type(exc).__name__,
                 )
                 if attempt < bounded_attempts:
-                    await page.wait_for_timeout(350 * attempt)
+                    # A browser-side timer may itself remain pending after a
+                    # failed navigation leaves the page in a broken state.
+                    await asyncio.sleep(0.35 * attempt)
         raise _TransientNavigationError(
             f"AIScore bağlantısı geçici olarak kurulamadı; {bounded_attempts} otomatik deneme başarısız oldu."
         ) from last_error
@@ -370,7 +607,10 @@ class AiscoreScraper:
         await page.wait_for_timeout(250)
 
     # ── Ana tarama ────────────────────────────────────────────────────
-    async def get_live_basketball_totals(self) -> list[dict]:
+    async def get_live_basketball_totals(
+        self,
+        on_match: Callable[[dict], Awaitable[None]] | None = None,
+    ) -> list[dict]:
         cycle_started = time.monotonic()
         report = {
             "started_at": datetime.now(timezone.utc).isoformat(),
@@ -388,14 +628,17 @@ class AiscoreScraper:
             "failed_count": 0,
             "coverage_pct": None,
             "parse_coverage_pct": None,
+            "emitted_count": 0,
+            "effective_concurrency": self._effective_concurrency,
+            "navigation_failure_count": 0,
+            "skip_reasons": {},
             "listing": {},
             "errors": [],
         }
         self.last_report = report
-        session_options = self._scrapling_session_options()
 
         try:
-            async with AsyncStealthySession(**session_options) as session:
+            async with self._live_session() as session:
                 context = session.context
                 if context is None:
                     raise RuntimeError("Scrapling browser context could not be created")
@@ -524,34 +767,22 @@ class AiscoreScraper:
                 )
                 out = []
 
-                if self.concurrency is None:
-                    concurrent_tabs = _safe_env_int(
-                        "AISCORE_CONCURRENCY",
-                        1,
-                        minimum=1,
-                        maximum=8,
-                    )
-                else:
-                    try:
-                        concurrent_tabs = max(1, min(8, int(self.concurrency)))
-                    except (TypeError, ValueError):
-                        logger.warning(
-                            "Invalid scraper concurrency=%r; using 1.",
-                            self.concurrency,
-                        )
-                        concurrent_tabs = 1
                 batch_links = links[: self.max_matches_per_cycle]
                 report["attempted_count"] = len(batch_links)
                 report["unattempted_count"] = max(0, len(links) - len(batch_links))
 
-                for i in range(0, len(batch_links), concurrent_tabs):
-                    batch = batch_links[i : i + concurrent_tabs]
-                    tasks = [self._extract_single(context, link) for link in batch]
-                    results = await asyncio.gather(*tasks, return_exceptions=True)
-                    for result in results:
+                async with aclosing(self._detail_results(context, batch_links)) as results:
+                    async for result in results:
                         if isinstance(result, dict):
                             out.append(result)
+                            report["emitted_count"] += 1
+                            if on_match is not None:
+                                await on_match(result)
                         elif isinstance(result, _MatchSkip):
+                            skip_reasons = report["skip_reasons"]
+                            skip_reasons[result.reason] = (
+                                skip_reasons.get(result.reason, 0) + 1
+                            )
                             if result.degraded:
                                 report["failed_count"] += 1
                                 report["errors"].append(
@@ -561,14 +792,21 @@ class AiscoreScraper:
                                 report["skipped_count"] += 1
                         elif isinstance(result, Exception):
                             report["failed_count"] += 1
+                            if isinstance(result, _TransientNavigationError):
+                                report["navigation_failure_count"] += 1
                             error = f"{type(result).__name__}: {result}"
                             report["errors"].append(error)
                             logger.warning("Parallel match error: %s", result)
                         else:
                             report["failed_count"] += 1
                             report["errors"].append("unexpected extraction result")
+                report["effective_concurrency"] = self._effective_concurrency
 
                 report["parsed_count"] = len(out)
+                report["skip_reason_summary"] = ", ".join(
+                    f"{reason}={count}"
+                    for reason, count in sorted(report["skip_reasons"].items())
+                )
                 expected_live_count = max(len(links), reported_live_count)
                 resolved_count = len(out) + report["skipped_count"]
                 report["coverage_pct"] = (
@@ -607,6 +845,9 @@ class AiscoreScraper:
                     )
                 else:
                     report["status"] = "ok"
+                if report["navigation_failure_count"] == 0:
+                    self._record_healthy_concurrency_cycle()
+                    report["effective_concurrency"] = self._effective_concurrency
                 return out
         except Exception as exc:
             report["status"] = "error"
@@ -614,6 +855,23 @@ class AiscoreScraper:
             raise
         finally:
             report["duration_seconds"] = round(time.monotonic() - cycle_started, 2)
+
+    async def _extract_single_with_timeout(
+        self,
+        context,
+        link: str,
+    ) -> dict | _MatchSkip:
+        """Keep one broken browser tab from blocking the complete live cycle."""
+        try:
+            async with asyncio.timeout(self.match_timeout_seconds):
+                return await self._extract_single(context, link)
+        except TimeoutError:
+            logger.warning(
+                "AIScore match detail exceeded %.1fs and was cancelled: %s",
+                self.match_timeout_seconds,
+                link,
+            )
+            return _MatchSkip("match_timeout", degraded=True, retryable=False)
 
     async def _extract_single(self, context, link: str) -> dict | _MatchSkip:
         """Open a single match in a new tab, read data, and close.
@@ -640,7 +898,7 @@ class AiscoreScraper:
                     )
                     # _extract_match navigates to the canonical odds URL on every
                     # attempt, so a separate reload only duplicates network work.
-                    await detail.wait_for_timeout(500)
+                    await asyncio.sleep(0.5)
             logger.debug(
                 "Extraction omitted after %s attempts for %s: reason=%s degraded=%s",
                 max_retries,
@@ -653,7 +911,10 @@ class AiscoreScraper:
             logger.warning("Could not read match (%s): %s", link, exc)
             raise
         finally:
-            await detail.close()
+            try:
+                await asyncio.wait_for(detail.close(), timeout=5.0)
+            except Exception as exc:
+                logger.warning("Could not close match page (%s): %s", link, exc)
 
     async def _collect_match_links(self, page) -> list[str]:
         """
@@ -959,55 +1220,20 @@ class AiscoreScraper:
             )
             if await total_tab.count():
                 await total_tab.first.click()
-                try:
-                    await page.wait_for_function(
-                        r"""
-                        () => /total points|total|o\/u/i.test(
-                            (document.querySelector('.oddsContent .oddsType')?.innerText || '').trim()
-                        )
-                        """,
-                        timeout=min(5000, self.page_timeout_ms),
-                    )
-                except Exception:
-                    await page.wait_for_timeout(500)
+            await page.wait_for_function(
+                LIVE_TOTAL_MARKET_READY_JS,
+                timeout=min(5000, self.page_timeout_ms),
+            )
         except Exception as exc:
             logger.debug("Total Points selection failed for %s: %s", url, exc)
 
+        market_snapshot = await page.evaluate(LIVE_TOTAL_MARKET_JS)
+        market_captured_at = datetime.now(timezone.utc).isoformat()
+        market_captured_monotonic = time.monotonic()
         parsed = await page.evaluate(
             r"""
             () => {
                 const text = value => (value || '').replace(/\s+/g, ' ').trim();
-                const findLine = value => {
-                    const numbers = text(value).match(/\d+(?:\.\d+)?/g) || [];
-                    for (const raw of numbers) {
-                        const line = Number.parseFloat(raw);
-                        if (Number.isFinite(line) && line >= 100 && line <= 400) {
-                            return Number(line.toFixed(1));
-                        }
-                    }
-                    return null;
-                };
-
-                const openingLines = [];
-                const prematchLines = [];
-                const inplayLines = [];
-                const boxes = Array.from(
-                    document.querySelectorAll('.oddsContent .oddsBoxContent')
-                );
-                let lockedRows = 0;
-                for (const box of boxes) {
-                    const opening = findLine(box.querySelector('.border1')?.innerText);
-                    const prematch = findLine(box.querySelector('.border2')?.innerText);
-                    const inplay = findLine(box.querySelector('.border3')?.innerText);
-                    if (opening === null || inplay === null) {
-                        lockedRows += 1;
-                        continue;
-                    }
-                    openingLines.push(opening);
-                    inplayLines.push(inplay);
-                    if (prematch !== null) prematchLines.push(prematch);
-                }
-
                 const top = text(document.querySelector('.topBox')?.innerText);
                 const scoreMatches = Array.from(top.matchAll(/\b(\d{1,3})\s*[-–]\s*(\d{1,3})\b/g));
                 const scoreMatch = scoreMatches.length
@@ -1040,12 +1266,6 @@ class AiscoreScraper:
                     topText: top,
                     score,
                     quarterScores,
-                    hasLockedRows: boxes.length > 0 && lockedRows === boxes.length,
-                    oddsSnapshot: {
-                        opening_lines: openingLines,
-                        prematch_lines: prematchLines,
-                        inplay_lines: inplayLines,
-                    },
                 };
             }
             """.replace("__QUARTER_SCORES_READER__", QUARTER_SCORES_JS)
@@ -1059,12 +1279,14 @@ class AiscoreScraper:
         if parsed.get("isFinished"):
             return _MatchSkip("finished")
 
-        odds_snapshot = _normalize_market_snapshot(parsed.get("oddsSnapshot"))
+        if not market_snapshot.get("market_verified"):
+            return _MatchSkip("total_market_unverified", degraded=True, retryable=True)
+        odds_snapshot = _normalize_market_snapshot(market_snapshot)
         opening = _select_market_line(odds_snapshot, "opening")
         inplay = _select_market_line(odds_snapshot, "inplay")
-        prematch = odds_snapshot.get("prematch_median")
+        prematch = _select_market_line(odds_snapshot, "prematch")
         if opening is None or inplay is None:
-            if parsed.get("hasLockedRows"):
+            if market_snapshot.get("has_locked_rows"):
                 return _MatchSkip("odds_locked", retryable=True)
             return _MatchSkip("totals_missing", retryable=True)
 
@@ -1074,7 +1296,7 @@ class AiscoreScraper:
         )
         overview_data = {}
         needs_overview_core = not parsed.get("status") or not parsed.get("score")
-        if needs_overview_core or not parsed_quarter_scores:
+        if needs_overview_core:
             overview_data = await self._fetch_overview_data(page, clean_url)
             if needs_overview_core and overview_data.get("status"):
                 parsed["status"] = overview_data["status"]
@@ -1126,7 +1348,7 @@ class AiscoreScraper:
             )
             return _MatchSkip("incomplete_live_core", degraded=True, retryable=True)
 
-        return {
+        match = {
             "match_id": match_id,
             "match_name": match_name,
             "tournament": tournament or "Unknown",
@@ -1134,11 +1356,23 @@ class AiscoreScraper:
             "opening_total": float(opening),
             "prematch_total": float(prematch) if prematch is not None else None,
             "inplay_total": float(inplay),
+            "bookmaker": (
+                odds_snapshot["bookmaker_lines"][0]
+                if odds_snapshot["bookmaker_lines"]
+                else ""
+            ),
+            "market_captured_at": market_captured_at,
+            "_market_captured_monotonic": market_captured_monotonic,
             "url": clean_url,
             "score": score,
             "quarter_scores": quarter_scores,
             "has_prematch": prematch is not None,
         }
+        stale_skip = self._stale_line_skip(match)
+        if stale_skip is not None:
+            match["_market_stale"] = True
+            match["_market_stale_reason"] = stale_skip.reason
+        return match
 
     async def _fetch_overview_data(self, page, url: str) -> dict:
         try:
@@ -1215,11 +1449,11 @@ class AiscoreScraper:
                     period_ended: /\bperiod\s+end(?:ed)?\b/i.test(latestEvent),
                   };
 
-                  const nuxtMatch = window.__NUXT__
+                  const nuxtMatch = window.$nuxt?.$store?.state?.basketball?.basketballDetailMatchData?.match || (window.__NUXT__
                     && window.__NUXT__.state
                     && window.__NUXT__.state.basketball
                     && window.__NUXT__.state.basketball.basketballDetailMatchData
-                    && window.__NUXT__.state.basketball.basketballDetailMatchData.match;
+                    && window.__NUXT__.state.basketball.basketballDetailMatchData.match);
                   const nuxtFinished = Boolean(nuxtMatch) && (
                     Number(nuxtMatch.matchStatus) === 3
                     || Number(nuxtMatch.statusId) === 10
@@ -1231,9 +1465,16 @@ class AiscoreScraper:
                     quarterScores,
                     playByPlayStatus,
                     isFinished: nuxtFinished,
+                    sourceMatch: nuxtMatch ? {
+                      id: nuxtMatch.id, statusId: nuxtMatch.statusId, matchStatus: nuxtMatch.matchStatus,
+                      homeScores: nuxtMatch.homeScores, awayScores: nuxtMatch.awayScores,
+                    } : null,
                   };
                 }
             """.replace("__QUARTER_SCORES_READER__", QUARTER_SCORES_JS))
+            result = normalize_match_page(result, urlsplit(url).path.rstrip("/").rsplit("/", 1)[-1])
+            if result.get("_check_error"):
+                return {}
             if not result.get("status"):
                 fallback = _status_from_play_by_play_hint(result.get("playByPlayStatus"))
                 if fallback["status"]:

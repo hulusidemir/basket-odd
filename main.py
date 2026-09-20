@@ -18,9 +18,10 @@ from aiscore_scraper import AiscoreScraper
 from config import Config
 from db import Database
 from notifier import TelegramNotifier
-from match_state import game_clock, normalize_quarter_scores
+from match_state import game_clock, normalize_quarter_scores, parse_score
 from signal_lists import build_signal_blacklist_matches, build_signal_list_profile
 from signal_repeat import live_total_delta
+from live_signals import SignalDecision, evaluate_live_signal, valid_total
 
 
 class _ConsecutiveFailureAlertLatch:
@@ -98,19 +99,7 @@ def _normalize_match_payload(match: dict) -> dict:
             raise ValueError(f"out-of-range numeric field: {key}")
         normalized[key] = value
 
-    prematch = match.get("prematch_total")
-    if prematch is not None and str(prematch).strip() != "":
-        try:
-            parsed_prematch = float(prematch)
-        except (TypeError, ValueError):
-            parsed_prematch = None
-        normalized["prematch_total"] = (
-            parsed_prematch
-            if parsed_prematch is not None
-            and math.isfinite(parsed_prematch)
-            and 0 < parsed_prematch <= 1000
-            else None
-        )
+    normalized["prematch_total"] = valid_total(match.get("prematch_total"))
 
     normalized["quarter_scores"] = normalize_quarter_scores(
         match.get("quarter_scores"),
@@ -118,6 +107,16 @@ def _normalize_match_payload(match: dict) -> dict:
     )
 
     return normalized
+
+
+def _live_observation_age_seconds(match: dict) -> float | None:
+    captured = match.get("_market_captured_monotonic")
+    if captured is None or isinstance(captured, bool):
+        return None
+    try:
+        return max(0.0, time.monotonic() - float(captured))
+    except (TypeError, ValueError):
+        return None
 
 
 def _scraper_health_summary(scraper) -> dict | None:
@@ -146,6 +145,10 @@ def _scraper_health_summary(scraper) -> dict | None:
         "failed_count",
         "coverage_pct",
         "parse_coverage_pct",
+        "emitted_count",
+        "effective_concurrency",
+        "navigation_failure_count",
+        "skip_reason_summary",
         "matches_checked",
         "matches_parsed",
         "matches_succeeded",
@@ -173,30 +176,17 @@ def _telegram_delivery_complete(notifier, message_ids: dict) -> bool:
     return bool(message_ids)
 
 
-async def process_match(
-    match: dict,
-    db: Database,
-    notifier: TelegramNotifier,
-    config: Config,
-    signal_list_profile: dict | None = None,
-) -> None:
-    match = _normalize_match_payload(match)
+def _match_is_blocked(match, db, config, signal_list_profile) -> bool:
     match_id = match["match_id"]
     match_name = match["match_name"]
     tournament = match.get("tournament", "")
-    opening_total = match["opening_total"]
-    inplay_total = match["inplay_total"]
-    prematch_total = match.get("prematch_total")
-    status = match.get("status", "Canlı")
     url = match.get("url", "")
-    score = match.get("score", "")
-    quarter_scores = match.get("quarter_scores") or {}
 
     log = logging.getLogger("main")
 
     if db.is_match_deleted(match_id):
         log.debug("Skipped (deleted match): %s", match_name)
-        return
+        return True
 
     if signal_list_profile is None:
         list_entries = getattr(db, "list_signal_list_entries", None)
@@ -210,45 +200,24 @@ async def process_match(
             for item in blacklist_matches
         )
         log.info("Skipped (dashboard blacklist: %s): %s", matched, match_name)
-        return
+        return True
 
     if config.BLACKLIST:
         check_text = f"{match_name} {tournament} {url}".lower()
         for term in config.BLACKLIST:
             if term in check_text:
                 log.debug("Blacklisted (%s): %s", term, match_name)
-                return
+                return True
+    return False
 
-    clock = game_clock(status, match_name, tournament)
-    period = clock["period"]
 
-    if period is None:
-        # Status boş ise yayın henüz canlı sayfaya gelmemiş demek (gürültü değil).
-        # Status dolu ama parse edilemediyse format değişmiş, ilgilenmek lazım.
-        if status:
-            log.warning(
-                "Status format tanınmadı (çeyrek bilgisi okunamadı): %s | status=%r | score=%r",
-                match_name, status, score,
-            )
-        else:
-            log.debug(
-                "Skipped (henüz canlı status yok): %s | score=%r",
-                match_name, score,
-            )
-        return
-
-    diff = inplay_total - opening_total
-    abs_diff = abs(diff)
-
-    log.info(
-        "📊 %s | Açılış: %.1f | Canlı: %.1f | Fark: %+.1f | Skor: %s | Durum: %s",
-        match_name, opening_total, inplay_total, diff, score or "-", status or "-",
-    )
-
-    if abs_diff < config.THRESHOLD:
-        return
-
-    direction = "ALT" if diff > 0 else "ÜST"
+def _next_signal_count(match, decision, db, config) -> int | None:
+    match_id = match["match_id"]
+    match_name = match["match_name"]
+    inplay_total = match["inplay_total"]
+    direction = decision.direction
+    period = decision.period
+    log = logging.getLogger("main")
 
     total_alerts = db.count_match_alerts(match_id)
     if total_alerts >= config.MAX_SIGNALS_PER_MATCH:
@@ -282,25 +251,44 @@ async def process_match(
             )
             return
 
-    alert_id = db.save_alert(
-        match_id, match_name, opening_total, inplay_total, direction, abs_diff,
-        tournament=tournament, status=status, url=url, score=score,
-        signal_count=signal_count, prematch=prematch_total,
-        alert_period=period,
-        alert_moment=" | ".join(p for p in (status, score) if p),
+    return signal_count
+
+
+def _save_signal(match: dict, decision: SignalDecision, signal_count: int, db: Database) -> int:
+    return db.save_alert(
+        match["match_id"], match["match_name"], match["opening_total"], match["inplay_total"],
+        decision.direction, abs(decision.diff),
+        tournament=match["tournament"], status=match["status"], url=match["url"], score=match["score"],
+        signal_count=signal_count, prematch=match["prematch_total"],
+        alert_period=decision.period,
+        alert_moment=" | ".join(p for p in (match["status"], match["score"]) if p),
         telegram_required=True,
-        quarter_scores=quarter_scores,
+        quarter_scores=match["quarter_scores"],
+        reference_used=decision.reference_used,
+        reference_total=decision.reference_total,
+        effective_threshold=decision.effective_threshold,
+        fair_total=decision.sustainable_projection_center,
     )
 
-    followed_upcoming = db.is_upcoming_followed(match_id)
+
+async def _deliver_signal(match, decision, signal_count, alert_id, db, notifier):
+    followed_upcoming = db.is_upcoming_followed(match["match_id"])
 
     message_ids = {}
     try:
         delivered = await notifier.send_alert(
-            match_name, tournament, opening_total, inplay_total, direction, diff, status,
-            score=score, signal_count=signal_count, prematch=prematch_total,
-            period=period,
+            match["match_name"], match["tournament"], match["opening_total"], match["inplay_total"],
+            decision.direction, decision.diff, match["status"],
+            score=match["score"], signal_count=signal_count, prematch=match["prematch_total"],
+            period=decision.period,
             followed_upcoming=followed_upcoming,
+            reference_used=decision.reference_used,
+            reference_total=decision.reference_total,
+            effective_threshold=decision.effective_threshold,
+            market_future_pace=decision.market_implied_pace,
+            future_pace_lower=decision.pace_lower_bound,
+            future_pace_upper=decision.pace_upper_bound,
+            fair_total=decision.sustainable_projection_center,
         )
     except Exception as exc:
         db.mark_telegram_delivery_failed(
@@ -318,12 +306,85 @@ async def process_match(
             **({"message_ids": delivered} if isinstance(delivered, dict) and delivered else {}),
         )
 
-    log.info(
+    logging.getLogger("main").info(
         "Signal saved (telegram=%s%s): alert_id=%s match_id=%s | %s | %s | diff=%.2f",
         "sent" if message_ids else "not-sent",
         " · followed" if followed_upcoming else "",
-        alert_id, match_id, match_name, direction, abs_diff,
+        alert_id, match["match_id"], match["match_name"], decision.direction, abs(decision.diff),
     )
+
+
+async def process_match(
+    match: dict,
+    db: Database,
+    notifier: TelegramNotifier,
+    config: Config,
+    signal_list_profile: dict | None = None,
+) -> None:
+    observation_age = _live_observation_age_seconds(match)
+    max_age = float(getattr(config, "MAX_LIVE_OBSERVATION_AGE_SECONDS", 20.0))
+    if observation_age is not None and observation_age > max_age:
+        logging.getLogger("main").warning(
+            "Skipped stale market observation: match=%s age=%.1fs max=%.1fs",
+            str(match.get("match_name") or match.get("match_id") or "unknown"),
+            observation_age,
+            max_age,
+        )
+        return
+    match = _normalize_match_payload(match)
+    if _match_is_blocked(match, db, config, signal_list_profile):
+        return
+    if match.get("_market_stale"):
+        logging.getLogger("main").warning(
+            "Skipped stale market observation after list filters: match=%s reason=%s",
+            match["match_name"],
+            str(match.get("_market_stale_reason") or "stale_inplay_total"),
+        )
+        return
+
+    # Save snapshot
+    clock = game_clock(match["status"], match["match_name"], match["tournament"])
+    period = clock["period"]
+    home_score, away_score = parse_score(match.get("score", ""))
+    elapsed_sec = 0
+    remaining_min = 0.0
+    if period and home_score is not None and clock.get("quarter_length") and clock.get("remaining_min") is not None:
+        ql = clock["quarter_length"]
+        pc = clock["period_count"]
+        rem = clock["remaining_min"]
+        elap_min = (period - 1) * ql + (ql - rem)
+        elapsed_sec = int(elap_min * 60)
+        remaining_min = (pc * ql) - elap_min
+
+        db.save_snapshot_if_changed(
+            match_id=match["match_id"],
+            period=period,
+            game_clock=clock.get("clock_str", ""),
+            elapsed_game_seconds=elapsed_sec,
+            remaining_minutes=remaining_min,
+            home_score=home_score,
+            away_score=away_score,
+            total_score=home_score + away_score,
+            pregame_total=valid_total(match.get("prematch_total")),
+            live_total=float(match["inplay_total"]),
+            heartbeat_seconds=config.HEARTBEAT_SECONDS
+        )
+
+    snapshots = db.get_match_snapshots(match["match_id"])
+    decision = evaluate_live_signal(match, snapshots, config)
+    logging.getLogger("main").info(
+        "📊 %s | Referans (%s): %.1f | Canlı: %.1f | Fark: %+.1f | Eşik: %.2f | Durum: %s | Filtre: %s",
+        match["match_name"], decision.reference_used, decision.reference_total,
+        match["inplay_total"], decision.diff, decision.effective_threshold,
+        match["status"], decision.skip_reason or "passed",
+    )
+    if decision.skip_reason:
+        return
+    signal_count = _next_signal_count(match, decision, db, config)
+    if signal_count is None:
+        return
+    alert_id = _save_signal(match, decision, signal_count, db)
+    await _deliver_signal(match, decision, signal_count, alert_id, db, notifier)
 
 
 async def process_match_batch(
@@ -421,6 +482,14 @@ async def retry_pending_telegram_deliveries(
                 str(row.get("tournament") or ""),
             )
             send_kwargs = {}
+            if row.get("reference_used"):
+                send_kwargs.update(
+                    reference_used=row["reference_used"],
+                    reference_total=row.get("reference_total"),
+                    effective_threshold=row.get("effective_threshold"),
+                )
+            if row.get("fair_total") is not None:
+                send_kwargs.update(fair_total=row.get("fair_total"))
             recipient_keys = getattr(notifier, "recipient_keys", None)
             if isinstance(recipient_keys, set):
                 stored_message_ids = {
@@ -435,7 +504,7 @@ async def retry_pending_telegram_deliveries(
                 float(row.get("opening")),
                 float(row.get("live")),
                 direction,
-                float(row.get("live")) - float(row.get("opening")),
+                float(row["diff"]) * (1 if direction == "ALT" else -1),
                 str(row.get("status") or ""),
                 score=str(row.get("score") or ""),
                 signal_count=int(row.get("signal_count") or 1),
@@ -498,12 +567,19 @@ async def run():
         max_matches_per_cycle=config.MAX_MATCHES_PER_CYCLE,
         page_timeout_ms=config.PAGE_TIMEOUT_MS,
         concurrency=config.AISCORE_CONCURRENCY,
+        persistent_session=True,
+        match_timeout_seconds=config.LIVE_MATCH_TIMEOUT_SECONDS,
+        stale_line_seconds=config.LIVE_LINE_STALE_SECONDS,
+        stale_score_delta=config.LIVE_LINE_STALE_SCORE_DELTA,
+        stale_game_minutes=config.LIVE_LINE_STALE_GAME_MINUTES,
     )
 
     await notifier.send_startup()
+    log.info("Healthy live poll: %.1fs; persistent browser and continuous detail queue enabled.", config.LIVE_POLL_SECONDS)
     log.info(
-        "Bot started. Threshold: %s pts | Poll: %s-%ss | Max/match: %s | Same direction: %s pts live-total gap | 1 alert per period",
-        config.THRESHOLD, config.POLL_INTERVAL_MIN, config.POLL_INTERVAL_MAX,
+        "Bot started. Threshold: %s%% (%s, hybrid floor: %s pts) | Q4 disabled: %s | OT disabled | Poll: %s-%ss | Max/match: %s | Same direction: %s pts live-total gap | 1 alert per period",
+        config.THRESHOLD_PERCENT, config.THRESHOLD_MODE, config.THRESHOLD, config.DISABLE_Q4_SIGNALS,
+        config.POLL_INTERVAL_MIN, config.POLL_INTERVAL_MAX,
         config.MAX_SIGNALS_PER_MATCH, config.SAME_DIRECTION_MIN_LIVE_DELTA,
     )
 
@@ -521,20 +597,57 @@ async def run():
                     delivery_summary["cancelled"],
                 )
             cycle_started = time.monotonic()
-            matches = await scraper.get_live_basketball_totals()
+            cycle_summary = {"received": 0, "processed": 0, "failed": 0}
+            signal_list_profile = build_signal_list_profile(db.list_signal_list_entries())
+            processing_tasks: list[asyncio.Task] = []
+
+            async def process_captured_match_task(match: dict, index: int) -> None:
+                try:
+                    await process_match(
+                        match,
+                        db,
+                        notifier,
+                        config,
+                        signal_list_profile,
+                    )
+                    cycle_summary["processed"] += 1
+                except Exception as exc:
+                    cycle_summary["failed"] += 1
+                    log.exception(
+                        "Match processing failed; live scrape continues: "
+                        "index=%s match_id=%r match_name=%r error=%s",
+                        index,
+                        str(match.get("match_id") or "")[:120],
+                        str(match.get("match_name") or "")[:160],
+                        exc,
+                    )
+
+            async def schedule_captured_match(match: dict) -> None:
+                index = cycle_summary["received"]
+                cycle_summary["received"] += 1
+                processing_tasks.append(asyncio.create_task(
+                    process_captured_match_task(match, index)
+                ))
+
+            try:
+                async with asyncio.timeout(config.LIVE_SCRAPE_TIMEOUT_SECONDS):
+                    matches = await scraper.get_live_basketball_totals(
+                        on_match=schedule_captured_match,
+                    )
+            except TimeoutError as exc:
+                raise RuntimeError(
+                    "AIScore canlı tarama çevrimi "
+                    f"{config.LIVE_SCRAPE_TIMEOUT_SECONDS:.0f} saniyeyi aştı ve iptal edildi."
+                ) from exc
+            finally:
+                if processing_tasks:
+                    await asyncio.gather(*processing_tasks)
             scrape_seconds = time.monotonic() - cycle_started
             log.info(
                 "Captured opening/in-play totals for %s matches in %.1fs.",
                 len(matches),
                 scrape_seconds,
             )
-            cycle_summary = await process_match_batch(
-                matches,
-                db,
-                notifier,
-                config,
-            )
-
             health = _scraper_health_summary(scraper)
             if health is not None:
                 log.info("Scraper health: %s", health)
@@ -564,6 +677,7 @@ async def run():
                     )
             else:
                 previous_failures = failure_alert.record_success()
+                consecutive_errors = 0
                 if previous_failures:
                     log.info(
                         "Scraper health recovered after %s degraded/error cycle(s).",
@@ -579,7 +693,10 @@ async def run():
             if should_alert:
                 await notifier.send_error(f"{consecutive_errors} consecutive errors: {e}")
 
-        delay = random.uniform(config.POLL_INTERVAL_MIN, config.POLL_INTERVAL_MAX)
+        # Healthy cycles resume quickly; failures retain the configured backoff.
+        delay = config.LIVE_POLL_SECONDS if consecutive_errors == 0 else random.uniform(
+            config.POLL_INTERVAL_MIN, config.POLL_INTERVAL_MAX
+        )
         log.debug(f"Next check in {delay:.0f}s")
         await asyncio.sleep(delay)
 

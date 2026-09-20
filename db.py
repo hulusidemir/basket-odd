@@ -60,7 +60,8 @@ class Database:
                     final_status             TEXT NOT NULL DEFAULT '',
                     final_score              TEXT NOT NULL DEFAULT '',
                     settled_at               TIMESTAMP,
-                    alerted_at               TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    alerted_at               TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    fair_total               REAL
                 );
 
                 CREATE TABLE IF NOT EXISTS match_actions (
@@ -152,6 +153,24 @@ class Database:
 
                 CREATE INDEX IF NOT EXISTS idx_signal_lists_lookup
                 ON signal_lists(list_type, scope, normalized_value);
+
+                CREATE TABLE IF NOT EXISTS match_live_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    match_id TEXT NOT NULL,
+                    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    period INTEGER,
+                    game_clock TEXT,
+                    elapsed_game_seconds INTEGER NOT NULL,
+                    remaining_minutes REAL NOT NULL,
+                    home_score INTEGER NOT NULL,
+                    away_score INTEGER NOT NULL,
+                    total_score INTEGER NOT NULL,
+                    pregame_total REAL,
+                    live_total REAL NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_match_snapshots
+                ON match_live_snapshots(match_id, recorded_at);
             """)
             # Main bot and dashboard can start together after a deployment.
             # Serialize this additive migration so both processes cannot race.
@@ -159,6 +178,14 @@ class Database:
             alert_columns = {
                 row["name"] for row in conn.execute("PRAGMA table_info(alerts)")
             }
+            for name, sql_type in (
+                ("reference_used", "TEXT"),
+                ("reference_total", "REAL"),
+                ("effective_threshold", "REAL"),
+                ("fair_total", "REAL"),
+            ):
+                if name not in alert_columns:
+                    conn.execute(f"ALTER TABLE alerts ADD COLUMN {name} {sql_type}")
             if "quarter_scores_json" not in alert_columns:
                 conn.execute(
                     "ALTER TABLE alerts "
@@ -347,6 +374,10 @@ class Database:
         alert_moment: str = "",
         telegram_required: bool = False,
         quarter_scores: dict | None = None,
+        reference_used: str | None = None,
+        reference_total: float | None = None,
+        effective_threshold: float | None = None,
+        fair_total: float | None = None,
     ) -> int:
         quarter_scores_json = (
             json.dumps(quarter_scores, ensure_ascii=False, separators=(",", ":"))
@@ -399,15 +430,18 @@ class Database:
                     match_id, match_name, opening, prematch, live, direction, diff,
                     tournament, status, url, score, quarter_scores_json, signal_count,
                     bet_placed, ignored, followed, alert_period, alert_moment,
-                    telegram_status
+                    telegram_status, reference_used, reference_total, effective_threshold,
+                    fair_total
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     match_id, match_name, opening, prematch, live, direction, diff,
                     tournament, status, url, score, quarter_scores_json, signal_count,
                     bet, ign, fol, alert_period, alert_moment,
                     "pending" if telegram_required else "not_required",
+                    reference_used, reference_total, effective_threshold,
+                    fair_total,
                 ),
             )
             return int(cursor.lastrowid)
@@ -828,7 +862,7 @@ class Database:
                   AND url != ''
                 GROUP BY match_id
                 ) latest ON latest.latest_id = a.id
-                ORDER BY a.alerted_at DESC, a.id DESC
+                ORDER BY a.alerted_at ASC, a.id ASC
                 """
             ).fetchall()
         return [dict(r) for r in rows]
@@ -1481,6 +1515,71 @@ class Database:
                 (match_id,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    # ---------- adaptive signal snapshots ----------
+
+    def get_match_snapshots(self, match_id: str) -> list[dict]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM match_live_snapshots
+                WHERE match_id = ?
+                ORDER BY recorded_at ASC, id ASC
+                """,
+                (match_id,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def save_snapshot_if_changed(
+        self,
+        match_id: str,
+        period: int | None,
+        game_clock: str,
+        elapsed_game_seconds: int,
+        remaining_minutes: float,
+        home_score: int,
+        away_score: int,
+        total_score: int,
+        pregame_total: float | None,
+        live_total: float,
+        heartbeat_seconds: int = 60
+    ) -> bool:
+        with self._conn() as conn:
+            last = conn.execute(
+                """
+                SELECT * FROM match_live_snapshots
+                WHERE match_id = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (match_id,)
+            ).fetchone()
+
+            should_save = False
+            if not last:
+                should_save = True
+            else:
+                if last["total_score"] != total_score:
+                    should_save = True
+                elif last["live_total"] != live_total:
+                    should_save = True
+                elif last["period"] != period:
+                    should_save = True
+                elif elapsed_game_seconds - last["elapsed_game_seconds"] >= heartbeat_seconds:
+                    should_save = True
+
+            if should_save:
+                conn.execute(
+                    """
+                    INSERT INTO match_live_snapshots (
+                        match_id, period, game_clock, elapsed_game_seconds, remaining_minutes,
+                        home_score, away_score, total_score, pregame_total, live_total
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (match_id, period, game_clock, elapsed_game_seconds, remaining_minutes, home_score, away_score, total_score, pregame_total, live_total)
+                )
+                return True
+        return False
+
 
     def get_deleted_alerts_for_match(self, match_id: str) -> list:
         with self._conn() as conn:

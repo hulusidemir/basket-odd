@@ -67,9 +67,10 @@
       </div>
     </div>
     <div class="panel-header" style="padding-top:9px;padding-bottom:9px"><div class="status-line" id="status">Yükleniyor…</div></div>
+    <div class="panel-header" style="padding-top:0;padding-bottom:9px"><div class="status-line" id="finishedStatus" role="status" aria-live="polite"></div></div>
     <div class="table-wrap">
       <table class="data-table signal-table">
-        <thead><tr><th>Sinyal</th><th>Maç</th><th>Skor / zaman</th><th class="num">Barem hareketi</th><th class="ppm-heading">PPM</th><th class="num">Projeksiyon</th><th>İşlemler</th></tr></thead>
+        <thead><tr><th>Sinyal</th><th>Maç</th><th>Skor / zaman</th><th class="num">Barem hareketi</th><th class="ppm-heading">PPM</th><th class="num">Projeksiyon</th><th class="num">Adil Barem</th><th>İşlemler</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="empty" id="empty" hidden><span class="empty-symbol">◎</span><strong>Aktif sinyal yok</strong>Filtreye uygun bir sinyal geldiğinde burada görünecek.</div>
@@ -93,6 +94,7 @@
 {% include '_ppm_calculator.html' %}
 <script src="{{ url_for('static', filename='signal_display.js') }}"></script>
 <script src="{{ url_for('static', filename='table_sort.js') }}"></script>
+<script src="{{ url_for('static', filename='finished_scan.js') }}"></script>
 <script>
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -112,6 +114,10 @@
 
   let activeModalAlertId = null;
   let activeModalHistory = null;
+  let modalRequestVersion = 0;
+  let refreshInFlight = null;
+let refreshStartedAt = 0;
+  const signalRefreshStates = new Map();
 
   function mobileMatchUrl(value) {
     try {
@@ -189,8 +195,8 @@
 
   async function call(url, options={}) {
     const response = await fetch(url, {headers:{'Content-Type':'application/json'}, ...options});
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'İşlem başarısız');
+    const data = await response.json().catch(() => ({error: 'Sunucudan geçerli yanıt alınamadı. Tekrar deneyin.'}));
+    if (!response.ok || data.error) throw new Error(data.error || 'İşlem başarısız');
     return data;
   }
 
@@ -273,13 +279,14 @@
     $('signalModalBody').innerHTML = `
       ${ppmComparisonSection(alert)}
       <section class="modal-section">
-      <div class="modal-section-head"><h3 class="modal-section-title">Maç özeti</h3><span class="signal-modal-subtitle">${esc(alert.tournament || 'Lig bilgisi yok')}</span></div>
+      <div class="modal-section-head"><h3 class="modal-section-title">Sinyal anındaki maç özeti</h3><span class="signal-modal-subtitle">${esc(alert.tournament || 'Lig bilgisi yok')}</span></div>
       <div class="modal-current-stats">
         <div><span>Skor</span><strong>${esc(alert.score || '–')}</strong></div>
         <div><span>Zaman</span><strong>${esc(alert.status || '–')}</strong></div>
         <div><span>Açılış</span><strong>${fmt(alert.opening)}</strong></div>
         <div><span>Canlı barem</span><strong>${fmt(alert.live)}</strong></div>
-        <div><span>Değişim</span><strong>${signedChange}</strong></div>
+        <div><span>Açılışa göre değişim</span><strong>${signedChange}</strong></div>
+        ${signalReferenceFacts(alert)}
         <div><span>Sinyal</span><strong>${esc(alert.direction || '–')} · ${Number(alert.signal_count || 1)}.</strong></div>
       </div>
       </section>
@@ -300,6 +307,7 @@
   async function openSignalModal(event, alertId) {
     if (event?.target?.closest('a, button') && !event.target.closest('.signal-modal-trigger')) return;
     activeModalAlertId = Number(alertId);
+    const version = ++modalRequestVersion;
     activeModalHistory = null;
     $('signalModal').hidden = false;
     document.body.classList.add('modal-open');
@@ -309,11 +317,11 @@
         call(`/api/alerts/${activeModalAlertId}/team-history`),
         loadLists(),
       ]);
-      if (Number(activeModalAlertId) !== Number(alertId)) return;
+      if (version !== modalRequestVersion || Number(activeModalAlertId) !== Number(alertId)) return;
       activeModalHistory = history;
       renderSignalModal();
     } catch (error) {
-      if (Number(activeModalAlertId) === Number(alertId)) renderSignalModal(error.message || 'İstatistikler alınamadı.');
+      if (version === modalRequestVersion && Number(activeModalAlertId) === Number(alertId)) renderSignalModal(error.message || 'İstatistikler alınamadı.');
     }
   }
 
@@ -321,6 +329,7 @@
     $('signalModal').hidden = true;
     document.body.classList.remove('modal-open');
     activeModalAlertId = null;
+    ++modalRequestVersion;
     activeModalHistory = null;
   }
 
@@ -394,6 +403,8 @@
       const projectionTitle = projectionAvailable && elapsedAvailable
         ? `${fmt(a.pace_score_total)} sayı / ${fmt(a.pace_elapsed_minutes)} dk × ${fmt(a.pace_game_minutes)} dk`
         : 'Skor veya maç saati güvenilir okunamadı';
+      const fair = Number(a.fair_total);
+      const fairAvailable = a.fair_total !== null && a.fair_total !== '' && Number.isFinite(fair);
       return `<tr class="${rowState}" data-alert-id="${Number(a.id)}">
         <td data-label="Sinyal"><button type="button" class="signal-modal-trigger" onclick="openSignalModal(event, ${Number(a.id)})" title="Sinyal istatistiklerini aç" aria-label="${esc(a.direction || 'Sinyal')} sinyali istatistiklerini aç"><span class="direction-pill ${directionClass}">${esc(a.direction || '–')}</span></button></td>
         <td class="primary-cell">${matchCell(a)}</td>
@@ -401,13 +412,14 @@
         <td data-label="Barem hareketi" class="num"><span class="line-stack">${openingLine(a)}<span class="line-arrow">→</span><span>${fmt(a.live)}</span><span class="change-text ${changeClass}">${signed}</span></span></td>
         <td data-label="PPM" class="num ppm-cell">${ppmFlow(a)}</td>
         <td data-label="Projeksiyon" class="num projection-cell" title="${esc(projectionTitle)}"><span class="projection-pill ${projectionAvailable ? '' : 'unavailable'}">${projectionAvailable ? fmt(projection) : '–'}</span></td>
+        <td data-label="Adil Barem" class="num"><span class="projection-pill ${fairAvailable ? '' : 'unavailable'}">${fairAvailable ? fmt(fair) : '–'}</span></td>
 
         <td data-label="İşlemler"><div class="row-actions icon-only">
           ${PpmCalculator.button(a)}
           <button class="button icon-action bet-action ${a.bet_placed ? 'active' : ''}" onclick="toggle(${a.id},'bet')" title="Bahis oynandı" aria-label="Bahis oynandı"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"></path></svg></button>
           <button class="button icon-action follow-action ${a.followed ? 'active' : ''}" onclick="toggle(${a.id},'follow')" title="Takip et" aria-label="Takip et"><svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path><circle cx="12" cy="12" r="2.5"></circle></svg></button>
           <button class="button icon-action ignore-action ${a.ignored ? 'active' : ''}" onclick="toggle(${a.id},'ignore')" title="Gözardı et" aria-label="Gözardı et"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="m6.4 6.4 11.2 11.2"></path></svg></button>
-          <button class="button icon-action danger" onclick="archive(${a.id})" title="Arşivle" aria-label="Arşivle"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4zM3 4h18v3H3zM9 11h6"></path></svg></button>
+                    <button class="button icon-action danger" onclick="archive(${a.id})" title="Arşivle" aria-label="Arşivle"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4zM3 4h18v3H3zM9 11h6"></path></svg></button>
         </div></td>
       </tr>`;
     }).join('');
@@ -469,27 +481,6 @@
   function startAutoRefresh() { stopAutoRefresh(); autoRefreshTimer = setInterval(load, 20000); }
   function stopAutoRefresh() { if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; } }
 
-  $('finishedBtn').onclick = async () => {
-    const button = $('finishedBtn');
-    button.disabled = true;
-    button.textContent = 'Kontrol ediliyor…';
-    $('status').classList.remove('error');
-    $('status').textContent = 'Biten maçlar kontrol ediliyor… (bu birkaç dakika sürebilir)';
-    stopAutoRefresh();
-    try {
-      const result = await call('/api/alerts/check-finished', {method:'POST', body:'{}'});
-      await load();
-      $('status').classList.remove('error');
-      $('status').textContent = result.message || 'Kontrol tamamlandı.';
-    } catch (error) {
-      $('status').classList.add('error');
-      $('status').textContent = error.message || 'Biten maçlar kontrol edilemedi.';
-    } finally {
-      button.disabled = false;
-      button.textContent = 'Bitenleri kontrol et';
-      startAutoRefresh();
-    }
-  };
   $('clearBtn').onclick = async () => { if(confirm('Tüm aktif sinyaller arşivlensin mi?')) { await call('/api/clear',{method:'POST',body:'{}'}); await load(); } };
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
@@ -502,10 +493,12 @@
     {value: row => row.opening, numeric: true, hint: 'Açılış baremine göre sırala'},
     {value: row => row.ppm_comparison?.required_change_pct, numeric: true, hint: 'Parantez içindeki yüzde farkına göre sırala'},
     {value: row => row.pace_projection, numeric: true},
+    {value: row => row.fair_total, numeric: true, hint: 'Adil bareme göre sırala'},
     null,
   ], render);
   renderListStatus();
   load(); loadLists().catch(() => {}); startAutoRefresh();
+  setupFinishedScan({button: $('finishedBtn'), status: $('finishedStatus'), load, stopAutoRefresh, startAutoRefresh});
 </script>
 </body>
 </html>
