@@ -276,6 +276,87 @@ def _deleted_rows() -> list[dict]:
     return [_frozen_deleted_alert(row) for row in db.recent_deleted_alerts(limit=None)]
 
 
+def _csv_has_metric(value) -> bool:
+    if value is None or value == "":
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _csv_metric(value, digits: int = 2):
+    if not _csv_has_metric(value):
+        return ""
+    return f"{float(value):.{digits}f}"
+
+
+def _csv_ppm(row: dict) -> str:
+    comparison = row.get("ppm_comparison") if isinstance(row.get("ppm_comparison"), dict) else {}
+    current = _csv_metric(row.get("pace_ppm"))
+    required = _csv_metric(comparison.get("required_ppm"))
+    change = comparison.get("required_change_pct")
+    if not current and not required:
+        return ""
+    label = f"{current or '-'} -> {required or '-'}"
+    if _csv_has_metric(change):
+        sign = "+" if float(change) > 0 else ""
+        label = f"{label} ({sign}{float(change):.1f}%)"
+    return label
+
+
+def _csv_saved_statuses(row: dict) -> str:
+    labels = [
+        ("bet_placed", "Oynandı"),
+        ("followed", "Takip"),
+        ("ignored", "Gözardı"),
+        ("upcoming_followed", "Ön takip"),
+    ]
+    return " | ".join(label for key, label in labels if row.get(key))
+
+
+def _csv_list_markers(row: dict) -> str:
+    markers = row.get("list_markers")
+    if not isinstance(markers, list):
+        return ""
+    labels = []
+    for marker in markers:
+        if not isinstance(marker, dict):
+            continue
+        label = str(marker.get("title") or marker.get("value") or "").strip()
+        if label:
+            labels.append(label)
+    return " | ".join(labels)
+
+
+DELETED_MATCHES_CSV_COLUMNS = [
+    ("id", lambda row: row.get("id", "")),
+    ("match_id", lambda row: row.get("match_id", "")),
+    ("match_name", lambda row: row.get("match_name", "")),
+    ("tournament", lambda row: row.get("tournament", "")),
+    ("direction", lambda row: row.get("direction", "")),
+    ("opening", lambda row: row.get("opening", "")),
+    ("live", lambda row: row.get("live", "")),
+    ("barem_change", lambda row: row.get("barem_change", "")),
+    ("status", lambda row: row.get("status", "")),
+    ("score", lambda row: row.get("score", "")),
+    ("final_status", lambda row: row.get("final_status", "")),
+    ("final_score", lambda row: row.get("final_score", "")),
+    ("result", lambda row: row.get("result", "")),
+    ("alerted_at", lambda row: row.get("alerted_at", "")),
+    ("deleted_at", lambda row: row.get("deleted_at", "")),
+    ("signal_count", lambda row: row.get("signal_count", "")),
+    ("signal_time", lambda row: row.get("signal_time", "")),
+    ("opening_ppm", lambda row: _csv_metric(row.get("opening_ppm"))),
+    ("ppm", _csv_ppm),
+    ("pace_projection", lambda row: _csv_metric(row.get("pace_projection"), 1)),
+    ("fair_total", lambda row: _csv_metric(row.get("fair_total"), 1)),
+    ("final_total", lambda row: row.get("final_total", "")),
+    ("saved_statuses", _csv_saved_statuses),
+    ("list_markers", _csv_list_markers),
+]
+
+
 @app.route("/")
 def index():
     return render_template("dashboard.html")
@@ -335,17 +416,9 @@ def api_deleted_match_details(alert_id: int):
 def api_export_finished_deleted_matches_csv():
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow([
-        "id", "match_id", "match_name", "tournament", "direction",
-        "opening", "live", "barem_change", "status", "score",
-        "final_status", "final_score", "result", "alerted_at", "deleted_at",
-    ])
+    writer.writerow([name for name, _ in DELETED_MATCHES_CSV_COLUMNS])
     for row in _deleted_rows():
-        writer.writerow([row.get(key, "") for key in (
-            "id", "match_id", "match_name", "tournament", "direction",
-            "opening", "live", "barem_change", "status", "score",
-            "final_status", "final_score", "result", "alerted_at", "deleted_at",
-        )])
+        writer.writerow([formatter(row) for _, formatter in DELETED_MATCHES_CSV_COLUMNS])
     return Response(
         output.getvalue(),
         mimetype="text/csv; charset=utf-8",

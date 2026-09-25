@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import tempfile
 import unittest
@@ -143,6 +145,58 @@ class DashboardRawTests(unittest.TestCase):
             deleted = self.dashboard._frozen_deleted_alert(stored)
         self.assertEqual(deleted["pace_projection"], 200.0)
         self.assertEqual(deleted["ppm_comparison"], snapshot["ppm_comparison"])
+
+    def test_deleted_csv_export_keeps_existing_columns_and_adds_page_fields(self):
+        archived_row = {
+            "id": 501,
+            "match_id": "csv-match",
+            "match_name": "Home - Away",
+            "tournament": "CSV League",
+            "direction": "ALT",
+            "opening": 160,
+            "live": 171,
+            "barem_change": 11,
+            "status": "Q2 05:00",
+            "score": "40 - 35",
+            "final_status": "FT",
+            "final_score": "90 - 85",
+            "final_total": 175,
+            "result": "Başarılı",
+            "alerted_at": "2026-09-05 23:15:00",
+            "deleted_at": "2026-09-06 00:00:00",
+            "signal_count": 2,
+            "signal_time": "02:15",
+            "opening_ppm": 4,
+            "pace_ppm": 5,
+            "ppm_comparison": {"required_ppm": 3.84, "required_change_pct": -23.2},
+            "pace_projection": 200,
+            "fair_total": 168.5,
+            "bet_placed": 1,
+            "ignored": 1,
+            "list_markers": [{"title": "Kara takım: Home"}],
+        }
+
+        with patch.object(self.dashboard, "_deleted_rows", return_value=[archived_row]):
+            response = self.dashboard.app.test_client().get("/api/deleted-matches/export.csv")
+
+        self.assertEqual(response.status_code, 200)
+        rows = list(csv.DictReader(io.StringIO(response.get_data(as_text=True))))
+        self.assertEqual(len(rows), 1)
+        existing_columns = [
+            "id", "match_id", "match_name", "tournament", "direction",
+            "opening", "live", "barem_change", "status", "score",
+            "final_status", "final_score", "result", "alerted_at", "deleted_at",
+        ]
+        self.assertEqual(response.get_data(as_text=True).splitlines()[0].split(",")[:15], existing_columns)
+        self.assertEqual(rows[0]["signal_count"], "2")
+        self.assertEqual(rows[0]["signal_time"], "02:15")
+        self.assertEqual(rows[0]["opening_ppm"], "4.00")
+        self.assertEqual(rows[0]["ppm"], "5.00 -> 3.84 (-23.2%)")
+        self.assertEqual(rows[0]["pace_projection"], "200.0")
+        self.assertEqual(rows[0]["fair_total"], "168.5")
+        self.assertEqual(rows[0]["final_total"], "175")
+        self.assertEqual(rows[0]["saved_statuses"], "Oynandı | Gözardı")
+        self.assertEqual(rows[0]["list_markers"], "Kara takım: Home")
 
     def test_templates_do_not_contain_removed_model_features(self):
         root = Path(self.dashboard.app.template_folder)
