@@ -1,5 +1,21 @@
 # Decisions
 
+## Future Pace v5 selectivity ve Quality v1
+
+Future Pace v5 aday kararı ve adil barem hesabı korunur. ENGINE PAS, motorun
+gerçekten ALT/ÜST üretmediği durumdur. ALT'da referansın en az 10 sayı altındaki
+canlı barem ile ÜST'te düşük tempo avantajı veya 8 sayının altındaki adil barem
+farkı yalnız Quality v1 bileşenlerini düşürür. Eşikler `Config` üzerinden ayarlanır.
+Quality etiketleri: 0–39 PAS, 40–54 DÜŞÜK, 55–69 ORTA, 70–84 YÜKSEK,
+85–100 ÇOK YÜKSEK. QUALITY PAS, motorun ALT/ÜST ürettiği fakat kalitenin düşük
+olduğu kayıttır; gözlem ve sonuç ölçümü için saklanır, yayınlanır ve sonuçlandırılır.
+
+Quality v1 yalnız kayda girecek sinyal için hesaplanır; Telegram veya dashboard
+yayınını filtrelemez. `alerts` tablosuna dört nullable kalite alanı eklemeli,
+tekrar çalıştırılabilir migration ile gelir. Puan ve bileşenler INSERT sırasında
+dondurulur; arşiv ve ekran DB alanlarını okur. Eski kayıtlar NULL kalır ve
+geçmiş sinyaller için backfill yapılmaz.
+
 ## Canlı tekrar tarama gecikmesi
 
 Sağlıklı taramalar aynı Scrapling oturumunu kullanır. Ayrıntılar sınırlı sayıda

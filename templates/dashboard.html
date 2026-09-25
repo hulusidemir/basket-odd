@@ -70,7 +70,7 @@
     <div class="panel-header" style="padding-top:0;padding-bottom:9px"><div class="status-line" id="finishedStatus" role="status" aria-live="polite"></div></div>
     <div class="table-wrap">
       <table class="data-table signal-table">
-        <thead><tr><th>Sinyal</th><th>Maç</th><th>Skor / zaman</th><th class="num">Barem hareketi</th><th class="ppm-heading" data-caption="Mevcut / Gereken" aria-label="PPM: Mevcut / Gereken">PPM</th><th class="num">Projeksiyon</th><th class="num">Adil Barem</th><th>İşlemler</th></tr></thead>
+        <thead><tr><th>Sinyal</th><th>Kalite</th><th>Maç</th><th>Skor / zaman</th><th class="num">Barem hareketi</th><th class="ppm-heading" data-caption="Mevcut / Gereken" aria-label="PPM: Mevcut / Gereken">PPM</th><th class="num">Projeksiyon</th><th class="num">Adil Barem</th><th>İşlemler</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="empty" id="empty" hidden><span class="empty-symbol">◎</span><strong>Aktif sinyal yok</strong>Filtreye uygun bir sinyal geldiğinde burada görünecek.</div>
@@ -407,6 +407,7 @@ let refreshStartedAt = 0;
       const fairAvailable = a.fair_total !== null && a.fair_total !== '' && Number.isFinite(fair);
       return `<tr class="${rowState}" data-alert-id="${Number(a.id)}">
         <td data-label="Sinyal"><button type="button" class="signal-modal-trigger" onclick="openSignalModal(event, ${Number(a.id)})" title="Sinyal istatistiklerini aç" aria-label="${esc(a.direction || 'Sinyal')} sinyali istatistiklerini aç"><span class="direction-pill ${directionClass}">${esc(a.direction || '–')}</span></button></td>
+        <td data-label="Kalite">${qualityBadge(a)}</td>
         <td class="primary-cell">${matchCell(a)}</td>
         <td data-label="Skor / zaman"><strong>${esc(a.score || '–')}</strong><span class="match-meta">${esc(a.status || 'Zaman yok')}</span></td>
         <td data-label="Barem hareketi" class="num"><span class="line-stack">${openingLine(a)}<span class="line-arrow">→</span><span>${fmt(a.live)}</span><span class="change-text ${changeClass}">${signed}</span></span></td>
@@ -488,6 +489,7 @@ let refreshStartedAt = 0;
   });
   const tableSorter = createTableSorter('.signal-table', [
     {value: row => row.direction},
+    {value: row => row.quality_score, numeric: true},
     {value: row => row.match_name},
     {value: row => row.score, hint: 'Skora göre sırala'},
     {value: row => row.opening, numeric: true, hint: 'Açılış baremine göre sırala'},

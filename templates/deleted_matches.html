@@ -57,7 +57,7 @@
     <div class="panel-header archive-status-row"><div class="status-line" id="status"></div></div>
     <div class="table-wrap">
       <table class="data-table archive-table">
-        <thead><tr><th>Maç</th><th>Sinyal anı</th><th class="num">Barem hareketi</th><th class="num">Fark</th><th>Yön</th><th class="ppm-heading" data-caption="Mevcut / Gereken" aria-label="PPM: Mevcut / Gereken">PPM</th><th class="num">Projeksiyon</th><th class="num">Adil Barem</th><th>Final</th><th>Sonuç</th><th></th></tr></thead>
+        <thead><tr><th>Maç</th><th>Kalite</th><th>Sinyal anı</th><th class="num">Barem hareketi</th><th class="num">Fark</th><th>Yön</th><th class="ppm-heading" data-caption="Mevcut / Gereken" aria-label="PPM: Mevcut / Gereken">PPM</th><th class="num">Projeksiyon</th><th class="num">Adil Barem</th><th>Final</th><th>Sonuç</th><th></th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="empty" id="empty" hidden><span class="empty-symbol">⌁</span><strong id="emptyTitle">Arşiv boş</strong><span id="emptyText">Arşivlenen sinyaller burada gösterilecek.</span></div>
@@ -113,6 +113,7 @@
   function applyFilters({result=resultFilter,direction=directionFilter,period=periodFilter}){resultFilter=result;directionFilter=direction;periodFilter=period;currentPage=1;syncFilters();render()}
   function render(){updateReport();updateFilterCounts();const filteredRows=filtered();const totalPages=Math.max(1,Math.ceil(filteredRows.length/pageSize));currentPage=Math.min(Math.max(1,currentPage),totalPages);const start=(currentPage-1)*pageSize;const rows=filteredRows.slice(start,start+pageSize);const end=start+rows.length;$('empty').hidden=filteredRows.length>0;$('emptyTitle').textContent=archiveRows.length?'Filtreye uygun kayıt yok':'Arşiv boş';$('emptyText').textContent=archiveRows.length?'Seçili filtreleri değiştirerek diğer sinyalleri görebilirsiniz.':'Arşivlenen sinyaller burada gösterilecek.';$('rows').innerHTML=rows.map(a=>{const change=Number(a.barem_change);const changeAvailable=a.barem_change!==null&&a.barem_change!==''&&Number.isFinite(change);const signed=changeAvailable?`${change>0?'+':''}${change.toFixed(1)}`:'–';const direction=normalizedDirection(a.direction);const resultClass=a.result==='Başarılı'?'success':a.result==='Başarısız'?'failed':a.result==='Devam Ediyor'?'in-progress':'unresolved';const projection=Number(a.pace_projection);const projectionAvailable=a.pace_projection!==null&&a.pace_projection!==''&&Number.isFinite(projection);const fair=Number(a.fair_total);const fairAvailable=a.fair_total!==null&&a.fair_total!==''&&Number.isFinite(fair);return `<tr data-alert-id="${Number(a.id)}" class="${a.ignored?'row-ignored':a.followed?'row-followed':a.bet_placed?'row-bet-placed':''}">
     <td class="primary-cell">${archiveMatchCell(a)}</td>
+    <td data-label="Kalite">${qualityBadge(a)}</td>
     <td data-label="Sinyal anı"><strong>${esc(a.score||'–')}</strong><span class="match-meta">${esc(a.status||'–')}</span></td>
     <td data-label="Barem" class="num"><span class="line-stack">${openingLine(a)} <span class="line-arrow">→</span> ${fmt(a.live)}</span></td>
     <td data-label="Fark" class="num"><span class="change-pill ${changeAvailable?(change>0?'positive':'negative'):''}">${signed}</span></td>
@@ -182,6 +183,7 @@
   $('clearBtn').onclick=async()=>{if(confirm('Tüm arşiv silinsin mi?')){try{await call('/api/deleted-matches/clear',{method:'POST',body:'{}'});await load()}catch(e){$('status').classList.add('error');$('status').textContent=e.message||'Arşiv silinemedi.'}}};
   const tableSorter = createTableSorter('.archive-table', [
     {value: row => row.match_name},
+    {value: row => row.quality_score, numeric: true},
     {value: row => row.score, hint: 'Sinyal anındaki skora göre sırala'},
     {value: row => row.opening, numeric: true, hint: 'Açılış baremine göre sırala'},
     {value: row => row.barem_change, numeric: true},

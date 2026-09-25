@@ -269,7 +269,7 @@ class DashboardRawTests(unittest.TestCase):
         self.assertIn('class="signal-sequence"', template)
         self.assertIn('class="signal-time"', template)
         self.assertIn("signalCount > 1", template)
-        self.assertIn('<thead><tr><th>Sinyal</th><th>Maç</th>', template)
+        self.assertIn('<thead><tr><th>Sinyal</th><th>Kalite</th><th>Maç</th>', template)
         self.assertIn('data-label="Sinyal"><button type="button" class="signal-modal-trigger"', template)
         self.assertIn('<span class="direction-pill ${directionClass}"', template)
         self.assertNotIn('<th class="num">Fark</th>', template)

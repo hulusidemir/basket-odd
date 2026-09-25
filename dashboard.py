@@ -237,6 +237,10 @@ def _frozen_deleted_alert(row: dict) -> dict:
         "settled_at",
         "final_status",
         "final_score",
+        "quality_score",
+        "quality_label",
+        "quality_version",
+        "quality_factors",
     ):
         if key in stored:
             item[key] = stored[key]
@@ -354,6 +358,8 @@ DELETED_MATCHES_CSV_COLUMNS = [
     ("final_total", lambda row: row.get("final_total", "")),
     ("saved_statuses", _csv_saved_statuses),
     ("list_markers", _csv_list_markers),
+    ("quality_score", lambda row: row.get("quality_score", "")),
+    ("quality_label", lambda row: row.get("quality_label", "")),
 ]
 
 

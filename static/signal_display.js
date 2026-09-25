@@ -3,6 +3,12 @@
   const ppmMetric = (value, digits=2) => hasMetric(value) ? Number(value).toLocaleString('tr-TR', {minimumFractionDigits:digits, maximumFractionDigits:digits}) : '–';
   const ppmChange = value => hasMetric(value) ? `(${Number(value) > 0 ? '+' : Number(value) < 0 ? '−' : ''}%${ppmMetric(Math.abs(Number(value)), 1)})` : '';
   const ppmChangeTone = value => { if (!hasMetric(value)) return ''; const n = Number(value); if (n > 0) return 'ppm-change-positive'; if (n < 0) return 'ppm-change-negative'; return 'ppm-change-neutral'; };
+  function qualityBadge(alert) {
+    if (!hasMetric(alert.quality_score) || !alert.quality_label) return '<span class="quality-empty">—</span>';
+    const score = Number(alert.quality_score);
+    const tone = score < 55 ? 'low' : score < 70 ? 'medium' : score < 85 ? 'high' : 'very-high';
+    return `<span class="quality-badge ${tone}"><strong>${score}</strong><small>${esc(alert.quality_label)}</small></span>`;
+  }
   function resultClass(value) {
     if (value === 'Başarılı') return 'success';
     if (value === 'Başarısız') return 'failed';

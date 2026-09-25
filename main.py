@@ -22,6 +22,7 @@ from match_state import game_clock, normalize_quarter_scores, parse_score
 from signal_lists import build_signal_blacklist_matches, build_signal_list_profile
 from signal_repeat import live_total_delta
 from live_signals import SignalDecision, evaluate_live_signal, valid_total
+from signal_quality import score_signal_quality
 
 
 class _ConsecutiveFailureAlertLatch:
@@ -254,7 +255,12 @@ def _next_signal_count(match, decision, db, config) -> int | None:
     return signal_count
 
 
-def _save_signal(match: dict, decision: SignalDecision, signal_count: int, db: Database) -> int:
+def _save_signal(match: dict, decision: SignalDecision, signal_count: int, db: Database,
+                 config: Config, observation_age_seconds: float | None = None) -> int:
+    repeated = signal_count > 1 and db.latest_match_alert_in_direction(match["match_id"], decision.direction) is not None
+    score, label, factors = score_signal_quality(
+        match, decision, config, repeated=repeated, observation_age_seconds=observation_age_seconds,
+    )
     return db.save_alert(
         match["match_id"], match["match_name"], match["opening_total"], match["inplay_total"],
         decision.direction, abs(decision.diff),
@@ -268,6 +274,7 @@ def _save_signal(match: dict, decision: SignalDecision, signal_count: int, db: D
         reference_total=decision.reference_total,
         effective_threshold=decision.effective_threshold,
         fair_total=decision.sustainable_projection_center,
+        quality_score=score, quality_label=label, quality_version="v1", quality_factors=factors,
     )
 
 
@@ -383,7 +390,7 @@ async def process_match(
     signal_count = _next_signal_count(match, decision, db, config)
     if signal_count is None:
         return
-    alert_id = _save_signal(match, decision, signal_count, db)
+    alert_id = _save_signal(match, decision, signal_count, db, config, observation_age)
     await _deliver_signal(match, decision, signal_count, alert_id, db, notifier)
 
 

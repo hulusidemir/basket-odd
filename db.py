@@ -183,6 +183,10 @@ class Database:
                 ("reference_total", "REAL"),
                 ("effective_threshold", "REAL"),
                 ("fair_total", "REAL"),
+                ("quality_score", "INTEGER"),
+                ("quality_label", "TEXT"),
+                ("quality_version", "TEXT"),
+                ("quality_factors", "TEXT"),
             ):
                 if name not in alert_columns:
                     conn.execute(f"ALTER TABLE alerts ADD COLUMN {name} {sql_type}")
@@ -378,6 +382,10 @@ class Database:
         reference_total: float | None = None,
         effective_threshold: float | None = None,
         fair_total: float | None = None,
+        quality_score: int | None = None,
+        quality_label: str | None = None,
+        quality_version: str | None = None,
+        quality_factors: dict | None = None,
     ) -> int:
         quarter_scores_json = (
             json.dumps(quarter_scores, ensure_ascii=False, separators=(",", ":"))
@@ -431,9 +439,9 @@ class Database:
                     tournament, status, url, score, quarter_scores_json, signal_count,
                     bet_placed, ignored, followed, alert_period, alert_moment,
                     telegram_status, reference_used, reference_total, effective_threshold,
-                    fair_total
+                    fair_total, quality_score, quality_label, quality_version, quality_factors
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     match_id, match_name, opening, prematch, live, direction, diff,
@@ -441,7 +449,8 @@ class Database:
                     bet, ign, fol, alert_period, alert_moment,
                     "pending" if telegram_required else "not_required",
                     reference_used, reference_total, effective_threshold,
-                    fair_total,
+                    fair_total, quality_score, quality_label, quality_version,
+                    json.dumps(quality_factors, separators=(",", ":")) if quality_factors is not None else None,
                 ),
             )
             return int(cursor.lastrowid)

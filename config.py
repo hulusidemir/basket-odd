@@ -54,6 +54,11 @@ class Config:
     LARGE_REPRICE_RATIO: float = _float_env("LARGE_REPRICE_RATIO", 0.15)
     LARGE_REPRICE_EDGE_MULTIPLIER: float = _float_env("LARGE_REPRICE_EDGE_MULTIPLIER", 1.25)
     MAX_FUTURE_BAND_WIDTH: float = _float_env("MAX_FUTURE_BAND_WIDTH", 2.0)
+    UNDER_MAX_NEGATIVE_LINE_MOVE: float = _float_env("UNDER_MAX_NEGATIVE_LINE_MOVE", 10.0)
+    OVER_MIN_PACE_MARGIN_RATIO: float = _float_env("OVER_MIN_PACE_MARGIN_RATIO", 0.15)
+    OVER_Q2_MIN_PACE_MARGIN_RATIO: float = _float_env("OVER_Q2_MIN_PACE_MARGIN_RATIO", 0.20)
+    OVER_MIN_FAIR_EDGE_POINTS: float = _float_env("OVER_MIN_FAIR_EDGE_POINTS", 8.0)
+    REPEAT_SIGNAL_QUALITY_PENALTY: int = _int_env("REPEAT_SIGNAL_QUALITY_PENALTY", 10)
     TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_TOKEN", "")
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
     THRESHOLD: float = _float_env("THRESHOLD", 10.0)
@@ -119,6 +124,13 @@ class Config:
             raise ValueError("POLL_INTERVAL_MIN, POLL_INTERVAL_MAX'ten büyük olamaz.")
         if self.SAME_DIRECTION_MIN_LIVE_DELTA < 0:
             raise ValueError("SAME_DIRECTION_MIN_LIVE_DELTA negatif olamaz.")
+        for name in ("UNDER_MAX_NEGATIVE_LINE_MOVE", "OVER_MIN_PACE_MARGIN_RATIO",
+                     "OVER_Q2_MIN_PACE_MARGIN_RATIO", "OVER_MIN_FAIR_EDGE_POINTS"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"{name} sonlu ve negatif olmayan bir sayı olmalı.")
+        if not 0 <= self.REPEAT_SIGNAL_QUALITY_PENALTY <= 100:
+            raise ValueError("REPEAT_SIGNAL_QUALITY_PENALTY 0 ile 100 arasında olmalı.")
         if not math.isfinite(self.THRESHOLD) or not 0 < self.THRESHOLD <= 100:
             raise ValueError("THRESHOLD 0 ile 100 arasında olmalı.")
         if self.THRESHOLD_MODE not in {"percent", "hybrid"}:
