@@ -1,5 +1,21 @@
 # Decisions
 
+## Format, kronoloji ve Quality v1 sürekliliği
+
+Normal süre yalnız turnuva metadata'sından seçilir; takım adındaki NBA/NCAA
+ibareleri süre veya devre biçimini değiştirmez. Saat gerilemesi ve yakalanma
+zamanı eski olan gözlem sinyal akışına alınmaz. Skor düşüşü ilk gözlemde
+sinyal üretmez; sonraki oyun zamanı gözlemi düzeltmeyi doğrularsa tempo
+pencereleri düzeltmeden itibaren kurulur. Tek gözlemlik skor düşüşü tempo
+penceresinden çıkarılır. Geçmiş snapshot ve arşiv gösterimi yeniden yazılmaz.
+
+Quality v1'in ALT negatif barem hareketi ve ÜST tempo katkısı eşik civarında
+kademeli hesaplanır. Bileşenler ve etiket aralıkları korunur. DB şeması ve
+geçişi değişmez; eski quality alanları doldurulmaz. Future Pace v5 karar
+matematiği ve Fair Total merkezi değişmez. AiScore `Total Points` etiketinde
+normal süre/uzatma sözleşmesi açık olmadığı için settlement sözleşmesi
+doğrulanmamıştır; sonuçlandırma tahminle değiştirilmez.
+
 ## Future Pace v5 selectivity ve Quality v1
 
 Future Pace v5 aday kararı ve adil barem hesabı korunur. ENGINE PAS, motorun

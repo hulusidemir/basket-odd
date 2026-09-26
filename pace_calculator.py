@@ -1,5 +1,42 @@
 """Pure math module for calculating valid pace windows and shrinking them to pregame priors."""
 
+
+def chronological_snapshots(snapshots: list[dict], current_state: dict) -> list[dict]:
+    """Exclude clock rollback, transient score dips and pre-correction anchors."""
+    current_elapsed = current_state["elapsed_game_seconds"]
+    current_score = current_state["total_score"]
+    segment_start = 0
+    peak_score = -1
+    peak_elapsed = -1
+    for index, snapshot in enumerate(snapshots):
+        elapsed = snapshot["elapsed_game_seconds"]
+        score = snapshot["total_score"]
+        if elapsed < peak_elapsed or elapsed > current_elapsed:
+            continue
+        if score < peak_score:
+            confirmed = next((later for later in snapshots[index + 1:]
+                              if later["elapsed_game_seconds"] > elapsed
+                              and later["elapsed_game_seconds"] <= current_elapsed
+                              and later["total_score"] >= score), None)
+            if confirmed and confirmed["total_score"] < peak_score:
+                segment_start = index
+                peak_score = score
+        else:
+            peak_score = score
+        peak_elapsed = elapsed
+
+    accepted = []
+    for snapshot in snapshots[segment_start:]:
+        elapsed = snapshot["elapsed_game_seconds"]
+        score = snapshot["total_score"]
+        if elapsed > current_elapsed or score > current_score:
+            continue
+        if accepted and (elapsed < accepted[-1]["elapsed_game_seconds"] or score < accepted[-1]["total_score"]):
+            continue
+        accepted.append(snapshot)
+    return accepted
+
+
 def get_future_paces(snapshots: list[dict], current_state: dict, pregame_ppm: float, config) -> list[float]:
     """Calculate all valid future paces: recent 2m, recent 5m, current quarter, whole game shrunk to prior."""
     if not snapshots:
@@ -11,6 +48,7 @@ def get_future_paces(snapshots: list[dict], current_state: dict, pregame_ppm: fl
     now_elapsed = current_state.get("elapsed_game_seconds", 0)
     now_score = current_state.get("total_score", 0)
     current_period = current_state.get("period")
+    snapshots = chronological_snapshots(snapshots, current_state)
 
     def add_future_pace(observed_pace: float, window_minutes: float):
         weight = window_minutes / (window_minutes + config.PRIOR_EQUIV_MINUTES)

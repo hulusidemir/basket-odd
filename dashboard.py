@@ -21,7 +21,10 @@ from finished_match_service import (
     run_single_deleted_match_result_check,
 )
 from finished_scan_jobs import active_scan_jobs, start_active_finished_scan
-from match_state import current_pace_projection
+from match_state import (
+    confirmed_12_minute_quarters, current_pace_projection,
+    first_confirmed_12_snapshot_index,
+)
 from signal_lists import (
     build_signal_list_markers,
     build_signal_list_profile,
@@ -63,7 +66,24 @@ def _stored_quarter_scores(value) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _raw_alert(row: dict, list_profile: dict | None = None) -> dict:
+def _confirmed_12_minutes(row: dict) -> bool:
+    match_id = str(row.get("match_id") or "")
+    alerted_at = str(row.get("alerted_at") or "")
+    if not match_id or not alerted_at:
+        return False
+    snapshots = [
+        snapshot for snapshot in db.get_match_snapshots(match_id)
+        if str(snapshot.get("recorded_at") or "") <= alerted_at
+    ]
+    return first_confirmed_12_snapshot_index(
+        snapshots, str(row.get("tournament") or ""),
+    ) is not None
+
+
+def _raw_alert(
+    row: dict, list_profile: dict | None = None,
+    *, confirmed_12_minutes: bool | None = None,
+) -> dict:
     item = dict(row)
     item["direction"] = _normalize_direction(item.get("direction"))
     item["tournament"] = _sanitize_tournament(item.get("tournament"))
@@ -74,18 +94,21 @@ def _raw_alert(row: dict, list_profile: dict | None = None) -> dict:
     item["decision_change"] = None
     if item.get("reference_used") in {"prematch", "opening"}:
         try:
-            change = float(item["diff"]) * (1 if item["direction"] == "ALT" else -1)
+            change = float(item["live"]) - float(item["reference_total"])
             item["decision_change"] = change if math.isfinite(change) else None
         except (KeyError, TypeError, ValueError):
             pass
-    pace = current_pace_projection(
-        str(item.get("score") or ""),
-        str(item.get("status") or ""),
-        str(item.get("match_name") or ""),
-        str(item.get("tournament") or ""),
-        quarter_scores=_stored_quarter_scores(item.get("quarter_scores_json")),
-        live_total=item.get("live"),
-    )
+    if confirmed_12_minutes is None:
+        confirmed_12_minutes = _confirmed_12_minutes(item)
+    with confirmed_12_minute_quarters(confirmed_12_minutes):
+        pace = current_pace_projection(
+            str(item.get("score") or ""),
+            str(item.get("status") or ""),
+            str(item.get("match_name") or ""),
+            str(item.get("tournament") or ""),
+            quarter_scores=_stored_quarter_scores(item.get("quarter_scores_json")),
+            live_total=item.get("live"),
+        )
     item["pace_projection"] = pace["total"]
     item["pace_ppm"] = pace["ppm"]
     item["pace_score_total"] = pace["score_total"]
@@ -137,7 +160,13 @@ def _raw_alert(row: dict, list_profile: dict | None = None) -> dict:
 
 def _build_live_dashboard_rows(rows: list[dict]) -> list[dict]:
     profile = build_signal_list_profile(db.list_signal_list_entries())
-    result = [_raw_alert(row, profile) for row in rows]
+    durations: dict[tuple[str, str], bool] = {}
+    result = []
+    for row in rows:
+        key = (str(row.get("match_id") or ""), str(row.get("alerted_at") or ""))
+        if key not in durations:
+            durations[key] = _confirmed_12_minutes(row)
+        result.append(_raw_alert(row, profile, confirmed_12_minutes=durations[key]))
     followed = db.upcoming_followed_match_ids([row.get("match_id") for row in result])
     for row in result:
         row["upcoming_followed"] = int(str(row.get("match_id") or "") in followed)

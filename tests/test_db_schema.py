@@ -73,6 +73,20 @@ class DatabaseSchemaTests(unittest.TestCase):
                 alert_period=2,
             )
 
+    def test_snapshot_rejects_clock_rollback_and_preserves_score_correction(self):
+        def save(elapsed, score):
+            return self.db.save_snapshot_if_changed(
+                match_id="chronology", period=2, game_clock="", elapsed_game_seconds=elapsed,
+                remaining_minutes=20, home_score=score // 2, away_score=score - score // 2,
+                total_score=score, pregame_total=160, live_total=170, heartbeat_seconds=0,
+            )
+
+        self.assertTrue(save(900, 75))
+        self.assertFalse(save(890, 77))
+        self.assertTrue(save(930, 73))
+        self.assertTrue(save(960, 78))
+        self.assertEqual(len(self.db.get_match_snapshots("chronology")), 3)
+
     def test_reference_migration_is_additive_and_repeatable(self):
         alert_id = self.db.save_alert("legacy", "Home - Away", 160, 180, "ALT", 20)
         with sqlite3.connect(self.db_path) as conn:

@@ -14,7 +14,10 @@ from aiscore_browser import session_options
 from aiscore_match_page import normalize_match_page
 from aiscore_scoreboard import QUARTER_SCORES_JS
 from scrapling.fetchers import AsyncStealthySession
-from match_state import game_clock, normalize_quarter_scores, parse_score
+from match_state import (
+    confirmed_12_minute_quarters, game_clock, normalize_quarter_scores,
+    parse_score, quarter_clock_seconds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -301,6 +304,7 @@ class AiscoreScraper:
         self.last_report: dict = {}
         self._last_listing_diagnostics: dict = {}
         self._line_observations: dict[tuple[str, str], dict] = {}
+        self._confirmed_12_minute_matches: set[str] = set()
         self._effective_concurrency = min(2, self._concurrent_tabs())
         self._healthy_concurrency_cycles = 0
         self.persistent_session = persistent_session
@@ -434,13 +438,20 @@ class AiscoreScraper:
             self._effective_concurrency,
         )
 
-    @staticmethod
-    def _elapsed_game_minutes(match: dict) -> float | None:
-        clock = game_clock(
-            str(match.get("status") or ""),
-            str(match.get("match_name") or ""),
-            str(match.get("tournament") or ""),
-        )
+    def _elapsed_game_minutes(self, match: dict) -> float | None:
+        match_id = str(match.get("match_id") or "")
+        status = str(match.get("status") or "")
+        observed = quarter_clock_seconds(status)
+        if match_id and observed is not None and observed > 10 * 60:
+            static_clock = game_clock("", tournament=str(match.get("tournament") or ""))
+            if static_clock["period_count"] == 4:
+                self._confirmed_12_minute_matches.add(match_id)
+        with confirmed_12_minute_quarters(match_id in self._confirmed_12_minute_matches):
+            clock = game_clock(
+                status,
+                str(match.get("match_name") or ""),
+                str(match.get("tournament") or ""),
+            )
         period = clock.get("period")
         remaining = clock.get("remaining_min")
         quarter_length = clock.get("quarter_length")

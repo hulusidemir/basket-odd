@@ -1,4 +1,5 @@
 import csv
+import asyncio
 import io
 import json
 import tempfile
@@ -48,6 +49,86 @@ class DashboardRawTests(unittest.TestCase):
         self.assertEqual(row["ppm_comparison"]["required_ppm"], 3.84)
         self.assertEqual(row["ppm_comparison"]["current_ppm"], 5)
 
+    def test_live_projection_uses_frozen_runtime_duration_from_match_snapshots(self):
+        from config import Config
+        from db import Database
+        from live_signals import evaluate_live_signal
+        from main import process_match
+        from match_state import (
+            confirmed_12_minute_quarters, current_pace_projection, game_clock,
+        )
+        from unittest.mock import AsyncMock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            database = Database(str(Path(tmp) / "duration.db"))
+            database.init()
+            notifier = type("Notifier", (), {"send_alert": AsyncMock(return_value={"recipient": 1})})()
+            payload = {
+                "match_id": "runtime-duration", "match_name": "NBA Club - PBA Club",
+                "tournament": "Club Friendship", "score": "30 - 30",
+                "opening_total": 160, "prematch_total": 160, "inplay_total": 170,
+                "status": "Q2 11:34", "url": "",
+            }
+            self.assertEqual(game_clock("Q3 08:00", tournament=payload["tournament"])["quarter_length"], 10)
+            engine_quarter_lengths = []
+
+            def capture_engine_clock(match, snapshots, config):
+                clock = game_clock(match["status"], match["match_name"], match["tournament"])
+                engine_quarter_lengths.append(clock["quarter_length"])
+                return evaluate_live_signal(match, snapshots, config)
+
+            with patch("main.evaluate_live_signal", side_effect=capture_engine_clock):
+                asyncio.run(process_match(payload, database, notifier, Config()))
+                asyncio.run(process_match(
+                    {**payload, "status": "Q3 08:00", "score": "60 - 60"},
+                    database, notifier, Config(),
+                ))
+            self.assertEqual(engine_quarter_lengths, [12, 12])
+            self.assertEqual(database.get_match_snapshots("runtime-duration")[0]["game_clock"], "11:34")
+
+            earlier_id = database.save_alert(
+                "runtime-duration", payload["match_name"], 160, 170, "ALT", 10,
+                tournament=payload["tournament"], status="Q2 08:45", score="20 - 20",
+            )
+            alert_id = database.save_alert(
+                "runtime-duration", payload["match_name"], 160, 170, "ALT", 10,
+                tournament=payload["tournament"], status="Q3 08:00", score="60 - 60",
+                signal_count=2,
+            )
+            with database._conn() as conn:
+                conn.execute(
+                    "UPDATE alerts SET alerted_at = ? WHERE id = ?",
+                    ("2020-01-01 00:00:00", earlier_id),
+                )
+            with confirmed_12_minute_quarters(True):
+                signal_state = current_pace_projection(
+                    "60 - 60", "Q3 08:00", payload["match_name"], payload["tournament"],
+                    live_total=170,
+                )
+            with patch.object(self.dashboard, "db", Database(database.db_path)):
+                live_rows = self.dashboard._build_live_dashboard_rows([
+                    database.get_alert(alert_id), database.get_alert(earlier_id),
+                ])
+                live, earlier = live_rows
+                self.assertEqual(live["pace_game_minutes"], 48)
+                self.assertEqual(live["pace_projection"], signal_state["total"])
+                self.assertEqual(live["pace_elapsed_minutes"], signal_state["elapsed_minutes"])
+                self.assertEqual(earlier["pace_game_minutes"], 40)
+                self.assertEqual(self.dashboard._archive_active_match("runtime-duration"), 2)
+                archived = database.get_deleted_alert_by_id(alert_id)
+                frozen = self.dashboard._frozen_deleted_alert(archived)
+                self.assertEqual(frozen["pace_projection"], signal_state["total"])
+                old_frozen = self.dashboard._frozen_deleted_alert(database.get_deleted_alert_by_id(earlier_id))
+                self.assertEqual(old_frozen["pace_game_minutes"], 40)
+
+    def test_unknown_forty_minute_live_projection_stays_forty(self):
+        row = self.dashboard._raw_alert({
+            "match_name": "NBA Club - PBA Club", "tournament": "Club Friendship",
+            "status": "Q2 08:45", "score": "20 - 20", "opening": 160,
+            "live": 170, "direction": "ALT",
+        })
+        self.assertEqual(row["pace_game_minutes"], 40)
+
     def test_reference_decision_display_is_frozen(self):
         row = self.dashboard._raw_alert({
             "opening": 160, "prematch": 200, "live": 180, "direction": "ÜST", "diff": 20,
@@ -63,6 +144,17 @@ class DashboardRawTests(unittest.TestCase):
         empty = self.dashboard._frozen_deleted_alert({**row, "display_snapshot": ""})
         for key in ("reference_used", "reference_total", "effective_threshold", "decision_change"):
             self.assertIsNone(empty[key])
+
+    def test_reference_change_uses_live_minus_reference_for_either_direction(self):
+        for direction, live, expected in (("ALT", 180, -20), ("ÜST", 180, -20), ("ALT", 220, 20)):
+            with self.subTest(direction=direction, live=live):
+                row = self.dashboard._raw_alert({
+                    "opening": 160, "live": live, "direction": direction,
+                    "diff": abs(live - 200), "reference_used": "prematch",
+                    "reference_total": 200,
+                })
+                self.assertEqual(row["decision_change"], expected)
+
 
     def test_deleted_dto_uses_frozen_snapshot_without_live_recalculation(self):
         stored = {

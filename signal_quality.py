@@ -59,7 +59,7 @@ def score_signal_quality(
                           if clock["period"] == 2 and clock.get("period_count") == 4
                           else config.OVER_MIN_PACE_MARGIN_RATIO)
         pace_support = round(25 * _clamp(
-            (pace_ratio - minimum_margin) / max(PACE_SUPPORT_MAX_RATIO - minimum_margin, 0.001), 1,
+            pace_ratio / max(PACE_SUPPORT_MAX_RATIO, 2 * minimum_margin), 1,
         ))
     else:
         pace_support = round(25 * _clamp(pace_ratio / PACE_SUPPORT_MAX_RATIO, 1))
@@ -67,10 +67,12 @@ def score_signal_quality(
     move = live - decision.reference_total if live is not None else 0
     if decision.direction == "ALT":
         negative_limit = config.UNDER_MAX_NEGATIVE_LINE_MOVE
-        if move <= -negative_limit:
-            market_move = -45 - round(15 * _clamp((-move - negative_limit) / MARKET_MOVE_MAX_POINTS, 1))
-        else:
-            market_move = round(20 * _clamp((move + negative_limit) / (MARKET_MOVE_MAX_POINTS + negative_limit), 1))
+        transition_width = (negative_limit / 2 if negative_limit > 0 else MARKET_MOVE_MAX_POINTS)
+        market_move = round(
+            20 * _clamp((move + negative_limit) / (MARKET_MOVE_MAX_POINTS + negative_limit), 1)
+            - 45 * _clamp((-move - negative_limit / 2) / transition_width, 1)
+            - 15 * _clamp((-move - negative_limit) / MARKET_MOVE_MAX_POINTS, 1)
+        )
     else:
         market_move = round(20 * (1 - _clamp(move / MARKET_MOVE_MAX_POINTS, 1)))
 

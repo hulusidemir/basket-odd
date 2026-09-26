@@ -2,6 +2,47 @@
 
 import math
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
+
+
+_confirmed_12_minute_quarters = ContextVar("confirmed_12_minute_quarters", default=False)
+
+
+@contextmanager
+def confirmed_12_minute_quarters(enabled: bool):
+    token = _confirmed_12_minute_quarters.set(enabled)
+    try:
+        yield
+    finally:
+        _confirmed_12_minute_quarters.reset(token)
+
+
+def quarter_clock_seconds(status: str) -> int | None:
+    """Read a valid Q1-Q4 clock without inferring a league from its name."""
+    match = re.fullmatch(
+        r"(?:Q[1-4]|[1-4]Q)\s*[-:\s]?\s*(\d{1,2}):([0-5]\d)",
+        (status or "").strip(),
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    seconds = int(match.group(1)) * 60 + int(match.group(2))
+    return seconds if seconds <= 12 * 60 else None
+
+
+def first_confirmed_12_snapshot_index(snapshots: list[dict], tournament: str) -> int | None:
+    """Find the first stored Q1-Q4 clock that proves a 12-minute quarter."""
+    if _uses_halves(tournament):
+        return None
+    for index, row in enumerate(snapshots):
+        period = row.get("period")
+        if period not in (1, 2, 3, 4):
+            continue
+        seconds = quarter_clock_seconds(f"Q{period} {row.get('game_clock') or ''}")
+        if seconds is not None and seconds > 10 * 60:
+            return index
+    return None
 
 
 def parse_score(score: str) -> tuple[int | None, int | None]:
@@ -58,8 +99,13 @@ def normalize_quarter_scores(value, score: str = "") -> dict:
 def game_clock(status: str, match_name: str = "", tournament: str = "") -> dict:
     """Return period and remaining minutes parsed from the raw match status."""
     status_clean = (status or "").strip()
-    uses_halves = _uses_halves(match_name, tournament)
-    quarter_length = 20 if uses_halves else (12 if _game_minutes(match_name, tournament) == 48 else 10)
+    uses_halves = _uses_halves(tournament)
+    observed_seconds = quarter_clock_seconds(status_clean)
+    quarter_length = 20 if uses_halves else (
+        12 if (_game_minutes(tournament) == 48
+               or _confirmed_12_minute_quarters.get()
+               or (observed_seconds is not None and observed_seconds > 10 * 60)) else 10
+    )
     period_count = 2 if uses_halves else 4
 
     if not status_clean or re.match(r"^OT", status_clean, re.IGNORECASE):
@@ -295,8 +341,15 @@ def current_pace_projection(
     }
 
 
-def _game_minutes(match_name: str, tournament: str) -> int:
-    text = f"{match_name} {tournament}".upper()
+def _game_minutes(tournament: str) -> int:
+    text = " ".join(tournament.upper().split())
+    if text in {
+        "PBA",
+        "PHILIPPINES PBA",
+        "PHILIPPINE BASKETBALL ASSOCIATION",
+        "PHILIPPINES PHILIPPINE BASKETBALL ASSOCIATION",
+    }:
+        return 48
     if "NBA SUMMER LEAGUE" in text:
         return 40
     is_women = any(token in text for token in ("WNBA", "WOMEN", "WOMEN'S", "WOMAN", "KADIN"))
@@ -304,8 +357,8 @@ def _game_minutes(match_name: str, tournament: str) -> int:
     return 48 if is_nba and not is_women else 40
 
 
-def _uses_halves(match_name: str, tournament: str) -> bool:
-    text = f"{match_name} {tournament}".upper()
+def _uses_halves(tournament: str) -> bool:
+    text = tournament.upper()
     is_ncaa = "NCAA" in text
     is_women = any(token in text for token in ("WNBA", "WOMEN", "WOMEN'S", "WOMAN", "KADIN"))
     return is_ncaa and not is_women

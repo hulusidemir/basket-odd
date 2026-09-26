@@ -13,12 +13,16 @@ import random
 import re
 import sys
 import time
+from datetime import datetime, timezone
 
 from aiscore_scraper import AiscoreScraper
 from config import Config
 from db import Database
 from notifier import TelegramNotifier
-from match_state import game_clock, normalize_quarter_scores, parse_score
+from match_state import (
+    confirmed_12_minute_quarters, first_confirmed_12_snapshot_index,
+    game_clock, normalize_quarter_scores, parse_score, quarter_clock_seconds,
+)
 from signal_lists import build_signal_blacklist_matches, build_signal_list_profile
 from signal_repeat import live_total_delta
 from live_signals import SignalDecision, evaluate_live_signal, valid_total
@@ -349,6 +353,27 @@ async def process_match(
         )
         return
 
+    previous_snapshots = db.get_match_snapshots(match["match_id"])
+    configured_clock = game_clock("", tournament=match["tournament"])
+    four_quarters = configured_clock["period_count"] == 4
+    observed_seconds = quarter_clock_seconds(match["status"]) if four_quarters else None
+    first_confirmed_index = first_confirmed_12_snapshot_index(previous_snapshots, match["tournament"])
+    frozen_12_minutes = first_confirmed_index is not None
+    observed_12_minutes = observed_seconds is not None and observed_seconds > 10 * 60
+    if observed_12_minutes and configured_clock["quarter_length"] == 10 and not frozen_12_minutes:
+        logging.getLogger("main").warning(
+            "DURATION_FORMAT_OVERRIDE match_id=%s tournament=%s configured=40 observed=48 clock=%02d:%02d",
+            match["match_id"], match["tournament"], *divmod(observed_seconds, 60),
+        )
+    runtime_override = (
+        configured_clock["quarter_length"] == 10
+        and (frozen_12_minutes or observed_12_minutes)
+    )
+    with confirmed_12_minute_quarters(runtime_override):
+        await _process_match_with_format(match, db, notifier, config, observation_age, runtime_override)
+
+
+async def _process_match_with_format(match, db, notifier, config, observation_age, runtime_override):
     # Save snapshot
     clock = game_clock(match["status"], match["match_name"], match["tournament"])
     period = clock["period"]
@@ -363,10 +388,41 @@ async def process_match(
         elapsed_sec = int(elap_min * 60)
         remaining_min = (pc * ql) - elap_min
 
+        snapshots = db.get_match_snapshots(match["match_id"])
+        current_score = home_score + away_score
+        if snapshots and elapsed_sec < max(row["elapsed_game_seconds"] for row in snapshots):
+            logging.getLogger("main").warning(
+                "Skipped regressed game clock: match=%s", match["match_name"]
+            )
+            return
+        captured_at = match.get("market_captured_at")
+        if snapshots and captured_at:
+            try:
+                captured = datetime.fromisoformat(str(captured_at).replace("Z", "+00:00"))
+                recorded = datetime.fromisoformat(snapshots[-1]["recorded_at"]).replace(tzinfo=timezone.utc)
+                if captured.tzinfo is not None and captured < recorded:
+                    logging.getLogger("main").warning(
+                        "Skipped out-of-order market observation: match=%s", match["match_name"]
+                    )
+                    return
+            except (TypeError, ValueError):
+                pass
+
+        score_decreased = bool(snapshots and current_score < snapshots[-1]["total_score"])
+        if len(snapshots) >= 2 and (
+            snapshots[-1]["total_score"] < snapshots[-2]["total_score"]
+            and elapsed_sec <= snapshots[-1]["elapsed_game_seconds"]
+            and current_score < snapshots[-2]["total_score"]
+        ):
+            return
+
         db.save_snapshot_if_changed(
             match_id=match["match_id"],
             period=period,
-            game_clock=clock.get("clock_str", ""),
+            game_clock=(
+                f"{divmod(seconds, 60)[0]:02d}:{divmod(seconds, 60)[1]:02d}"
+                if (seconds := quarter_clock_seconds(match["status"])) is not None else ""
+            ),
             elapsed_game_seconds=elapsed_sec,
             remaining_minutes=remaining_min,
             home_score=home_score,
@@ -376,9 +432,19 @@ async def process_match(
             live_total=float(match["inplay_total"]),
             heartbeat_seconds=config.HEARTBEAT_SECONDS
         )
+        if score_decreased:
+            logging.getLogger("main").warning(
+                "Skipped score correction pending confirmation: match=%s", match["match_name"]
+            )
+            return
 
     snapshots = db.get_match_snapshots(match["match_id"])
-    decision = evaluate_live_signal(match, snapshots, config)
+    confirmed_index = (
+        first_confirmed_12_snapshot_index(snapshots, match["tournament"])
+        if runtime_override else None
+    )
+    decision_snapshots = snapshots[confirmed_index:] if confirmed_index is not None else snapshots
+    decision = evaluate_live_signal(match, decision_snapshots, config)
     logging.getLogger("main").info(
         "📊 %s | Referans (%s): %.1f | Canlı: %.1f | Fark: %+.1f | Eşik: %.2f | Durum: %s | Filtre: %s",
         match["match_name"], decision.reference_used, decision.reference_total,

@@ -14,6 +14,13 @@ from aiscore_scraper import (
 
 
 class AiscoreScraperTests(unittest.TestCase):
+    def test_confirmed_twelve_minute_clock_stays_frozen_for_stale_line_timing(self):
+        scraper = AiscoreScraper("url")
+        match = {"match_id": "one", "match_name": "Club - Club", "tournament": "Club Friendship"}
+        self.assertAlmostEqual(scraper._elapsed_game_minutes({**match, "status": "Q2 11:34"}), 12 + 26 / 60)
+        self.assertEqual(scraper._elapsed_game_minutes({**match, "status": "Q3 08:00"}), 28)
+        self.assertEqual(scraper._elapsed_game_minutes({**match, "match_id": "two", "status": "Q3 08:00"}), 22)
+
     def test_free_slot_starts_next_match_before_slow_match_finishes(self):
         async def scenario():
             scraper = AiscoreScraper("url", concurrency=2)

@@ -97,6 +97,33 @@ def test_quality_bounds_labels_repeat_and_determinism():
         assert quality_label(value) == expected
 
 
+def test_quality_is_smooth_at_pace_and_line_move_thresholds():
+    config = Config()
+    over_match = match(score="36 - 36")
+    pace_factors = []
+    for advantage in (0.199, 0.201):
+        candidate = SignalDecision(
+            "prematch", 160, 30, 0, "ÜST", 2,
+            market_implied_pace=4.8 / (1 + advantage),
+            sustainable_projection_center=205,
+        )
+        pace_factors.append(score_signal_quality(over_match, candidate, config)[2]["pace_support"])
+    assert 0 <= pace_factors[1] - pace_factors[0] <= 2
+
+    move_factors = []
+    for live in (150.01, 150.0, 149.99):
+        payload = match(score="25 - 25", inplay_total=live)
+        candidate = SignalDecision(
+            "prematch", 160, live - 160, 0, "ALT", 2,
+            market_implied_pace=4, sustainable_projection_center=116,
+        )
+        score, label, factors = score_signal_quality(payload, candidate, config)
+        assert label == "PAS" and score < 40
+        move_factors.append(factors["market_move"])
+    assert move_factors[0] >= move_factors[1] >= move_factors[2]
+    assert move_factors[0] - move_factors[2] <= 2
+
+
 def test_engine_pas_rules_remain_active():
     for payload, paces, reason in (
         (match(score=""), [4.4, 4.5], "missing_score"),

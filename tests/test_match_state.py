@@ -1,9 +1,99 @@
 import unittest
 
-from match_state import current_pace_projection, required_pace_comparison
+from match_state import (
+    confirmed_12_minute_quarters, current_pace_projection, game_clock,
+    quarter_clock_seconds, required_pace_comparison,
+)
 
 
 class CurrentPaceProjectionTests(unittest.TestCase):
+    def test_fiba_format_comes_from_tournament_not_team_name(self):
+        fiba = game_clock("Q2 05:00", "NBA G League United - Club", "FIBA Intercontinental Cup")
+        self.assertEqual((fiba["quarter_length"], fiba["period_count"]), (10, 4))
+        college_name = game_clock("Q2 05:00", "NCAA Alumni - Club", "FIBA Intercontinental Cup")
+        self.assertEqual((college_name["quarter_length"], college_name["period_count"]), (10, 4))
+
+    def test_nba_league_keeps_48_minute_format(self):
+        nba = game_clock("Q2 05:00", "Club - Club", "NBA")
+        self.assertEqual((nba["quarter_length"], nba["period_count"]), (12, 4))
+
+    def test_pba_uses_four_twelve_minute_quarters_from_tournament_only(self):
+        for tournament in (
+            "Philippine Basketball Association",
+            "PBA",
+            "Philippines PBA",
+            "Philippines Philippine Basketball Association",
+            "  philippines   pba  ",
+        ):
+            with self.subTest(tournament=tournament):
+                clock = game_clock("Q2 12:00", "Club - Club", tournament)
+                self.assertEqual(
+                    (clock["period"], clock["quarter_length"], clock["period_count"]),
+                    (2, 12, 4),
+                )
+                projection = current_pace_projection(
+                    "30 - 30", "Q2 12:00", "Club - Club", tournament,
+                )
+                self.assertEqual((projection["elapsed_minutes"], projection["game_minutes"]), (12, 48))
+
+    def test_other_philippines_leagues_keep_existing_formats(self):
+        for tournament, expected in (
+            ("Philippines MPBL", (10, 4)),
+            ("Philippines University Athletic Association", (10, 4)),
+            ("Philippines UAAP", (10, 4)),
+            ("Philippines National Collegiate Athletic Association", (10, 4)),
+            ("Philippines NCAA", (20, 2)),
+            ("Philippines Regional Basketball League", (10, 4)),
+            ("Philippines PBA Developmental League", (10, 4)),
+        ):
+            with self.subTest(tournament=tournament):
+                clock = game_clock("Q2 05:00", "PBA Club - NBA Club", tournament)
+                self.assertEqual((clock["quarter_length"], clock["period_count"]), expected)
+
+    def test_nba_summer_league_keeps_forty_minute_format(self):
+        clock = game_clock("Q2 05:00", "Club - Club", "NBA Summer League")
+        self.assertEqual((clock["quarter_length"], clock["period_count"]), (10, 4))
+
+    def test_database_tournament_names_keep_their_period_formats(self):
+        # Exact tournament values observed in alerts; do not infer from team or country.
+        for tournament in (
+            "Philippines MPBL",
+            "Philippines University Athletic Association",
+            "Philippines National Collegiate Athletic Association",
+            "FIBA Intercontinental Cup",
+            "Women's National Basketball Association",
+            "National Basketball League",
+            "Club Friendship",
+        ):
+            with self.subTest(tournament=tournament):
+                clock = game_clock("Q2 05:00", "PBA Club - NBA Club", tournament)
+                self.assertEqual((clock["quarter_length"], clock["period_count"]), (10, 4))
+
+    def test_runtime_twelve_minute_observation_requires_valid_quarter_clock(self):
+        for tournament, status, expected in (
+            ("Unknown League", "Q2 11:34", (12, 4)),
+            ("Unknown League", "Q2 08:45", (10, 4)),
+            ("FIBA Intercontinental Cup", "Q2 09:00", (10, 4)),
+            ("FIBA Intercontinental Cup", "Q3 10:45", (12, 4)),
+            ("NBA", "Q2 08:45", (12, 4)),
+            ("NBA Summer League", "Q2 08:45", (10, 4)),
+            ("Philippine Basketball Association", "Q2 08:45", (12, 4)),
+            ("NCAA", "2H 11:34", (20, 2)),
+            ("NCAA", "Q2 11:34", (20, 2)),
+            ("Unknown League", "Q2 12:01", (10, 4)),
+            ("Unknown League", "Q2 11:60", (10, 4)),
+        ):
+            with self.subTest(tournament=tournament, status=status):
+                clock = game_clock(status, "NBA Club - PBA Club", tournament)
+                self.assertEqual((clock["quarter_length"], clock["period_count"]), expected)
+        self.assertEqual(quarter_clock_seconds("Q3 10:45"), 645)
+        self.assertIsNone(quarter_clock_seconds("2H 11:34"))
+
+    def test_runtime_duration_context_is_reset_after_match(self):
+        with confirmed_12_minute_quarters(True):
+            self.assertEqual(game_clock("Q3 08:00", tournament="Unknown League")["quarter_length"], 12)
+        self.assertEqual(game_clock("Q3 08:00", tournament="Unknown League")["quarter_length"], 10)
+
     def test_projects_fiba_total_from_elapsed_game_time(self):
         projection = current_pace_projection(
             "40 - 35", "Q2 05:00", "Home - Away", "EuroLeague"

@@ -1563,6 +1563,9 @@ class Database:
                 (match_id,)
             ).fetchone()
 
+            if last and elapsed_game_seconds < last["elapsed_game_seconds"]:
+                return False
+
             should_save = False
             if not last:
                 should_save = True
