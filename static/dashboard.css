@@ -355,7 +355,7 @@ body.modal-open { overflow: hidden; }
 .ppm-comparison-comment { margin: 9px 0 0; padding: 9px 11px; border-radius: 9px; color: var(--text); background: rgba(151,149,166,.08); font-size: 12px; line-height: 1.5; }
 .ppm-comparison-comment.above { color: #a9ceff; background: rgba(98,168,255,.1); }
 .ppm-comparison-comment.below { color: #d7ceff; background: rgba(139,108,255,.1); }
-.modal-current-stats { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 0; padding: 10px 0; border: 1px solid var(--border); border-radius: 10px; background: rgba(27,29,43,.4); }
+.modal-current-stats { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px 0; padding: 10px 0; border: 1px solid var(--border); border-radius: 10px; background: rgba(27,29,43,.4); }
 .modal-current-stats > div, .modal-team-stats > div { padding: 0 10px; border: 0; border-right: 1px solid var(--border); border-radius: 0; background: transparent; }
 .modal-current-stats span, .modal-team-stats span { display: block; color: var(--muted); font-size: 10px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; }
 .modal-current-stats strong, .modal-team-stats strong { display: block; margin-top: 4px; font-size: 15px; }
@@ -391,6 +391,24 @@ body.modal-open { overflow: hidden; }
 .modal-history-empty, .modal-loading, .modal-error { padding: 18px 8px; color: var(--muted); font-size: 13px; text-align: center; }
 .modal-error { color: var(--red); }
 .modal-lists-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.modal-lists-section > summary { cursor: pointer; color: var(--text); font-size: 12px; font-weight: 750; }
+.modal-lists-section > summary small { margin-left: 6px; color: var(--muted); font-weight: 500; }
+.modal-lists-section[open] > summary { margin-bottom: 9px; }
+.modal-signal-summary { display: flex; gap: 12px; align-items: stretch; margin-bottom: 12px; padding: 11px; border: 1px solid var(--border-strong); border-radius: 12px; background: #20324b; }
+.modal-summary-lead { display: flex; flex-direction: column; gap: 7px; align-items: center; justify-content: center; min-width: 80px; }
+.modal-summary-facts { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px 12px; flex: 1; }
+.modal-summary-facts > div { min-width: 0; }
+.modal-summary-facts span { display: block; color: var(--muted); font-size: 10px; }
+.modal-summary-facts strong { display: block; margin-top: 2px; font-size: 14px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.modal-summary-facts small, .sample-warning { display: block; color: #ffd28f; font-size: 10px; font-weight: 650; }
+.modal-summary-facts small.positive-text { color: var(--green); }
+.modal-summary-facts small.negative-text { color: var(--red); }
+.modal-quality-reasons { padding: 0 2px; }
+.modal-quality-reasons ul { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 12px; }
+.modal-quality-reasons li span { color: #91edce; }
+.modal-quality-reasons li span.warning { color: #ffd28f; }
+.modal-quality-reasons li { line-height: 1.4; }
+.modal-quality-reasons p { margin: 0; color: var(--muted); }
 .modal-list-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; }
 .list-entity { min-width: 0; display: flex; align-items: center; gap: 8px; }
 .list-entity small { min-width: 58px; color: var(--muted); font-size: 10px; }
@@ -686,10 +704,12 @@ body.modal-open { overflow: hidden; }
   .modal-section { padding: 0; margin-bottom: 15px; }
   .ppm-comparison { padding: 11px; margin-bottom: 15px; }
   .ppm-comparison-stats strong { font-size: 20px; }
-  .modal-current-stats { grid-template-columns: repeat(3, minmax(0,1fr)); row-gap: 10px; }
-  .modal-current-stats > div:nth-child(3) { border-right: 0; }
+  .modal-current-stats { grid-template-columns: repeat(2, minmax(0,1fr)); row-gap: 10px; }
   .ppm-comparison-stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .modal-team-grid { grid-template-columns: 1fr; }
+  .modal-signal-summary { flex-direction: column; }
+  .modal-summary-lead { flex-direction: row; justify-content: flex-start; }
+  .modal-summary-facts { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .modal-team-stats { grid-template-columns: repeat(4, minmax(0,1fr)); }
   .history-row-head { align-items: stretch; flex-direction: column; }
   .history-match-name { white-space: normal; }

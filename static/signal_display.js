@@ -24,7 +24,9 @@
 
   function historyTeamCard(team) {
     const summary = team.summary || {};
-    const successRate = hasMetric(summary.success_rate) ? `${ppmMetric(summary.success_rate, 0)}%` : '–';
+    const total = Number(summary.total || 0);
+    const successful = Number(summary.successful || 0);
+    const successRate = total === 0 ? '0 geçmiş sinyal' : total < 10 ? `${successful}/${total} başarılı` : hasMetric(summary.success_rate) ? `${ppmMetric(summary.success_rate, 0)}%` : '–';
     const matches = Array.isArray(team.matches) ? team.matches.slice(0, 5) : [];
     const matchRows = matches.length ? matches.map(match => {
       const direction = String(match.direction || '–').toLocaleUpperCase('tr-TR').replace('UST', 'ÜST');
@@ -57,7 +59,7 @@
         <div><span>Geçmiş sinyal</span><strong>${Number(summary.total || 0)}</strong></div>
         <div><span>Başarılı</span><strong class="positive-text">${Number(summary.successful || 0)}</strong></div>
         <div><span>Başarısız</span><strong class="negative-text">${Number(summary.failed || 0)}</strong></div>
-        <div><span>Başarı oranı</span><strong>${successRate}</strong></div>
+        <div><span>${total < 10 ? 'Küçük örneklem' : 'Başarı oranı'}</span><strong>${successRate}</strong>${total < 10 ? '<small class="sample-warning">Örneklem yetersiz</small>' : ''}</div>
       </div>
       <details class="modal-history-details"><summary>Son ${matches.length} sinyalin ayrıntıları</summary><div class="modal-history-list">${matchRows}</div></details>
     </article>`;
@@ -93,12 +95,92 @@
 
   function signalReferenceFacts(alert) {
     if (!['prematch', 'opening'].includes(alert.reference_used) || !hasMetric(alert.reference_total)) return '';
-    const label = alert.reference_used === 'prematch' ? 'Maç önü' : 'Açılış';
+    const label = alert.reference_used === 'prematch' ? 'Son Maç Önü Baremi' : 'İlk Açılış Baremi';
     const change = hasMetric(alert.decision_change)
       ? `${Number(alert.decision_change) > 0 ? '+' : ''}${fmt(alert.decision_change)}` : '–';
-    return `<div><span>Sinyal referansı · ${label}</span><strong>${fmt(alert.reference_total)}</strong></div>
-      <div><span>Referansa göre fark</span><strong>${change}</strong></div>
-      <div><span>Uygulanan eşik</span><strong>${ppmMetric(alert.effective_threshold)} sayı</strong></div>`;
+    return `<div><span>Sinyal referansı</span><strong>${alert.reference_used === 'opening' ? esc(label) : `${esc(label)} · ${fmt(alert.reference_total)}`}</strong></div>
+      <div><span>${alert.reference_used === 'prematch' ? 'Maç önü referansına göre fark' : 'Açılış referansına göre fark'}</span><strong>${change}</strong></div>
+      ${hasMetric(alert.effective_threshold) && Number(alert.effective_threshold) !== 0 ? `<div><span>Uygulanan eşik</span><strong>${ppmMetric(alert.effective_threshold)} sayı</strong></div>` : ''}`;
+  }
+
+  function signedModalNumber(value) {
+    return `${value > 0 ? '+' : value < 0 ? '−' : ''}${ppmMetric(Math.abs(value), 1)}`;
+  }
+
+  function liveDifference(alert, value) {
+    if (!hasMetric(value) || !hasMetric(alert.live)) return '<small>Canlıya —</small>';
+    const difference = Number(value) - Number(alert.live);
+    const favorable = alert.direction === 'ALT' ? difference < 0 : alert.direction === 'ÜST' ? difference > 0 : false;
+    const unfavorable = alert.direction === 'ALT' ? difference > 0 : alert.direction === 'ÜST' ? difference < 0 : false;
+    const tone = favorable ? 'positive-text' : unfavorable ? 'negative-text' : '';
+    return `<small class="${tone}">Canlıya ${signedModalNumber(difference)}</small>`;
+  }
+
+  function signalFormat(alert) {
+    const duration = Number(alert.pace_game_minutes);
+    if (!hasMetric(alert.pace_game_minutes) || ![40, 48].includes(duration)) return '—';
+    const status = String(alert.status || '').trim();
+    const periods = /^H[12](?:\b|\s)/i.test(status) && duration === 40 ? '2×20' : /^Q[1-4](?:\b|\s)/i.test(status) ? `4×${duration / 4}` : '';
+    return `${periods ? `${periods} / ` : ''}${duration} dk`;
+  }
+
+  function signalSectionSubtitle(alert) {
+    return `<span class="signal-modal-subtitle">${esc(alert.tournament || '—')} · ${esc(signalFormat(alert))}</span>`;
+  }
+
+  function signalSummary(alert) {
+    const comparison = alert.ppm_comparison || {};
+    return `<section class="modal-signal-summary" aria-label="Sinyal özeti">
+      <div class="modal-summary-lead"><span class="direction-pill ${alert.direction === 'ALT' ? 'alt' : 'ust'}">${esc(alert.direction || '—')}</span>${qualityBadge(alert)}</div>
+      <div class="modal-summary-facts">
+        <div><span>Skor</span><strong>${esc(alert.score || '—')}</strong></div>
+        <div><span>Periyot / saat</span><strong>${esc(alert.status || '—')}</strong></div>
+        <div><span>Canlı Barem</span><strong>${fmt(alert.live)}</strong></div>
+        <div><span>Adil Barem</span><strong>${fmt(alert.fair_total)}</strong>${liveDifference(alert, alert.fair_total)}</div>
+        <div><span>Projeksiyon</span><strong>${fmt(alert.pace_projection)}</strong>${liveDifference(alert, alert.pace_projection)}</div>
+        <div><span>Mevcut → Gereken PPM</span><strong>${ppmMetric(comparison.current_ppm)} → ${ppmMetric(comparison.required_ppm)} <small>${ppmChange(comparison.required_change_pct) || '—'}</small></strong></div>
+      </div>
+    </section>`;
+  }
+
+  function qualityReasons(alert) {
+    let factors = alert.quality_factors;
+    if (typeof factors === 'string') {
+      try { factors = JSON.parse(factors); } catch (_) { factors = null; }
+    }
+    const labels = [
+      ['fair_edge', 'Adil barem farkı'],
+      ['pace_support', 'Tempo desteği'],
+      ['market_move', 'Barem hareketi'],
+      ['repeat_penalty', 'Tekrar sinyali etkisi'],
+      ['data_quality', 'Veri kalitesi'],
+      ['game_state', 'Maç durumu'],
+    ];
+    const details = {
+      fair_edge: () => hasMetric(alert.fair_total) && hasMetric(alert.live)
+        ? `: ${signedModalNumber(Number(alert.fair_total) - Number(alert.live))} sayı` : '',
+      pace_support: () => hasMetric(alert.ppm_comparison?.required_change_pct)
+        ? `: Mevcut → gereken PPM farkı ${signedModalNumber(Number(alert.ppm_comparison.required_change_pct))}%` : '',
+      market_move: () => hasMetric(alert.reference_total) && hasMetric(alert.live) && hasMetric(alert.decision_change)
+        ? `: ${ppmMetric(alert.reference_total, 1)} → ${ppmMetric(alert.live, 1)} (${signedModalNumber(Number(alert.decision_change))})` : '',
+    };
+    const items = factors && typeof factors === 'object' && !Array.isArray(factors)
+      ? labels.filter(([key]) => hasMetric(factors[key]) && (key !== 'repeat_penalty' || Number(factors[key]) !== 0)).slice(0, 5)
+        .map(([key, label]) => `<li><span class="${Number(factors[key]) <= 0 ? 'warning' : ''}" aria-hidden="true">${Number(factors[key]) <= 0 ? '⚠' : '✓'}</span> ${label}${details[key]?.() || ''} · ${Number(factors[key]) > 0 ? '+' : ''}${esc(factors[key])} puan</li>`).join('')
+      : '';
+    return `<section class="modal-section modal-quality-reasons"><h3 class="modal-section-title">Sinyal Neden Geldi?</h3>${items ? `<ul>${items}</ul>` : '<p>—</p>'}</section>`;
+  }
+
+  function signalLineFacts(alert) {
+    const change = Number(alert.barem_change);
+    const signed = hasMetric(alert.barem_change) ? `${change > 0 ? '+' : ''}${change.toFixed(1)}` : '—';
+    return `<div class="modal-current-stats">
+      <div><span>İlk Açılış Baremi</span><strong>${fmt(alert.opening)}</strong></div>
+      <div><span>Canlı Barem</span><strong>${fmt(alert.live)}</strong></div>
+      <div><span>Açılışa göre değişim</span><strong>${signed}</strong></div>
+      ${signalReferenceFacts(alert)}
+      <div><span>Sinyal sırası</span><strong>${hasMetric(alert.signal_count) && Number(alert.signal_count) > 0 ? Number(alert.signal_count) === 1 ? 'İlk sinyal' : `${Number(alert.signal_count)}. sinyal` : '—'}</strong></div>
+    </div>`;
   }
 
   function openingLine(alert) {

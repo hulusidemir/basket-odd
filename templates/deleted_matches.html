@@ -130,22 +130,12 @@
     if (!alert) return;
     const teams = alert.team_history?.teams;
     const teamCards = Array.isArray(teams) && teams.length ? teams.map(historyTeamCard).join('') : '<div class="modal-history-empty">–</div>';
-    const change = alert.barem_change;
-    const signed = hasMetric(change) ? `${Number(change) > 0 ? '+' : ''}${fmt(change)}` : '–';
     const markers = (alert.list_markers || []).map(marker => `<span class="saved-status ${marker.type === 'black' ? 'negative-text' : 'positive-text'}">${esc(marker.title)}</span>`).join('');
     $('signalModalTitle').textContent = alert.match_name || 'Sinyal detayı';
-    $('signalModalBody').innerHTML = `${ppmComparisonSection(alert)}
-      <section class="modal-section"><div class="modal-section-head"><h3 class="modal-section-title">Maç özeti</h3><span class="signal-modal-subtitle">${esc(alert.tournament || '–')}</span></div>
-      <div class="modal-current-stats">
-        <div><span>Skor</span><strong>${esc(alert.score || '–')}</strong></div>
-        <div><span>Zaman</span><strong>${esc(alert.status || '–')}</strong></div>
-        <div><span>Açılış</span><strong>${fmt(alert.opening)}</strong></div>
-        <div><span>Canlı barem</span><strong>${fmt(alert.live)}</strong></div>
-        <div><span>Açılışa göre değişim</span><strong>${signed}</strong></div>
-        ${signalReferenceFacts(alert)}
-        <div><span>Sinyal</span><strong>${esc(alert.direction || '–')} · ${esc(alert.signal_count || '–')}.</strong></div>
-      </div>
-      <div class="archive-modal-extra"><span>Açılış PPM <strong>${ppmMetric(alert.opening_ppm)}</strong></span><span>Projeksiyon <strong>${fmt(alert.pace_projection)}</strong></span><span>Adil Barem <strong>${fmt(alert.fair_total)}</strong></span><span>Sinyal saati <strong>${esc(alert.signal_time || '–')}</strong></span></div>
+    $('signalModalBody').innerHTML = `${signalSummary(alert)}${ppmComparisonSection(alert)}${qualityReasons(alert)}
+      <section class="modal-section"><div class="modal-section-head"><h3 class="modal-section-title">Barem ayrıntıları</h3><span class="signal-modal-subtitle">${esc(alert.tournament || '—')}</span></div>
+      ${signalLineFacts(alert)}
+      <div class="archive-modal-extra"><span>Açılış PPM <strong>${ppmMetric(alert.opening_ppm)}</strong></span><span>Sinyal saati <strong>${esc(alert.signal_time || '—')}</strong></span></div>
       </section>
       <section class="modal-section"><h3 class="modal-section-title">Takım geçmişi</h3><div class="modal-team-grid">${teamCards}</div></section>
       <section class="modal-section"><h3 class="modal-section-title">İşaretler</h3><div class="saved-statuses">${savedStatusLabels(alert) || '–'}</div></section>

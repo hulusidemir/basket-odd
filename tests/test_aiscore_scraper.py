@@ -126,6 +126,71 @@ class AiscoreScraperTests(unittest.TestCase):
         )
         self.assertEqual(scraper.last_report["emitted_count"], 2)
 
+    def test_missing_live_core_reports_partial_without_raising(self):
+        scraper = AiscoreScraper("https://m.aiscore.com/basketball")
+        scraper._last_listing_diagnostics = {"live_tab_count_known": False}
+        scraper._wait_for_listing_ready = AsyncMock()
+        scraper._collect_match_links = AsyncMock(return_value=["one"])
+        scraper._extract_single = AsyncMock(
+            return_value=_MatchSkip("incomplete_live_core", degraded=True)
+        )
+        page = MagicMock()
+        page.set_default_timeout = MagicMock()
+
+        class Session:
+            context = MagicMock()
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def fetch(self, url, **kwargs):
+                await kwargs["page_action"](page)
+                return MagicMock()
+
+        with patch("aiscore_scraper.AsyncStealthySession", return_value=Session()):
+            self.assertEqual(asyncio.run(scraper.get_live_basketball_totals()), [])
+
+        self.assertEqual(scraper.last_report["status"], "partial")
+        self.assertEqual(scraper.last_report["parsed_count"], 0)
+        self.assertEqual(scraper.last_report["failed_count"], 1)
+        self.assertEqual(scraper.last_report["coverage_pct"], 0.0)
+        self.assertEqual(scraper.last_report["skip_reasons"], {"incomplete_live_core": 1})
+
+        scraper._extract_single = AsyncMock(
+            return_value=_MatchSkip("totals_missing")
+        )
+        with patch("aiscore_scraper.AsyncStealthySession", return_value=Session()):
+            self.assertEqual(asyncio.run(scraper.get_live_basketball_totals()), [])
+        self.assertEqual(scraper.last_report["status"], "ok")
+        self.assertEqual(scraper.last_report["coverage_pct"], 100.0)
+
+        scraper._extract_single = AsyncMock(
+            return_value=_MatchSkip("finished")
+        )
+        with patch("aiscore_scraper.AsyncStealthySession", return_value=Session()):
+            self.assertEqual(asyncio.run(scraper.get_live_basketball_totals()), [])
+        self.assertEqual(scraper.last_report["status"], "ok")
+        self.assertEqual(scraper.last_report["coverage_pct"], 100.0)
+
+        scraper._extract_single = AsyncMock(
+            return_value=_MatchSkip("pending")
+        )
+        with patch("aiscore_scraper.AsyncStealthySession", return_value=Session()):
+            self.assertEqual(asyncio.run(scraper.get_live_basketball_totals()), [])
+        self.assertEqual(scraper.last_report["status"], "ok")
+        self.assertEqual(scraper.last_report["coverage_pct"], 100.0)
+
+        scraper._extract_single = AsyncMock(
+            return_value=_MatchSkip("total_market_unverified", degraded=True)
+        )
+        with patch("aiscore_scraper.AsyncStealthySession", return_value=Session()):
+            with self.assertRaisesRegex(RuntimeError, "parsed none"):
+                asyncio.run(scraper.get_live_basketball_totals())
+        self.assertEqual(scraper.last_report["status"], "error")
+
     def test_cycle_cancellation_collects_pending_match_tasks(self):
         scraper = AiscoreScraper(
             "https://m.aiscore.com/basketball",
@@ -357,6 +422,34 @@ class AiscoreScraperTests(unittest.TestCase):
                 )
                 self.assertTrue(result["is_finished"])
                 self.assertEqual(result["status"], "Full Time")
+
+    def test_pending_odds_header_skips_before_overview_navigation(self):
+        header = (
+            "Estonia and Latvia Basketball League 7:00 PM Tuesday, September 29, 2026 "
+            "Valmiera Pending 0 - 0 Keila KK Match Live Overview Chat Odds H2H"
+        )
+        self.assertTrue(_detail_status_from_top_text(header)["is_pending"])
+        live = _detail_status_from_top_text("Pending A - B Q2 04:21")
+        self.assertEqual(live["status"], "Q2 04:21")
+        self.assertFalse(live.get("is_pending", False))
+
+        scraper = AiscoreScraper("https://m.aiscore.com/basketball")
+        scraper._goto_detail_with_retry = AsyncMock()
+        scraper._wait_for_odds_ready = AsyncMock()
+        scraper._fetch_overview_data = AsyncMock()
+        page = MagicMock()
+        page.locator.return_value.count = AsyncMock(return_value=0)
+        page.wait_for_function = AsyncMock()
+        page.evaluate = AsyncMock(side_effect=[
+            {},
+            {"topText": header, "score": "0 - 0", "matchName": "Valmiera - Keila KK"},
+        ])
+
+        result = asyncio.run(scraper._extract_match(
+            page, "https://m.aiscore.com/basketball/match-valmiera-keila-kk/game"
+        ))
+        self.assertEqual(result.reason, "pending")
+        scraper._fetch_overview_data.assert_not_awaited()
 
     def test_first_paired_bookmaker_line_is_primary(self):
         snapshot = _normalize_market_snapshot({

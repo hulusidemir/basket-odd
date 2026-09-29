@@ -230,6 +230,8 @@ def _detail_status_from_top_text(value) -> dict:
             "is_finished": False,
             "period_ended": True,
         }
+    if re.search(r"\bPending\b", text, re.IGNORECASE):
+        return {"status": "", "is_finished": False, "period_ended": False, "is_pending": True}
     return {"status": "", "is_finished": False, "period_ended": False}
 
 
@@ -830,7 +832,15 @@ class AiscoreScraper:
                     if batch_links
                     else None
                 )
-                if links and not out and report["failed_count"] and not report["skipped_count"]:
+                if (
+                    links
+                    and not out
+                    and report["failed_count"]
+                    and not report["skipped_count"]
+                    and report["failed_count"] != report["skip_reasons"].get(
+                        "incomplete_live_core", 0
+                    )
+                ):
                     raise RuntimeError(
                         f"AIScore discovered {len(links)} live matches but parsed none"
                     )
@@ -1289,6 +1299,8 @@ class AiscoreScraper:
 
         if parsed.get("isFinished"):
             return _MatchSkip("finished")
+        if detail_status.get("is_pending"):
+            return _MatchSkip("pending")
 
         if not market_snapshot.get("market_verified"):
             return _MatchSkip("total_market_unverified", degraded=True, retryable=True)

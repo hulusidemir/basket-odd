@@ -267,8 +267,7 @@ let refreshStartedAt = 0;
   function renderSignalModal(error='') {
     const alert = alerts.find(item => Number(item.id) === Number(activeModalAlertId));
     if (!alert) { closeSignalModal(); return; }
-    const change = Number(alert.barem_change);
-    const signedChange = hasMetric(alert.barem_change) ? `${change > 0 ? '+' : ''}${change.toFixed(1)}` : '–';
+    const listsOpen = $('modalListDetails')?.open || false;
     const teams = Array.isArray(activeModalHistory?.teams) ? activeModalHistory.teams : [];
     const teamCards = error
       ? `<div class="modal-error">${esc(error)}</div>`
@@ -277,28 +276,22 @@ let refreshStartedAt = 0;
         : '<div class="modal-loading">İstatistikler yükleniyor…</div>';
     $('signalModalTitle').textContent = alert.match_name || 'Maç istatistikleri';
     $('signalModalBody').innerHTML = `
+      ${signalSummary(alert)}
       ${ppmComparisonSection(alert)}
+      ${qualityReasons(alert)}
       <section class="modal-section">
-      <div class="modal-section-head"><h3 class="modal-section-title">Sinyal anındaki maç özeti</h3><span class="signal-modal-subtitle">${esc(alert.tournament || 'Lig bilgisi yok')}</span></div>
-      <div class="modal-current-stats">
-        <div><span>Skor</span><strong>${esc(alert.score || '–')}</strong></div>
-        <div><span>Zaman</span><strong>${esc(alert.status || '–')}</strong></div>
-        <div><span>Açılış</span><strong>${fmt(alert.opening)}</strong></div>
-        <div><span>Canlı barem</span><strong>${fmt(alert.live)}</strong></div>
-        <div><span>Açılışa göre değişim</span><strong>${signedChange}</strong></div>
-        ${signalReferenceFacts(alert)}
-        <div><span>Sinyal</span><strong>${esc(alert.direction || '–')} · ${Number(alert.signal_count || 1)}.</strong></div>
-      </div>
+      <div class="modal-section-head"><h3 class="modal-section-title">Barem ayrıntıları</h3>${signalSectionSubtitle(alert)}</div>
+      ${signalLineFacts(alert)}
       </section>
       <section class="modal-section">
       <h3 class="modal-section-title">Takım geçmişi</h3>
       <div class="modal-team-grid">${teamCards}</div>
       </section>
-      <section class="modal-lists-section">
-        <div class="modal-section-head"><h3 class="modal-section-title">Takım ve lig listeleri</h3></div>
+      <details class="modal-lists-section" id="modalListDetails" ${listsOpen ? 'open' : ''}>
+        <summary>Takım ve Lig Listeleri <small>Kara / Beyaz</small></summary>
         <div id="modalListRows"></div>
         <p class="list-status" id="modalListStatus" role="status" aria-live="polite"></p>
-      </section>`;
+      </details>`;
     renderModalLists();
   }
 
