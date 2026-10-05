@@ -11,6 +11,7 @@ from live_signals import evaluate_live_signal
 from main import _normalize_match_payload, process_match, retry_pending_telegram_deliveries
 from match_state import game_clock
 from pace_calculator import chronological_snapshots
+from tests.market_fixture import verified_payload
 
 
 def match(**overrides):
@@ -48,7 +49,7 @@ class LiveSignalIntegrationTests(unittest.TestCase):
         self.notifier.send_alert = AsyncMock(return_value={"recipient": 1})
 
     def process(self, payload, config=None):
-        asyncio.run(process_match(payload, self.db, self.notifier, config or Config()))
+        asyncio.run(process_match(verified_payload(payload), self.db, self.notifier, config or Config()))
 
     def test_q1_end_to_q2_start_keeps_equal_elapsed_snapshots(self):
         for tournament, quarter_minutes in (("FIBA Intercontinental Cup", 10), ("NBA", 12)):
@@ -117,6 +118,25 @@ class LiveSignalIntegrationTests(unittest.TestCase):
                     self.process({**payload, "status": next_status, "score": "31 - 31"})
                 self.assertEqual(len(evaluate.call_args.args[1]), 2)
 
+    def test_twenty_minute_half_clocks_remain_verified_pace_anchors(self):
+        payload = match(tournament="NCAA", status="Q2 18:30", score="30 - 30")
+        self.process(payload)
+        with patch("main.evaluate_live_signal", wraps=evaluate_live_signal) as evaluate:
+            self.process({**payload, "status": "Q2 16:30", "score": "34 - 34"})
+        rows = self.db.get_match_snapshots(payload["match_id"])
+        self.assertEqual([row["game_clock"] for row in rows], ["18:30", "16:30"])
+        self.assertEqual([row["elapsed_game_seconds"] for row in rows], [1290, 1410])
+        self.assertEqual(len(evaluate.call_args.args[1]), 2)
+
+    def test_clock_seconds_are_not_truncated_by_float_arithmetic(self):
+        payload = match(status="Q2 07:55", score="30 - 30")
+        with patch("main.evaluate_live_signal", wraps=evaluate_live_signal), patch(
+            "live_signals.get_future_paces", return_value=[],
+        ) as pace:
+            self.process(payload)
+        self.assertEqual(self.db.get_match_snapshots(payload["match_id"])[0]["elapsed_game_seconds"], 725)
+        self.assertEqual(pace.call_args.args[1]["elapsed_game_seconds"], 725)
+
     def test_filters_do_not_save_or_send(self):
         for payload in (match(status="Q4 01:00"), match(status="OT 01:00"), match(prematch_total=175)):
             self.process(payload)
@@ -143,11 +163,7 @@ class LiveSignalIntegrationTests(unittest.TestCase):
         self.notifier.send_alert.assert_not_awaited()
 
     def test_regressed_clock_and_score_do_not_enter_signal_history(self):
-        self.db.save_snapshot_if_changed(
-            match_id="test-match", period=2, game_clock="", elapsed_game_seconds=900,
-            remaining_minutes=25, home_score=40, away_score=35, total_score=75,
-            pregame_total=165, live_total=180,
-        )
+        self.process(match())
         self.process(match(status="Q2 05:30", score="41 - 35"))
         self.process(match(status="Q2 04:30", score="39 - 35"))
         self.assertEqual(len(self.db.get_match_snapshots("test-match")), 2)
@@ -158,11 +174,7 @@ class LiveSignalIntegrationTests(unittest.TestCase):
         self.assertEqual(len(self.db.get_match_snapshots("test-match")), 3)
 
     def test_observation_captured_before_latest_snapshot_is_ignored(self):
-        self.db.save_snapshot_if_changed(
-            match_id="test-match", period=2, game_clock="", elapsed_game_seconds=900,
-            remaining_minutes=25, home_score=40, away_score=35, total_score=75,
-            pregame_total=165, live_total=180,
-        )
+        self.process(match())
         self.process(match(market_captured_at="2020-01-01T00:00:00+00:00"))
         self.assertEqual(self.db.count_match_alerts("test-match"), 0)
         self.assertEqual(len(self.db.get_match_snapshots("test-match")), 1)
@@ -226,6 +238,7 @@ class LiveSignalIntegrationTests(unittest.TestCase):
         config.MIN_VALID_FUTURE_PACES = 1
         config.MIN_EDGE_POINTS = 0
         config.MIN_EDGE_RATIO = 0
+        config.MIN_SIGNAL_QUALITY = 0
         self.process(match(score="40 - 35", inplay_total=130), config)
 
         row = self.db.get_alert(1)

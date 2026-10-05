@@ -14,6 +14,169 @@ from aiscore_scraper import (
 
 
 class AiscoreScraperTests(unittest.TestCase):
+    @staticmethod
+    def _listing_session(scraper):
+        page = MagicMock()
+        scraper._wait_for_listing_ready = AsyncMock()
+        scraper._last_listing_diagnostics = {"live_tab_count_known": False}
+
+        class Session:
+            context = MagicMock()
+            __aenter__ = AsyncMock()
+            __aexit__ = AsyncMock()
+
+            async def fetch(self, url, **kwargs):
+                await kwargs["page_action"](page)
+                return MagicMock()
+
+        return Session()
+
+    def test_capped_scans_rotate_through_all_matches_and_reuse_session(self):
+        async def scenario():
+            scraper = AiscoreScraper("url", concurrency=1, max_matches_per_cycle=2, persistent_session=True)
+            scraper._collect_match_links = AsyncMock(return_value=["a", "b", "c", "d", "e"])
+            scraper._extract_single = AsyncMock(side_effect=lambda context, link: {"match_id": link})
+            session = self._listing_session(scraper)
+            checked = []
+            with patch("aiscore_scraper.AsyncStealthySession", return_value=session) as factory:
+                for _ in range(3):
+                    rows = await scraper.get_live_basketball_totals()
+                    checked.extend(row["match_id"] for row in rows)
+                    self.assertEqual(scraper.last_report["status"], "continuing")
+                    self.assertEqual(scraper.last_report["attempted_count"], 2)
+                    self.assertEqual(scraper.last_report["completed_count"], 2)
+                    self.assertEqual(scraper.last_report["deferred_count"], 3)
+                    self.assertEqual(scraper.last_report["failed_count"], 0)
+                factory.assert_called_once()
+                session.__aexit__.assert_not_awaited()
+                self.assertEqual(checked, ["a", "b", "c", "d", "e", "a"])
+                await scraper.close()
+
+        asyncio.run(scenario())
+
+    def test_budget_returns_finished_results_and_resumes_unfinished_matches(self):
+        async def scenario():
+            scraper = AiscoreScraper("url", concurrency=2, persistent_session=True)
+            scraper.cycle_timeout_seconds = 0.08
+            scraper._collect_match_links = AsyncMock(return_value=["slow", "fast", "third"])
+            session = self._listing_session(scraper)
+            cancelled = asyncio.Event()
+            events = []
+            first_pass = True
+
+            async def extract(context, link):
+                events.append(link)
+                if link == "slow" and first_pass:
+                    try:
+                        await asyncio.Event().wait()
+                    finally:
+                        cancelled.set()
+                return {"match_id": link}
+
+            scraper._extract_single_with_timeout = extract
+            with patch("aiscore_scraper.AsyncStealthySession", return_value=session) as factory:
+                rows = await asyncio.wait_for(scraper.get_live_basketball_totals(), 0.5)
+                self.assertEqual({row["match_id"] for row in rows}, {"fast", "third"})
+                self.assertTrue(cancelled.is_set())
+                self.assertEqual(scraper.last_report["status"], "continuing")
+                self.assertTrue(scraper.last_report["budget_exhausted"])
+                self.assertEqual(scraper.last_report["completed_count"], 2)
+                self.assertEqual(scraper.last_report["deferred_count"], 1)
+                self.assertEqual(scraper.last_report["interrupted_count"], 1)
+                self.assertEqual(scraper.last_report["failed_count"], 0)
+                first_pass = False
+                scraper._collect_match_links.return_value = ["fast", "third", "slow", "new"]
+                events.clear()
+                rows = await scraper.get_live_basketball_totals()
+                self.assertEqual(events[0], "slow")
+                self.assertEqual({row["match_id"] for row in rows}, {"slow", "fast", "third", "new"})
+                self.assertEqual(scraper.last_report["status"], "ok")
+                factory.assert_called_once()
+                await scraper.close()
+
+        asyncio.run(scenario())
+
+    def test_source_failure_is_partial_even_when_other_matches_are_deferred(self):
+        async def scenario():
+            scraper = AiscoreScraper("url", concurrency=1, max_matches_per_cycle=1, persistent_session=True)
+            scraper._collect_match_links = AsyncMock(return_value=["bad", "good"])
+            scraper._extract_single = AsyncMock(return_value=_MatchSkip("incomplete_live_core", degraded=True))
+            session = self._listing_session(scraper)
+            with patch("aiscore_scraper.AsyncStealthySession", return_value=session):
+                self.assertEqual(await scraper.get_live_basketball_totals(), [])
+                self.assertEqual(scraper.last_report["status"], "partial")
+                self.assertEqual(scraper.last_report["failed_count"], 1)
+                self.assertEqual(scraper.last_report["deferred_count"], 1)
+                self.assertEqual(scraper.last_report["coverage_pct"], 0)
+                session.__aexit__.assert_not_awaited()
+                self.assertFalse(scraper.last_report["session_reset_required"])
+                scraper._extract_single = AsyncMock(side_effect=lambda context, link: {"match_id": link})
+                rows = await scraper.get_live_basketball_totals()
+                self.assertEqual([row["match_id"] for row in rows], ["good"])
+                await scraper.close()
+
+        asyncio.run(scenario())
+
+    def test_budget_without_any_progress_is_not_reported_as_healthy(self):
+        async def scenario():
+            scraper = AiscoreScraper("url", concurrency=2, persistent_session=True)
+            scraper.cycle_timeout_seconds = 0.05
+            scraper._collect_match_links = AsyncMock(return_value=["hung1", "hung2", "later"])
+
+            async def extract(context, link):
+                await asyncio.Event().wait()
+
+            scraper._extract_single_with_timeout = extract
+            session = self._listing_session(scraper)
+            with patch("aiscore_scraper.AsyncStealthySession", return_value=session):
+                self.assertEqual(await asyncio.wait_for(scraper.get_live_basketball_totals(), 0.5), [])
+                self.assertEqual(scraper.last_report["status"], "partial")
+                self.assertEqual(scraper.last_report["completed_count"], 0)
+                self.assertEqual(scraper.last_report["deferred_count"], 3)
+                self.assertEqual(scraper.last_report["interrupted_count"], 2)
+                session.__aexit__.assert_awaited_once()
+
+        asyncio.run(scenario())
+
+    def test_history_failure_does_not_reopen_browser_or_block_next_match(self):
+        async def scenario():
+            scraper = AiscoreScraper("url", concurrency=1, persistent_session=True)
+            scraper._collect_match_links = AsyncMock(return_value=["bad", "good"])
+            scraper._extract_single = AsyncMock(side_effect=[
+                _MatchSkip("provider_history_unavailable", degraded=True),
+                {"match_id": "good"},
+                {"match_id": "bad"},
+                {"match_id": "good"},
+            ])
+            session = self._listing_session(scraper)
+            with patch("aiscore_scraper.AsyncStealthySession", return_value=session) as factory:
+                rows = await scraper.get_live_basketball_totals()
+                self.assertEqual(rows, [{"match_id": "good"}])
+                self.assertEqual(scraper.last_report["status"], "partial")
+                self.assertEqual(scraper.last_report["coverage_pct"], 50)
+                session.__aexit__.assert_not_awaited()
+                rows = await scraper.get_live_basketball_totals()
+                self.assertEqual(len(rows), 2)
+                self.assertEqual(scraper.last_report["status"], "ok")
+                factory.assert_called_once()
+                await scraper.close()
+
+        asyncio.run(scenario())
+
+    def test_navigation_failure_still_replaces_browser_session(self):
+        async def scenario():
+            scraper = AiscoreScraper("url", concurrency=1, persistent_session=True)
+            scraper._collect_match_links = AsyncMock(return_value=["bad"])
+            scraper._extract_single = AsyncMock(side_effect=RuntimeError("ERR_CONNECTION_RESET"))
+            session = self._listing_session(scraper)
+            with patch("aiscore_scraper.AsyncStealthySession", return_value=session):
+                self.assertEqual(await scraper.get_live_basketball_totals(), [])
+                self.assertEqual(scraper.last_report["status"], "partial")
+                self.assertTrue(scraper.last_report["session_reset_required"])
+                session.__aexit__.assert_awaited_once()
+
+        asyncio.run(scenario())
+
     def test_confirmed_twelve_minute_clock_stays_frozen_for_stale_line_timing(self):
         scraper = AiscoreScraper("url")
         match = {"match_id": "one", "match_name": "Club - Club", "tournament": "Club Friendship"}
@@ -187,9 +350,9 @@ class AiscoreScraperTests(unittest.TestCase):
             return_value=_MatchSkip("total_market_unverified", degraded=True)
         )
         with patch("aiscore_scraper.AsyncStealthySession", return_value=Session()):
-            with self.assertRaisesRegex(RuntimeError, "parsed none"):
-                asyncio.run(scraper.get_live_basketball_totals())
-        self.assertEqual(scraper.last_report["status"], "error")
+            self.assertEqual(asyncio.run(scraper.get_live_basketball_totals()), [])
+        self.assertEqual(scraper.last_report["status"], "partial")
+        self.assertFalse(scraper.last_report["session_reset_required"])
 
     def test_cycle_cancellation_collects_pending_match_tasks(self):
         scraper = AiscoreScraper(
@@ -414,6 +577,8 @@ class AiscoreScraperTests(unittest.TestCase):
         live = _detail_status_from_top_text("Tabare 31 - 28 Borges Q2 04:21")
         self.assertEqual(live["status"], "Q2 04:21")
         self.assertFalse(live["is_finished"])
+        alternate = _detail_status_from_top_text("Tabare 31 - 28 Borges 2Q 04:21")
+        self.assertEqual(alternate["status"], "Q2 04:21")
 
         for final_status in ("Full Time", "FT", "Finished", "Final", "Ended"):
             with self.subTest(final_status=final_status):
@@ -441,7 +606,6 @@ class AiscoreScraperTests(unittest.TestCase):
         page.locator.return_value.count = AsyncMock(return_value=0)
         page.wait_for_function = AsyncMock()
         page.evaluate = AsyncMock(side_effect=[
-            {},
             {"topText": header, "score": "0 - 0", "matchName": "Valmiera - Keila KK"},
         ])
 

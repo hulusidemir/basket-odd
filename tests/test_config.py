@@ -63,6 +63,22 @@ class ConfigTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, name):
                     instance.validate()
 
+    def test_future_pace_configuration_rejects_invalid_math(self):
+        for name, value in (
+            ("PRIOR_EQUIV_MINUTES", -2), ("MIN_EDGE_POINTS", float("nan")),
+            ("MIN_EDGE_RATIO", float("inf")), ("MAX_FUTURE_BAND_WIDTH", -1),
+            ("MIN_ELAPSED_MINUTES", float("nan")), ("MIN_REMAINING_MINUTES", -1),
+            ("MIN_VALID_FUTURE_PACES", 5), ("BLOWOUT_EDGE_MULTIPLIER", -1),
+            ("ANCHOR_TOLERANCE_MAX_PCT", 0.1),
+        ):
+            with self.subTest(name=name, value=value):
+                instance = config.Config()
+                instance.TELEGRAM_TOKEN = "valid-token"
+                instance.TELEGRAM_CHAT_ID = "1"
+                setattr(instance, name, value)
+                with self.assertRaisesRegex(ValueError, name):
+                    instance.validate()
+
 
 if __name__ == "__main__":
     unittest.main()

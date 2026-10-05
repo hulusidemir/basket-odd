@@ -92,9 +92,10 @@ def evaluate_live_signal(match: dict, snapshots: list[dict], config) -> SignalDe
     market_future_pace = (inplay_total - current_score) / remaining_total_minutes
 
     current_state = {
-        "elapsed_game_seconds": int(elapsed_minutes * 60),
+        "elapsed_game_seconds": round(elapsed_minutes * 60),
         "total_score": current_score,
         "period": period,
+        "observed_at": match.get("market_captured_at") or (match.get("market_provenance") or {}).get("captured_at"),
     }
 
     future_paces = get_future_paces(snapshots, current_state, pregame_ppm, config)

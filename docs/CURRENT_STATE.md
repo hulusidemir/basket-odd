@@ -1,5 +1,178 @@
 # Current State
 
+5 Ekim 2026 yaklaşık 01:24 Türkiye saati — Kullanıcı bot/dashboard servislerini
+01:19:36 / 01:19:35'te yeniden başlattı. Startup implementation hash'i mevcut
+çalışma ağacıyla birebir eşleşti. 4,5 dakikalık salt okunur üretim kontrolünde
+10 tarama tamamlandı: 9 `ok`, bir `partial`. Son üç çevrim 14,96 / 14,83 /
+15,47 saniye; eşzamanlılık 2'den 4'e çıktı. Tek maçın provider source okuması
+aksadığı kısmi çevrimde oturum yenilenmedi; sonraki çevrim toparlandı. Ana
+döngü, maç işleme, Telegram ve outbox hata sayısı 0; servisler active/running,
+otomatik restart 0. 10 geçerli gözlem ile üç maçta sekiz snapshot yazıldı;
+sekizinin de kaynak kimliği/barem/skor/saat ve yakalama anındaki sağlayıcı
+tazeliği doğrulaması geçti, beş skor/saat ilerlemesi görüldü. Motor logunda
+erken maç dört, sayı avantajı yok dört, tempo bandı içinde bir PAS var;
+yeni ALT/ÜST adayı veya yeni alert henüz yok. Telegram bot kimlik doğrulaması
+ve iki yapılandırılmış hedefin salt okunur erişim kontrolü başarılı; test
+mesajı gönderilmedi, bu kontrol sırasında gerçek sinyal teslimi gözlenmedi.
+SQLite quick_check ok; ana/arşiv sayfaları, aktif/arşiv API'leri ve mevcut
+tarama durumu endpoint'i HTTP 200. Bu kontrol kodu/veriyi/servis süreçlerini
+değiştirmedi; önceki 366 testlik düzeltme artık çalışan botta yüklenmiş durumda.
+
+5 Ekim 2026 — Tekrarlayan tarama hatası, gecikme ve eksik bildirim incelemesi:
+4 Ekim 20:42 bot başlangıcından sonraki günlükte 10 teslim edilmiş sinyal,
+bir Telegram timeout'u ve tazelik süresi dolduğu için iptal edilen retry
+görüldü. Maç kaynak/history hataları artık tüm oturumu kapatmaz ve genel
+25–40 saniyelik beklemeyi tetiklemez; `partial` kapsama/gerekçe raporu korunur.
+Kaynak/history başarısızlığı aynı maçta ikinci navigasyonla hemen denenmez;
+bir sonraki çevrimde yeniden okunur. Navigasyon/kapanmış tarayıcı, bütün
+maçların timeout olması veya bütçe boyunca sıfır ilerleme oturum yenileme
+ve uzun bekleme gerektirir. Vue history render promise'i ham yanıt okumayı
+bekletemez. Telegram outbox taramadan bağımsız iki saniyede bir çalışır;
+ilk gönderimi devam eden ID retry dışında tutulur. Kapanış worker'ı durdurur
+ve scraper'ı kapatır. Kaynak kimliği/barem/skor/saat/tazelik kontrolleri ve
+Future Pace kuralları korunur. DB migration ve geçmiş veri değişikliği yok.
+Yavaş tarama sırasında ilk timeout sonrası teslimin toparlanması, eşzamanlı
+retry koruması, bekleyen Vue promise'i, kaynak hatasından sonra aynı oturumla
+devam ve gerçek ağ arızasında oturum yenileme dahil **366 test** geçti;
+değişen Python dosyaları/testler compileall ve diff-check geçti.
+Geçici profilli, DB/Telegram yazımı olmayan 90 saniyelik canlı kaynak kontrolü
+listing yükleme aşamasında timeout oldu; özel kontrol tarayıcısı kapatıldı.
+Üretimde hız iyileşmesi/yeni sinyal teslimi bu kodla henüz doğrulanmadı.
+Çalışan servis değiştirilmedi; AGENTS.md servis süreçlerine dokunmayı
+yasakladığı için yalnız botu yeniden başlatmaya kullanıcı onayı istendi.
+
+4 Ekim 2026 — Kullanıcının doğru barem ve çalışan sinyal akışı talebiyle
+kanıtlanmamış Quality 70 yayın/retry barajı kaldırıldı. Logdaki 71 geçen
+aday gözlemi (43 maç) bu baraj yüzünden engellenmişti. Kalite v1 formülü
+aynı ve yalnız açıklayıcı; Future Pace v5'in tempo, zaman, konservatif sayı
+avantajı, tekrar ve kara liste kuralları korunur. ALT/ÜST dışındaki kararlar
+filtre gerekçesi boş olsa da yayımlanmaz. Bet365/bs ham kaynak, kimlik,
+skor, saat, barem ve tazelik kontrolleri korunur. Eski MIN_SIGNAL_QUALITY
+ortam ayarı artık yayını engellemez. Yeni frozen politika bunu açıkça
+belirtir; eski politikalar eski eşikleriyle değerlendirilir, geçmiş değişmez.
+Yeni DB migration yok. Gerçek motorla 187.5 → 197.5 ikamesinin reddi,
+geçerli 187.5'in DB/bildirim adımına aynen ulaşması, yetersiz geçmişte PAS,
+düşük puanlı gerçek tahminin değerlendirilmesi ve retry regression'ları dahil
+**359 test**, compileall ve diff-check geçti. Yeni tahmin başarısı henüz
+kanıtlanmış değildir.
+SQLite backup sonrası yalnız bot mevcut servis üzerinden 20:42:03 Türkiye
+saatinde yeniden başlatıldı; çalışan kod hash'i ve yeni yayın politikası
+startup logunda doğrulandı. İki servis active/running, otomatik restart 0.
+Ana/arşiv sayfaları ve API'leri HTTP 200, DB quick_check ok. Backup'taki
+bütün alert ve snapshot satırları birebir aynı (değişen/silinen 0).
+20:44:29 kontrolünde ilk çevrim 135 saniyede 43 maçın 29'unu tamamladı
+(%67,4 kapsama); 14 maç devam kuyruğunda. 3 yeni snapshot'ın 3'ü kaynak
+doğrulamasından geçti. İşleme/döngü/Telegram hata sayısı 0; eski ve uyuşmayan
+kaynaklar güvenli atlandı. Yeni gerçek sinyal ve Telegram sinyal teslimi
+henüz gözlenmedi; ileriye dönük başarı hakkında çıkarım yapılmaz.
+
+4 Ekim 2026 — Veri/model denetimi ve ileriye dönük değerlendirme:
+`docs/FORWARD_VALIDATION_2026-10-04.md`. 1.274 eski sinyal yeni bet365 ham
+kaynak kanıtı taşımıyor. Quality v1 için maç başına ilk sinyallerle sonraki
+dönem AUC 0,503; mevcut kalite eşiğinin üstünlüğü kanıtlanmadı. Yeni eşik
+uyarlaması yapılmadı. 20 dakikalık devre saatinin boş kaydı, float kaynaklı
+bir saniye eksilme ve karar anından sonra kaydedilen tempo çıpası düzeltildi.
+Gerçek yayımlanan tahmin `prediction_context_json` içinde kod/ayar politikasını
+dondurur; shadow motor/adayı yok. `forward_validation.py` salt okunur raporda
+politikaları ayırır, ilk maç sinyalini sonuçtan önce seçer, bekleyen/iade ve
+tutarsız sonuçları ayırır. Tek eklemeli nullable kolon; eski kayıtlar NULL
+kalır. Tam test paketi **354 geçti**. Yeni ileriye dönük tahmin sonuçları
+henüz yok; başarı/kârlılık doğrulanmış değildir.
+19:56 Türkiye saatinde backup sonrası iki mevcut servis yeniden başlatıldı;
+yeni implementation hash'i doğrulandı. Eski alert/snapshot değişikliği 0,
+ilk çevrimde kaynak doğrulaması geçen yeni snapshot 3/3; loop/işleme hatası 0.
+Tam maç kapsaması ilk çevrimde %52, kalanlar sonraki çevrimde öncelikli.
+Dashboard sayfaları/API HTTP 200. Yeni gerçek sinyal/sonuç henüz yok.
+
+4 Ekim 2026 — Tekrarlayan canlı tarama timeout'u düzeltildi. İç scheduler,
+180 saniyelik hard watchdog'dan önce sekme iptali/oturum temizliği için
+45 saniye pay bırakarak sonuçları ve kapsama raporunu döndürür. Tamamlanmayan
+maçlar güncel listede hâlâ varsa sonraki çevrimde önce okunur; maç sayısı
+limiti de aynı adil sırayı kullanır. Salt kapasite ertelemesi `continuing`
+durumudur: oturum korunur ve normal kısa polling kullanılır. Gerçek kaynak
+hatası veya sıfır ilerleme `partial/error` kalır; eksik kapsama 100% gösterilmez.
+`completed_count`, `deferred_count`, `interrupted_count`, `budget_exhausted`
+sağlık loguna eklenir. Kaynak yapısı/kimliği/bet365 satırı/saat/skor/DOM
+ön kontrolü history isteğinden önce yapılır; son history doğrulaması yine
+zorunludur. Nuxt/Vue kimliği beklenirken önceki sayfanın hazır state'i kabul
+edilmez; `2Q` saatleri `Q2` olarak normalleşir. 337 test ve compileall geçti.
+Yeni DB migration yok; yön/kalite/sonuç ve arşiv gösterimi değişmedi.
+Bot düzeltmeyle 4 Ekim 2026 19:00:36 Türkiye saati yeniden başlatıldı.
+19:08 kontrolünde üç ardışık çevrim yaklaşık 135 saniyede sonuçlarını döndürdü:
+20/40, 23/50 ve 16/50 maç kontrolü; kalanlar açık `continuing` raporuyla devam
+kuyruğuna taşındı. Ana döngü, maç işleme ve Telegram hata logu 0; eşzamanlılık
+üçüncü çevrimden sonra 2'den 3'e yükseldi. 17 yeni snapshot'ın tümü yakalama
+anındaki kimlik/skor/barem/tazelik kontrolünden geçti. İki servis
+active/running, otomatik restart 0, dashboard HTTP 200. Yeni sinyal 0;
+Telegram sinyal teslimi bu kontrol sırasında gözlenmedi. Dashboard yeniden
+başlatılmadı. Geçersiz kaynaklar reddedilmeye devam eder; her tek çevrimde
+tüm canlı listenin okunmuş olduğu iddia edilmez.
+
+4 Ekim 2026 18:47 Türkiye saati — Kullanıcı servisleri 18:40:10'da yeniden
+başlattı. Bot/dashboard active/running, otomatik restart 0. Başlangıç logu
+Future Pace v5/bet365 doğrulaması/Quality 70 ile yeni kodun yüklendiğini
+gösteriyor. Dashboard, arşiv, aktif/arşiv API ve tarama durum API'si HTTP 200;
+ham kaynak kanıtı API'de görünmüyor. Saatlik worker'lar başlamış, sonraki
+kontroller 19:00:05 ve 19:10:05. SQLite quick_check başarılı.
+Canlı bot henüz tam sağlıklı değil: 50/49 maç bulunan ilk iki çevrim
+18:43:12 ve 18:46:38'de 180 saniye sınırında iptal edildi; tamamlanmış çevrim
+özeti yok. Yeniden başlatma sonrası 21 kaynak kanıtlı snapshot kaydedildi;
+ilk kontrol edilen 16'sının yeni DOM kontrolleri, kimlik/skor/barem ve yakalama
+anındaki tazelik doğrulaması geçti. Maç işleme/Telegram hata logu 0, yeni
+sinyal 0; Telegram sinyal teslimi uçtan uca gözlenmedi. Kaynakta eski,
+kilitli ve uyuşmayan history gözlemleri reddediliyor. Bu sağlık kontrolünde
+servise/koda/üretim verisine müdahale edilmedi; tarama süresi sorunu açık.
+
+4 Ekim 2026 — Kesinti sonrası devam incelemesinde, boş canlı sütununda
+kilitli/çok baremli/eksik DOM hücresinin history üzerinden kabul edilmesi
+düzeltildi. Görünür bet365 satırı ve hücresi tek ve erişilebilir olmalıdır;
+gerçekten boş hücrede taze history kullanılabilir. History saatinin saniyesi
+ve varsa Q öneki doğrulanır; protobuf tekil alan tekrarları reddedilir.
+Kanıtsız eski snapshot'lar artık yalnız tempo pencerelerinden değil, yeni
+akışın süre formatı ve saat/skor kronolojisi kontrollerinden de dışlanır.
+İlk doğrulanmış snapshot eski satırla aynı değerlerde olsa da kaydedilir;
+eski kayıtlar korunur. Ham kaynak JSON'u dashboard API'sine/display_snapshot'a
+kopyalanmaz, DB'deki kanıt alanında kalır. Bu devamda yeni migration yoktur.
+Salt okunur geçmiş kontrolü: 1.274 sinyal, 1.273 sonuçlanmış; kayıtlı final
+toplamıyla sonuç/yön aritmetiği ve frozen live/direction uyuşmazlığı 0.
+Bu, eski bookmaker kaynağını doğrulamaz. 331 test, compileall ve diff kontrolü
+geçti. Bot/dashboard active/running; bu devamdaki düzeltmeler için servisler
+yeniden başlatılmadı. Future Pace v5 ve Quality v1 matematiği değişmedi.
+
+4 Ekim 2026 — Canlı barem yalnız AIScore `bs` ana total market'inin bet365
+(`company_id=2`) history kaydından alınır. Vue kaynak maç kimliği, market, görünür satır
+ve exact match/bookmaker/market URL'sindeki ham history yanıtı birlikte doğrulanır.
+Liste canlı sütunu boş olabilir; bu durumda taze history baremi kullanılır.
+Listede canlı değer varsa aynı history baremiyle eşleşmesi zorunludur.
+History seçimi barem büyüklüğü veya response sırası yerine `updateTime` ile yapılır;
+en yeni kayıt kilitli/uyuşmaz/eskiyse eski satıra fallback yoktur. Kaynak periyot
+ve skor aynı, oyun saati farkı en fazla 30 saniye, sağlayıcı güncellemesi varsayılan
+30 saniyeden yeni olmalıdır. Kaynak okunamazsa sinyal üretilmez. Gönderim ve outbox
+tekrarında ham yanıt tekrar çözülür, kimlik/barem/güncelleme doğrulanır.
+Yeni yayınlar için `MIN_SIGNAL_QUALITY=70`; puan bir kazanma olasılığı değildir.
+Future Pace v5 karar matematiği değişmedi. Kaynak kanıtı olmayan eski snapshot'lar
+yeni tempo hesabına katılmaz; eski arşiv/sinyal/barem/sonuçlar yeniden yazılmaz.
+`alerts` ve `match_live_snapshots` için nullable `market_provenance_json` kolonları
+eklemeli/idempotent migration ile gelir. Sinyal ham history body ve SHA-256'yı,
+snapshot yalnız kaynak satırları/en yeni history kaydı ve SHA-256'yı saklar.
+Detaylı inceleme ve sınırlar: `docs/LIVE_TOTAL_AUDIT_2026-10-04.md`.
+
+2 Ekim 2026 — Gelecekteki Direction v2 denetimi için yeni ALT/ÜST kayıtlarına
+signal-time `reversal_features_version='v1'` ve `reversal_features_json`
+eklenir. JSON, opening/prematch/live hareketleri, pregame/current/required PPM,
+Fair Total farkı, basit projeksiyon, maç aşaması ve birbirine değen ama
+çakışmayan son 2–3 / önceki 3–5 dakika tempo pencerelerini saklar.
+Kaynak gözlem ve feature dondurma zamanları ile gözlem yaşı da kaydedilir.
+Eksik çıpalar NULL'dır; kapsam FULL, RECENT_ONLY veya
+INSUFFICIENT_HISTORY olarak dondurulur. Kaynak snapshot gözlemi 20 dakikadan
+eskiyse, sinyal anından sonraysa, saat/skor kronolojisi veya 40/48 dakika
+formatı tutmuyorsa pencereye alınmaz. Motor, Quality v1, Telegram, sonuç ve
+dashboard ana görünümü değişmez. İki nullable kolon eklemeli/idempotent
+migration ile oluşur; eski sinyaller NULL kalır, silme/backfill yoktur.
+Mevcut DB üzerinde salt-okunur kapsama: 1.007 sinyalin 421'i FULL,
+203'ü RECENT_ONLY, 383'ü INSUFFICIENT_HISTORY. Yeni kayıtların yazılması
+için çalışan bot servisinin yeni kodla yeniden başlaması gerekir.
+
 20 Eylül 2026 — Canlı bot sağlıklı taramalar arasında tarayıcı oturumunu korur.
 Boşalan ayrıntı sekmesi yavaş grup arkadaşını beklemeden sıradaki maçı alır.
 Sağlıklı çevrim sonrası bekleme LIVE_POLL_SECONDS (varsayılan 4 saniye), hatalı
@@ -107,9 +280,12 @@ kapsamasını, yeniden deneme sayısını ve ulaşılamayan maçları ayrı ayr�
 Ulaşılamayan maç aktif bırakılır ve sonraki çevrimde yeniden kontrol edilir.
 Aynı anda ikinci bir aktif maç taraması başlatılmaz.
 
-Sinyal motoru canlı toplam ile maç önü/açılış referansı arasındaki mutlak farkı
-dinamik eşikle karşılaştırır. Canlı barem referanstan yüksekse `ALT`, düşükse
-`ÜST` yönü oluşur; periyot, liste ve tekrar kontrolleri ayrıca uygulanır.
+Güncel sinyal motoru Future Pace v5'tir: maç önü/açılış PPM öncülüne
+yaklaştırılan tempo pencerelerinin bandı, canlı baremin kalan sürede gerektirdiği
+PPM ile karşılaştırılır. Bandın altında yeterli sayı avantajı ÜST, üstünde ALT
+üretir; bandın içi, eksik veri, erken/geç oyun veya yüksek volatilite PAS'tır.
+Canlı baremin açılışa göre artması/azalması tek başına yön belirlemez.
+Periyot, liste, tekrar ve minimum kalite kontrolleri ayrıca uygulanır.
 
 Dashboard yalnız kaynak gerçeklerini, ham barem değişimini, sinyal yönünü,
 kullanıcı işaretlerini ve final sonucunu gösterir. Canlı tabloda ayrıca sinyal

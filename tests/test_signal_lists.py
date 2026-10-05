@@ -84,15 +84,18 @@ def test_rules_apply_to_new_signals_and_pending_deliveries(database, entries, bl
              'status': 'Q2 05:00', 'score': '40 - 35', 'opening_total': 160, 'inplay_total': 171}
     assert bool(build_signal_blacklist_matches(match, profile)) is blocked
     config = Config()
+    config.MIN_SIGNAL_QUALITY = 0
+    from tests.market_fixture import verified_payload
     notifier = SimpleNamespace(send_alert=AsyncMock(return_value={'recipient': 1}))
 
     with patch('main.evaluate_live_signal', return_value=SignalDecision("opening", 160, 11, 10, "ALT", 2, "")):
-        asyncio.run(process_match(match, database, notifier, config))
+        asyncio.run(process_match(verified_payload(match), database, notifier, config))
 
     assert (database.get_alert(1) is None) is blocked
     assert notifier.send_alert.await_count == (0 if blocked else 1)
     pending = database.save_alert('pending', 'Home - Away', 160, 171, 'ALT', 11,
-                                  tournament='League', status='Q2 05:00', telegram_required=True)
+                                  tournament='League', status='Q2 05:00', score='40 - 35', telegram_required=True,
+                                  quality_score=80, market_provenance=verified_payload({**match, 'match_id': 'pending'})['market_provenance'])
     notifier.send_alert.reset_mock()
     asyncio.run(retry_pending_telegram_deliveries(database, notifier))
     assert database.get_alert(pending)['telegram_status'] == ('cancelled' if blocked else 'sent')

@@ -1,13 +1,18 @@
 # Project Map
 
-- `main.py`: sinyal akışının doğrulama/filtre/kayıt/bildirim adımları, tekrar korumaları ve Telegram outbox.
-- `live_signals.py`: maç önü/açılış referansı, yüzdesel/hibrit eşik ve çeyrek bazlı saf karar kuralları.
-- `aiscore_scraper.py`: mobil AIScore canlı maç/barem scraper'ı ve sağlık raporu.
+- `main.py`: sinyal akışının doğrulama/filtre/kayıt/bildirim adımları, tekrar korumaları, taramadan bağımsız Telegram outbox worker'ı ve oturum arızasına göre bekleme.
+- `live_signals.py`: Future Pace v5; maç önü/açılış PPM öncülü, tempo bandı ve gereken kalan PPM/sayı avantajından ALT/ÜST/PAS kararı.
+- `pace_calculator.py`: kronolojik tempo pencereleri ve maç önü PPM öncülüne yaklaştırma.
+- `signal_quality.py`: sinyal anında dondurulan Quality v1 bileşenleri ve etiketi.
+- `forward_validation.py`: gerçek yayımlanan tahminin kod/ayar bağlamını dondurur; SQLite'ı salt okunur değerlendirir, maç başına ilk sinyali ve ayrı politikaları raporlar.
+- `aiscore_scraper.py`: mobil AIScore canlı maç/barem scraper'ı, süre bütçeli adil tarama kuyruğu ve sağlık/kapsama raporu.
+- `live_market.py`: bet365 ana total kimliği, ham history protobuf çözümü, sağlayıcı tazeliği ve gönderim öncesi kaynak kanıtı doğrulaması.
 - `aiscore_browser.py`: canlı/final/yenileme için ortak Scrapling ayarları ve ayrı profil seçimi.
 - `aiscore_match_page.py`: mobil maç URL'si, kimlik/final doğrulaması ve skor tablosu okuyucusu.
 - `aiscore_final_scraper.py`: süre sınırlı final taraması, tarayıcı yaşam döngüsü ve maç bazlı ilerleme.
 - `aiscore_scoreboard.py`: aynı maçın çeyrek skorlarını satır/sütun hücrelerinden okuyan ortak DOM kodu.
 - `match_state.py`: skor ve canlı periyot/saat ayrıştırma ile şeffaf tempo projeksiyonu.
+- `reversal_features.py`: yalnız sinyal anındaki piyasa/tempo verilerinden ayrık pencere feature'ları; yön kararına katılmaz.
 - `notifier.py`: sade Telegram sinyal mesajı.
 - `db.py`: SQLite şeması, aktif/arşiv kayıtları, kullanıcı işlemleri ve outbox.
 - `dashboard.py`: Flask sayfaları ve API route'ları.
@@ -26,8 +31,9 @@
 - `static/ppm_calculator.js`, `static/ppm_calculator.css`, `templates/_ppm_calculator.html`: işlemlerden açılan, kullanıcı PPM seçimiyle kalan süre için maç sonu senaryosu hesaplayan ortak modal.
 - `run.py`: dashboard, bankroll ve zamanlanmış işleri birleştirir.
 
-Canlı akış: mobil listing → maçın total odds sayfası → aynı bookmaker açılış/canlı
-ve maç önü baremi → dinamik eşik/çeyrek/tekrar/kara liste kontrolleri → SQLite → Telegram.
+Canlı akış: mobil listing → maçın total odds sayfası → bet365 ana total ve history
+doğrulaması → Future Pace v5/tekrar/kara liste kontrolleri (Quality v1 yalnız açıklayıcı)
+→ kaynak kanıtıyla SQLite → gönderim öncesi yeniden doğrulama → Telegram.
 
 Canlı dashboard'daki tempo projeksiyonu yalnız gösterim amaçlıdır ve sinyal
 üretimine katılmaz. Sonuçlar yalnız otomatik final skor kontrolüyle yazılır.

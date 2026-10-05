@@ -1,5 +1,116 @@
 # Decisions
 
+## Maç kaynak hatasının oturum arızasından ayrılması ve hızlı Telegram retry
+
+5 Ekim 2026 — Botun 4 Ekim 20:42 yeniden başlamasından sonraki salt okunur
+günlük incelemesinde 10 sinyal teslimi, bir Telegram timeout'u ve bu gönderimin
+sonraki çevrimde kaynak süresi dolduğu için iptali görüldü. History/source
+okuma hataları kısmi taramada tüm tarayıcıyı kapatıp 25–40 saniye bekletiyordu.
+Maç bazındaki eksik/bozuk kaynak `partial` ve gerçek kapsamayla raporlanır;
+tamamlanan maçlar varsa oturum korunur ve dört saniyelik polling kullanılır.
+Bu kaynak hataları artık sıfır parsed kayıt durumunda ana döngü exception'ına
+çevrilmez. Navigasyon arızası, kapanmış tarayıcı, bütün maçların timeout olması
+veya bütçe boyunca sıfır ilerleme `session_reset_required` ile oturumu yeniler;
+liste/hard timeout arızalarının mevcut toparlanması korunur. Kaynak/history
+isteği aynı çevrimde ikinci navigasyonla tekrarlanmaz, sonraki çevrimde denenir.
+Ham history response'u Vue'nun ekranda render etmeyi bitirmesini beklemez.
+
+Telegram outbox taramadan bağımsız, aynı asyncio döngüsünde iki saniyede bir
+çalışır. İlk gönderimi devam eden alert ID'si retry dışında tutulur; gönderim
+sona erince veya hata verince koruma bırakılır. Worker hatası taramayı kapatmaz;
+bot kapanışında worker iptal edilir ve scraper kapatılır. Her retry'da mevcut
+ham kaynak/barem/tazelik ve kara liste doğrulamaları sürer. Geçerli sinyal
+sayısını artırmak için kaynak yaşı veya Future Pace kuralları gevşetilmez.
+Şema/migration, geçmiş sinyal, arşiv snapshot'ı veya sonuç değişikliği yoktur.
+
+## Kanıtlanmamış kalite yayın barajının kaldırılması
+
+4 Ekim 2026 — Kullanıcı önceki sinyal akışını koruyarak barem hatasının
+giderilmesini istedi. Yeni 70 barajı sonrası loglarda Future Pace'in geçen
+71 gözleminin tamamı (43 farklı maç) kalite 0–69 nedeniyle engellendi.
+Quality v1'in sonraki dönem sıralama başarısı AUC 0,503; bu veto için yeterli
+kanıt yok. Önceki 70 yayın eşiği kararı kaldırıldı: mevcut tempo, konservatif
+sayı avantajı, zaman, tekrar ve kara liste kuralları korunur; kalite v1 yalnız
+açıklayıcı olarak aynı şekilde saklanır. Eski MIN_SIGNAL_QUALITY ortam ayarı
+uyumluluk için okunur, yayın ve retry kararına katılmaz. ALT/ÜST dışındaki
+kararlar filtre gerekçesi boş olsa bile yayımlanamaz. Bet365/bs/raw history
+kimlik, barem, skor, saat, tazelik ve gönderim öncesi doğrulaması zorunludur.
+Yeni frozen politikada publication=verified_future_pace_v5 açıkça belirtilir;
+eski frozen politikaların kendi 70 koşulu değerlendirmede korunur. Eski
+alert/snapshot/arşiv, kalite formülü ve sonuçlar yeniden yazılmaz. Yeni DB
+migration veya shadow sistem yok. Bu değişiklik tahmin başarısı garantisi
+değildir; yeni kaynakla ileriye dönük sonuçlar henüz yeterli değildir.
+
+## Geçmişe uyarlama olmadan gerçek tahmin doğrulaması
+
+4 Ekim 2026 — Kullanıcının doğru AiScore verisi ve ileriye dönük sınama
+talebi kapsamında Quality v1 ve 70 yayın eşiği geçmiş başarılara göre yeniden
+ayarlanmaz. Maç başına ilk sinyalle sonraki dönemde Quality AUC 0,503;
+yüksek skorun güvenilirlik üstünlüğü gösterilemedi. Doğru kaynaklı yeni
+tahminin başarısı henüz ölçülemiyor. Kanıtlı aritmetik/zaman kaydı kusurları
+regression testleriyle düzeltilir. Yalnız gerçek yayımlanan sinyallerin
+kod/ayar politikasını donduran nullable DB bağlamı eklenir; shadow sistem
+ve geçmişe backfill yoktur. Salt okunur rapor sonuçtan önce maçın ilk
+sinyalini seçer ve her politika için ayrı ALT/ÜST/gün sonuçlarını verir.
+Bekleyen, iade ve geçersiz sonuç başarı sayılmaz. Ayrıntılar ve önceden
+sabitlenen değerlendirme yöntemi `FORWARD_VALIDATION_2026-10-04.md` içindedir.
+
+## Süre bütçeli canlı tarama ve kalan maçların önceliği
+
+4 Ekim 2026 — İlk iki üretim çevrimi 50/49 maçta 180 saniye sınırını aştı.
+Tarayıcı kapanıp yeni çevrim aynı listenin başından başlıyordu; kuyruğun sonu
+geride kalıyordu ve eşzamanlılık artışı için tamamlanmış çevrim oluşmuyordu.
+Hard watchdog artırılmaz ve kaynak doğrulaması gevşetilmez. İç ayrıntı
+deadline'ı bütçenin %25'i (en çok 45 saniye) kadar cleanup payı bırakır.
+Okunamadan kalan maçlar sonraki güncel listedeki mevcut maçlarla kesiştirilip
+önce taranır. Zaman/maç kapasitesi nedeniyle erteleme kaynak arızasından ayrı
+`continuing` raporlanır; oturum ve kısa polling korunur. Tamamlanan,
+ertelenen ve iptal edilen görev sayıları gerçeğe göre kaydedilir; kapsama
+oranı eksikliği saklamaz. Kaynak hataları ve sıfır ilerleme hâlâ arızadır.
+History ön kontrolü aynı kaynak kurallarını kullanır; history sonrası tam
+doğrulama ve gönderim sınırındaki kanıt kontrolü korunur. Eski DB/snapshot
+ve arşiv kayıtları değiştirilmez; migration gerekmez.
+
+## Bet365 kaynak doğrulaması ve yayın eşiği
+
+4 Ekim 2026 — Kullanıcının canlı barem hatasını düzeltip servisi yeniden başlatma
+talebiyle bet365 (`company_id=2`) ve ana `bs` total market'i zorunlu tutulur.
+İlk geçerli bookmaker satırının sıra bağımlılığı kaldırılır. Canlı baremin
+asıl kaynağı aynı kimlikteki sağlayıcının en yeni history kaydıdır. Listede canlı
+değer varsa history ile eşleşmelidir; canlı sütunu boşsa doğrulanan history
+kullanılır. Açılış/maç önü aynı bet365 satırından alınır.
+Eşleşmeyen/kilitli/eski/ambiguous kayıtlar atlanır; alternatif veya eski bareme
+dönülmez. Sağlayıcı zaman damgası yoksa tazelik kanıtlanmış sayılmaz. Tarihçe
+yanıtının ham body'si yeni alert ile saklanır ve gönderim öncesi yeniden doğrulanır.
+Eski alert'lerin live/quality/result alanları ve arşiv gösterimi korunur.
+Bu karar önceki Quality v1'in bütün ALT/ÜST adaylarını yayınlama politikasını
+değiştirir: varsayılan minimum kalite 70'tir. Sayısal puanlama ve Future Pace v5
+matematiği korunur; eşik bir backtest optimizasyonu veya başarı garantisi değildir.
+Eski snapshot'larda bet365 kanıtı olmadığı için yeni tempo çıpası olamazlar.
+Nullable kaynak kanıtı kolonları eklenir; NULL geçmişe backfill yapılmaz.
+
+Kesinti sonrası 4 Ekim devamı: boş canlı sütunu yalnız tek ve erişilebilir
+bet365 DOM hücresi gerçekten boşsa history ile tamamlanabilir; kilitli, eksik
+veya çok baremli hücre kaynak kanıtı sayılmaz. Kaynak saatinde geçerli saniye
+ve history Q öneki eşleşmesi zorunludur. Protobuf tekil alanlarında tekrar
+varsa ilk değeri seçmek yerine yanıt reddedilir. Kaynak kanıtı olmayan eski
+snapshot'lar yeni sinyalin süre formatını ve saat/skor kronolojisini de
+belirleyemez. İlk kanıtlı gözlem eski gözlemle aynı değerlere sahip olsa bile
+ayrı eklenir; DB geçmişi değiştirilmez ve ek migration gerekmez. Ham odds
+kanıtı dashboard görünümüne ve arşiv display_snapshot'ına taşınmaz.
+
+## Reversal için ileriye dönük feature toplama
+
+2 Ekim 2026 — Future Pace v5'in ALT/ÜST/PAS yönü ve Quality v1 puanlaması
+korunur. Gelecekteki reversal araştırması için yalnız yeni sinyallerde
+hesaplanan türetilmiş veriler `alerts.reversal_features_json` içinde saklanır;
+`alerts.reversal_features_version` basit sürüm işaretidir. Opening, prematch,
+live, Fair Total ve periyot zaten kolonlarda bulunduğundan tekrar kolon
+eklenmez. JSON'daki eksik tempo penceresi sayısal sıfır yerine NULL'dır.
+Pencere verileri v5'in yön kararına veya Quality'ye girmez. Eski kayıtlar
+backfill edilmez; snapshot geçmişi korunur. Eski SQLite dosyası iki nullable
+kolonun kilitli, tekrarlanabilir eklenmesiyle uyumludur.
+
 ## Format, kronoloji ve Quality v1 sürekliliği
 
 Normal süre yalnız turnuva metadata'sından seçilir; takım adındaki NBA/NCAA

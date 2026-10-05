@@ -3,6 +3,8 @@ from camoufox.sync_api import Camoufox
 
 from aiscore_scraper import LIVE_TOTAL_MARKET_JS
 from upcoming_odds import TOTAL_MARKET_JS
+from live_market import FETCH_HISTORY_JS, LIVE_SOURCE_JS, verify_market
+from tests.test_live_market import observation
 
 
 @pytest.fixture(scope="module")
@@ -33,6 +35,37 @@ def live_box(opening, prematch, inplay, company="Book A"):
         f'<div class="border2">{prematch}</div><div class="border3">{inplay}</div>'
         '</div></div>'
     )
+
+
+def test_live_source_selects_native_bet365_row_when_company_order_changes(page):
+    source, history, now = observation()
+    for reverse in (False, True):
+        page.set_content('<div class="topBox">Q2 07:14 30 - 24</div><div class="oddsBox"></div>')
+        page.evaluate(r"""rows => {
+            const el = document.querySelector('.oddsBox');
+            window.$nuxt = {$store: {state: {basketball: {basketballDetailMatchData: {match: {
+                id: 'm', statusId: 4, homeScores: [27,3,0,0,0], awayScores: [24,0,0,0,0]
+            }}}}}};
+            const companies = rows.map(r => ({id:r.bookmaker_id, name:r.bookmaker_id===2?'bet365':'1xbet'}));
+            el.innerHTML = rows.map(r => `<div class="oddsBoxContent"><div class="border3">
+                <span>${r.live[0]}</span><span>${r.live[1]}</span><span>${r.live[2]}</span>
+                </div></div>`).join('');
+            el.__vue__ = {
+                $el: el, match: window.$nuxt.$store.state.basketball.basketballDetailMatchData,
+                activeTab: 'bs', copyOddsListData: {companies, bs: rows.map(r => ({company:{id:r.bookmaker_id},
+                    f:{odd:r.opening}, l:{odd:r.prematch}, s:{odd:r.live}}))},
+                oddListDataArray: companies, allData: ['stale'], isShowModal: false,
+                async historyOdd(id, name) {this.lastRequest = [id, name]; this.isShowModal = true;}
+            };
+        }""", list(reversed(source["rows"])) if reverse else source["rows"])
+        captured = page.evaluate(LIVE_SOURCE_JS)
+        assert verify_market(captured, history, 'm', 'Q2 07:14', '30 - 24', now=now)[0]['live'] == 187.5
+        page.evaluate(FETCH_HISTORY_JS, 'm')
+        assert page.evaluate("() => {const c=document.querySelector('.oddsBox').__vue__; return [c.lastRequest,c.allData,c.isShowModal]}") == [[2, 'bet365'], [], False]
+        page.evaluate("() => document.querySelector('.oddsBoxContent:last-child .border3').innerHTML += '<span>200.5</span>'")
+        # An alternate or ambiguous line in the selected cell never supplies a live total.
+        if not reverse:
+            assert page.evaluate(LIVE_SOURCE_JS)["rendered_live"] is None
 
 
 def test_only_total_market_opening_and_same_bookmaker_are_read(page):

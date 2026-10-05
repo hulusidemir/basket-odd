@@ -153,6 +153,10 @@ def _raw_alert(
         "quarter_scores_json",
         "telegram_message_ids",
         "telegram_last_error",
+        "market_provenance_json",
+        "prediction_context_json",
+        "reversal_features_version",
+        "reversal_features_json",
     ):
         item.pop(key, None)
     return item
@@ -270,6 +274,8 @@ def _frozen_deleted_alert(row: dict) -> dict:
         "quality_label",
         "quality_version",
         "quality_factors",
+        "reversal_features_version",
+        "reversal_features_json",
     ):
         if key in stored:
             item[key] = stored[key]
@@ -300,6 +306,8 @@ def _frozen_deleted_alert(row: dict) -> dict:
         "quarter_scores_json",
         "telegram_message_ids",
         "telegram_last_error",
+        "market_provenance_json",
+        "prediction_context_json",
     ):
         item.pop(key, None)
     return item

@@ -1,10 +1,25 @@
 """Pure math module for calculating valid pace windows and shrinking them to pregame priors."""
 
+from datetime import datetime, timezone
+
+
+def _utc_timestamp(value) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
+
 
 def chronological_snapshots(snapshots: list[dict], current_state: dict) -> list[dict]:
     """Exclude clock rollback, transient score dips and pre-correction anchors."""
     current_elapsed = current_state["elapsed_game_seconds"]
     current_score = current_state["total_score"]
+    as_of = _utc_timestamp(current_state.get("observed_at"))
+    if as_of is not None:
+        snapshots = [row for row in snapshots
+                     if (recorded := _utc_timestamp(row.get("recorded_at"))) is not None
+                     and recorded <= as_of]
     segment_start = 0
     peak_score = -1
     peak_elapsed = -1
@@ -49,6 +64,8 @@ def get_future_paces(snapshots: list[dict], current_state: dict, pregame_ppm: fl
     now_score = current_state.get("total_score", 0)
     current_period = current_state.get("period")
     snapshots = chronological_snapshots(snapshots, current_state)
+    if not snapshots:
+        return []
 
     def add_future_pace(observed_pace: float, window_minutes: float):
         weight = window_minutes / (window_minutes + config.PRIOR_EQUIV_MINUTES)

@@ -90,6 +90,9 @@ class Config:
     MAX_LIVE_OBSERVATION_AGE_SECONDS: float = _float_env(
         "MAX_LIVE_OBSERVATION_AGE_SECONDS", 20.0
     )
+    MAX_LIVE_PROVIDER_AGE_SECONDS: float = _float_env("MAX_LIVE_PROVIDER_AGE_SECONDS", 30.0)
+    # Retired publication gate; accepted for compatibility with existing environments only.
+    MIN_SIGNAL_QUALITY: int = _int_env("MIN_SIGNAL_QUALITY", 70)
     LIVE_LINE_STALE_SECONDS: float = _float_env("LIVE_LINE_STALE_SECONDS", 90.0)
     LIVE_LINE_STALE_SCORE_DELTA: int = _int_env("LIVE_LINE_STALE_SCORE_DELTA", 10)
     LIVE_LINE_STALE_GAME_MINUTES: float = _float_env(
@@ -124,6 +127,23 @@ class Config:
             raise ValueError("POLL_INTERVAL_MIN, POLL_INTERVAL_MAX'ten büyük olamaz.")
         if self.SAME_DIRECTION_MIN_LIVE_DELTA < 0:
             raise ValueError("SAME_DIRECTION_MIN_LIVE_DELTA negatif olamaz.")
+        for name in (
+            "PRIOR_EQUIV_MINUTES", "MIN_EDGE_POINTS", "MIN_EDGE_RATIO", "MAX_FUTURE_BAND_WIDTH",
+            "MIN_ELAPSED_MINUTES", "MIN_REMAINING_MINUTES", "MIN_QUARTER_ELAPSED_SEC",
+            "BLOWOUT_MARGIN", "EXTREME_BLOWOUT_MARGIN", "LARGE_REPRICE_RATIO",
+        ):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"{name} sonlu ve negatif olmayan bir sayı olmalı.")
+        for name in ("BLOWOUT_EDGE_MULTIPLIER", "EXTREME_BLOWOUT_EDGE_MULTIPLIER",
+                     "LARGE_REPRICE_EDGE_MULTIPLIER", "ANCHOR_TOLERANCE_MIN_PCT", "ANCHOR_TOLERANCE_MAX_PCT"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} sonlu ve 0'dan büyük olmalı.")
+        if not 1 <= self.MIN_VALID_FUTURE_PACES <= 4:
+            raise ValueError("MIN_VALID_FUTURE_PACES 1 ile 4 arasında olmalı.")
+        if self.ANCHOR_TOLERANCE_MAX_PCT < self.ANCHOR_TOLERANCE_MIN_PCT:
+            raise ValueError("ANCHOR_TOLERANCE_MAX_PCT minimum toleranstan küçük olamaz.")
         for name in ("UNDER_MAX_NEGATIVE_LINE_MOVE", "OVER_MIN_PACE_MARGIN_RATIO",
                      "OVER_Q2_MIN_PACE_MARGIN_RATIO", "OVER_MIN_FAIR_EDGE_POINTS"):
             value = getattr(self, name)
@@ -169,6 +189,10 @@ class Config:
             )
         if not 1 <= self.MAX_LIVE_OBSERVATION_AGE_SECONDS <= 120:
             raise ValueError("MAX_LIVE_OBSERVATION_AGE_SECONDS 1 ile 120 arasında olmalı.")
+        if not 1 <= self.MAX_LIVE_PROVIDER_AGE_SECONDS <= 120:
+            raise ValueError("MAX_LIVE_PROVIDER_AGE_SECONDS 1 ile 120 arasında olmalı.")
+        if not 0 <= self.MIN_SIGNAL_QUALITY <= 100:
+            raise ValueError("MIN_SIGNAL_QUALITY 0 ile 100 arasında olmalı.")
         if not 10 <= self.LIVE_LINE_STALE_SECONDS <= 600:
             raise ValueError("LIVE_LINE_STALE_SECONDS 10 ile 600 arasında olmalı.")
         if not 1 <= self.LIVE_LINE_STALE_SCORE_DELTA <= 50:

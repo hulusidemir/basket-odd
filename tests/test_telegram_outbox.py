@@ -3,10 +3,16 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from db import Database
-from main import retry_pending_telegram_deliveries
+from config import Config
+from live_signals import SignalDecision
+from main import (
+    _deliver_signal, _run_live_loop, _telegram_outbox_worker,
+    retry_pending_telegram_deliveries, run,
+)
+from tests.market_fixture import verified_payload
 
 
 class TelegramOutboxTests(unittest.TestCase):
@@ -25,6 +31,11 @@ class TelegramOutboxTests(unittest.TestCase):
             status="Q2 05:00",
             score="40 - 35",
             telegram_required=True,
+            quality_score=80,
+            market_provenance=verified_payload({
+                "match_id": "match-1", "opening_total": 160, "inplay_total": 170,
+                "status": "Q2 05:00", "score": "40 - 35",
+            })["market_provenance"],
         )
 
     def tearDown(self):
@@ -63,6 +74,124 @@ class TelegramOutboxTests(unittest.TestCase):
         self.assertEqual(row["telegram_status"], "retry")
         self.assertEqual(row["telegram_retry_count"], 1)
         self.assertNotIn("chat", row["telegram_last_error"].lower())
+
+    def test_retry_during_slow_scan_recovers_initial_timeout_without_duplicate_send(self):
+        async def scenario():
+            started = asyncio.Event()
+            release = asyncio.Event()
+            delivered = asyncio.Event()
+            attempts = 0
+            in_flight = set()
+            match = verified_payload({
+                "match_id": "match-1", "match_name": "Home - Away", "tournament": "FIBA",
+                "opening_total": 160, "prematch_total": None, "inplay_total": 170,
+                "status": "Q2 05:00", "score": "40 - 35",
+            })
+            decision = SignalDecision("opening", 160, 10, 0, "ALT", 2)
+
+            async def send(*args, **kwargs):
+                nonlocal attempts
+                attempts += 1
+                if attempts == 1:
+                    started.set()
+                    await release.wait()
+                    raise TimeoutError()
+                delivered.set()
+                return {"chat": 123}
+
+            notifier = type("Notifier", (), {"send_alert": AsyncMock(side_effect=send)})()
+            async def slow_scan(**kwargs):
+                await asyncio.Event().wait()
+
+            scraper = type("Scraper", (), {
+                "get_live_basketball_totals": AsyncMock(side_effect=slow_scan),
+            })()
+            # Keep a real live scan waiting while initial delivery and retries run.
+            scan = asyncio.create_task(_run_live_loop(Config(), self.db, notifier, scraper, in_flight))
+            initial = asyncio.create_task(_deliver_signal(
+                match, decision, 1, self.alert_id, self.db, notifier, Config(), in_flight,
+            ))
+            worker = None
+            try:
+                await asyncio.wait_for(started.wait(), 1)
+                self.assertEqual(in_flight, {self.alert_id})
+                summary = await retry_pending_telegram_deliveries(
+                    self.db, notifier, in_flight_alert_ids=in_flight,
+                )
+                self.assertEqual(summary["pending"], 0)
+                self.assertEqual(attempts, 1)
+                release.set()
+                with self.assertRaises(TimeoutError):
+                    await initial
+                self.assertEqual(in_flight, set())
+                worker = asyncio.create_task(_telegram_outbox_worker(
+                    self.db, notifier, in_flight, interval=0.01,
+                ))
+                await asyncio.wait_for(delivered.wait(), 1)
+                self.assertFalse(scan.done())
+                self.assertEqual(attempts, 2)
+                self.assertEqual(self.db.get_alert(self.alert_id)["telegram_status"], "sent")
+            finally:
+                tasks = [task for task in (scan, initial, worker) if task is not None]
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+        asyncio.run(scenario())
+
+    def test_run_cancellation_stops_outbox_and_closes_scraper(self):
+        async def scenario():
+            config = Config()
+            config.validate = lambda: None
+            scraper = type("Scraper", (), {"close": AsyncMock()})()
+            notifier = type("Notifier", (), {"send_startup": AsyncMock()})()
+            worker_started = asyncio.Event()
+            worker_stopped = asyncio.Event()
+
+            async def worker(*args):
+                worker_started.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    worker_stopped.set()
+
+            async def scan(*args):
+                await asyncio.Event().wait()
+
+            with patch("main.Config", return_value=config), \
+                    patch("main.Database", return_value=self.db), \
+                    patch("main.TelegramNotifier", return_value=notifier), \
+                    patch("main.AiscoreScraper", return_value=scraper), \
+                    patch("main._telegram_outbox_worker", side_effect=worker), \
+                    patch("main._run_live_loop", side_effect=scan):
+                task = asyncio.create_task(run())
+                await asyncio.wait_for(worker_started.wait(), 1)
+                task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await task
+                self.assertTrue(worker_stopped.is_set())
+                scraper.close.assert_awaited_once()
+
+        asyncio.run(scenario())
+
+    def test_fresh_low_quality_signal_remains_retryable(self):
+        with self.db._conn() as conn:
+            conn.execute("UPDATE alerts SET quality_score=0 WHERE id=?", (self.alert_id,))
+        notifier = type("Notifier", (), {"send_alert": AsyncMock(return_value={"chat": 123})})()
+        summary = asyncio.run(retry_pending_telegram_deliveries(self.db, notifier))
+        self.assertEqual(summary["sent"], 1)
+        self.assertEqual(self.db.get_alert(self.alert_id)["live"], 170)
+
+    def test_legacy_or_expired_source_is_cancelled_without_changing_saved_line(self):
+        for proof in (None, '{"version":"bet365_history_v1","verified":true,"provider_updated_at":1}'):
+            with self.db._conn() as conn:
+                conn.execute("UPDATE alerts SET market_provenance_json=?, telegram_status='pending' WHERE id=?",
+                             (proof, self.alert_id))
+            notifier = type("Notifier", (), {"send_alert": AsyncMock()})()
+            summary = asyncio.run(retry_pending_telegram_deliveries(self.db, notifier))
+            assert summary["cancelled"] == 1
+            notifier.send_alert.assert_not_awaited()
+            assert self.db.get_alert(self.alert_id)["live"] == 170
 
     def test_partial_delivery_retries_only_missing_recipient(self):
         self.db.mark_telegram_delivery_failed(

@@ -187,9 +187,16 @@ class Database:
                 ("quality_label", "TEXT"),
                 ("quality_version", "TEXT"),
                 ("quality_factors", "TEXT"),
+                ("reversal_features_version", "TEXT"),
+                ("reversal_features_json", "TEXT"),
+                ("market_provenance_json", "TEXT"),
+                ("prediction_context_json", "TEXT"),
             ):
                 if name not in alert_columns:
                     conn.execute(f"ALTER TABLE alerts ADD COLUMN {name} {sql_type}")
+            snapshot_columns = {row["name"] for row in conn.execute("PRAGMA table_info(match_live_snapshots)")}
+            if "market_provenance_json" not in snapshot_columns:
+                conn.execute("ALTER TABLE match_live_snapshots ADD COLUMN market_provenance_json TEXT")
             if "quarter_scores_json" not in alert_columns:
                 conn.execute(
                     "ALTER TABLE alerts "
@@ -386,6 +393,10 @@ class Database:
         quality_label: str | None = None,
         quality_version: str | None = None,
         quality_factors: dict | None = None,
+        reversal_features_version: str | None = None,
+        reversal_features: dict | None = None,
+        market_provenance: dict | None = None,
+        prediction_context: dict | None = None,
     ) -> int:
         quarter_scores_json = (
             json.dumps(quarter_scores, ensure_ascii=False, separators=(",", ":"))
@@ -439,9 +450,10 @@ class Database:
                     tournament, status, url, score, quarter_scores_json, signal_count,
                     bet_placed, ignored, followed, alert_period, alert_moment,
                     telegram_status, reference_used, reference_total, effective_threshold,
-                    fair_total, quality_score, quality_label, quality_version, quality_factors
+                    fair_total, quality_score, quality_label, quality_version, quality_factors,
+                    reversal_features_version, reversal_features_json, market_provenance_json, prediction_context_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     match_id, match_name, opening, prematch, live, direction, diff,
@@ -451,6 +463,10 @@ class Database:
                     reference_used, reference_total, effective_threshold,
                     fair_total, quality_score, quality_label, quality_version,
                     json.dumps(quality_factors, separators=(",", ":")) if quality_factors is not None else None,
+                    reversal_features_version,
+                    json.dumps(reversal_features, separators=(",", ":"), allow_nan=False) if reversal_features is not None else None,
+                    json.dumps(market_provenance, separators=(",", ":"), allow_nan=False) if market_provenance is not None else None,
+                    json.dumps(prediction_context, separators=(",", ":"), allow_nan=False) if prediction_context is not None else None,
                 ),
             )
             return int(cursor.lastrowid)
@@ -1551,16 +1567,20 @@ class Database:
         total_score: int,
         pregame_total: float | None,
         live_total: float,
-        heartbeat_seconds: int = 60
+        heartbeat_seconds: int = 60,
+        market_provenance: dict | None = None,
     ) -> bool:
         with self._conn() as conn:
+            # A legacy observation cannot block or suppress the first snapshot
+            # from the verified provider, even when its clock/score is identical.
             last = conn.execute(
                 """
                 SELECT * FROM match_live_snapshots
                 WHERE match_id = ?
+                  AND (? = 0 OR market_provenance_json IS NOT NULL)
                 ORDER BY id DESC LIMIT 1
                 """,
-                (match_id,)
+                (match_id, int(bool(market_provenance)))
             ).fetchone()
 
             if last and elapsed_game_seconds < last["elapsed_game_seconds"]:
@@ -1584,10 +1604,11 @@ class Database:
                     """
                     INSERT INTO match_live_snapshots (
                         match_id, period, game_clock, elapsed_game_seconds, remaining_minutes,
-                        home_score, away_score, total_score, pregame_total, live_total
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        home_score, away_score, total_score, pregame_total, live_total, market_provenance_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (match_id, period, game_clock, elapsed_game_seconds, remaining_minutes, home_score, away_score, total_score, pregame_total, live_total)
+                    (match_id, period, game_clock, elapsed_game_seconds, remaining_minutes, home_score, away_score, total_score, pregame_total, live_total,
+                     json.dumps({k: v for k, v in market_provenance.items() if k != "raw_history_base64"}, separators=(",", ":"), allow_nan=False) if market_provenance else None)
                 )
                 return True
         return False

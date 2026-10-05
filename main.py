@@ -26,7 +26,10 @@ from match_state import (
 from signal_lists import build_signal_blacklist_matches, build_signal_list_profile
 from signal_repeat import live_total_delta
 from live_signals import SignalDecision, evaluate_live_signal, valid_total
+from reversal_features import collect_reversal_features
 from signal_quality import score_signal_quality
+from live_market import provenance_error
+from forward_validation import IMPLEMENTATION_HASH, freeze_prediction
 
 
 class _ConsecutiveFailureAlertLatch:
@@ -145,6 +148,10 @@ def _scraper_health_summary(scraper) -> dict | None:
         "unverified_count",
         "attempted_count",
         "unattempted_count",
+        "completed_count",
+        "deferred_count",
+        "interrupted_count",
+        "budget_exhausted",
         "parsed_count",
         "skipped_count",
         "failed_count",
@@ -153,6 +160,7 @@ def _scraper_health_summary(scraper) -> dict | None:
         "emitted_count",
         "effective_concurrency",
         "navigation_failure_count",
+        "session_reset_required",
         "skip_reason_summary",
         "matches_checked",
         "matches_parsed",
@@ -260,10 +268,16 @@ def _next_signal_count(match, decision, db, config) -> int | None:
 
 
 def _save_signal(match: dict, decision: SignalDecision, signal_count: int, db: Database,
-                 config: Config, observation_age_seconds: float | None = None) -> int:
+                 config: Config, observation_age_seconds: float | None = None,
+                 snapshots: list[dict] | None = None) -> int | None:
     repeated = signal_count > 1 and db.latest_match_alert_in_direction(match["match_id"], decision.direction) is not None
     score, label, factors = score_signal_quality(
         match, decision, config, repeated=repeated, observation_age_seconds=observation_age_seconds,
+    )
+    # Quality v1 is descriptive: its historical score has not validated a publication veto.
+    # The verified source and Future Pace decision determine eligibility upstream.
+    reversal_features = collect_reversal_features(
+        match, snapshots or [], decision, observation_age_seconds=observation_age_seconds,
     )
     return db.save_alert(
         match["match_id"], match["match_name"], match["opening_total"], match["inplay_total"],
@@ -279,10 +293,28 @@ def _save_signal(match: dict, decision: SignalDecision, signal_count: int, db: D
         effective_threshold=decision.effective_threshold,
         fair_total=decision.sustainable_projection_center,
         quality_score=score, quality_label=label, quality_version="v1", quality_factors=factors,
+        reversal_features_version="v1", reversal_features=reversal_features,
+        market_provenance=match.get("market_provenance"),
+        prediction_context=freeze_prediction(match, decision, config, snapshots or []),
     )
 
 
-async def _deliver_signal(match, decision, signal_count, alert_id, db, notifier):
+async def _deliver_signal(match, decision, signal_count, alert_id, db, notifier, config,
+                          in_flight_alert_ids: set[int] | None = None):
+    if in_flight_alert_ids is not None:
+        in_flight_alert_ids.add(alert_id)
+    try:
+        await _deliver_signal_payload(match, decision, signal_count, alert_id, db, notifier, config)
+    finally:
+        if in_flight_alert_ids is not None:
+            in_flight_alert_ids.discard(alert_id)
+
+
+async def _deliver_signal_payload(match, decision, signal_count, alert_id, db, notifier, config):
+    reason = provenance_error(match, config.MAX_LIVE_PROVIDER_AGE_SECONDS)
+    if reason:
+        db.cancel_telegram_delivery(alert_id, f"Source validation failed before delivery: {reason}")
+        return
     followed_upcoming = db.is_upcoming_followed(match["match_id"])
 
     message_ids = {}
@@ -331,6 +363,7 @@ async def process_match(
     notifier: TelegramNotifier,
     config: Config,
     signal_list_profile: dict | None = None,
+    in_flight_alert_ids: set[int] | None = None,
 ) -> None:
     observation_age = _live_observation_age_seconds(match)
     max_age = float(getattr(config, "MAX_LIVE_OBSERVATION_AGE_SECONDS", 20.0))
@@ -345,6 +378,12 @@ async def process_match(
     match = _normalize_match_payload(match)
     if _match_is_blocked(match, db, config, signal_list_profile):
         return
+    source_error = provenance_error(match, float(getattr(config, "MAX_LIVE_PROVIDER_AGE_SECONDS", 30.0)))
+    if source_error:
+        logging.getLogger("main").warning(
+            "Unverified live total rejected: match_id=%s reason=%s", match["match_id"], source_error,
+        )
+        return
     if match.get("_market_stale"):
         logging.getLogger("main").warning(
             "Skipped stale market observation after list filters: match=%s reason=%s",
@@ -353,7 +392,10 @@ async def process_match(
         )
         return
 
-    previous_snapshots = db.get_match_snapshots(match["match_id"])
+    previous_snapshots = [
+        row for row in db.get_match_snapshots(match["match_id"])
+        if _snapshot_has_verified_market(row)
+    ]
     configured_clock = game_clock("", tournament=match["tournament"])
     four_quarters = configured_clock["period_count"] == 4
     observed_seconds = quarter_clock_seconds(match["status"]) if four_quarters else None
@@ -370,10 +412,13 @@ async def process_match(
         and (frozen_12_minutes or observed_12_minutes)
     )
     with confirmed_12_minute_quarters(runtime_override):
-        await _process_match_with_format(match, db, notifier, config, observation_age, runtime_override)
+        await _process_match_with_format(
+            match, db, notifier, config, observation_age, runtime_override, in_flight_alert_ids,
+        )
 
 
-async def _process_match_with_format(match, db, notifier, config, observation_age, runtime_override):
+async def _process_match_with_format(match, db, notifier, config, observation_age, runtime_override,
+                                     in_flight_alert_ids: set[int] | None = None):
     # Save snapshot
     clock = game_clock(match["status"], match["match_name"], match["tournament"])
     period = clock["period"]
@@ -385,10 +430,13 @@ async def _process_match_with_format(match, db, notifier, config, observation_ag
         pc = clock["period_count"]
         rem = clock["remaining_min"]
         elap_min = (period - 1) * ql + (ql - rem)
-        elapsed_sec = int(elap_min * 60)
+        elapsed_sec = round(elap_min * 60)
         remaining_min = (pc * ql) - elap_min
 
-        snapshots = db.get_match_snapshots(match["match_id"])
+        snapshots = [
+            row for row in db.get_match_snapshots(match["match_id"])
+            if _snapshot_has_verified_market(row)
+        ]
         current_score = home_score + away_score
         if snapshots and elapsed_sec < max(row["elapsed_game_seconds"] for row in snapshots):
             logging.getLogger("main").warning(
@@ -419,10 +467,7 @@ async def _process_match_with_format(match, db, notifier, config, observation_ag
         db.save_snapshot_if_changed(
             match_id=match["match_id"],
             period=period,
-            game_clock=(
-                f"{divmod(seconds, 60)[0]:02d}:{divmod(seconds, 60)[1]:02d}"
-                if (seconds := quarter_clock_seconds(match["status"])) is not None else ""
-            ),
+            game_clock=f"{round(rem * 60) // 60:02d}:{round(rem * 60) % 60:02d}",
             elapsed_game_seconds=elapsed_sec,
             remaining_minutes=remaining_min,
             home_score=home_score,
@@ -430,7 +475,8 @@ async def _process_match_with_format(match, db, notifier, config, observation_ag
             total_score=home_score + away_score,
             pregame_total=valid_total(match.get("prematch_total")),
             live_total=float(match["inplay_total"]),
-            heartbeat_seconds=config.HEARTBEAT_SECONDS
+            heartbeat_seconds=config.HEARTBEAT_SECONDS,
+            market_provenance=match.get("market_provenance"),
         )
         if score_decreased:
             logging.getLogger("main").warning(
@@ -438,7 +484,10 @@ async def _process_match_with_format(match, db, notifier, config, observation_ag
             )
             return
 
-    snapshots = db.get_match_snapshots(match["match_id"])
+    snapshots = [
+        row for row in db.get_match_snapshots(match["match_id"])
+        if _snapshot_has_verified_market(row)
+    ]
     confirmed_index = (
         first_confirmed_12_snapshot_index(snapshots, match["tournament"])
         if runtime_override else None
@@ -449,15 +498,35 @@ async def _process_match_with_format(match, db, notifier, config, observation_ag
         "📊 %s | Referans (%s): %.1f | Canlı: %.1f | Fark: %+.1f | Eşik: %.2f | Durum: %s | Filtre: %s",
         match["match_name"], decision.reference_used, decision.reference_total,
         match["inplay_total"], decision.diff, decision.effective_threshold,
-        match["status"], decision.skip_reason or "passed",
+        match["status"], decision.skip_reason or ("passed" if decision.direction in ("ALT", "ÜST") else "invalid_direction"),
     )
-    if decision.skip_reason:
+    if decision.skip_reason or decision.direction not in ("ALT", "ÜST"):
         return
     signal_count = _next_signal_count(match, decision, db, config)
     if signal_count is None:
         return
-    alert_id = _save_signal(match, decision, signal_count, db, config, observation_age)
-    await _deliver_signal(match, decision, signal_count, alert_id, db, notifier)
+    alert_id = _save_signal(match, decision, signal_count, db, config, observation_age, decision_snapshots)
+    if alert_id is None:
+        return
+    await _deliver_signal(
+        match, decision, signal_count, alert_id, db, notifier, config, in_flight_alert_ids,
+    )
+
+
+def _snapshot_has_verified_market(row: dict) -> bool:
+    """Old observations have no bookmaker proof and cannot anchor the new source."""
+    try:
+        proof = json.loads(row.get("market_provenance_json") or "null")
+    except (TypeError, ValueError):
+        return False
+    return (
+        isinstance(proof, dict) and proof.get("version") == "bet365_history_v1"
+        and proof.get("verified") is True and proof.get("market") == "bs"
+        and proof.get("bookmaker_id") == 2 and proof.get("match_id") == row.get("match_id")
+        and proof.get("live") == row.get("live_total")
+        and proof.get("score") == f'{row.get("home_score")} - {row.get("away_score")}'
+        and proof.get("status") == f'Q{row.get("period")} {row.get("game_clock")}'
+    )
 
 
 async def process_match_batch(
@@ -510,10 +579,14 @@ async def retry_pending_telegram_deliveries(
     notifier: TelegramNotifier,
     *,
     limit: int = 20,
+    in_flight_alert_ids: set[int] | None = None,
 ) -> dict:
     """Retry durable alert deliveries without blocking other rows."""
     log = logging.getLogger("main")
-    rows = db.pending_telegram_alerts(limit=limit)
+    rows = [
+        row for row in db.pending_telegram_alerts(limit=limit)
+        if row.get("id") not in (in_flight_alert_ids or set())
+    ]
     sent = 0
     failed = 0
     cancelled = 0
@@ -523,6 +596,19 @@ async def retry_pending_telegram_deliveries(
     )
     for row in rows:
         alert_id = int(row.get("id") or 0)
+        try:
+            proof = json.loads(row.get("market_provenance_json") or "null")
+        except (TypeError, ValueError):
+            proof = None
+        payload = {
+            "market_provenance": proof, "match_id": row.get("match_id"),
+            "opening_total": row.get("opening"), "prematch_total": row.get("prematch"),
+            "inplay_total": row.get("live"), "status": row.get("status"), "score": row.get("score"),
+        }
+        if provenance_error(payload, Config.MAX_LIVE_PROVIDER_AGE_SECONDS):
+            db.cancel_telegram_delivery(alert_id, "Source proof expired, missing or inconsistent")
+            cancelled += 1
+            continue
         blacklist_matches = build_signal_blacklist_matches(row, signal_list_profile)
         if blacklist_matches:
             matched = ", ".join(
@@ -620,6 +706,32 @@ async def retry_pending_telegram_deliveries(
     }
 
 
+async def _telegram_outbox_worker(db, notifier, in_flight_alert_ids, *, interval=2.0):
+    """Retry while browser navigation is running, before source evidence expires."""
+    log = logging.getLogger("main")
+    while True:
+        try:
+            summary = await retry_pending_telegram_deliveries(
+                db, notifier, in_flight_alert_ids=in_flight_alert_ids,
+            )
+            if summary["pending"]:
+                log.info(
+                    "Telegram outbox: pending=%s sent=%s failed=%s cancelled=%s",
+                    summary["pending"], summary["sent"], summary["failed"], summary["cancelled"],
+                )
+        except Exception as exc:
+            log.warning("Telegram outbox check failed: error_type=%s", type(exc).__name__)
+        await asyncio.sleep(interval)
+
+
+def _live_scan_needs_backoff(health: dict | None) -> bool:
+    if not health:
+        return False
+    return bool(health.get("session_reset_required")) or health.get("status") in {
+        "error", "failed", "degraded",
+    }
+
+
 async def run():
     config = Config()
     try:
@@ -645,30 +757,46 @@ async def run():
         stale_line_seconds=config.LIVE_LINE_STALE_SECONDS,
         stale_score_delta=config.LIVE_LINE_STALE_SCORE_DELTA,
         stale_game_minutes=config.LIVE_LINE_STALE_GAME_MINUTES,
+        provider_max_age_seconds=config.MAX_LIVE_PROVIDER_AGE_SECONDS,
+        cycle_timeout_seconds=config.LIVE_SCRAPE_TIMEOUT_SECONDS,
     )
 
     await notifier.send_startup()
+    log.info("Prediction audit enabled: implementation_sha256=%s; real published signals only.", IMPLEMENTATION_HASH)
     log.info("Healthy live poll: %.1fs; persistent browser and continuous detail queue enabled.", config.LIVE_POLL_SECONDS)
     log.info(
-        "Bot started. Threshold: %s%% (%s, hybrid floor: %s pts) | Q4 disabled: %s | OT disabled | Poll: %s-%ss | Max/match: %s | Same direction: %s pts live-total gap | 1 alert per period",
-        config.THRESHOLD_PERCENT, config.THRESHOLD_MODE, config.THRESHOLD, config.DISABLE_Q4_SIGNALS,
+        "Live scan continuation: hard_budget=%.1fs; unfinished matches have priority; capacity deferrals retain the browser session.",
+        config.LIVE_SCRAPE_TIMEOUT_SECONDS,
+    )
+    log.info(
+        "Live source verification: bet365 company_id=2 market=bs history_max_age=%.1fs; Quality v1 informational; publication=verified_future_pace_v5",
+        config.MAX_LIVE_PROVIDER_AGE_SECONDS,
+    )
+    log.info(
+        "Bot started. Future Pace v5 | elapsed >= %s min | remaining >= %s min | valid paces >= %s | edge >= max(%s pts, live * %s) | OT disabled | Poll: %s-%ss | Max/match: %s | Same direction: %s pts live-total gap | 1 alert per period",
+        config.MIN_ELAPSED_MINUTES, config.MIN_REMAINING_MINUTES, config.MIN_VALID_FUTURE_PACES,
+        config.MIN_EDGE_POINTS, config.MIN_EDGE_RATIO,
         config.POLL_INTERVAL_MIN, config.POLL_INTERVAL_MAX,
         config.MAX_SIGNALS_PER_MATCH, config.SAME_DIRECTION_MIN_LIVE_DELTA,
     )
 
+    in_flight_alert_ids: set[int] = set()
+    outbox_task = asyncio.create_task(_telegram_outbox_worker(db, notifier, in_flight_alert_ids))
+    try:
+        await _run_live_loop(config, db, notifier, scraper, in_flight_alert_ids)
+    finally:
+        outbox_task.cancel()
+        await asyncio.gather(outbox_task, return_exceptions=True)
+        await scraper.close()
+
+
+async def _run_live_loop(config, db, notifier, scraper, in_flight_alert_ids):
+    log = logging.getLogger("main")
     failure_alert = _ConsecutiveFailureAlertLatch(threshold=5)
 
     while True:
+        needs_backoff = False
         try:
-            delivery_summary = await retry_pending_telegram_deliveries(db, notifier)
-            if delivery_summary["pending"]:
-                log.info(
-                    "Telegram outbox: pending=%s sent=%s failed=%s cancelled=%s",
-                    delivery_summary["pending"],
-                    delivery_summary["sent"],
-                    delivery_summary["failed"],
-                    delivery_summary["cancelled"],
-                )
             cycle_started = time.monotonic()
             cycle_summary = {"received": 0, "processed": 0, "failed": 0}
             signal_list_profile = build_signal_list_profile(db.list_signal_list_entries())
@@ -682,6 +810,7 @@ async def run():
                         notifier,
                         config,
                         signal_list_profile,
+                        in_flight_alert_ids,
                     )
                     cycle_summary["processed"] += 1
                 except Exception as exc:
@@ -731,6 +860,7 @@ async def run():
                 cycle_summary["failed"],
             )
             health_status = str((health or {}).get("status") or "").lower()
+            needs_backoff = _live_scan_needs_backoff(health)
             degraded = (
                 cycle_summary["failed"] > 0
                 or health_status in {"partial", "error", "failed", "degraded"}
@@ -761,13 +891,15 @@ async def run():
             log.info("Bot stopped.")
             break
         except Exception as e:
+            needs_backoff = True
             consecutive_errors, should_alert = failure_alert.record_failure()
             log.error(f"Loop error (#{consecutive_errors}): {e}", exc_info=True)
             if should_alert:
                 await notifier.send_error(f"{consecutive_errors} consecutive errors: {e}")
 
-        # Healthy cycles resume quickly; failures retain the configured backoff.
-        delay = config.LIVE_POLL_SECONDS if consecutive_errors == 0 else random.uniform(
+        # Match data failures remain visible, but only session/listing failures
+        # delay the whole live feed. Telegram retries run independently.
+        delay = config.LIVE_POLL_SECONDS if not needs_backoff else random.uniform(
             config.POLL_INTERVAL_MIN, config.POLL_INTERVAL_MAX
         )
         log.debug(f"Next check in {delay:.0f}s")

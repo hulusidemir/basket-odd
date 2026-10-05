@@ -13,6 +13,10 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 from aiscore_browser import session_options
 from aiscore_match_page import normalize_match_page
 from aiscore_scoreboard import QUARTER_SCORES_JS
+from live_market import (
+    FETCH_HISTORY_JS, LIVE_SOURCE_JS, attach_raw_history, decode_history,
+    history_response_matches, source_error, verify_market,
+)
 from scrapling.fetchers import AsyncStealthySession
 from match_state import (
     confirmed_12_minute_quarters, game_clock, normalize_quarter_scores,
@@ -218,8 +222,11 @@ def _detail_status_from_top_text(value) -> dict:
     if explicit_final or standalone_ended:
         return {"status": "Full Time", "is_finished": True, "period_ended": False}
     if clock:
+        period = clock.group(1).upper()
+        if re.fullmatch(r"[1-4]Q", period):
+            period = f"Q{period[0]}"
         return {
-            "status": f"{clock.group(1).upper()} {clock.group(2)}",
+            "status": f"{period} {clock.group(2)}",
             "is_finished": False,
             "period_ended": False,
         }
@@ -294,6 +301,8 @@ class AiscoreScraper:
         stale_score_delta: int = 10,
         stale_game_minutes: float = 2.0,
         persistent_session: bool = False,
+        provider_max_age_seconds: float = 30.0,
+        cycle_timeout_seconds: float = 180.0,
     ):
         self.aiscore_url = aiscore_url
         self.max_matches_per_cycle = max_matches_per_cycle
@@ -303,6 +312,9 @@ class AiscoreScraper:
         self.stale_line_seconds = max(10.0, float(stale_line_seconds))
         self.stale_score_delta = max(1, int(stale_score_delta))
         self.stale_game_minutes = max(0.5, float(stale_game_minutes))
+        self.provider_max_age_seconds = max(1.0, float(provider_max_age_seconds))
+        self.cycle_timeout_seconds = max(30.0, float(cycle_timeout_seconds))
+        self._pending_match_links: list[str] = []
         self.last_report: dict = {}
         self._last_listing_diagnostics: dict = {}
         self._line_observations: dict[tuple[str, str], dict] = {}
@@ -339,27 +351,45 @@ class AiscoreScraper:
             await self.close()
             raise
         else:
-            if not self.persistent_session or self.last_report.get("status") == "partial":
+            if not self.persistent_session or self.last_report.get("session_reset_required"):
                 await self.close()
 
-    async def _detail_results(self, context, links):
+    async def _detail_results(self, context, links, *, deadline=None,
+                              started_links=None, completed_links=None):
         """Refill vacant slots without waiting for the slowest page in a batch."""
         pending = set()
+        task_links = {}
         iterator = iter(links)
         exhausted = False
         try:
             while pending or not exhausted:
+                if deadline is not None and time.monotonic() >= deadline:
+                    self.last_report["budget_exhausted"] = True
+                    break
                 while not exhausted and len(pending) < self._effective_concurrency:
                     link = next(iterator, None)
                     if link is None:
                         exhausted = True
                         break
-                    pending.add(asyncio.create_task(self._extract_single_with_timeout(context, link)))
+                    task = asyncio.create_task(self._extract_single_with_timeout(context, link))
+                    pending.add(task)
+                    task_links[task] = link
+                    if started_links is not None:
+                        started_links.add(link)
                 if not pending:
                     break
-                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                remaining = max(0.0, deadline - time.monotonic()) if deadline is not None else None
+                done, pending = await asyncio.wait(
+                    pending, timeout=remaining, return_when=asyncio.FIRST_COMPLETED,
+                )
+                if not done:
+                    self.last_report["budget_exhausted"] = True
+                    break
                 results = []
                 for task in done:
+                    link = task_links.pop(task)
+                    if completed_links is not None:
+                        completed_links.add(link)
                     try:
                         results.append(task.result())
                     except Exception as exc:
@@ -636,6 +666,10 @@ class AiscoreScraper:
             "unverified_count": 0,
             "attempted_count": 0,
             "unattempted_count": 0,
+            "completed_count": 0,
+            "deferred_count": 0,
+            "interrupted_count": 0,
+            "budget_exhausted": False,
             "parsed_count": 0,
             "skipped_count": 0,
             "failed_count": 0,
@@ -644,6 +678,7 @@ class AiscoreScraper:
             "emitted_count": 0,
             "effective_concurrency": self._effective_concurrency,
             "navigation_failure_count": 0,
+            "session_reset_required": False,
             "skip_reasons": {},
             "listing": {},
             "errors": [],
@@ -780,11 +815,21 @@ class AiscoreScraper:
                 )
                 out = []
 
-                batch_links = links[: self.max_matches_per_cycle]
-                report["attempted_count"] = len(batch_links)
-                report["unattempted_count"] = max(0, len(links) - len(batch_links))
+                current_links = set(links)
+                queued = [link for link in self._pending_match_links if link in current_links]
+                queued_set = set(queued)
+                ordered_links = queued + [link for link in links if link not in queued_set]
+                batch_links = ordered_links[: self.max_matches_per_cycle]
+                started_links, completed_links = set(), set()
+                # Keep time for cancelling tabs and emitting the cycle report
+                # before the main loop's hard watchdog closes the browser.
+                reserve = min(45.0, self.cycle_timeout_seconds * 0.25)
+                deadline = cycle_started + self.cycle_timeout_seconds - reserve
 
-                async with aclosing(self._detail_results(context, batch_links)) as results:
+                async with aclosing(self._detail_results(
+                    context, batch_links, deadline=deadline,
+                    started_links=started_links, completed_links=completed_links,
+                )) as results:
                     async for result in results:
                         if isinstance(result, dict):
                             out.append(result)
@@ -805,7 +850,9 @@ class AiscoreScraper:
                                 report["skipped_count"] += 1
                         elif isinstance(result, Exception):
                             report["failed_count"] += 1
-                            if isinstance(result, _TransientNavigationError):
+                            if (isinstance(result, _TransientNavigationError)
+                                    or self._is_transient_navigation_error(result)
+                                    or "has been closed" in str(result).lower()):
                                 report["navigation_failure_count"] += 1
                             error = f"{type(result).__name__}: {result}"
                             report["errors"].append(error)
@@ -814,6 +861,12 @@ class AiscoreScraper:
                             report["failed_count"] += 1
                             report["errors"].append("unexpected extraction result")
                 report["effective_concurrency"] = self._effective_concurrency
+                self._pending_match_links = [link for link in ordered_links if link not in completed_links]
+                report["attempted_count"] = len(started_links)
+                report["completed_count"] = len(completed_links)
+                report["unattempted_count"] = len(links) - len(started_links)
+                report["deferred_count"] = len(self._pending_match_links)
+                report["interrupted_count"] = len(started_links - completed_links)
 
                 report["parsed_count"] = len(out)
                 report["skip_reason_summary"] = ", ".join(
@@ -828,26 +881,24 @@ class AiscoreScraper:
                     else None
                 )
                 report["parse_coverage_pct"] = (
-                    round((len(out) / len(batch_links)) * 100, 1)
-                    if batch_links
+                    round((len(out) / len(started_links)) * 100, 1)
+                    if started_links
                     else None
                 )
-                if (
-                    links
-                    and not out
-                    and report["failed_count"]
-                    and not report["skipped_count"]
-                    and report["failed_count"] != report["skip_reasons"].get(
-                        "incomplete_live_core", 0
-                    )
-                ):
-                    raise RuntimeError(
-                        f"AIScore discovered {len(links)} live matches but parsed none"
-                    )
+                # A missing source/history belongs to that match. Reopening the
+                # whole browser loses cookies and slows every other match down.
+                # Navigation failures and a queue with no progress still recover
+                # by replacing the session, with honest partial coverage.
+                report["session_reset_required"] = bool(
+                    report["navigation_failure_count"]
+                    or (report["budget_exhausted"] and not report["completed_count"])
+                    or (report["completed_count"] > 0 and report["skip_reasons"].get("match_timeout", 0)
+                        == report["completed_count"])
+                )
                 if (
                     report["failed_count"] > 0
-                    or report["unattempted_count"] > 0
                     or report["unverified_count"] > 0
+                    or (report["budget_exhausted"] and not report["completed_count"])
                 ):
                     report["status"] = "partial"
                     logger.warning(
@@ -857,16 +908,23 @@ class AiscoreScraper:
                         reported_live_count or "unknown",
                         len(links),
                         report["unverified_count"],
-                        len(batch_links),
+                        report["attempted_count"],
                         len(out),
                         report["skipped_count"],
                         report["failed_count"],
                         report["coverage_pct"],
                         report["parse_coverage_pct"] or 0.0,
                     )
+                elif report["deferred_count"]:
+                    report["status"] = "continuing"
+                    logger.info(
+                        "Live scan continuing: completed=%s/%s deferred=%s interrupted=%s budget_exhausted=%s",
+                        report["completed_count"], len(links), report["deferred_count"],
+                        report["interrupted_count"], report["budget_exhausted"],
+                    )
                 else:
                     report["status"] = "ok"
-                if report["navigation_failure_count"] == 0:
+                if report["navigation_failure_count"] == 0 and report["completed_count"]:
                     self._record_healthy_concurrency_cycle()
                     report["effective_concurrency"] = self._effective_concurrency
                 return out
@@ -1248,9 +1306,6 @@ class AiscoreScraper:
         except Exception as exc:
             logger.debug("Total Points selection failed for %s: %s", url, exc)
 
-        market_snapshot = await page.evaluate(LIVE_TOTAL_MARKET_JS)
-        market_captured_at = datetime.now(timezone.utc).isoformat()
-        market_captured_monotonic = time.monotonic()
         parsed = await page.evaluate(
             r"""
             () => {
@@ -1302,16 +1357,78 @@ class AiscoreScraper:
         if detail_status.get("is_pending"):
             return _MatchSkip("pending")
 
-        if not market_snapshot.get("market_verified"):
-            return _MatchSkip("total_market_unverified", degraded=True, retryable=True)
-        odds_snapshot = _normalize_market_snapshot(market_snapshot)
-        opening = _select_market_line(odds_snapshot, "opening")
-        inplay = _select_market_line(odds_snapshot, "inplay")
-        prematch = _select_market_line(odds_snapshot, "prematch")
-        if opening is None or inplay is None:
-            if market_snapshot.get("has_locked_rows"):
-                return _MatchSkip("odds_locked", retryable=True)
-            return _MatchSkip("totals_missing", retryable=True)
+        match_id = self._extract_match_id(clean_url)
+        try:
+            async with asyncio.timeout(10.0):
+                while True:
+                    # Patchright defaults to an isolated world, which cannot see
+                    # Nuxt state or Vue's DOM component references.
+                    source = await page.evaluate(LIVE_SOURCE_JS, isolated_context=False)
+                    if (source.get("match_id") == match_id
+                            and source.get("component_match_id") == match_id
+                            and source.get("active_market") == "bs"):
+                        break
+                    await asyncio.sleep(0.2)
+        except TimeoutError:
+            return _MatchSkip("provider_source_unavailable", degraded=True)
+        if source.get("match_id") != match_id or source.get("component_match_id") != match_id:
+            logger.warning(
+                "Live total identity rejected: expected=%s source=%s component=%s active_market=%s",
+                match_id, source.get("match_id"), source.get("component_match_id"), source.get("active_market"),
+            )
+            return _MatchSkip("market_match_identity_mismatch", degraded=True)
+        source_status = _detail_status_from_top_text(source.get("top_text"))
+        if source_status.get("is_finished"):
+            return _MatchSkip("finished")
+        if source_status.get("is_pending"):
+            return _MatchSkip("pending")
+        reason = source_error(
+            source, match_id, source_status["status"], source.get("dom_score") or "",
+        )
+        if reason:
+            logger.info("Live total rejected before history: match_id=%s reason=%s", match_id, reason)
+            return _MatchSkip(reason, degraded=reason in {
+                "market_match_identity_mismatch", "total_market_unverified", "bookmaker_unverified",
+            })
+        try:
+            async with asyncio.timeout(10.0):
+                async with page.expect_response(
+                    lambda response: history_response_matches(response.url, match_id),
+                    timeout=8000,
+                ) as response_info:
+                    await page.evaluate(FETCH_HISTORY_JS, match_id, isolated_context=False)
+                response = await response_info.value
+                if response.status != 200:
+                    return _MatchSkip("provider_history_http_error", degraded=True)
+                raw_history = await response.body()
+                history = decode_history(raw_history)
+        except (TimeoutError, ValueError) as exc:
+            logger.warning("Live total history rejected: match_id=%s reason=%s", match_id, type(exc).__name__)
+            return _MatchSkip("provider_history_unavailable", degraded=True)
+        except Exception as exc:
+            logger.warning("Live total history unavailable: match_id=%s error_type=%s", match_id, type(exc).__name__)
+            return _MatchSkip("provider_history_unavailable", degraded=True)
+
+        # Source rows, scoreboard and identity are frozen together after the history request.
+        source = await page.evaluate(LIVE_SOURCE_JS, isolated_context=False)
+        detail_status = _detail_status_from_top_text(source.get("top_text"))
+        if detail_status["is_finished"]:
+            return _MatchSkip("finished")
+        parsed["status"] = detail_status["status"]
+        parsed["periodEnded"] = detail_status["period_ended"]
+        parsed["score"] = source.get("dom_score") or ""
+        captured = datetime.now(timezone.utc)
+        market_captured_monotonic = time.monotonic()
+        proof, reason = verify_market(
+            source, history, match_id, parsed["status"], parsed["score"],
+            now=captured.timestamp(), max_age=self.provider_max_age_seconds,
+        )
+        if reason:
+            logger.info("Live total rejected: match_id=%s reason=%s", match_id, reason)
+            return _MatchSkip(reason)
+        proof = attach_raw_history(proof, raw_history)
+        opening, inplay, prematch = proof["opening"], proof["live"], proof["prematch"]
+        market_captured_at = captured.isoformat()
 
         parsed_quarter_scores = normalize_quarter_scores(
             parsed.get("quarterScores"),
@@ -1379,11 +1496,8 @@ class AiscoreScraper:
             "opening_total": float(opening),
             "prematch_total": float(prematch) if prematch is not None else None,
             "inplay_total": float(inplay),
-            "bookmaker": (
-                odds_snapshot["bookmaker_lines"][0]
-                if odds_snapshot["bookmaker_lines"]
-                else ""
-            ),
+            "bookmaker": "bet365",
+            "market_provenance": proof,
             "market_captured_at": market_captured_at,
             "_market_captured_monotonic": market_captured_monotonic,
             "url": clean_url,

@@ -32,6 +32,21 @@ class DashboardRawTests(unittest.TestCase):
         self.assertEqual(row["barem_change"], 11)
         self.assertNotIn("display_snapshot", row)
 
+    def test_market_evidence_stays_in_db_and_out_of_dashboard_and_display_snapshot(self):
+        source_row = {
+            "id": 1, "opening": 160, "live": 171, "direction": "ALT",
+            "market_provenance_json": '{"raw_history_base64":"large-provider-body"}',
+        }
+        live = self.dashboard._raw_alert(source_row)
+        self.assertNotIn("market_provenance_json", live)
+        payload = self.dashboard._dashboard_snapshot_payloads([live])[1]
+        self.assertNotIn("market_provenance_json", payload)
+        archived = self.dashboard._frozen_deleted_alert({
+            **source_row, "display_snapshot": json.dumps({**payload, "market_provenance_json": "legacy-body"}),
+        })
+        self.assertNotIn("market_provenance_json", archived)
+        self.assertEqual(archived["live"], 171)
+
     def test_live_dto_adds_current_pace_projection(self):
         row = self.dashboard._raw_alert({
             "match_name": "Home - Away",
@@ -78,9 +93,10 @@ class DashboardRawTests(unittest.TestCase):
                 return evaluate_live_signal(match, snapshots, config)
 
             with patch("main.evaluate_live_signal", side_effect=capture_engine_clock):
-                asyncio.run(process_match(payload, database, notifier, Config()))
+                from tests.market_fixture import verified_payload
+                asyncio.run(process_match(verified_payload(payload), database, notifier, Config()))
                 asyncio.run(process_match(
-                    {**payload, "status": "Q3 08:00", "score": "60 - 60"},
+                    verified_payload({**payload, "status": "Q3 08:00", "score": "60 - 60"}),
                     database, notifier, Config(),
                 ))
             self.assertEqual(engine_quarter_lengths, [12, 12])

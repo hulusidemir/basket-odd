@@ -146,8 +146,11 @@ def test_quality_insert_archive_restart_and_legacy_null(tmp_path):
     candidate = decision(payload, [2.5, 2.8])
     assert candidate.direction == "ALT"
     notifier = type("Notifier", (), {"send_alert": AsyncMock(return_value={"recipient": 1})})()
+    from tests.market_fixture import verified_payload
+    config = Config()
+    config.MIN_SIGNAL_QUALITY = 0  # Exercise legacy PAS archival independently of publication policy.
     with patch("main.evaluate_live_signal", return_value=candidate):
-        asyncio.run(process_match(payload, database, notifier, Config()))
+        asyncio.run(process_match(verified_payload(payload), database, notifier, config))
     row = database.latest_match_alert_in_direction("m", "ALT")
     notifier.send_alert.assert_awaited_once()
     assert row["quality_label"] == "PAS"

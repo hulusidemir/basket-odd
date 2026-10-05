@@ -2,6 +2,22 @@ from config import Config
 from pace_calculator import chronological_snapshots, get_future_paces
 
 
+def test_recorded_future_anchor_cannot_enter_signal_time_pace():
+    state = {"elapsed_game_seconds": 900, "total_score": 65, "period": 2,
+             "observed_at": "2026-10-04T12:00:00+00:00"}
+    past = {"elapsed_game_seconds": 780, "total_score": 40, "period": 2,
+            "recorded_at": "2026-10-04 11:59:00"}
+    future = {"elapsed_game_seconds": 600, "total_score": 20, "period": 2,
+              "recorded_at": "2026-10-04 12:01:00"}
+    assert get_future_paces([future, past], state, 4.0, Config()) == get_future_paces([past], state, 4.0, Config())
+
+
+def test_no_eligible_history_cannot_manufacture_a_pace_window():
+    state = {"elapsed_game_seconds": 900, "total_score": 65, "period": 2}
+    future = {"elapsed_game_seconds": 960, "total_score": 70, "period": 2}
+    assert get_future_paces([future], state, 4.0, Config()) == []
+
+
 def test_pace_windows_ignore_regressed_and_future_snapshots():
     clean = [
         {"elapsed_game_seconds": 600, "total_score": 40, "period": 2},

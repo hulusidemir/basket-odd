@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 from config import Config
 from db import Database
 from main import _ConsecutiveFailureAlertLatch, _normalize_match_payload, process_match
+from tests.market_fixture import verified_payload
 
 class RawSignalTests(unittest.TestCase):
     def setUp(self):
@@ -20,7 +21,7 @@ class RawSignalTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_without_history_returns_pas_and_no_alert(self):
-        asyncio.run(process_match({
+        asyncio.run(process_match(verified_payload({
             "match_id": "m1",
             "match_name": "Home - Away",
             "tournament": "League",
@@ -29,7 +30,7 @@ class RawSignalTests(unittest.TestCase):
             "opening_total": 160,
             "inplay_total": 171,
             "url": "https://m.aiscore.com/basketball/match-x/m1",
-        }, self.db, self.notifier, Config()))
+        }), self.db, self.notifier, Config()))
 
         row = self.db.get_alert(1)
         self.assertIsNone(row)
