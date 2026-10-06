@@ -73,6 +73,7 @@ class Config:
     POLL_INTERVAL_MIN: int = _int_env("POLL_INTERVAL_MIN", 25)
     POLL_INTERVAL_MAX: int = _int_env("POLL_INTERVAL_MAX", 40)
     LIVE_POLL_SECONDS: float = _float_env("LIVE_POLL_SECONDS", 4.0)
+    M2_ENABLED: bool = _bool_env("M2_ENABLED", True)
     MAX_SIGNALS_PER_MATCH: int = _int_env("MAX_SIGNALS_PER_MATCH", 3)
     SAME_DIRECTION_MIN_LIVE_DELTA: float = _float_env("SAME_DIRECTION_MIN_LIVE_DELTA", 10.0)
     DB_PATH: str = os.getenv("DB_PATH", "basketball.db")

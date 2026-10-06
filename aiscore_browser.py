@@ -8,6 +8,7 @@ def session_options(purpose: str, page_timeout_ms: int, *, max_pages: int = 1) -
         "live": ("AISCORE_BROWSER_PROFILE_DIR", "scrapling-profile"),
         "finished": ("AISCORE_FINISHED_BROWSER_PROFILE_DIR", "scrapling-finished-profile"),
         "refresh": ("AISCORE_REFRESH_BROWSER_PROFILE_DIR", "scrapling-refresh-profile"),
+        "m2": ("AISCORE_M2_BROWSER_PROFILE_DIR", "scrapling-m2-profile"),
     }
     env_key, directory = profiles[purpose]
     options = {

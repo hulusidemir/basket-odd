@@ -85,6 +85,7 @@ def _raw_alert(
     *, confirmed_12_minutes: bool | None = None,
 ) -> dict:
     item = dict(row)
+    item["m2"] = _stored_quarter_scores(item.get("m2_analysis_json")) or None
     item["direction"] = _normalize_direction(item.get("direction"))
     item["tournament"] = _sanitize_tournament(item.get("tournament"))
     try:
@@ -157,6 +158,7 @@ def _raw_alert(
         "prediction_context_json",
         "reversal_features_version",
         "reversal_features_json",
+        "m2_analysis_json",
     ):
         item.pop(key, None)
     return item
@@ -280,6 +282,7 @@ def _frozen_deleted_alert(row: dict) -> dict:
         if key in stored:
             item[key] = stored[key]
     item["final_total"] = stored.get("final_total")
+    item["m2"] = snapshot.get("m2")
     if "pace_projection" not in snapshot:
         item["pace_projection"] = None
         item["pace_score_total"] = None
@@ -308,6 +311,7 @@ def _frozen_deleted_alert(row: dict) -> dict:
         "telegram_last_error",
         "market_provenance_json",
         "prediction_context_json",
+        "m2_analysis_json",
     ):
         item.pop(key, None)
     return item

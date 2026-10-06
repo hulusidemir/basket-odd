@@ -1,5 +1,52 @@
 # Current State
 
+7 Ekim 2026 — M2'nin sürekli veri yetersiz görünmesi incelendi. Ayrı profilin
+doğrudan `page.goto` yolu Scrapling'in Cloudflare çözümünü kullanmıyordu;
+M2 artık `session.fetch` üzerinden gezinir ve aynı sekmede kimlik/URL hazır
+olunca API'yi okur. Tam yükleme olayının beklemesi veri okumayı engellemez;
+fetch/okuma görevleri başarı, timeout ve iptalde temizlenir. Tam 15 saniyelik
+oyun saati farkının float hatasıyla reddedilmesi düzeltildi. Süre dolması,
+skor/saat/kimlik uyuşmazlığı, erişim hatası ve eksik şut/olay verisi ayrı
+gerekçe kodlarıyla gösterilir. Boxscore eksikliği olay kontrolünden önce
+raporlanır. Model eşikleri, aynı sinyal skoru koşulu ve 60 saniye okuma
+sınırı korunur; yeni veri kaynağı veya takım ortalaması eklenmedi.
+M2/okuyucu/dashboard ve M1 runtime/yön regresyonlarında 89 test geçti;
+değişen Python dosyalarının compileall ve JS sözdizimi kontrolleri başarılı.
+Servis/üretim DB'sine müdahale edilmedi. Canlı kaynak başarısı ve M2'nin
+tahmin üstünlüğü bu düzeltmeyle henüz doğrulanmış değildir.
+
+6 Ekim 2026 — Kullanıcı talebiyle dashboard ve arşive bağımsız M2 sütunu,
+ayrı gerekçe/veri kalitesi modali eklendi. Yeni gerçek sinyalin bağlamı
+kaydedilir; ayrı profil/görev boxscore ve olayları çeker. M1 karar ve Telegram
+akışı M2'yi beklemez, M2 hiçbir sinyali veto etmez. Skor/saat/aritmetik/olay
+kontrolleri başarısızsa yön yok; yeterli veride bağımsız ALT/ÜST/PAS vardır.
+Genel şut öncülleri açık model varsayımlarıdır; takım ortalaması değildir.
+Provider güncelleme zamanı henüz yok: veri kalitesi en fazla ORTA.
+Tek nullable m2_analysis_json migration; eski kayıtlar NULL, backfill yok.
+Arşiv yalnız frozen m2 gösterir. Yerel fixture ile iki sayfada masaüstü/mobil
+modal, Escape ve sıralama kontrolü başarılı; M1 regresyonları dahil tam paket
+397 test geçti. Servis/üretim DB'si/Telegram'a müdahale edilmedi; canlı M2
+çekimi ve tahmin başarısı bu entegrasyonla henüz doğrulanmadı.
+Ayrıntılar: docs/MOTOR2.md.
+
+6 Ekim 2026 — Kullanıcının basketbol verisini gerçekten çekmeyi araştırma
+talebiyle ayrı geçici profillerde AIScore'a bağlanıldı. Beş canlı maçın üç
+NBA maçında detaylı boxscore ve olay akışı; Arjantin/Nikaragua örneklerinde
+temel sayı türleri/faul verisi vardı, ayrıntılı boxscore/olay akışı boştu.
+Tamamlanmış Japonya ve EuroCup örnekleri de ayrıntılı veriyi verdi. Takımın
+son maçları, oyuncu sezon istatistikleri ve lig takım ortalamaları public
+API'den alındı; eski bazı endpoint'ler boş dönerken güncel database yolları
+çalıştı. Barem sayfası boxscore yüklemiyor; aynı sekmeden `lineups`/`tlive`
+yanıtları site protobuf şemasıyla, 30 dakikalık JS cache'i kullanılmadan
+çekildi. Üç ardışık canlı çekimde olay sayısı 305/307/308 oldu; skor ile
+boxscore her seferinde tam eşzamanlı değildi ve uyuşmayan taraflar reddedildi.
+`aiscore_basketball_data.py` yalnız araştırma okuyucusudur; main/motor/DB/
+Telegram'a bağlanmadı. Yakalama zamanı provider tazeliği kanıtı değildir.
+İlgili 33 test geçti; Python compileall başarılı. Mevcut motor, servis ve geçmiş
+sinyaller değişmedi; yalnız yeni okuyucu/test ve dokümantasyon eklendi. Bütün özel
+kontrol tarayıcıları kapatıldı. Ayrıntılar:
+`docs/AISCORE_BASKETBALL_DATA_RESEARCH_2026-10-06.md`.
+
 5 Ekim 2026 yaklaşık 01:24 Türkiye saati — Kullanıcı bot/dashboard servislerini
 01:19:36 / 01:19:35'te yeniden başlattı. Startup implementation hash'i mevcut
 çalışma ağacıyla birebir eşleşti. 4,5 dakikalık salt okunur üretim kontrolünde

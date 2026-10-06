@@ -7,6 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='ppm_calculator.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='motor2.css') }}">
   <title>Basket Sinyal Dashboard</title>
 </head>
 <body>
@@ -70,7 +71,7 @@
     <div class="panel-header" style="padding-top:0;padding-bottom:9px"><div class="status-line" id="finishedStatus" role="status" aria-live="polite"></div></div>
     <div class="table-wrap">
       <table class="data-table signal-table">
-        <thead><tr><th>Sinyal</th><th>Kalite</th><th>Maç</th><th>Skor / zaman</th><th class="num">Barem hareketi</th><th class="ppm-heading" data-caption="Mevcut / Gereken" aria-label="PPM: Mevcut / Gereken">PPM</th><th class="num">Projeksiyon</th><th class="num">Adil Barem</th><th>İşlemler</th></tr></thead>
+        <thead><tr><th>Sinyal</th><th>M2</th><th>Kalite</th><th>Maç</th><th>Skor / zaman</th><th class="num">Barem hareketi</th><th class="ppm-heading" data-caption="Mevcut / Gereken" aria-label="PPM: Mevcut / Gereken">PPM</th><th class="num">Projeksiyon</th><th class="num">Adil Barem</th><th>İşlemler</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="empty" id="empty" hidden><span class="empty-symbol">◎</span><strong>Aktif sinyal yok</strong>Filtreye uygun bir sinyal geldiğinde burada görünecek.</div>
@@ -92,6 +93,7 @@
 
 
 {% include '_ppm_calculator.html' %}
+{% include '_motor2_modal.html' %}
 <script src="{{ url_for('static', filename='signal_display.js') }}"></script>
 <script src="{{ url_for('static', filename='table_sort.js') }}"></script>
 <script src="{{ url_for('static', filename='finished_scan.js') }}"></script>
@@ -100,6 +102,9 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const fmt = value => hasMetric(value) ? Number(value).toFixed(1) : '–';
   let alerts = [];
+  function openM2Modal(event, alertId) {
+    Motor2.open(alerts.find(row => Number(row.id) === Number(alertId)), event, false);
+  }
   function openPpmCalculator(event, alertId) {
     PpmCalculator.open(alerts.find(row => Number(row.id) === Number(alertId)), event.currentTarget);
   }
@@ -400,6 +405,7 @@ let refreshStartedAt = 0;
       const fairAvailable = a.fair_total !== null && a.fair_total !== '' && Number.isFinite(fair);
       return `<tr class="${rowState}" data-alert-id="${Number(a.id)}">
         <td data-label="Sinyal"><button type="button" class="signal-modal-trigger" onclick="openSignalModal(event, ${Number(a.id)})" title="Sinyal istatistiklerini aç" aria-label="${esc(a.direction || 'Sinyal')} sinyali istatistiklerini aç"><span class="direction-pill ${directionClass}">${esc(a.direction || '–')}</span></button></td>
+        <td data-label="M2">${Motor2.button(a, false)}</td>
         <td data-label="Kalite">${qualityBadge(a)}</td>
         <td class="primary-cell">${matchCell(a)}</td>
         <td data-label="Skor / zaman"><strong>${esc(a.score || '–')}</strong><span class="match-meta">${esc(a.status || 'Zaman yok')}</span></td>
@@ -428,7 +434,7 @@ let refreshStartedAt = 0;
 
   async function load() {
     try {
-      alerts = await call('/api/alerts'); updateStats(); render();
+      alerts = await call('/api/alerts'); updateStats(); render(); Motor2.refresh(alerts);
       const time = new Date().toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
       $('status').classList.remove('error'); $('status').textContent = `${visibleCountText()} · Son güncelleme ${time}`; $('liveState').textContent = 'Sistem aktif';
     } catch (error) { $('status').classList.add('error'); $('status').textContent = error.message; $('liveState').textContent = 'Bağlantı sorunu'; }
@@ -482,6 +488,7 @@ let refreshStartedAt = 0;
   });
   const tableSorter = createTableSorter('.signal-table', [
     {value: row => row.direction},
+    {value: row => row.m2?.direction || row.m2?.message},
     {value: row => row.quality_score, numeric: true},
     {value: row => row.match_name},
     {value: row => row.score, hint: 'Skora göre sırala'},

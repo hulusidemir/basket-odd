@@ -11,6 +11,10 @@
 - `aiscore_match_page.py`: mobil maç URL'si, kimlik/final doğrulaması ve skor tablosu okuyucusu.
 - `aiscore_final_scraper.py`: süre sınırlı final taraması, tarayıcı yaşam döngüsü ve maç bazlı ilerleme.
 - `aiscore_scoreboard.py`: aynı maçın çeyrek skorlarını satır/sütun hücrelerinden okuyan ortak DOM kodu.
+- `aiscore_basketball_data.py`: aynı maçın şut/FT, ribaund, top kaybı, faul ve olay verisini cache'siz public API'den okur; skor/aritmetik doğrulaması. M2 okuyucusudur; M1 kararına girmez.
+- `motor2.py`, `motor2_worker.py`: yeni sinyal satırlarında bağımsız şut/hücum hacmi değerlendirmesi; ayrı profil/görev, veri kapıları ve dondurulan ALT/ÜST/PAS.
+- `static/motor2.js`, `static/motor2.css`, `templates/_motor2_modal.html`: canlı/arşiv M2 sütunu ve ayrı veri kalitesi/gerekçe modali.
+- `docs/MOTOR2.md`: M2 model varsayımları, nullable migration, arşiv ve çalışma sınırları.
 - `match_state.py`: skor ve canlı periyot/saat ayrıştırma ile şeffaf tempo projeksiyonu.
 - `reversal_features.py`: yalnız sinyal anındaki piyasa/tempo verilerinden ayrık pencere feature'ları; yön kararına katılmaz.
 - `notifier.py`: sade Telegram sinyal mesajı.

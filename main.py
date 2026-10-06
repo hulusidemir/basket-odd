@@ -30,6 +30,8 @@ from reversal_features import collect_reversal_features
 from signal_quality import score_signal_quality
 from live_market import provenance_error
 from forward_validation import IMPLEMENTATION_HASH, freeze_prediction
+from motor2 import pending_m2
+from motor2_worker import run_m2_worker
 
 
 class _ConsecutiveFailureAlertLatch:
@@ -296,6 +298,7 @@ def _save_signal(match: dict, decision: SignalDecision, signal_count: int, db: D
         reversal_features_version="v1", reversal_features=reversal_features,
         market_provenance=match.get("market_provenance"),
         prediction_context=freeze_prediction(match, decision, config, snapshots or []),
+        m2_analysis=pending_m2(match, enabled=getattr(config, "M2_ENABLED", True)),
     )
 
 
@@ -782,11 +785,13 @@ async def run():
 
     in_flight_alert_ids: set[int] = set()
     outbox_task = asyncio.create_task(_telegram_outbox_worker(db, notifier, in_flight_alert_ids))
+    m2_task = asyncio.create_task(run_m2_worker(db, enabled=config.M2_ENABLED))
     try:
         await _run_live_loop(config, db, notifier, scraper, in_flight_alert_ids)
     finally:
         outbox_task.cancel()
-        await asyncio.gather(outbox_task, return_exceptions=True)
+        m2_task.cancel()
+        await asyncio.gather(outbox_task, m2_task, return_exceptions=True)
         await scraper.close()
 
 

@@ -1,5 +1,42 @@
 # Decisions
 
+## M2 erişim ve hata ayrımı
+
+7 Ekim 2026 — Ayrı M2 profilinde Cloudflare çözümü için ham `goto` yerine
+Scrapling `session.fetch` kullanılır. Kaynak kimliği ve URL hazır olduğunda
+aynı sekmedeki public API okuması yükleme olayı beklenmeden yapılabilir;
+görevler iptal/timeout dahil temizlenir. Eksik şut verisi, eski sinyal anına
+uyuşmayan skor/saat ve erişim hatası tek "veri yetersiz" etiketi altında
+toplanmaz. JSON'a isteğe bağlı `reason_code` ve boxscore reddinde `data_issues`
+eklenir; şema migration'ı yoktur, eski kayıt/arşivler yeniden yazılmaz.
+İzin verilen saat farkı tam saniye karşılaştırılır; 15/30 saniye sınırları
+değişmez. Bu, veri erişimi düzeltmesidir; model başarısı kanıtı değildir.
+
+## Dashboard'da bağımsız M2
+
+6 Ekim 2026 — Kullanıcı yeni motorun yönünü mevcut sinyal yanında ve ayrı
+veri kalitesi/gerekçe modalinde istedi. Önceki araştırma sınırı bu katman için
+kullanıcı talebiyle genişletildi. M2 yalnız yeni gerçek M1 satırlarında ayrı
+profil/worker ile değerlendirilir; M1 yönüne bakmaz, M1 yayınını bekletmez veya
+veto etmez, Telegram göndermez. Eksik veri ile PAS ayrılır. Sağlayıcı tazeliği
+henüz kanıtlanmadığından kalite ORTA ile sınırlı; genel şut öncülleri açık
+varsayımlardır. Tek nullable JSON migration, eskiye backfill yok. Arşiv yalnız
+snapshot.m2 gösterir, arşivden sonra worker yazamaz. Model ve veri kapıları,
+operasyon ve sınırlamalar MOTOR2.md içinde. Servis restart yapılmadı.
+
+## Basketbol verisine gerçek erişim araştırması
+
+6 Ekim 2026 — Kullanıcının ALT/ÜST yönü için ihtiyaç duyulan veriyi fiilen
+çekmeyi deneme talebiyle canlı ve tamamlanmış AIScore örnekleri okundu.
+Şut/FT denemeleri, ribaund, top kaybı, faul ve olay akışı bazı maçlarda
+çekilebiliyor; diğerlerinde eksik. Yeni `aiscore_basketball_data.py` araştırma
+okuyucusu mevcut sekmede public API'yi cache'siz okur, skor ve şut aritmetiği
+uyuşmazlıklarını reddeder. Yakalama zamanı provider tazeliği sayılmaz.
+Bu okuyucu mevcut v5/DB/Telegram'a bağlanmaz; yeni basketbol karar matematiği
+bu araştırmayla üretime alınmış değildir. Örnekler ve erişim yöntemi
+`AISCORE_BASKETBALL_DATA_RESEARCH_2026-10-06.md` içindedir. Eski sinyaller ve
+snapshot'lar korunur; migration yoktur.
+
 ## Maç kaynak hatasının oturum arızasından ayrılması ve hızlı Telegram retry
 
 5 Ekim 2026 — Botun 4 Ekim 20:42 yeniden başlamasından sonraki salt okunur

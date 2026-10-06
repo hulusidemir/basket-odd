@@ -191,6 +191,7 @@ class Database:
                 ("reversal_features_json", "TEXT"),
                 ("market_provenance_json", "TEXT"),
                 ("prediction_context_json", "TEXT"),
+                ("m2_analysis_json", "TEXT"),
             ):
                 if name not in alert_columns:
                     conn.execute(f"ALTER TABLE alerts ADD COLUMN {name} {sql_type}")
@@ -397,6 +398,7 @@ class Database:
         reversal_features: dict | None = None,
         market_provenance: dict | None = None,
         prediction_context: dict | None = None,
+        m2_analysis: dict | None = None,
     ) -> int:
         quarter_scores_json = (
             json.dumps(quarter_scores, ensure_ascii=False, separators=(",", ":"))
@@ -451,9 +453,9 @@ class Database:
                     bet_placed, ignored, followed, alert_period, alert_moment,
                     telegram_status, reference_used, reference_total, effective_threshold,
                     fair_total, quality_score, quality_label, quality_version, quality_factors,
-                    reversal_features_version, reversal_features_json, market_provenance_json, prediction_context_json
+                    reversal_features_version, reversal_features_json, market_provenance_json, prediction_context_json, m2_analysis_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     match_id, match_name, opening, prematch, live, direction, diff,
@@ -467,9 +469,32 @@ class Database:
                     json.dumps(reversal_features, separators=(",", ":"), allow_nan=False) if reversal_features is not None else None,
                     json.dumps(market_provenance, separators=(",", ":"), allow_nan=False) if market_provenance is not None else None,
                     json.dumps(prediction_context, separators=(",", ":"), allow_nan=False) if prediction_context is not None else None,
+                    json.dumps(m2_analysis, ensure_ascii=False, separators=(",", ":"), allow_nan=False) if m2_analysis is not None else None,
                 ),
             )
             return int(cursor.lastrowid)
+
+    def pending_m2_alerts(self, limit: int = 10) -> list[dict]:
+        # NULL is legacy data, never an invitation to backfill past signals.
+        with self._conn() as conn:
+            rows = conn.execute("""
+                SELECT * FROM alerts
+                WHERE (deleted_at IS NULL OR deleted_at = '')
+                  AND json_extract(m2_analysis_json, '$.state') = 'pending'
+                ORDER BY id DESC LIMIT ?
+            """, (limit,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def complete_m2_analysis(self, alert_id: int, analysis: dict) -> bool:
+        """Complete once; an archive or a competing completion always wins."""
+        payload = json.dumps(analysis, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        with self._conn() as conn:
+            cursor = conn.execute("""
+                UPDATE alerts SET m2_analysis_json = ?
+                WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')
+                  AND json_extract(m2_analysis_json, '$.state') = 'pending'
+            """, (payload, alert_id))
+        return cursor.rowcount == 1
 
     def pending_telegram_alerts(self, limit: int = 20, max_retries: int = 8) -> list[dict]:
         with self._conn() as conn:

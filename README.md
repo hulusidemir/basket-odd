@@ -193,3 +193,11 @@ tempo yorumunu, sinyal saatini ve kullanıcı işaretlerini canlı görünümden
 Geçmişte PPM veya yön düğmesi kayıtlı modalı açar. Takım geçmişi de arşiv anındaki
 haliyle kalır. Snapshot sürümü 2 bu alanları JSON'a ekler; tablo geçişi gerekmez.
 Eski snapshot'lar değiştirilmez, eksik alanları sonradan hesaplanmaz.
+
+### Dashboard M2
+
+M2 yeni sinyal satırlarını bağımsız değerlendirir; kendi sütunu ve gerekçe
+modali vardır. M1 yönü ve Telegram akışı M2 sonucunu beklemez. Varsayılan
+`M2_ENABLED=true`; `false` yeni analizleri kapatır. Ayrı tarayıcı profili
+`AISCORE_M2_BROWSER_PROFILE_DIR` ile seçilebilir. Eski sinyaller doldurulmaz.
+Model varsayımları, veri kapıları ve migration: [MOTOR2.md](docs/MOTOR2.md).
