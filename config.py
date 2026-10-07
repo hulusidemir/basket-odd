@@ -44,6 +44,8 @@ def _bool_env(name: str, default: bool) -> bool:
 
 class Config:
     PRIOR_EQUIV_MINUTES: float = _float_env("PRIOR_EQUIV_MINUTES", 10.0)
+    OVER_CONTINUATION_ENABLED: bool = _bool_env("OVER_CONTINUATION_ENABLED", True)
+    OVER_CALIBRATION_ENABLED: bool = _bool_env("OVER_CALIBRATION_ENABLED", True)
     # Retired v5/v6 window votes; v7 uses one point forecast and no unanimity veto.
     MIN_VALID_FUTURE_PACES: int = _int_env("MIN_VALID_FUTURE_PACES", 2)
     MIN_EDGE_POINTS: float = _float_env("MIN_EDGE_POINTS", 4.0)

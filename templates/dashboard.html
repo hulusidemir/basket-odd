@@ -31,13 +31,11 @@
   </section>
 
   <section class="stats" aria-label="Sinyal özeti">
-    <article class="stat-card"><div class="stat-label">Aktif sinyal <span class="stat-icon">◎</span></div><strong class="stat-value" id="statTotal">0</strong></article>
-    <article class="stat-card green"><div class="stat-label">ÜST <span class="stat-icon">↗</span></div><strong class="stat-value" id="statUst">0</strong><div class="stat-label" id="signalOverPerformance">Başarı yükleniyor…</div></article>
-    <article class="stat-card red"><div class="stat-label">ALT <span class="stat-icon">↘</span></div><strong class="stat-value" id="statAlt">0</strong><div class="stat-label" id="signalUnderPerformance">Başarı yükleniyor…</div></article>
-    <article class="stat-card yellow"><div class="stat-label">Oynanan <span class="stat-icon">✓</span></div><strong class="stat-value" id="statBet">0</strong></article>
+    <button type="button" class="stat-card stat-card-filter active" data-direction="all" aria-pressed="true"><span class="stat-label">Aktif sinyal <span class="stat-icon" aria-hidden="true">◎</span></span><strong class="stat-value" id="statTotal">0</strong></button>
+    <button type="button" class="stat-card stat-card-filter green" data-direction="ÜST" aria-pressed="false"><span class="stat-label">ÜST <span class="stat-icon" aria-hidden="true">↗</span></span><strong class="stat-value" id="statUst">0</strong></button>
+    <button type="button" class="stat-card stat-card-filter red" data-direction="ALT" aria-pressed="false"><span class="stat-label">ALT <span class="stat-icon" aria-hidden="true">↘</span></span><strong class="stat-value" id="statAlt">0</strong></button>
+    <button type="button" class="stat-card stat-card-filter yellow" id="betFilter" aria-pressed="false"><span class="stat-label">Oynanan <span class="stat-icon" aria-hidden="true">✓</span></span><strong class="stat-value" id="statBet">0</strong></button>
   </section>
-
-  <p class="status-line">Sinyal başarısı her maçın ilk kayıtlı sinyaline göre hesaplanır; eski motorların kayıtlarını da içerir. Bekleyen ve iade oran dışında tutulur.</p>
 
   <details class="panel signal-lists-panel" id="signalListsPanel">
     <summary class="signal-lists-summary"><span><strong>Takım ve lig listeleri</strong><small>Kara / beyaz liste yönetimi</small></span><span id="listCounts">Yükleniyor…</span></summary>
@@ -113,6 +111,7 @@
   let listMessage = '';
   let listError = false;
   let directionFilter = 'all';
+  let betOnly = false;
   let matchFilter = '';
 
   let activeModalAlertId = null;
@@ -186,7 +185,7 @@ let refreshStartedAt = 0;
 
 
   function visibleCountText() {
-    return `${filteredAlerts().length} kayıt gösteriliyor${matchFilter ? ' · Maç filtresi aktif' : ''}`;
+    return `${filteredAlerts().length} kayıt gösteriliyor${directionFilter !== 'all' ? ' · ' + directionFilter : ''}${betOnly ? ' · Oynanan' : ''}${matchFilter ? ' · Maç filtresi aktif' : ''}`;
   }
 
   function toggleMatchFilter(button) {
@@ -376,7 +375,7 @@ let refreshStartedAt = 0;
       const directionMatches = directionFilter === 'all' || a.direction === directionFilter;
       const matchMatches = !matchFilter || String(a.match_id || '') === matchFilter;
       const haystack = `${a.match_name || ''} ${a.tournament || ''}`.toLocaleLowerCase('tr-TR');
-      return directionMatches && matchMatches && (!query || haystack.includes(query));
+      return directionMatches && matchMatches && (!betOnly || a.bet_placed) && (!query || haystack.includes(query));
     });
   }
 
@@ -385,6 +384,7 @@ let refreshStartedAt = 0;
 
 
   function render() {
+    syncFilters();
     const rows = tableSorter.sort(filteredAlerts());
     $('empty').hidden = rows.length > 0;
     $('rows').innerHTML = rows.map(a => {
@@ -459,17 +459,21 @@ let refreshStartedAt = 0;
     }
   }
 
-  async function loadSignalPerformance() {
-    try {
-      const data = await call('/api/signals/performance');
-      for (const [direction, id] of [['ALT', 'signalUnderPerformance'], ['ÜST', 'signalOverPerformance']]) {
-        const result = data.by_direction[direction];
-        $(id).textContent = (result.success_rate === null ? '—' : '%' + result.success_rate.toLocaleString('tr-TR'))
-          + ' · ' + result.wins + ' doğru / ' + result.losses + ' yanlış · ' + result.pending + ' bekleyen';
-      }
-    } catch (_) {
-      for (const id of ['signalUnderPerformance', 'signalOverPerformance']) $(id).textContent = 'Başarı alınamadı';
-    }
+  function syncFilters() {
+    document.querySelectorAll('[data-direction]').forEach(button => {
+      const active = button.dataset.direction === directionFilter && !betOnly;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    $('betFilter').classList.toggle('active', betOnly);
+    $('betFilter').setAttribute('aria-pressed', String(betOnly));
+  }
+
+  function applyFilter(direction, played = false) {
+    directionFilter = direction;
+    betOnly = played;
+    render();
+    $('status').textContent = visibleCountText();
   }
 
   $('signalListForm').onsubmit = async event => {
@@ -484,7 +488,8 @@ let refreshStartedAt = 0;
 
 
   $('searchInput').addEventListener('input', () => { render(); $('status').textContent = visibleCountText(); });
-  document.querySelectorAll('[data-direction]').forEach(button => button.addEventListener('click', () => { directionFilter = button.dataset.direction; document.querySelectorAll('[data-direction]').forEach(item => item.classList.toggle('active', item === button)); render(); $('status').textContent = visibleCountText(); }));
+  document.querySelectorAll('[data-direction]').forEach(button => button.addEventListener('click', () => applyFilter(button.dataset.direction)));
+  $('betFilter').onclick = () => applyFilter('all', !betOnly);
   $('refreshBtn').onclick = load;
 
   let autoRefreshTimer = null;
@@ -509,7 +514,6 @@ let refreshStartedAt = 0;
   ], render);
   renderListStatus();
   load(); loadLists().catch(() => {}); startAutoRefresh();
-  loadSignalPerformance(); setInterval(loadSignalPerformance, 60000);
   setupFinishedScan({button: $('finishedBtn'), status: $('finishedStatus'), load, stopAutoRefresh, startAutoRefresh});
 </script>
 </body>

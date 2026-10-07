@@ -1,6 +1,9 @@
 """Pure math module for calculating valid pace windows and shrinking them to pregame priors."""
 
 from datetime import datetime, timezone
+import math
+
+from match_state import quarter_clock_seconds
 
 
 def _utc_timestamp(value) -> datetime | None:
@@ -146,3 +149,52 @@ def get_future_paces(snapshots: list[dict], current_state: dict, pregame_ppm: fl
     """Count each source interval once, even when it serves multiple windows."""
     return [window["future_ppm"] for window in
             get_future_pace_windows(snapshots, current_state, pregame_ppm, config)]
+
+
+def get_over_continuation(snapshots, current_state, pregame_ppm, whole_future_ppm, config):
+    """Do not extrapolate a hot start beyond the rate supported by recent scoring.
+
+    One recent interval is used once. Its rate is already shrunk to the prior;
+    this is scoring-rate continuation, not measured possessions or win odds.
+    """
+    enabled = getattr(config, "OVER_CONTINUATION_ENABLED", True)
+    result = {"version": "over_continuation_v1", "enabled": enabled,
+              "raw_future_ppm": whole_future_ppm, "future_ppm": whole_future_ppm,
+              "recent_window": None, "source": "whole_game", "applied": False}
+    if not enabled or whole_future_ppm <= pregame_ppm:
+        return result
+    valid = []
+    for row in snapshots or []:
+        elapsed, score = row.get("elapsed_game_seconds"), row.get("total_score")
+        if (isinstance(elapsed, bool) or isinstance(score, bool)
+                or not isinstance(elapsed, (int, float)) or not isinstance(score, (int, float))
+                or not math.isfinite(elapsed) or not math.isfinite(score) or elapsed < 0 or score < 0):
+            continue
+        period, text = row.get("period"), row.get("game_clock")
+        length = current_state["quarter_length"]
+        if (type(period) is not int or not 1 <= period <= current_state["period_count"]
+                or not (period - 1) * length * 60 <= elapsed <= period * length * 60):
+            continue
+        if text:
+            seconds = quarter_clock_seconds(f"Q{period} {text}")
+            if seconds is None or seconds > length * 60:
+                continue
+            if abs(period * length * 60 - seconds - elapsed) > 1:
+                continue
+        valid.append(row)
+    # The observed endpoint can confirm a previous score correction. Include
+    # it both before and after database insertion so frozen/alert math agrees.
+    valid.append({"elapsed_game_seconds": current_state["elapsed_game_seconds"],
+                  "total_score": current_state["total_score"], "period": current_state["period"],
+                  "recorded_at": current_state.get("observed_at")})
+    # Without a capture-time cutoff, a local row cannot prove contemporaneity.
+    windows = (get_future_pace_windows(valid, current_state, pregame_ppm, config)
+               if _utc_timestamp(current_state.get("observed_at")) is not None else [])
+    recent = next((window for window in windows if "recent_5m" in window["labels"]), None)
+    if recent is None:
+        recent = next((window for window in windows if "recent_2m" in window["labels"]), None)
+    supported = max(pregame_ppm, recent["future_ppm"]) if recent else pregame_ppm
+    result.update(future_ppm=min(whole_future_ppm, supported), recent_window=recent,
+                  source="recent_scoring" if recent else "pregame_prior",
+                  applied=supported < whole_future_ppm)
+    return result

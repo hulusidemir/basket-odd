@@ -2,9 +2,7 @@ import asyncio
 import copy
 import json
 import sqlite3
-import subprocess
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -17,7 +15,6 @@ from tests.test_basketball_data import observation
 
 
 NOW = datetime(2026, 10, 6, 0, 0, tzinfo=timezone.utc)
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def sample():
@@ -139,7 +136,7 @@ def test_only_m2_is_updated_once_and_archive_wins(database):
     assert not database.complete_m2_analysis(pending_id, {"state": "ready", "direction": "ÜST"})
 
 
-def test_m2_modal_and_archive_use_frozen_data(database):
+def test_dashboard_removes_legacy_m2_without_rewriting_archive(database):
     import dashboard
     alert_id = save(database)
     context, data = sample()
@@ -148,22 +145,27 @@ def test_m2_modal_and_archive_use_frozen_data(database):
     with patch.object(dashboard, "db", database):
         client = dashboard.app.test_client()
         live = client.get('/api/alerts').get_json()[0]
-        assert live['direction'] == 'ALT' and live['m2']['direction'] == 'ÜST'
+        assert live['direction'] == 'ALT' and 'm2' not in live
         assert 'm2_analysis_json' not in live
         live_html = client.get('/').get_data(as_text=True)
         assert '<th>M2</th>' not in live_html and 'id="m2Modal"' not in live_html
         assert 'Motor2.' not in live_html and 'motor2.js' not in live_html
         assert 'id="signalModal"' in live_html
         archive_html = client.get('/deleted-matches').get_data(as_text=True)
-        assert '<th>M2</th>' in archive_html and 'id="m2Modal"' in archive_html
-        dashboard._archive_active_match('sample')
-        with database._conn() as conn:
-            conn.execute('UPDATE alerts SET m2_analysis_json = ? WHERE id = ?', ('{}', alert_id))
+        assert '<th>M2</th>' not in archive_html and 'id="m2Modal"' not in archive_html
+        assert 'Motor2.' not in archive_html and 'motor2.js' not in archive_html
+        assert 'motor2.css' not in archive_html and 'openM2Modal' not in archive_html
+        assert 'id="signalModal"' in archive_html
+        database.archive_match_with_display_snapshots('sample', {alert_id: {**live, 'm2': analysis}})
+        stored = database.get_deleted_alert_by_id(alert_id)
         with patch('dashboard._raw_alert', side_effect=AssertionError('Recalculation')):
             archived = client.get('/api/deleted-matches').get_json()[0]
-        assert archived['m2'] == analysis
+            details = client.get(f'/api/deleted-matches/{alert_id}/details').get_json()
+        assert 'm2' not in archived and 'm2_analysis_json' not in archived
+        assert 'm2' not in details and details['direction'] == live['direction']
+        assert database.get_deleted_alert_by_id(alert_id) == stored
         old = dashboard._frozen_deleted_alert({'m2_analysis_json': json.dumps(analysis), 'display_snapshot': '{}'})
-        assert old['m2'] is None
+        assert 'm2' not in old
 
 
 def test_worker_expiry_cancellation_and_no_historical_reads(database):
@@ -331,31 +333,3 @@ def test_missing_boxscore_is_reported_before_missing_timeline():
     data['issues'] = ['home:boxscore_score_mismatch']
     result = evaluate_m2(context, data, now=NOW)
     assert result['reason_code'] == 'boxscore_mismatch'
-
-
-def test_ui_distinguishes_expiry_score_clock_and_absent_shots():
-    script = (ROOT / 'static/motor2.js').read_text() + '\n'
-    cases = [('capture_expired', 'Analiz süresi doldu'), ('score_mismatch', 'Skor uyuşmazlığı'),
-             ('clock_mismatch', 'Saat uyuşmazlığı'), ('boxscore_missing', 'Şut verisi yok')]
-    script += 'console.log(JSON.stringify(' + json.dumps([code for code, _ in cases])
-    script += '.map(reason_code => Motor2.button({id:1,m2:{state:"unavailable",reason_code}}))));'
-    rendered = json.loads(subprocess.run(['node', '-e', script], check=True,
-                                         capture_output=True, text=True).stdout)
-    for html, (_, label) in zip(rendered, cases):
-        assert label in html
-        assert 'Veri yetersiz' not in html
-
-
-def test_display_escapes_data_and_distinguishes_missing_from_pas():
-    context, data = sample()
-    analysis = evaluate_m2(context, data, now=NOW)
-    analysis['reasons'].append('<script>bad()</script>')
-    script = (ROOT / 'static/motor2.js').read_text() + '\n'
-    script += 'console.log(JSON.stringify(['
-    script += f'Motor2.content({json.dumps({"m2": analysis})}),'
-    script += 'Motor2.button({id:1,m2:null}),Motor2.button({id:2,m2:{state:"pending"}},true)]));'
-    rendered, missing, pending = json.loads(subprocess.run(['node', '-e', script], check=True,
-                                                          capture_output=True, text=True).stdout)
-    assert 'PAS' in rendered and 'Belirgin avantaj yok' in rendered
-    assert '<script>bad()' not in rendered and '&lt;script&gt;' in rendered
-    assert 'Kayıt yok' in missing and 'Analiz tamamlanmadı' in pending

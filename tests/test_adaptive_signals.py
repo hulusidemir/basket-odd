@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from config import Config
 from live_signals import evaluate_live_signal, forecast_live_total
@@ -16,14 +17,17 @@ def make_match(pregame, live, score, status, tournament="FIBA"):
     (120, 80, [(900, 60), (1080, 72)], "ÜST", "", 160),
     (200, 80, [(900, 60), (1080, 72)], "ALT", "", 160),
     (160, 80, [(900, 60), (1080, 72)], "PAS", "PAS_NO_EDGE", 160),
-    (184, 100, [(1080, 82)], "ÜST", "", 193.3),
+    (184, 100, [(1080, 82)], "ALT", "", 179.8),
     (136, 60, [(1080, 58)], "ALT", "", 126.7),
-    (220, 140, [(900, 135), (1080, 136)], "ÜST", "", 260),
+    (220, 140, [(900, 135), (1080, 136)], "PAS", "PAS_NO_EDGE", 220),
     (200, 80, [(1200, 80)], "ALT", "", 160),
 ])
 def test_real_history_scenarios(live, score, anchors, direction, reason, center):
     payload = make_match(160, live, f"{score // 2} - {score - score // 2}", "Q3 10:00")
+    captured = datetime.now(timezone.utc)
+    payload["market_captured_at"] = captured.isoformat()
     snapshots = [{"elapsed_game_seconds": elapsed, "total_score": points,
+                  "recorded_at": (captured - timedelta(seconds=1200 - elapsed)).isoformat(),
                   "period": 2 if elapsed < 1200 else 3}
                  for elapsed, points in anchors]
     decision = evaluate_live_signal(payload, snapshots, Config())
@@ -39,8 +43,8 @@ def test_overlapping_windows_are_diagnostics_and_cannot_multiply_the_score():
     with patch("live_signals.get_future_paces", return_value=[4.2] * 4):
         repeated = evaluate_live_signal(payload, [], Config())
     assert divergent.direction == repeated.direction == "ÜST"
-    assert divergent.sustainable_projection_center == repeated.sustainable_projection_center == 210
-    assert divergent.edge_points == repeated.edge_points == 42
+    assert divergent.sustainable_projection_center == repeated.sustainable_projection_center == 185
+    assert divergent.edge_points == repeated.edge_points == 17
 
 
 def test_advantage_below_publication_threshold_keeps_a_visible_forecast():
@@ -54,8 +58,8 @@ def test_advantage_below_publication_threshold_keeps_a_visible_forecast():
 
 
 def test_blowout_requires_more_advantage_without_changing_the_forecast():
-    # 110 points/20m and a 40-point/10m prior give a 210-point center.
-    payload = make_match(160, 204, "75 - 35", "Q3 10:00")
+    # Without continuation evidence, the remaining 20m use the 4 PPM prior.
+    payload = make_match(160, 184, "75 - 35", "Q3 10:00")
     balanced = {**payload, 'score': '55 - 55'}
     assert forecast_live_total(payload, Config()) == forecast_live_total(balanced, Config())
     assert evaluate_live_signal(balanced, [], Config()).direction == 'ÜST'

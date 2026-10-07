@@ -5,6 +5,11 @@
 > deneyini ve dondurulmuş arşiv verisinin anlamını açıklar. Güncel karar:
 > [M2 incelemesi](M2_REVIEW_2026-10-07.md).
 
+Sonraki kullanıcı talebiyle M2 geçmiş arayüzünden de kaldırıldı. Eski
+JS/CSS/modal dosyaları silindi; canlı ve arşiv API'leri `m2` ve
+`m2_analysis_json` alanlarını dışarı çıkarmaz. Aşağıdaki eski gösterim
+anlatımı güncel davranış değildir. DB/snapshot/otomatik sonuçlar değiştirilmez.
+
 6 Ekim 2026 kullanıcı talebi: dashboard'da mevcut motorun yanında M2 yönünü
 göster; veri yoksa bunu açıkla, ayrı modalda veri kalitesini ve ALT/ÜST
 gerekçesini göster. Bu talep, önceki yalnız araştırma okuyucusu kararını

@@ -70,7 +70,9 @@ def test_only_actual_published_predictions_get_a_frozen_policy(database):
     assert context["clock"]["quarter_length"] == 10
     assert len(context["policy_id"]) == 64
     assert context["snapshot_ids"]
-    assert context["policy"]["publication"] == "verified_future_pace_v7"
+    assert context["policy"]["publication"] == "verified_future_pace_v9"
+    assert context["policy"]["parameters"]["OVER_CONTINUATION_ENABLED"] is True
+    assert context["policy"]["parameters"]["OVER_CALIBRATION_ENABLED"] is True
     assert "MIN_SIGNAL_QUALITY" not in context["policy"]["parameters"]
     settle(database, 1)
     assert overall(database)["wins"] == 1
@@ -88,6 +90,25 @@ def test_legacy_frozen_policy_retains_its_original_quality_gate(database):
         conn.execute("UPDATE alerts SET prediction_context_json=?,quality_score=69 WHERE id=?",
                      (json.dumps(context), alert_id))
     assert report(database.db_path)["excluded"]["invalid_prediction_or_source"] == 1
+
+
+@pytest.mark.parametrize("version", ("v7", "v8"))
+def test_old_frozen_prediction_remains_valid_after_v9_deployment(database, version):
+    from forward_validation import _digest
+    alert_id = published(database)
+    context = json.loads(database.get_alert(alert_id)["prediction_context_json"])
+    context["policy"]["engine"] = "future_pace_" + version
+    context["policy"]["publication"] = "verified_future_pace_" + version
+    if version == "v7":
+        context["policy"]["parameters"].pop("OVER_CONTINUATION_ENABLED")
+    context["policy"]["parameters"].pop("OVER_CALIBRATION_ENABLED")
+    context["policy_id"] = _digest(context["policy"])
+    frozen = json.dumps(context)
+    with database._conn() as conn:
+        conn.execute("UPDATE alerts SET prediction_context_json=? WHERE id=?", (frozen, alert_id))
+    settle(database, alert_id)
+    assert overall(database)["wins"] == 1
+    assert database.get_alert(alert_id)["prediction_context_json"] == frozen
 
 
 def test_config_change_creates_separate_policy_and_secret_values_are_excluded(database):

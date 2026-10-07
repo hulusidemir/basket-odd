@@ -3,20 +3,36 @@
 AIScore basketbol maçlarında aynı bahis şirketine ait maç önü (yoksa açılış)
 ve canlı toplam baremini karşılaştıran Python/Flask uygulaması.
 
-Güncel karar motoru Future Pace v7'dir. Her doğrulanmış canlı gözlemde bir
+Güncel karar motoru Future Pace v9'dur. Her doğrulanmış canlı gözlemde bir
 merkez tahmin hesaplanır; tahmin üretimi ile Telegram uygunluğu ayrıdır.
 
 ```text
 öncül PPM = (geçerli maç önü baremi, yoksa açılış) / normal maç süresi
-kalan PPM tahmini = (mevcut skor + öncül PPM × öncül dakika) / (oynanan dakika + öncül dakika)
+ham kalan PPM = (mevcut skor + öncül PPM × öncül dakika) / (oynanan dakika + öncül dakika)
+son pencere = geçerli son 5 dakika, yoksa son 2 dakika
+pencere PPM = (pencere sayısı + öncül PPM × öncül dakika) / (pencere dakika + öncül dakika)
+ham kalan PPM > öncül PPM ise kalan PPM = min(ham kalan PPM, max(öncül PPM, pencere PPM))
+pencere yoksa sıcak başlangıçta kalan PPM = öncül PPM; diğer durumda kalan PPM = ham kalan PPM
+kalibrasyon rejiminde kalan PPM = max(0, kalan PPM - 1.015189277288373 × (kalan PPM - öncül PPM))
 tahmini toplam = mevcut skor + kalan PPM tahmini × kalan normal süre
 barem tahmini toplamdan küçükse ÜST, büyükse ALT; tam eşitlik EŞİT
 ```
 
 `PRIOR_EQUIV_MINUTES` varsayılan 10 dakikadır; bu çalışmada sonuçlara göre
-ayarlanmadı. Skor her hesapta bir kez kullanılır. Son 2/5 dakika ve periyot
-aralıkları açıklayıcıdır; yönü belirleyen çoklu oy veya zorunlu maç önü
-senaryosu değildir. `MIN_VALID_FUTURE_PACES` ve `MAX_FUTURE_BAND_WIDTH` eski
+ayarlanmadı. Sıcak başlangıcın kalan süreye taşınması artık tek bir yakın
+aralığın sayı hızıyla sınırlandırılır. Son 5/2 dakika birden fazla bağımsız
+oy sayılmaz; periyot aralıkları açıklayıcıdır. Pencere eksikliği tahmini
+engellemez. `OVER_CONTINUATION_ENABLED` varsayılan true; false eski bütün-maç
+hesabını geri getirir ve farklı dondurulmuş politika oluşturur.
+V9'da yüksek yakın hızın kalan süreye taşınma hatası eğitim verisinden
+öğrenilen tek katsayıyla düzeltilir. Yalnız 40/48 dakika, oynanan >=12,
+kalan >=5,5, 10 dakikalık öncül ve doğrulanmış yakın hız >= öncül rejiminde
+uygulanır; başka gözlemler v8 hesabıyla devam eder. Bayrak
+`OVER_CALIBRATION_ENABLED` varsayılan true. Dondurulmuş model/hash ve
+uygulanan düzeltme tahmin/kararda saklanır; canlı eğitim veya DB okuması yok.
+Model önceki kayıtlarda seçilmiş veriye dayanır; ayrıntı ve kapsam:
+`docs/OVER_CALIBRATION_V9_2026-10-07.md`.
+`MIN_VALID_FUTURE_PACES` ve `MAX_FUTURE_BAND_WIDTH` eski
 v5/v6 ayarları olarak korunur, yeni yönü veto etmez.
 
 `/forecasts` ekranında bildirim çıkmayan erken/geç veya küçük avantajlı
@@ -57,14 +73,14 @@ Uygun olmayan şirket tüm maçı engellemez; diğer şirket denenir.
 
 Quality v1 puanı yalnız açıklayıcıdır; başarı olasılığı veya yayın barajı değildir.
 Eski `MIN_SIGNAL_QUALITY` ayarı yayın kararına katılmaz. Sinyal için doğrulanmış
-barem ve v7 merkez tahmininin yeterli sayı avantajı zorunludur.
+barem ve v9 merkez tahmininin yeterli sayı avantajı zorunludur.
 Yeni gerçek sinyal, kaynak kanıtıyla birlikte kararın kod sürümünü ve kullanılan
 ayarları dondurur. İleriye dönük değerlendirme
 `venv/bin/python forward_validation.py --db basketball.db` ile salt okunur çalışır; her sürümde maçın ilk sinyalini
 sonuçtan önce seçer, ALT/ÜST ve gün sonuçlarını ayrı gösterir. Model/piyasa/maç
 önü kalan-hız bazının ortalama hatası ve kayıtlı/teslim edilmiş sinyal paydaları
 da ayrı verilir. M2 erişim durumları/gerekçeleri raporda bulunur. Eski v5 ve
-v6/v7 politikaları karışmaz; geçmiş tahminler yeniden yazılmaz. Yöntem ve mevcut
+v6/v7/v8/v9 politikaları karışmaz; geçmiş tahminler yeniden yazılmaz. Yöntem ve mevcut
 kanıtın sınırları `docs/FORWARD_VALIDATION_2026-10-04.md` içindedir.
 Bildirim çıkmayan tahminler de `match_live_snapshots.forecast_json` içinde
 ilk kayıt anında dondurulur. Saatlik otomatik biten maç taraması bu maçları
@@ -142,6 +158,8 @@ TELEGRAM_TOKEN=...
 TELEGRAM_CHAT_ID=...
 AISCORE_URL=https://m.aiscore.com/basketball
 PRIOR_EQUIV_MINUTES=10
+OVER_CONTINUATION_ENABLED=true
+OVER_CALIBRATION_ENABLED=true
 MIN_VALID_FUTURE_PACES=2
 MIN_ELAPSED_MINUTES=12
 MIN_REMAINING_MINUTES=5
@@ -237,7 +255,9 @@ denemesi için `venv/bin/python directional_audit.py` yalnız toplam metrikler
 ### Dashboard M2
 
 7 Ekim incelemesi sonrası M2 canlı akıştan kaldırıldı: bot M2 görevi/tarayıcısı
-başlatmaz, yeni sinyallere M2 analizi eklemez; canlı ekranda M2 sütunu/modalı
-yoktur. Eski `M2_ENABLED` ortam ayarı artık kullanılmaz. Önceden dondurulmuş
-arşiv verisi korunur. İnceleme: [M2_REVIEW_2026-10-07.md](docs/M2_REVIEW_2026-10-07.md).
+başlatmaz, yeni sinyallere M2 analizi eklemez. Canlı ve geçmiş ekranlarında
+M2 sütunu, düğmesi ve modalı yoktur; eski M2 JS/CSS/modal dosyaları kaldırıldı.
+Canlı/geçmiş API'leri eski M2 alanlarını döndürmez. Eski `M2_ENABLED` ortam
+ayarı kullanılmaz. DB'deki dondurulmuş eski kayıtlar aynen korunur; migration
+veya geçmişi yeniden yazma yok. İnceleme: [M2_REVIEW_2026-10-07.md](docs/M2_REVIEW_2026-10-07.md).
 Eski deneysel modelin açıklaması: [MOTOR2.md](docs/MOTOR2.md).

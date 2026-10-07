@@ -72,7 +72,8 @@ def test_over_pace_margin_and_q2_margin_lower_quality():
 
 
 def test_over_fair_edge_below_eight_keeps_candidate_with_penalty():
-    payload = match(opening_total=200, prematch_total=200, inplay_total=225)
+    # V8 without a recent interval: 90 scored + 25m * 5 PPM = 215.
+    payload = match(opening_total=200, prematch_total=200, inplay_total=210)
     candidate = decision(payload, [4.2, 4.3])
     assert candidate.direction == "ÜST" and candidate.skip_reason == ""
     score, _, factors = score_signal_quality(payload, candidate, Config())

@@ -2,6 +2,7 @@ import asyncio
 import tempfile
 import time
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -25,12 +26,15 @@ def match(**overrides):
 class LiveSignalRuleTests(unittest.TestCase):
     def test_hot_scoring_is_shrunk_without_a_pregame_veto(self):
         payload = match(status="Q3 10:00", score="50 - 50", opening_total=160,
-                        prematch_total=160, inplay_total=184)
+                        prematch_total=160, inplay_total=171)
         history = [{"elapsed_game_seconds": 1080, "total_score": 82, "period": 2}]
-        # 100 points in 20 minutes plus a 40-point/10-minute prior: 4.667 PPM.
+        captured = datetime.now(timezone.utc)
+        payload["market_captured_at"] = captured.isoformat()
+        history[0]["recorded_at"] = (captured - timedelta(minutes=2)).isoformat()
+        # The hot excess is calibrated, but a sufficiently low line can still be OVER.
         decision = evaluate_live_signal(payload, history, Config())
         self.assertEqual(decision.direction, "ÜST")
-        self.assertEqual(decision.sustainable_projection_center, 193.3)
+        self.assertEqual(decision.sustainable_projection_center, 179.8)
 
     def test_cold_scoring_is_shrunk_without_a_pregame_veto(self):
         payload = match(status="Q3 10:00", score="30 - 30", opening_total=160,
@@ -46,13 +50,14 @@ class LiveSignalRuleTests(unittest.TestCase):
                         opening_total=192, prematch_total=192, inplay_total=230)
         history = [{"elapsed_game_seconds": 0, "total_score": 0, "period": 1}]
         decision = evaluate_live_signal(payload, history, Config())
-        self.assertEqual(decision.direction, "ÜST")
-        self.assertEqual(decision.sustainable_projection_center, 250)
+        self.assertEqual(decision.direction, "ALT")
+        self.assertEqual(decision.sustainable_projection_center, 214)
+        self.assertEqual(decision.over_continuation["source"], "pregame_prior")
 
     def test_complete_score_and_clock_do_not_require_local_history(self):
-        decision = evaluate_live_signal(match(), [], Config())
+        decision = evaluate_live_signal(match(inplay_total=171), [], Config())
         self.assertEqual(decision.direction, "ÜST")
-        self.assertEqual(decision.sustainable_projection_center, 191.2)
+        self.assertEqual(decision.sustainable_projection_center, 178.1)
 
     def test_overtime_never_signals(self):
         decision = evaluate_live_signal(match(status="OT 03:00"), [], Config())
@@ -197,9 +202,9 @@ class LiveSignalIntegrationTests(unittest.TestCase):
         self.notifier.send_alert.assert_not_awaited()
 
     def test_regressed_clock_and_score_do_not_enter_signal_history(self):
-        self.process(match())
-        self.process(match(status="Q2 05:30", score="41 - 35"))
-        self.process(match(status="Q2 04:30", score="39 - 35"))
+        self.process(match(inplay_total=171))
+        self.process(match(inplay_total=171, status="Q2 05:30", score="41 - 35"))
+        self.process(match(inplay_total=171, status="Q2 04:30", score="39 - 35"))
         self.assertEqual(len(self.db.get_match_snapshots("test-match")), 2)
         self.assertEqual(self.db.count_match_alerts("test-match"), 1)
         self.notifier.send_alert.assert_awaited_once()
@@ -208,8 +213,8 @@ class LiveSignalIntegrationTests(unittest.TestCase):
         self.assertEqual(len(self.db.get_match_snapshots("test-match")), 3)
 
     def test_observation_captured_before_latest_snapshot_is_ignored(self):
-        self.process(match())
-        self.process(match(market_captured_at="2020-01-01T00:00:00+00:00"))
+        self.process(match(inplay_total=171))
+        self.process(match(inplay_total=171, market_captured_at="2020-01-01T00:00:00+00:00"))
         self.assertEqual(self.db.count_match_alerts("test-match"), 1)
         self.assertEqual(len(self.db.get_match_snapshots("test-match")), 1)
         self.notifier.send_alert.assert_awaited_once()

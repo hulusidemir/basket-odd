@@ -1,8 +1,8 @@
 # Project Map
 
 - `main.py`: sinyal akışının doğrulama/filtre/kayıt/bildirim adımları, tekrar korumaları, taramadan bağımsız Telegram outbox worker'ı ve oturum arızasına göre bekleme.
-- `live_signals.py`: Future Pace v7; bütün maç skorunu öncüle yaklaştıran merkez tahmin, her barem için yön ve ayrı Telegram avantaj koşulları.
-- `pace_calculator.py`: kronolojik tempo pencereleri, aynı kaynak aralığını tek sayma ve maç önü PPM öncülüne yaklaştırma.
+- `live_signals.py`: Future Pace v9; yakın sayı hızı ve dondurulmuş sıcak-fazla kalibrasyonuyla tek merkez, her barem için yön ve ayrı Telegram avantaj koşulları.
+- `pace_calculator.py`: kronolojik tempo pencereleri, aynı kaynak aralığını tek sayma, öncüle yaklaştırma ve sıcak başlangıç devam hesabı.
 - `signal_quality.py`: sinyal anında dondurulan Quality v1 bileşenleri ve etiketi.
 - `forward_validation.py`: gerçek kayıtlı tahminin kod/ayar/aralık bağlamını dondurur; SQLite'ı salt okunur değerlendirir, ilk sinyal/teslim alt kümesi, model/piyasa/baz hatası ve M2 durumlarını ayrı politikalarla raporlar.
 - `aiscore_scraper.py`: mobil AIScore canlı maç/barem scraper'ı, süre bütçeli adil tarama kuyruğu ve sağlık/kapsama raporu.
@@ -13,13 +13,17 @@
 - `aiscore_scoreboard.py`: aynı maçın çeyrek skorlarını satır/sütun hücrelerinden okuyan ortak DOM kodu.
 - `aiscore_basketball_data.py`: aynı maçın şut/FT, ribaund, top kaybı, faul ve olay verisini cache'siz public API'den okur; skor/aritmetik doğrulaması. M2 okuyucusudur; M1 kararına girmez.
 - `motor2.py`, `motor2_worker.py`: canlı akıştan kaldırılmış eski deneysel şut/hücum hacmi motoru; bot import etmez veya worker başlatmaz.
-- `static/motor2.js`, `static/motor2.css`, `templates/_motor2_modal.html`: yalnız eski dondurulmuş arşiv M2 verisinin gösterimi; canlı ekran kullanmaz.
+- M2 arayüz dosyaları kaldırıldı; canlı ve geçmiş DTO'lar eski M2 alanlarını da kullanıcı API'sine taşımaz.
 - `docs/MOTOR2.md`: M2 model varsayımları, nullable migration, arşiv ve çalışma sınırları.
 - `docs/M2_REVIEW_2026-10-07.md`: üretim M2 ret özeti, gerçek kaynak kontrolleri ve canlı akıştan kaldırma kararı.
 - `match_state.py`: skor ve canlı periyot/saat ayrıştırma ile şeffaf tempo projeksiyonu.
 - `reversal_features.py`: yalnız sinyal anındaki piyasa/tempo verilerinden ayrık pencere feature'ları; yön kararına katılmaz.
 - `reversal_audit.py`: ilk sinyal zamanında bilinen verilerle sonraki beş dakika/kalan normal süre hız değişimi ve final toplamı için salt okunur kronolojik test; yalnız toplam metrikler, ayrı tarihsel kaynak doğrulama alt grubu.
 - `directional_audit.py`: ALT/ÜST kayıt sonuçları, kaynak doğrulanan politika grupları ve eğitimde öğrenilen ÜST sapmasının sonraki testte merkez/filtre etkisi; salt okunur, canlıya kalibrasyon uygulamaz.
+- `over_signal_audit.py`: gerçek v8 devam fonksiyonuyla ilk sinyal anında v7/v8 eşleştirilmiş salt okunur tekrar hesabı; sabit eski ÜST örneklemi ve kalan bildirim kapsamı ayrı.
+- `over_calibration.py`, `models/over_calibration_v1.json`: canlı DB/eğitim olmadan dondurulmuş sıcak-fazla düzeltmesi; yalnız tanımlı süre/öncül rejiminde uygulanır.
+- `over_calibration_audit.py`: üç ayrık eğitim içi zaman bloğunda katsayı/yöntem seçimini tekrar üretir; gerçek v9 fonksiyonuyla yön/kapsam karşılaştırmasını salt okunur yapar.
+- `docs/OVER_SIGNAL_REPAIR_2026-10-07.md`: v8 motor düzeltmesi, formülü ve sınırlı retrospektif etkisi.
 - `docs/DIRECTIONAL_CALIBRATION_2026-10-07.md`: ayrı yön başarısı ve ÜST kalibrasyon denemesinin kapsam/isabet/sinyal azalması ölçümleri.
 - `notifier.py`: sade Telegram sinyal mesajı.
 - `db.py`: SQLite şeması, aktif/arşiv kayıtları, kullanıcı işlemleri ve outbox; dondurulmuş gözlem tahminleri ve otomatik final gözlemleri.
@@ -38,12 +42,12 @@
 - `signal_lists.py`: takım/lig kara-beyaz liste eşlemesi.
 - `templates/`: aktif, arşiv ve yaklaşan maç arayüzleri.
 - `static/signal_display.js`: canlı ve arşiv PPM/ekran değerlerini hesap yapmadan gösteren ortak bileşenler.
-- `static/ppm_calculator.js`, `static/ppm_calculator.css`, `templates/_ppm_calculator.html`: işlemlerden açılan, kullanıcı PPM seçimiyle kalan süre için maç sonu senaryosu hesaplayan ortak modal.
+- `static/ppm_calculator.js`, `static/ppm_calculator.css`, `templates/_ppm_calculator.html`: yalnız canlı sinyallerin işlemlerinden açılan, kullanıcı PPM seçimiyle kalan süre için maç sonu senaryosu hesaplayan modal.
 - `run.py`: dashboard, bankroll ve zamanlanmış işleri birleştirir.
 
 Canlı akış: mobil listing → maçın total odds sayfası → uygun şirketin aynı satır
 canlı state/DOM doğrulaması (boş hücrede aynı şirket history fallback'i)
-→ frozen v7 gözlem tahmini → ayrı avantaj/tekrar/kara liste kontrolleri (Quality v1 yalnız açıklayıcı)
+→ frozen v9 gözlem tahmini → ayrı avantaj/tekrar/kara liste kontrolleri (Quality v1 yalnız açıklayıcı)
 → kaynak kanıtıyla SQLite → gönderim öncesi yeniden doğrulama → Telegram.
 
 Canlı dashboard'daki tempo projeksiyonu yalnız gösterim amaçlıdır ve sinyal

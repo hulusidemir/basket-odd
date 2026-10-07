@@ -1,5 +1,78 @@
 # Decisions
 
+## Canlı bilgi kartlarını sadeleştirme ve kartlardan filtreleme
+
+7 Ekim 2026 — Kullanıcının yeni talebiyle canlı sinyal kartlarında başarı
+yüzdesi/doğru/yanlış/bekleyen gösterimi ve performans sorgusu kaldırılır.
+Kartlar mevcut aktif sinyal sayılarını gösteren klavyeyle erişilebilir
+filtre düğmeleridir. ÜST/ALT yön filtresi, Oynanan bahis işaretli kayıtları
+seçer; Aktif sinyal/Tümü yön ve oynanan seçimini temizler. Arama ve maç
+filtresi korunur, toolbar ile kart seçimi eşzamanlıdır.
+Geçmiş işlemlerindeki PPM hesaplayıcı ve ona ait modal/asset yüklemeleri
+kaldırılır; canlı senaryo hesabı korunur. Arşiv PPM sütunu/detayı yalnız
+snapshot değerlerini göstermeye devam eder; sonuçlar veya kayıtlar değişmez.
+Bu talep önceki canlı başarı kartı ve arşiv hesaplayıcı gösterimi kararlarının
+yerini alır. DB migration veya servis yeniden başlatma gerekmez.
+
+## M2'yi geçmiş arayüzü ve kullanıcı API'lerinden de kaldırma
+
+7 Ekim 2026 — Kullanıcının yeni talebi önceki eski arşiv M2 gösterimini
+koruma kararının yerini alır. Canlı/geçmiş sayfasında M2 sütunu/düğmesi/modalı
+ve sıralama girdisi yok; kullanılmayan JS/CSS/modal dosyaları silinir.
+Canlı ve frozen arşiv DTO'ları M2 alanlarını API'ye taşımaz. Kalıcı eski
+JSON/snapshot değiştirilmez veya silinmez; arşiv alanları yeniden hesaplanmaz,
+otomatik sonuçlar korunur. Yeni DB migration veya worker yoktur.
+
+## V9: yakın hızın sürdüğü sıcak rejimde ampirik kalan sayı düzeltmesi
+
+7 Ekim 2026 — Kullanıcı v8 yön başarısının aynı kalmasını kabul etmedi.
+Eğitimde yakın hızlı sıcak grubun sapması +7,205, yakın yavaş grubun sapması
+-3,561 sayı olduğundan bütün ÜST adaylarına aynı sayı çıkarma uygulanmaz.
+Yalnız sıcak/yakın hızlı rejimde, v8'in öncül üzerindeki kalan-hız fazlası
+eğitimde öğrenilen tek katsayıyla kalibre edilir. Beş basit aday üç ayrık
+eğitim içi zaman bloğunda toplam MAE ile karşılaştırıldı; sıcak-fazla yöntemi
+seçildi. 203 uygun eğitim gözleminde katsayı 1,015189277288373. Sonraki test
+katsayı seçiminde kullanılmaz; önceden incelenmiş veri ileri test denmez.
+
+Canlı 40/48 dakika, oynanan>=12, kalan>=5,5, öncül gücü10 ve geçerli yakın
+hız>=öncül rejiminde uygulanır. Baremden bağımsız tek merkezdir; öncülün
+altına küçük kalan-hız düzeltmesi olabilir, mevcut skor çıkarılmaz. Diğer
+gözlemler v8 ile devam eder; veri yetersizliği veya yeni yayın eşiği yok.
+Model/hash/bayrak dondurulur, canlı model eğitimi veya yeni worker yok.
+Eski v7/v8 sonuç ve snapshot'lar değişmez. Yeni şema/migration gerekmez.
+
+Sabit 171 eski ÜST adayında v8 85/171, v9 96/171; bunlar ALT'a dönüşleri de
+içerir. Yeterli avantajlı ÜST 164→15, sonuç9/15; kaynak doğrulanan21 adayda
+6/21→15/21 fakat avantajlı ÜST bildirimi0. 451 tahmin korunur; toplam
+bildirim444→316. Kapsam düşüşü gizlenmez ve 96/171 oranı yalnız ÜST bahis
+başarısı diye sunulmaz. Karar güçlü ÜST sayısını zorla korumak yerine
+merkezi ölçülen sapmaya göre düzeltir; kullanıcının tüm tahminler görünür,
+avantaj varsa Telegram tercihi sürer. Ayrıntı OVER_CALIBRATION_V9_2026-10-07.md.
+
+## V8: sıcak başlangıçta ÜST devamını yakın sayı hızıyla sınırlandırma
+
+7 Ekim 2026 — Kullanıcı başarı ekranı yerine ÜST sinyal matematiğini istedi.
+V7 son 2/5 dakikayı hesaplıyor fakat merkezde kullanmıyordu; worker da kayıtlı
+tahmini geçmişsiz hesaplıyordu. V8 sıcak bütün-maç hızını, son 5 dakikanın
+öncüle yaklaştırılmış hızıyla sınırlar; 5 dakika yoksa 2 dakika, o da yoksa
+maç önü hızı kullanılır. Soğuk bütün-maç hesabı aynıdır. Devam hızı öncülün
+altına ayrıca itilmez. Aynı baremden bağımsız tek merkez bütün geçerli
+gözlemlerde korunur; bildirim eşikleri veya veri yetersizliği vetosu eklenmez.
+Sayı/dakika ölçülür; hücum hızı veya kalibre edilmiş kazanma olasılığı denmez.
+
+Yakalama zamanından sonraki/bozuk saatli/geri kayan/düzeltilen skor öncesi
+aralıklar kullanılmaz. Güncel gözlem düzeltme teyidi için matematikte aynı
+şekilde temsil edilir; DB'ye yazılmadan ve yazıldıktan sonra merkez aynıdır.
+Yeni 48 dakika teyidinde eski 40 dakika geçmişi dışlanır. Parametre ve sürüm
+politikada dondurulur; eski v7 sonuçları kabul edilmeye devam eder ve yeniden
+yazılmaz. Yeni tablo/migration/backfill/worker veya UI değişikliği yoktur.
+
+İncelenmiş kronolojik sonraki kesitte sabit 171 eski ÜST adayında MAE
+13,490→13,106; yön isabeti 85/171→85/171. Kalan ÜST bildirimleri 164,
+82 doğru/82 yanlış. Kaynak doğrulanan 21 adayda yön 5/21→6/21, kalan
+20 ÜST bildirimi 5/20. Sayı tahmin hatası azalırken yön başarısının çözüldüğü
+iddia edilmez. Tam ölçüm ve sınırlar OVER_SIGNAL_REPAIR_2026-10-07.md içinde.
+
 ## ALT/ÜST başarılarını ayrı izleme ve ÜST düzeltmesinin kapsamını ölçme
 
 7 Ekim 2026 — Kullanıcı ÜST güvenini sorguladı ve ayrı kalibrasyon istedi.

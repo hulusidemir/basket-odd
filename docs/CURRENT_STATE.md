@@ -1,5 +1,76 @@
 # Current State
 
+7 Ekim 2026 — Kullanıcı talebiyle canlı bilgi kartlarından başarı yüzdesi,
+doğru/yanlış/bekleyen metinleri ve bunlara ait API yenilemesi kaldırıldı.
+Kartlar yalnız aktif sinyal sayılarını gösterir; ÜST/ALT yönü, Oynanan bahis
+işaretli kayıtları filtreler. Aktif sinyal veya Tümü yön/oynanan filtresini
+temizler; arama ve maç filtresiyle birlikte çalışır. Kart/toolbar seçimi ve
+aria-pressed eşzamanlıdır. Geçmiş işlemlerinden PPM hesaplayıcı, modal ve
+asset yüklemeleri kaldırıldı; canlı hesaplayıcı ve frozen PPM gösterimi sürer.
+İlgili 36 test geçti. 1440/390px fixture tarayıcıda filtre/arama/maç/yenileme,
+klavye ve modal kontrolleri başarılı, JS hatası 0. Çalışan canlı/geçmiş sayfa
+ve CSS HTTP200 ile yeni arayüzü sunuyor. Servis müdahalesi, DB migration veya
+arşiv/sinyal motoru değişikliği yok.
+
+7 Ekim 2026 — Kullanıcı M2'yi geçmiş sinyallerden de kaldırdı. Arşiv M2
+sütunu/düğmesi/modalı/sıralama anahtarı ve asset yüklemeleri kaldırıldı;
+motor2.js/motor2.css/_motor2_modal.html silindi. Canlı ve arşiv DTO/API'leri
+eski M2 alanlarını da döndürmez. DB/frozen snapshot/otomatik sonuçlar aynen
+korunur; migration/backfill ve sinyal motoru değişikliği yok. İlgili 71 test,
+compileall/diff geçti. Masaüstü fixture tarayıcıda 12 sütun, final sıralaması
+ve sinyal modalı kontrol edildi; M2 öğesi/isteği ve JS hatası0.
+390px mobil fixture'da filtre/sinyal modalı ve 12 alan geçti; JS hatası0.
+Yalnız dashboard yenilendi, bot PID'si aynı. İki servis active/running,
+restart0; canlı/geçmiş ekranları ve API'leri HTTP200. M2 UI/API alanı yok,
+yeni dashboard invocation'ında traceback0.
+
+7 Ekim 2026 — Kullanıcı v8'in ÜST yön başarısını artırmamasını yetersiz
+buldu. V9 sıcak-fazla kalibrasyonu eklendi: yakın bölüm de hızlıyken yüksek
+kalan hızın sistematik iyimserliği tek dondurulmuş katsayıyla düzeltilir.
+203 uygun eğitim gözleminde katsayı 1,015189277288373; yöntem beş adayın
+yalnız eğitim içindeki üç ayrık zaman bloğunda en düşük MAE'siyle seçildi.
+Canlıda fit/DB/eğitim/worker yok. Önceki v8 devam hesabı aynı; kalibrasyon
+uygun rejimde bu hesabın üzerine uygulanır, diğer geçerli gözlemler devam eder.
+
+Sabit sonraki 171 eski ÜST adayında yön 85/171→96/171; kaynak doğrulanan
+21 adayda 6/21 (v8) →15/21. Bu sayılar ALT'a dönüştürülenleri de sayar;
+sadece ÜST başarısı değildir. 451 tahmin korunur; bildirimler 444→316,
+ÜST 164→15 (9 doğru/6 yanlış). Küçük kaynak grubunda avantajlı ÜST bildirimi
+0; burada ÜST başarısı iddiası yok. Kapsam azalması açıkça raporlanır.
+Yeni bayrak OVER_CALIBRATION_ENABLED ve model/hash kararda dondurulur.
+V7/v8 geçmişi korunur; UI/migration/backfill yok. Tekrar üretim aracı
+over_calibration_audit.py, ayrıntı docs/OVER_CALIBRATION_V9_2026-10-07.md.
+Tam paket491 (44,12s), ek eski-politika2 test, compileall/diff geçti.
+04:28 Türkiye saatinde tutarlı0600 SQLite yedeği sonrası mevcut iki servis
+yenilendi; active/running, restart/traceback0. V9/iki bayrak true ve kod hash
+doğrulandı; iki ekran/üç API HTTP200, quick_check ok. Dört gerçek v9
+tahmininde kod/model hash eşleşti; bu gözlemler kalibrasyon rejimi dışında,
+uygulama0. Yeni v9 final başarısı henüz yok.
+
+7 Ekim 2026 — Kullanıcı başarı ekranını reddedip ÜST sinyal matematiğini
+istedi. Future Pace v8 uygulandı: sıcak bütün-maç hızının devamı son 5 dakika
+(yoksa 2 dakika) öncüle yaklaştırılmış sayı hızıyla sınırlanır; yakın aralık
+yoksa maç önü hızı kullanılır. Soğuk merkez hesabı ve bildirim eşikleri
+aynıdır. Her geçerli gözlem yine tahmin üretir. Worker geçmişi frozen tahmine
+verir; kaydedilen ve yayınlanan merkez aynı, 48 dakika teyidinde eski 40
+dakika aralıkları dışarıda. Düzeltme/ham merkez/aralık ve bayrak v8 politikada
+dondurulur. UI/migration/backfill/yeni worker yok; eski tahmin/sonuç korunur.
+
+Gerçek fonksiyonla retrospektif sonraki 451 gözlem: MAE 12,054→11,924,
+yön 252/451→252/451. Sabit 171 eski ÜST adayı: MAE 13,490→13,106,
+yön 85/171→85/171; ÜST bildirimleri 171→164, kalanlar 82/164. Kaynak
+doğrulanan 21 eski ÜST'te yön 5/21→6/21, 20 ÜST bildirimi 5/20.
+İleri başarı veya ÜST sorununun bütünüyle çözüldüğü iddiası yok. Yakın hızın
+merkezde kullanılmaması düzeltildi. over_signal_audit.py salt okunur ve yalnız
+toplam metrik verir; ayrıntılar docs/OVER_SIGNAL_REPAIR_2026-10-07.md içinde.
+Tam paket 486 test (36,28s), compileall/diff geçti. Tutarlı 0600 SQLite
+yedeği sonrası 04:10 Türkiye saatinde mevcut bot/dashboard servisleri
+yenilendi; ikisi active/running, restart/traceback 0. V8/continuation true
+startup ve implementation hash eşleşti. İki ekran/üç API HTTP 200,
+SQLite quick_check ok. Yeni UI veya üretim tarihçesi yeniden yazma yok.
+Son kontrolde beş gerçek v8 tahmini kaydedildi; beşinde hash/ayar eşleşti,
+dördünde devam düzeltmesi uygulandı. Yeni final başarısı henüz ölçülmedi.
+
 7 Ekim 2026 — Kullanıcının ALT/ÜST ayrımı ve ÜST kalibrasyon talebiyle
 salt okunur inceleme/kronolojik deneme yapıldı. Karma eski ilk sinyallerde
 ALT 438/726 (%60,3), ÜST 198/399 (%49,6). Eğitimde öğrenilen 8,972961 sayılık

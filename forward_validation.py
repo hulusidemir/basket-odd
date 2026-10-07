@@ -15,9 +15,12 @@ from live_market import decode_history, verify_current_market, verify_market
 from live_signals import ENGINE_VERSION, direction_for_total
 from match_state import game_clock, parse_score
 from pace_calculator import get_future_pace_windows
+from over_calibration import MODEL_SHA256
 
 
 RULE_PARAMETERS = (
+    "OVER_CONTINUATION_ENABLED",
+    "OVER_CALIBRATION_ENABLED",
     "PRIOR_EQUIV_MINUTES", "MIN_VALID_FUTURE_PACES", "MIN_EDGE_POINTS", "MIN_EDGE_RATIO",
     "BLOWOUT_MARGIN", "BLOWOUT_EDGE_MULTIPLIER", "EXTREME_BLOWOUT_MARGIN",
     "EXTREME_BLOWOUT_EDGE_MULTIPLIER", "LARGE_REPRICE_RATIO", "LARGE_REPRICE_EDGE_MULTIPLIER",
@@ -39,7 +42,8 @@ def _implementation_hash() -> str:
     root = Path(__file__).resolve().parent
     names = ("main.py", "live_signals.py", "pace_calculator.py", "signal_quality.py",
              "match_state.py", "live_market.py", "aiscore_scraper.py", "signal_repeat.py",
-             "signal_lists.py", "forward_validation.py")
+             "signal_lists.py", "forward_validation.py", "over_calibration.py",
+             "models/over_calibration_v1.json")
     return _digest({name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names})
 
 
@@ -54,6 +58,9 @@ def freeze_forecast(match, forecast, config) -> dict | None:
     policy = {
         "implementation_sha256": IMPLEMENTATION_HASH, "engine": ENGINE_VERSION,
         "prior_equivalent_minutes": config.PRIOR_EQUIV_MINUTES,
+        "over_continuation_enabled": config.OVER_CONTINUATION_ENABLED,
+        "over_calibration_enabled": config.OVER_CALIBRATION_ENABLED,
+        "over_calibration_model_sha256": MODEL_SHA256,
         "source": (match.get("market_provenance") or {}).get("version"),
     }
     return {
@@ -121,7 +128,8 @@ def _verified_prediction(row, context) -> bool:
             # Earlier frozen policies genuinely required a minimum; do not rewrite history.
             if row["quality_score"] < context["policy"]["parameters"]["MIN_SIGNAL_QUALITY"]:
                 return False
-        elif publication not in {"verified_future_pace_v5", "verified_future_pace_v6", "verified_future_pace_v7"}:
+        elif publication not in {"verified_future_pace_v5", "verified_future_pace_v6", "verified_future_pace_v7",
+                                 "verified_future_pace_v8", "verified_future_pace_v9"}:
             return False
         predicted = _timestamp(context["predicted_at"])
         alerted = _timestamp(row["alerted_at"])

@@ -143,6 +143,10 @@ h1 { margin: 0; font-size: clamp(24px, 3vw, 38px); line-height: 1.08; letter-spa
 .stat-card.green .stat-value { color: var(--green); }
 .stat-card.red .stat-value { color: var(--red); }
 .stat-card.yellow .stat-value { color: var(--yellow); }
+.stat-card-filter { color: var(--text); text-align: left; cursor: pointer; transition: border-color 160ms ease, box-shadow 160ms ease; }
+.stat-card-filter:hover { border-color: var(--border-strong); }
+.stat-card-filter.active { border-color: var(--purple); box-shadow: inset 0 0 0 1px var(--purple); }
+.stat-card-filter:focus-visible { outline: 2px solid var(--purple-bright); outline-offset: 3px; }
 
 .panel {
   margin-top: 12px;

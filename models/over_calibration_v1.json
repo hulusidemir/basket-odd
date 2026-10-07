@@ -1,0 +1,17 @@
+{
+  "version": "hot_excess_calibration_v1",
+  "method": "excess",
+  "coefficient": 1.015189277288373,
+  "prior_equivalent_minutes": 10.0,
+  "durations": [40, 48],
+  "min_elapsed_minutes": 12.0,
+  "min_remaining_minutes": 5.5,
+  "training_cutoff_utc": "2026-09-29T00:00:00+00:00",
+  "training_matches": 623,
+  "active_training_matches": 203,
+  "selection": "minimum_total_mae_in_three_disjoint_expanding_training_folds",
+  "training_cv_mae_before": 11.074443775594773,
+  "training_cv_mae_after": 10.504250459508134,
+  "data_scope": "historically_selected_first_signals_mixed_source_provenance",
+  "prospective_validated": false
+}

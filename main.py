@@ -471,6 +471,12 @@ async def _process_match_with_format(match, db, notifier, config, observation_ag
         ):
             return
 
+        # Freeze the same contemporaneous history used for the signal decision.
+        # A newly confirmed 48-minute game must not use old 40-minute anchors.
+        forecast_history = snapshots
+        if runtime_override:
+            confirmed = first_confirmed_12_snapshot_index(snapshots, match["tournament"])
+            forecast_history = snapshots[confirmed:] if confirmed is not None else []
         db.save_snapshot_if_changed(
             match_id=match["match_id"],
             period=period,
@@ -485,7 +491,7 @@ async def _process_match_with_format(match, db, notifier, config, observation_ag
             heartbeat_seconds=config.HEARTBEAT_SECONDS,
             market_provenance=match.get("market_provenance"),
             forecast=(None if score_decreased else freeze_forecast(
-                match, forecast_live_total(match, config), config,
+                match, forecast_live_total(match, config, forecast_history), config,
             )),
         )
         if score_decreased:
@@ -787,7 +793,9 @@ async def run():
         config.MAX_LIVE_OBSERVATION_AGE_SECONDS, config.MAX_LIVE_PROVIDER_AGE_SECONDS, ENGINE_VERSION,
     )
     log.info(
-        "Bot started. Future Pace v7 | continuous forecasts, whole-game pregame shrinkage | alert elapsed >= %s min | alert remaining >= %s min | edge >= max(%s pts, live * %s) | OT disabled | Poll: %s-%ss | Max/match: %s | Same direction: %s pts live-total gap | 1 alert per period",
+        "Bot started. Future Pace v9 | hot-start continuation enabled=%s | over calibration enabled=%s | alert elapsed >= %s min | alert remaining >= %s min | edge >= max(%s pts, live * %s) | OT disabled | Poll: %s-%ss | Max/match: %s | Same direction: %s pts live-total gap | 1 alert per period",
+        config.OVER_CONTINUATION_ENABLED,
+        config.OVER_CALIBRATION_ENABLED,
         config.MIN_ELAPSED_MINUTES, config.MIN_REMAINING_MINUTES,
         config.MIN_EDGE_POINTS, config.MIN_EDGE_RATIO,
         config.POLL_INTERVAL_MIN, config.POLL_INTERVAL_MAX,

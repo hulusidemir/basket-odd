@@ -5,10 +5,11 @@ import re
 from dataclasses import dataclass
 
 from match_state import game_clock, parse_score
-from pace_calculator import get_future_paces
+from pace_calculator import get_future_paces, get_over_continuation
+from over_calibration import calibrate_over_continuation
 
 
-ENGINE_VERSION = "future_pace_v7"
+ENGINE_VERSION = "future_pace_v9"
 
 
 def valid_total(value) -> float | None:
@@ -39,6 +40,8 @@ class SignalDecision:
     edge_points: float | None = None
     pregame_ppm: float | None = None
     sustainable_projection_center: float | None = None
+    over_continuation: dict | None = None
+    over_calibration: dict | None = None
 
 
 def direction_for_total(center: float, line: float) -> str:
@@ -46,8 +49,8 @@ def direction_for_total(center: float, line: float) -> str:
     return "ÜST" if center > line else "ALT" if center < line else "EŞİT"
 
 
-def forecast_live_total(match: dict, config) -> dict | None:
-    """Use each scored point once; prior strength is declared, not fitted here."""
+def forecast_live_total(match: dict, config, snapshots: list[dict] | None = None) -> dict | None:
+    """Keep one total for every line; hot scoring requires continuation support."""
     reference = valid_total(match.get("prematch_total")) or valid_total(match.get("opening_total"))
     line = valid_total(match.get("inplay_total"))
     clock = game_clock(match.get("status", ""), match.get("match_name", ""), match.get("tournament", ""))
@@ -67,15 +70,30 @@ def forecast_live_total(match: dict, config) -> dict | None:
     pregame_ppm = reference / duration
     future_ppm = (score + prior_minutes * pregame_ppm) / (elapsed + prior_minutes)
     remaining = duration - elapsed
+    continuation = get_over_continuation(snapshots, {
+        "elapsed_game_seconds": round(elapsed * 60), "total_score": score,
+        "period": clock["period"], "quarter_length": clock["quarter_length"],
+        "period_count": clock["period_count"],
+        "observed_at": match.get("market_captured_at") or (match.get("market_provenance") or {}).get("captured_at"),
+    }, pregame_ppm, future_ppm, config)
+    raw_center = score + future_ppm * remaining
+    calibration = calibrate_over_continuation(continuation, {
+        "duration": duration, "elapsed": elapsed, "remaining": remaining,
+    }, pregame_ppm, config)
+    future_ppm = calibration["future_ppm"]
     center = score + future_ppm * remaining
+    continuation.update(raw_predicted_total=raw_center,
+                        correction_points=raw_center - score - continuation["future_ppm"] * remaining)
     return {
-        "engine": ENGINE_VERSION, "method": "whole_game_pregame_shrinkage",
+        "engine": ENGINE_VERSION, "method": "calibrated_hot_start",
         "predicted_total": center, "line": line,
         "direction": direction_for_total(center, line), "signed_edge_points": center - line,
         "future_ppm": future_ppm, "pregame_ppm": pregame_ppm,
         "prior_equivalent_minutes": prior_minutes,
         "elapsed_minutes": elapsed, "remaining_minutes": remaining,
         "scope": "regulation", "probability_calibrated": False,
+        "over_continuation": continuation,
+        "over_calibration": calibration,
     }
 
 
@@ -140,7 +158,7 @@ def evaluate_live_signal(match: dict, snapshots: list[dict], config) -> SignalDe
 
     future_paces = get_future_paces(snapshots, current_state, pregame_ppm, config)
 
-    forecast = forecast_live_total(match, config)
+    forecast = forecast_live_total(match, config, snapshots)
     if forecast is None:
         return SignalDecision(reference_used, reference, diff, 0.0, "PAS", period, "missing_forecast")
     # These intervals describe sensitivity, not a unanimous voting/veto system.
@@ -190,5 +208,7 @@ def evaluate_live_signal(match: dict, snapshots: list[dict], config) -> SignalDe
         line_move_ratio=round(line_move_ratio, 3),
         edge_points=round(edge, 1),
         pregame_ppm=round(pregame_ppm, 2),
-        sustainable_projection_center=round(sustainable_projection, 1)
+        sustainable_projection_center=round(sustainable_projection, 1),
+        over_continuation=forecast["over_continuation"],
+        over_calibration=forecast["over_calibration"],
     )

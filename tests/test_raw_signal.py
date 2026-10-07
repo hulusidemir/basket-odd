@@ -34,7 +34,7 @@ class RawSignalTests(unittest.TestCase):
 
         row = self.db.get_alert(1)
         self.assertEqual(row['direction'], 'ÜST')
-        self.assertEqual(row['fair_total'], 190)
+        self.assertEqual(row['fair_total'], 175)
         self.assertEqual(row['telegram_status'], 'sent')
         self.assertIsNone(row['m2_analysis_json'])
         self.assertEqual(self.db.pending_m2_alerts(), [])
