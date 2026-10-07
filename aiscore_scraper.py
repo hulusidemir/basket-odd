@@ -1491,7 +1491,19 @@ class AiscoreScraper:
                 now=datetime.now(timezone.utc).timestamp(),
             )
             if not last_reason:
-                return proof
+                # Hydration can momentarily expose a wrong row/placeholder.
+                # Take a second same-company capture and use its latest score,
+                # clock and total together; never preserve the older quote.
+                await asyncio.sleep(.15)
+                source = await page.evaluate(LIVE_SOURCE_JS, bookmaker_id, isolated_context=False)
+                state = _detail_status_from_top_text(source.get("top_text"))
+                proof, last_reason = verify_current_market(
+                    source, match_id, state["status"], source.get("dom_score") or "",
+                    now=datetime.now(timezone.utc).timestamp(),
+                )
+                if not last_reason:
+                    return proof
+                continue
             selected = next(row for row in source["rows"] if row["bookmaker_id"] == bookmaker_id)
             try:
                 async with asyncio.timeout(10.0):

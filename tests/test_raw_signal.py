@@ -1,3 +1,4 @@
+import pytest
 import asyncio
 import tempfile
 import unittest
@@ -57,3 +58,13 @@ class RawSignalTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@pytest.fixture(autouse=True)
+def isolate_pace_math_from_final_error_bias(monkeypatch):
+    # These legacy cases verify the pace stage and its source/history rules.
+    # The separate v10 distribution tests cover the fitted error correction
+    # and the default probability publication floor.
+    from win_probability import MODEL
+    monkeypatch.setitem(MODEL, "mean_normalized_error", 0)
+    monkeypatch.setattr(Config, "MIN_SIGNAL_WIN_PROBABILITY", .5)

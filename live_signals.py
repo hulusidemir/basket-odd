@@ -7,9 +7,10 @@ from dataclasses import dataclass
 from match_state import game_clock, parse_score
 from pace_calculator import get_future_paces, get_over_continuation
 from over_calibration import calibrate_over_continuation
+from win_probability import assess_forecast
 
 
-ENGINE_VERSION = "future_pace_v9"
+ENGINE_VERSION = "future_pace_v10"
 
 
 def valid_total(value) -> float | None:
@@ -42,6 +43,9 @@ class SignalDecision:
     sustainable_projection_center: float | None = None
     over_continuation: dict | None = None
     over_calibration: dict | None = None
+    win_probability: dict | None = None
+    required_edge_points: float | None = None
+    base_predicted_total: float | None = None
 
 
 def direction_for_total(center: float, line: float) -> str:
@@ -84,8 +88,9 @@ def forecast_live_total(match: dict, config, snapshots: list[dict] | None = None
     center = score + future_ppm * remaining
     continuation.update(raw_predicted_total=raw_center,
                         correction_points=raw_center - score - continuation["future_ppm"] * remaining)
-    return {
-        "engine": ENGINE_VERSION, "method": "calibrated_hot_start",
+    forecast = {
+        "engine": ENGINE_VERSION, "base_engine": "future_pace_v9", "method": "outcome_distribution",
+        "base_predicted_total": center, "score_total": score,
         "predicted_total": center, "line": line,
         "direction": direction_for_total(center, line), "signed_edge_points": center - line,
         "future_ppm": future_ppm, "pregame_ppm": pregame_ppm,
@@ -95,6 +100,17 @@ def forecast_live_total(match: dict, config, snapshots: list[dict] | None = None
         "over_continuation": continuation,
         "over_calibration": calibration,
     }
+    forecast["win_probability"] = assess_forecast(forecast)
+    probability = forecast["win_probability"]
+    if probability.get("probability") is not None:
+        # The point total and direction use the same error-corrected outcome
+        # distribution. Stored v9 totals remain the base, preventing double bias.
+        forecast["predicted_total"] = max(score, probability["expected_total"])
+        forecast["future_ppm"] = (forecast["predicted_total"] - score) / remaining
+        forecast["signed_edge_points"] = forecast["predicted_total"] - line
+        forecast["direction"] = probability["preferred_direction"]
+        forecast["win_probability"] = assess_forecast(forecast)
+    return forecast
 
 
 def evaluate_live_signal(match: dict, snapshots: list[dict], config) -> SignalDecision:
@@ -183,11 +199,11 @@ def evaluate_live_signal(match: dict, snapshots: list[dict], config) -> SignalDe
     reason = "PAS_NO_EDGE"
     edge = 0.0
 
-    if signed_edge > 0 and signed_edge >= required_edge_points:
+    if forecast["direction"] == "ÜST" and signed_edge >= required_edge_points:
         direction = "ÜST"
         edge = signed_edge
         reason = ""
-    elif signed_edge < 0 and -signed_edge >= required_edge_points:
+    elif forecast["direction"] == "ALT" and -signed_edge >= required_edge_points:
         direction = "ALT"
         edge = -signed_edge
         reason = ""
@@ -211,4 +227,7 @@ def evaluate_live_signal(match: dict, snapshots: list[dict], config) -> SignalDe
         sustainable_projection_center=round(sustainable_projection, 1),
         over_continuation=forecast["over_continuation"],
         over_calibration=forecast["over_calibration"],
+        win_probability=forecast["win_probability"],
+        required_edge_points=required_edge_points,
+        base_predicted_total=forecast["base_predicted_total"],
     )

@@ -71,3 +71,13 @@ def test_nba_regulation_duration():
     clock = game_clock("Q2 05:00", "A - B", "NBA")
     assert clock["quarter_length"] == 12
     assert clock["period_count"] == 4
+
+
+@pytest.fixture(autouse=True)
+def isolate_pace_math_from_final_error_bias(monkeypatch):
+    # These legacy cases verify the pace stage and its source/history rules.
+    # The separate v10 distribution tests cover the fitted error correction
+    # and the default probability publication floor.
+    from win_probability import MODEL
+    monkeypatch.setitem(MODEL, "mean_normalized_error", 0)
+    monkeypatch.setattr(Config, "MIN_SIGNAL_WIN_PROBABILITY", .5)

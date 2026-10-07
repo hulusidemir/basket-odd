@@ -16,9 +16,11 @@ from live_signals import ENGINE_VERSION, direction_for_total
 from match_state import game_clock, parse_score
 from pace_calculator import get_future_pace_windows
 from over_calibration import MODEL_SHA256
+from win_probability import MODEL_SHA256 as PROBABILITY_MODEL_SHA256, frozen_probability_direction
 
 
 RULE_PARAMETERS = (
+    "MIN_SIGNAL_WIN_PROBABILITY",
     "OVER_CONTINUATION_ENABLED",
     "OVER_CALIBRATION_ENABLED",
     "PRIOR_EQUIV_MINUTES", "MIN_VALID_FUTURE_PACES", "MIN_EDGE_POINTS", "MIN_EDGE_RATIO",
@@ -43,7 +45,7 @@ def _implementation_hash() -> str:
     names = ("main.py", "live_signals.py", "pace_calculator.py", "signal_quality.py",
              "match_state.py", "live_market.py", "aiscore_scraper.py", "signal_repeat.py",
              "signal_lists.py", "forward_validation.py", "over_calibration.py",
-             "models/over_calibration_v1.json")
+             "models/over_calibration_v1.json", "win_probability.py", "models/win_probability_v1.json")
     return _digest({name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names})
 
 
@@ -61,6 +63,8 @@ def freeze_forecast(match, forecast, config) -> dict | None:
         "over_continuation_enabled": config.OVER_CONTINUATION_ENABLED,
         "over_calibration_enabled": config.OVER_CALIBRATION_ENABLED,
         "over_calibration_model_sha256": MODEL_SHA256,
+        "win_probability_model_sha256": PROBABILITY_MODEL_SHA256,
+        "probability_publication_filter_enabled": False,
         "source": (match.get("market_provenance") or {}).get("version"),
     }
     return {
@@ -89,6 +93,8 @@ def freeze_prediction(match, decision, config, snapshots) -> dict:
               "parameters": {name: getattr(config, name) for name in RULE_PARAMETERS},
               "engine": ENGINE_VERSION, "quality": "v1",
               "source": (match.get("market_provenance") or {}).get("version"),
+              "win_probability_model_sha256": PROBABILITY_MODEL_SHA256,
+              "probability_publication_filter_enabled": False,
               "publication": "verified_" + ENGINE_VERSION}
     clock = game_clock(match["status"], match["match_name"], match["tournament"])
     home, away = parse_score(match.get("score", ""))
@@ -129,7 +135,7 @@ def _verified_prediction(row, context) -> bool:
             if row["quality_score"] < context["policy"]["parameters"]["MIN_SIGNAL_QUALITY"]:
                 return False
         elif publication not in {"verified_future_pace_v5", "verified_future_pace_v6", "verified_future_pace_v7",
-                                 "verified_future_pace_v8", "verified_future_pace_v9"}:
+                                 "verified_future_pace_v8", "verified_future_pace_v9", "verified_future_pace_v10"}:
             return False
         predicted = _timestamp(context["predicted_at"])
         alerted = _timestamp(row["alerted_at"])
@@ -302,7 +308,9 @@ def _forecast_report(rows, finals, as_of):
             center = float(forecast['predicted_total'])
             if not math.isfinite(center):
                 raise ValueError('invalid forecast')
-            if forecast['direction'] != direction_for_total(center, forecast['line']):
+            expected_direction = (frozen_probability_direction(forecast["win_probability"])
+                if forecast["engine"] == "future_pace_v10" else direction_for_total(center, forecast["line"]))
+            if forecast['direction'] != expected_direction:
                 raise ValueError('inconsistent direction')
             final = finals.get(match_id)
             groups[policy_id].append((forecast, final))

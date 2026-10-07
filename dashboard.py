@@ -24,6 +24,7 @@ from finished_scan_jobs import active_scan_jobs, start_active_finished_scan
 from match_state import (
     confirmed_12_minute_quarters, current_pace_projection,
     first_confirmed_12_snapshot_index,
+    parse_score,
 )
 from signal_lists import (
     build_signal_list_markers,
@@ -32,6 +33,7 @@ from signal_lists import (
 )
 from upcoming_app import upcoming_bp
 from live_signals import direction_for_total, valid_total
+from win_probability import assess_forecast
 from forecast_tracking import forecast_outcome, frozen_context, tracking_summary, signal_tracking_summary
 
 
@@ -87,6 +89,40 @@ def _raw_alert(
     *, confirmed_12_minutes: bool | None = None,
 ) -> dict:
     item = dict(row)
+    context = None
+    try:
+        context = json.loads(item.get("prediction_context_json") or "null")
+        decision = context.get("decision", {}) if isinstance(context, dict) else {}
+    except (TypeError, ValueError):
+        decision = {}
+    if not isinstance(decision, dict):
+        decision = {}
+    item["win_probability"] = decision.get("win_probability")
+    # Active v9 alerts already contain the signal-time center and clock. Their
+    # probability can be estimated from those facts; archived rows never enter
+    # this path and are read only from their saved display snapshot.
+    if (isinstance(context, dict) and isinstance(context.get("policy"), dict)
+            and context["policy"].get("engine") == "future_pace_v9"
+            and (not isinstance(item["win_probability"], dict)
+                 or item["win_probability"].get("probability") is None)):
+        clock = context.get("clock", {})
+        try:
+            duration = clock["quarter_length"] * clock["period_count"]
+            elapsed = (clock["period"] - 1) * clock["quarter_length"] + clock["quarter_length"] - clock["remaining_min"]
+            home, away = parse_score(item.get("score", ""))
+            item["win_probability"] = assess_forecast({
+                "engine": "future_pace_v9", "direction": item.get("direction"),
+                "line": item.get("live"), "predicted_total": decision["sustainable_projection_center"],
+                "elapsed_minutes": elapsed, "remaining_minutes": duration - elapsed,
+                "score_total": home + away,
+                "prior_equivalent_minutes": context["policy"]["parameters"]["PRIOR_EQUIV_MINUTES"],
+                "over_continuation": decision.get("over_continuation") or {},
+                "over_calibration": decision.get("over_calibration") or {},
+            })
+        except (KeyError, TypeError, ValueError):
+            pass
+    item["required_edge_points"] = decision.get("required_edge_points")
+    item["model_edge_points"] = decision.get("edge_points")
     item["direction"] = _normalize_direction(item.get("direction"))
     item["tournament"] = _sanitize_tournament(item.get("tournament"))
     try:
@@ -293,6 +329,7 @@ def _frozen_deleted_alert(row: dict) -> dict:
         "opening_ppm", "team_history", "signal_time", "decision_change",
         "reference_used", "reference_total", "effective_threshold",
         "fair_total",
+        "win_probability", "required_edge_points", "model_edge_points",
     ):
         item[key] = snapshot.get(key)
     if "pace_ppm" not in snapshot:
@@ -445,10 +482,20 @@ def api_forecasts():
                 "match_name", "tournament", "url", "bookmaker", "status", "score", "market_captured_at",
             )}
             item.update({"match_id": row["match_id"], "forecast": frozen})
+            if frozen.get("engine") == "future_pace_v9" and (
+                    not isinstance(frozen.get("win_probability"), dict)
+                    or frozen["win_probability"].get("probability") is None):
+                item["forecast"] = {**frozen, "win_probability": assess_forecast(frozen)}
             if requested_line is not None:
                 item["scenario"] = {"line": requested_line,
                     "direction": direction_for_total(center, requested_line),
                     "signed_edge_points": center - requested_line}
+                scenario_forecast = {**frozen, **item["scenario"]}
+                estimate = assess_forecast(scenario_forecast)
+                if estimate.get("probability") is not None:
+                    scenario_forecast["direction"] = estimate["preferred_direction"]
+                    item["scenario"].update(direction=estimate["preferred_direction"],
+                        win_probability=assess_forecast(scenario_forecast))
             items.append(item)
         except (KeyError, TypeError, ValueError):
             continue
@@ -485,7 +532,7 @@ def api_forecast_history():
                       "score": context.get("score"), "status": context.get("status"),
                       "bookmaker": context.get("bookmaker"), "is_first": row["is_first"],
                       "forecast": {key: forecast.get(key) for key in
-                                   ("line", "predicted_total", "direction", "engine")},
+                                   ("line", "predicted_total", "direction", "engine", "win_probability")},
                       "final_score": row["final_score"] if outcome not in {"pending", "invalid"} else None,
                       "final_total": row["final_total"] if outcome not in {"pending", "invalid"} else None,
                       "outcome": outcome})

@@ -47,7 +47,9 @@ def test_live_source_selects_native_bet365_row_when_company_order_changes(page):
                 id: 'm', statusId: 4, homeScores: [27,3,0,0,0], awayScores: [24,0,0,0,0]
             }}}}}};
             const companies = rows.map(r => ({id:r.bookmaker_id, name:r.bookmaker_id===2?'bet365':'1xbet'}));
-            el.innerHTML = rows.map(r => `<div class="oddsBoxContent"><div class="border3">
+            el.innerHTML = '<p class="oddsType">Total Points</p>' + rows.map(r => `<div class="oddsBoxContent">
+                <div class="border1"><span>${r.opening[1]}</span></div>
+                <div class="border2"><span>${r.prematch[1]}</span></div><div class="border3">
                 <span>${r.live[0]}</span><span>${r.live[1]}</span><span>${r.live[2]}</span>
                 </div></div>`).join('');
             el.__vue__ = {

@@ -1,0 +1,111 @@
+{
+  "version": "win_probability_v2",
+  "engine": "future_pace_v9",
+  "method": "normal_final_error_with_predictive_mean_uncertainty",
+  "training_matches": 215,
+  "mean_normalized_error": 0.715705137574249,
+  "normalized_error_scale": 2.8026604621535847,
+  "regime": {
+    "prior_equivalent_minutes": 10.0,
+    "min_elapsed_minutes": 12.0,
+    "min_remaining_minutes": 5.0,
+    "durations": [
+      40,
+      48
+    ]
+  },
+  "validation": {
+    "ALT": {
+      "accepted": false,
+      "matches": 38,
+      "reason": "production_refit_requires_forward_validation"
+    },
+    "ÜST": {
+      "accepted": false,
+      "matches": 27,
+      "reason": "production_refit_requires_forward_validation"
+    }
+  },
+  "prospective_validated": false,
+  "validation_matches": 65,
+  "training_cutoff_utc": "2026-10-07T22:45:56.667504+00:00",
+  "data_scope": "first_source_verified_current_base_reconstruction_per_match",
+  "fitted_at_utc": "2026-10-07T22:45:56.667504+00:00",
+  "reconstructed_matches": 71,
+  "training_data_sha256": "a8b864f68509f2ae6352ca1cac3a51d98eff410bb4d630459e0e3c33ddccb31f",
+  "chronological_validation": {
+    "training_matches": 115,
+    "validation_matches": 65,
+    "training_cutoff_utc": "2026-10-07T16:34:23.690699+00:00",
+    "mean_normalized_error": 0.48000372349308906,
+    "normalized_error_scale": 2.675577398026957,
+    "validation": {
+      "ALT": {
+        "accepted": false,
+        "matches": 38,
+        "reason": "probability_validation_failed",
+        "training_matches": 75,
+        "brier": 0.26144613432158187,
+        "baseline_brier": 0.26859504132231404,
+        "average_probability": 0.6359432482359894,
+        "observed_win_rate": 0.5,
+        "calibration_error": 0.13594324823598936,
+        "calibration_bins": [
+          {
+            "matches": 15,
+            "average_probability": 0.5396261629025205,
+            "observed_win_rate": 0.4666666666666667
+          },
+          {
+            "matches": 12,
+            "average_probability": 0.6412338426228684,
+            "observed_win_rate": 0.5
+          },
+          {
+            "matches": 10,
+            "average_probability": 0.7447687001119342,
+            "observed_win_rate": 0.5
+          },
+          {
+            "matches": 1,
+            "average_probability": 0.9289578768360252,
+            "observed_win_rate": 1
+          }
+        ],
+        "binned_calibration_error": 0.13968230734988277,
+        "probability_range": [
+          0.5007153843053453,
+          0.9289578768360252
+        ]
+      },
+      "ÜST": {
+        "accepted": false,
+        "matches": 27,
+        "reason": "probability_validation_failed",
+        "training_matches": 40,
+        "brier": 0.2563327476082659,
+        "baseline_brier": 0.24187452758881328,
+        "average_probability": 0.5423820149690504,
+        "observed_win_rate": 0.4074074074074074,
+        "calibration_error": 0.13497460756164298,
+        "calibration_bins": [
+          {
+            "matches": 25,
+            "average_probability": 0.5335735225520939,
+            "observed_win_rate": 0.4
+          },
+          {
+            "matches": 2,
+            "average_probability": 0.652488170181007,
+            "observed_win_rate": 0.5
+          }
+        ],
+        "binned_calibration_error": 0.13497460756164298,
+        "probability_range": [
+          0.5032381933686708,
+          0.6890277783800935
+        ]
+      }
+    }
+  }
+}

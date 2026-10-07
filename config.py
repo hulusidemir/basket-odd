@@ -50,6 +50,8 @@ class Config:
     MIN_VALID_FUTURE_PACES: int = _int_env("MIN_VALID_FUTURE_PACES", 2)
     MIN_EDGE_POINTS: float = _float_env("MIN_EDGE_POINTS", 4.0)
     MIN_EDGE_RATIO: float = _float_env("MIN_EDGE_RATIO", 0.02)
+    # Retained for frozen-policy/legacy callers. Probability never vetoes publication.
+    MIN_SIGNAL_WIN_PROBABILITY: float = 0.0
     BLOWOUT_MARGIN: int = _int_env("BLOWOUT_MARGIN", 20)
     BLOWOUT_EDGE_MULTIPLIER: float = _float_env("BLOWOUT_EDGE_MULTIPLIER", 1.5)
     EXTREME_BLOWOUT_MARGIN: int = _int_env("EXTREME_BLOWOUT_MARGIN", 30)

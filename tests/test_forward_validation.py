@@ -70,7 +70,7 @@ def test_only_actual_published_predictions_get_a_frozen_policy(database):
     assert context["clock"]["quarter_length"] == 10
     assert len(context["policy_id"]) == 64
     assert context["snapshot_ids"]
-    assert context["policy"]["publication"] == "verified_future_pace_v9"
+    assert context["policy"]["publication"] == "verified_future_pace_v10"
     assert context["policy"]["parameters"]["OVER_CONTINUATION_ENABLED"] is True
     assert context["policy"]["parameters"]["OVER_CALIBRATION_ENABLED"] is True
     assert "MIN_SIGNAL_QUALITY" not in context["policy"]["parameters"]

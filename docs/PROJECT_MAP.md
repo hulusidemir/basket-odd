@@ -1,12 +1,16 @@
 # Project Map
 
 - `main.py`: sinyal akışının doğrulama/filtre/kayıt/bildirim adımları, tekrar korumaları, taramadan bağımsız Telegram outbox worker'ı ve oturum arızasına göre bekleme.
-- `live_signals.py`: Future Pace v9; yakın sayı hızı ve dondurulmuş sıcak-fazla kalibrasyonuyla tek merkez, her barem için yön ve ayrı Telegram avantaj koşulları.
+- `live_signals.py`: Future Pace v10; v9 tempo tabanı üzerine geçmiş final hatası ve sonuç dağılımı, aynı dağılımdan yön/yüzde ve ayrı sayı avantajı koşulları; olasılık yüzdesi yayını veto etmez.
 - `pace_calculator.py`: kronolojik tempo pencereleri, aynı kaynak aralığını tek sayma, öncüle yaklaştırma ve sıcak başlangıç devam hesabı.
-- `signal_quality.py`: sinyal anında dondurulan Quality v1 bileşenleri ve etiketi.
+- `signal_quality.py`: eski açıklayıcı Quality v1 puanı; kazanma olasılığı değildir, yeni olasılık gösteriminin yerine geçmez.
+- `win_probability.py`, `models/win_probability_v1.json`: dondurulmuş tahmin hatalarından ALT/ÜST/iade ihtimali, mevcut skordan aşağı finali dışlayan dağılım ve ayrı doğrulama bilgisi. Parametre dosyasının yolu uyumluluk için v1; hesap sürümü v2. Canlı eğitim/DB okuması yok.
+- `probability_audit.py`: kayıtlı tahmin veya kanıtlı eski gözlemlerden güncel taban yeniden kurulumu; otomatik arşiv/forecast finalleriyle salt okunur eşleştirme, kronolojik kontrol ve gelecek maçlar için tüm bilinen sonuçlarla ayrı model, lig bazlı hata özeti. Arşivlere hesap yazmaz.
+- `signal_volume_audit.py`: mevcut kurallarla gözlenen günün sinyal sayısını olasılık filtresi açık/kapalı salt okunur tekrar hesaplar; Telegram veya DB yazısı yok.
+- `docs/PROBABILITY_HISTORY_2026-10-08.md`: 38→215 örneklem genişletmesi, lig kapsamı ve olasılık yayın filtresinin kaldırılması.
 - `forward_validation.py`: gerçek kayıtlı tahminin kod/ayar/aralık bağlamını dondurur; SQLite'ı salt okunur değerlendirir, ilk sinyal/teslim alt kümesi, model/piyasa/baz hatası ve M2 durumlarını ayrı politikalarla raporlar.
 - `aiscore_scraper.py`: mobil AIScore canlı maç/barem scraper'ı, süre bütçeli adil tarama kuyruğu ve sağlık/kapsama raporu.
-- `live_market.py`: herhangi bir şirketin ana total kimliği, aynı şirketin canlı state/DOM kanıtı; boş canlı hücre için kimlikli ham history fallback'i ve gönderim öncesi doğrulama.
+- `live_market.py`: herhangi bir şirketin ana total kimliği, aynı şirketin görünür açılış/maç önü/canlı hücreleri ile state karşılaştırması; boş canlı hücre için kimlikli ham history fallback'i ve gönderim öncesi doğrulama.
 - `aiscore_browser.py`: canlı/final/yenileme için ortak Scrapling ayarları ve ayrı profil seçimi.
 - `aiscore_match_page.py`: mobil maç URL'si, kimlik/final doğrulaması ve skor tablosu okuyucusu.
 - `aiscore_final_scraper.py`: süre sınırlı final taraması, tarayıcı yaşam döngüsü ve maç bazlı ilerleme.
@@ -47,7 +51,7 @@
 
 Canlı akış: mobil listing → maçın total odds sayfası → uygun şirketin aynı satır
 canlı state/DOM doğrulaması (boş hücrede aynı şirket history fallback'i)
-→ frozen v9 gözlem tahmini → ayrı avantaj/tekrar/kara liste kontrolleri (Quality v1 yalnız açıklayıcı)
+→ frozen v10 gözlem tahmini ve kazanma olasılığı → ayrı avantaj/tekrar/kara liste kontrolleri
 → kaynak kanıtıyla SQLite → gönderim öncesi yeniden doğrulama → Telegram.
 
 Canlı dashboard'daki tempo projeksiyonu yalnız gösterim amaçlıdır ve sinyal

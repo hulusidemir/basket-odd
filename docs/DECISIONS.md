@@ -1,5 +1,76 @@
 # Decisions
 
+## 8 Ekim 2026 — Olasılık yayın filtresi yok; geçmiş kapsamı genişletme
+
+Kullanıcının tüm uygun sinyalleri gönderme talebi %60 olasılık barajının
+yerini alır. Olasılık yön/dağılım hesabında ve yüzde gösteriminde kullanılır,
+yayını veto etmez; kaynak/süre/sayı farkı/tekrar/listeler korunur. Eski
+ortam değişkeni olasılık filtresini geri açamaz; politika bunu false saklar.
+
+Eski otomatik arşiv finalleri ve kaynak kanıtlı snapshot'lar güncel tabanla
+salt okunur yeniden kurulabilir. Farklı eski model toplamları tek bir
+modelmiş gibi birleştirilmez; eksik kanıttan veri uydurulmaz ve arşivlere
+hesap yazılmaz. Bilinen 215 final gelecek kayıtlara ait hata modeline girer;
+115/65 kronolojik yöntem kontrolü ayrı kalır. İki yön kontrolü geçmediği için
+yeniden hazırlanmış model doğrulanmış başarı olarak sunulmaz. Lig bazlı
+veri/hata incelenir; 74 ligde en büyük uygun grup17 olduğundan ayrı katsayı
+eklenmez. Ayrıntı: docs/PROBABILITY_HISTORY_2026-10-08.md.
+
+## 8 Ekim 2026 — OLASILIK başlığı ve yüzde renkleri
+
+Son kullanıcı talebi K.O başlığının yerini alır: sütun OLASILIK olur.
+Yüzde kutusu <0,60 pembe/kırmızı, 0,60–<0,70 sarı, 0,70–<0,80 yeşil,
+≥0,80 mavi gösterilir. Renk doğrudan olasılıktan gelir; eski puana veya
+modelin doğrulama durumuna dayanmaz. Ortak gösterim canlı, arşiv, güncel
+tahmin ve tahmin geçmişi için kullanılır; yalnız yüzde/sayı korunur.
+
+## 8 Ekim 2026 — K.O sütununu sadeleştirme
+
+Kullanıcının açık talebiyle olasılık sütun başlığı K.O, hücre içeriği yalnız
+yüzde ve sayı olur. Başlık tek satırdır; Tahmin alt etiketi kaldırılır.
+Bu görünüm canlı, arşiv ve tahmin tablolarında ortak kullanılır.
+
+## 8 Ekim 2026 — Hesaplanan kazanma yüzdesi ve v10 karar mantığı
+
+Kullanıcı önceki yüzdeyi gizleme/eski puan gösterme kararını reddetti. Bu talep
+7 Ekim olasılık gösterim kuralının yerini alır: hesaplanan olasılık ekranda
+gösterilir; model doğrulaması ayrı metadata/ölçüm olarak tutulur. Puan yüzdeye
+çevrilmez; puan ve bileşenleri arayüzden kaldırılır. V10 yön ve kazanma ihtimali
+aynı final dağılımından gelir. Öğrenilmiş final hata ortalaması taban toplamına
+eklenir; kalan süre ve eğitim örneklemi hata genişliğinde dikkate alınır.
+Şimdiden kazanılmış sayı dağılımın fiziksel alt sınırıdır. Bildirim varsayılan
+en az0,60 kazanma ihtimali ve mevcut sayı avantajı koşullarını birlikte arar.
+
+Aktif v9 kayıt için yalnız saklanmış sinyal anı merkez/clock kullanılır.
+Arşivde snapshot'a sonradan olasılık eklenmez. Yeni kayıt dağılımını geçmişte
+kontrol ederken bugünün modelini çağırmak yerine frozen değerler doğrulanır.
+Eski politika ölçümleri korunur. Ayrıntı
+docs/SIGNAL_PROBABILITY_V10_2026-10-08.md içinde.
+
+Yükleme kontrolünde AIScore mobilin açılış/maç önü hücrelerini gizlediği
+kanıtlandı. Render doğrulama v2'de canlı hücre görünür ve aynı şirketin state
+değeriyle eşleşmiş olmak zorunda; açılış/maç önü yalnız görünür olduğunda
+karşılaştırılır. Gizli hücre okunmuş/doğrulanmış gibi etiketlenmez. Eksik
+hücre veya görünür uyuşmazlık reddedilir. Eski frozen v1 kanıtların kendi
+kuralları korunur. İki servis kullanıcının açık yenileme talimatıyla yedek
+sonrası yenilendi; yeni v10 kayıt üretim verisinde doğrulandı.
+
+## 7 Ekim 2026 — Kazanma olasılığı ve görünür canlı barem
+
+Kullanıcı sinyal kalitesini doğru ALT/ÜST ve kazanma olasılığı olarak tanımladı.
+Oran fiyatı/net getiri kabul ölçütü değildir; uzatma için yeni koşul eklenmez.
+Yeni kaynak yakalaması aynı şirketin görünür üç toplam hücresini state ile
+karşılaştırır, gizli değerleri dışlar ve ikinci tutarlı yakalamayı kullanır.
+Şut/hücum tekrar denemesinde güvenilir tam veri çıkmadığından motora eklenmedi.
+
+Quality v1 kazanma olasılığına çevrilmez. Eski kayıt puan olarak ayrılır;
+Tahmini toplam ile ayrı dondurulmuş olasılık gösterilir. Yönün zaman sıralı
+kontrolü geçmediyse yüzde yoktur. Mevcut aday ALT/ÜST için kabul false;
+bildirim matematiği aynı kaldığından başarı artışı iddiası yoktur. Canlı eğitim,
+DB migration veya geçmişi yeni modelle yeniden hesaplama yok. Sayısal yöntem,
+kabul koşulları ve kanıt sınırları
+docs/SIGNAL_PROBABILITY_REPAIR_2026-10-07.md içinde açıklanır.
+
 ## Canlı bilgi kartlarını sadeleştirme ve kartlardan filtreleme
 
 7 Ekim 2026 — Kullanıcının yeni talebiyle canlı sinyal kartlarında başarı

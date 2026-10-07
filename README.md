@@ -3,7 +3,7 @@
 AIScore basketbol maçlarında aynı bahis şirketine ait maç önü (yoksa açılış)
 ve canlı toplam baremini karşılaştıran Python/Flask uygulaması.
 
-Güncel karar motoru Future Pace v9'dur. Her doğrulanmış canlı gözlemde bir
+Güncel karar motoru Future Pace v10'dur. Her doğrulanmış canlı gözlemde bir
 merkez tahmin hesaplanır; tahmin üretimi ile Telegram uygunluğu ayrıdır.
 
 ```text
@@ -14,8 +14,11 @@ pencere PPM = (pencere sayısı + öncül PPM × öncül dakika) / (pencere daki
 ham kalan PPM > öncül PPM ise kalan PPM = min(ham kalan PPM, max(öncül PPM, pencere PPM))
 pencere yoksa sıcak başlangıçta kalan PPM = öncül PPM; diğer durumda kalan PPM = ham kalan PPM
 kalibrasyon rejiminde kalan PPM = max(0, kalan PPM - 1.015189277288373 × (kalan PPM - öncül PPM))
-tahmini toplam = mevcut skor + kalan PPM tahmini × kalan normal süre
-barem tahmini toplamdan küçükse ÜST, büyükse ALT; tam eşitlik EŞİT
+taban toplam = mevcut skor + kalan PPM tahmini × kalan normal süre
+tahmini toplam = taban toplam + sqrt(kalan dakika) × öğrenilmiş final hata ortalaması
+ALT/ÜST/iade ihtimali = mevcut skordan aşağısı kesilmiş final dağılımının bareme göre kütlesi
+yön = ALT/ÜST ihtimalinin büyüğü; eşitlikte EŞİT
+bildirim = kaynak, süre, sayı avantajı, tekrar ve kara liste koşulları
 ```
 
 `PRIOR_EQUIV_MINUTES` varsayılan 10 dakikadır; bu çalışmada sonuçlara göre
@@ -71,9 +74,35 @@ Boş canlı hücre için aynı şirketin doğrulanmış güncel tarihçesi kulla
 bu fallback'te sağlayıcı zaman/skor/saat ve ham yanıt kontrolü sürer.
 Uygun olmayan şirket tüm maçı engellemez; diğer şirket denenir.
 
+Arayüz kazanma olasılığını yüzde olarak gösterir; eski puan kutusu kaldırıldı.
+Olasılık, v9 tempo tabanı ve geçmiş final hatalarından doğrudan hesaplanır.
+V10 toplamı ve yönü aynı sonuç dağılımını kullanır. Yeni kayıtta olasılıklar,
+model ve politika ilk kayıt anında dondurulur. Aktif v9 kaydın saklı sinyal anı
+bilgileriyle yüzde hesaplanabilir; eski arşivde eksik olasılık doldurulmaz.
+Geçici barem senaryosu kendi olasılığını üretir, asıl kaydı değiştirmez.
+
+`venv/bin/python probability_audit.py --db basketball.db` salt okunur eğitim/
+kontrol raporu verir. İlk uygun v9 veya v9 tabanı taşıyan v10 tahmini seçilir;
+kontrol başlangıcında henüz bitmeyen maçlar eğitimde kullanılmaz. Hesaplanan
+olasılık ile geçmiş doğrulama durumu ayrıdır; doğrulama geçmedi diye yüzde
+kapatılmaz. Oran/net getiri bu hesapta kullanılmaz. Ayrıntı:
+`docs/SIGNAL_PROBABILITY_V10_2026-10-08.md`.
+
+8 Ekim güncellemesinde %60 olasılık yayın filtresi kaldırıldı. Eski
+`MIN_SIGNAL_WIN_PROBABILITY` ortam değişkeni artık yayın kararını etkilemez.
+Kaynak kanıtı olan eski gözlemler güncel taban hesapla yeniden kurulup otomatik
+arşiv finalleriyle eşleştirildi; gelecek kayıtların hata modeli 215 farklı
+sonuçlu maçla donduruldu. Kontrol modeli ile tüm bilinen finallerle hazırlanan
+yeni model ayrıdır; ileriye dönük başarı doğrulaması yoktur.
+`venv/bin/python probability_audit.py --db basketball.db --reconstruct` lig
+dağılımını ve yeniden kurulmuş veriyle aday modeli salt okunur raporlar.
+`venv/bin/python signal_volume_audit.py --db basketball.db --day 2026-10-07`
+gözlenen günün sinyal sayısını olasılık filtresi açık/kapalı karşılaştırır.
+Ayrıntı: `docs/PROBABILITY_HISTORY_2026-10-08.md`.
+
 Quality v1 puanı yalnız açıklayıcıdır; başarı olasılığı veya yayın barajı değildir.
 Eski `MIN_SIGNAL_QUALITY` ayarı yayın kararına katılmaz. Sinyal için doğrulanmış
-barem ve v9 merkez tahmininin yeterli sayı avantajı zorunludur.
+barem ve v10 toplam tahmininin yeterli sayı avantajı zorunludur.
 Yeni gerçek sinyal, kaynak kanıtıyla birlikte kararın kod sürümünü ve kullanılan
 ayarları dondurur. İleriye dönük değerlendirme
 `venv/bin/python forward_validation.py --db basketball.db` ile salt okunur çalışır; her sürümde maçın ilk sinyalini

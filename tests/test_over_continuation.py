@@ -122,7 +122,7 @@ def test_worker_freezes_same_adjusted_center_as_published_signal(tmp_path):
     asyncio.run(process_match(payload, database, notifier, Config()))
     frozen = json.loads(database.get_match_snapshots("m")[-1]["forecast_json"])["forecast"]
     signal = database.get_alert(1)
-    assert frozen["engine"] == "future_pace_v9"
+    assert frozen["engine"] == "future_pace_v10"
     assert frozen["predicted_total"] == signal["fair_total"] == 180
     assert frozen["over_continuation"]["source"] == "recent_scoring"
     assert frozen["direction"] == signal["direction"] == "ALT"
@@ -131,3 +131,13 @@ def test_worker_freezes_same_adjusted_center_as_published_signal(tmp_path):
     assert context["decision"]["over_calibration"] == frozen["over_calibration"]
     assert database.get_match_snapshots("m")[0] == original
     notifier.send_alert.assert_awaited_once()
+
+
+@pytest.fixture(autouse=True)
+def isolate_pace_math_from_final_error_bias(monkeypatch):
+    # These legacy cases verify the pace stage and its source/history rules.
+    # The separate v10 distribution tests cover the fitted error correction
+    # and the default probability publication floor.
+    from win_probability import MODEL
+    monkeypatch.setitem(MODEL, "mean_normalized_error", 0)
+    monkeypatch.setattr(Config, "MIN_SIGNAL_WIN_PROBABILITY", .5)

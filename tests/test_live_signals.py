@@ -1,3 +1,4 @@
+import pytest
 import asyncio
 import tempfile
 import time
@@ -243,7 +244,11 @@ class LiveSignalIntegrationTests(unittest.TestCase):
                 future_pace_lower,
                 future_pace_upper,
                 fair_total,
+                bookmaker,
+                win_probability,
             ):
+                assert bookmaker == "bet365"
+                assert 0 <= win_probability["probability"] <= 1
                 return {"recipient": 1}
 
         self.notifier = StrictNotifier()
@@ -283,3 +288,13 @@ class LiveSignalIntegrationTests(unittest.TestCase):
         row = self.db.get_alert(1)
         self.assertIsNotNone(row)
         self.assertEqual(row["telegram_status"], "sent")
+
+
+@pytest.fixture(autouse=True)
+def isolate_pace_math_from_final_error_bias(monkeypatch):
+    # These legacy cases verify the pace stage and its source/history rules.
+    # The separate v10 distribution tests cover the fitted error correction
+    # and the default probability publication floor.
+    from win_probability import MODEL
+    monkeypatch.setitem(MODEL, "mean_normalized_error", 0)
+    monkeypatch.setattr(Config, "MIN_SIGNAL_WIN_PROBABILITY", .5)

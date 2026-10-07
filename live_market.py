@@ -44,13 +44,38 @@ LIVE_SOURCE_JS = r"""preferredId => {
     const cell = index >= 0 ? boxes[index]?.querySelector('.border3') : null;
     const locked = !!cell && /(?:^|[^a-z])(?:lock(?:ed|icon)?|islocked|suspend(?:ed)?|unavailable|closed)/i
         .test(`${cell.className || ''} ${cell.innerHTML || ''}`);
-    const values = cell ? [cell, ...cell.querySelectorAll('*')]
-        .filter(node => !node.children.length)
-        .map(node => (node.innerText || '').trim())
-        .filter(value => /^(?:[ou]\s*)?\d+(?:\.\d+)?$/i.test(value))
-        .map(value => Number(value.replace(/^[ou]\s*/i, '')))
-        .filter(value => value >= 100 && value <= 400) : [];
-    const unique = [...new Set(values)];
+    const visible = node => {
+        const style = getComputedStyle(node);
+        return style.display !== 'none' && style.visibility !== 'hidden'
+            && node.getClientRects().length > 0;
+    };
+    // Read complete visible tokens, not numeric leaves: <span>1<b>35</b></span>
+    // is 135, not 1 or 35. Hidden alternate quotes are not evidence.
+    const totals = target => {
+        if (!target || !visible(target)) return [];
+        const read = node => {
+            if (!visible(node)) return [];
+            const text = (node.innerText || '').trim();
+            if ((node !== target || !node.children.length)
+                    && /^(?:[ou]\s*)?\d+(?:\.\d+)?$/i.test(text))
+                return [text.replace(/\s+/g, '')];
+            if (node.children.length) return [...node.children].flatMap(read);
+            return text.split(/\s+/).filter(Boolean);
+        };
+        const tokens = read(target);
+        const values = tokens.filter(value => /^(?:[ou])?\d+(?:\.\d+)?$/i.test(value))
+            .map(value => Number(value.replace(/^[ou]/i, '')))
+            .filter(value => value >= 100 && value <= 400);
+        return [...new Set(values)];
+    };
+    const unique = totals(cell);
+    const renderedCells = Object.fromEntries([['opening', '.border1'],
+        ['prematch', '.border2'], ['live', '.border3']].map(([name, selector]) =>
+        [name, index >= 0 ? boxes[index]?.querySelector(selector) : null]));
+    const renderedTotals = Object.fromEntries(Object.entries(renderedCells)
+        .map(([name, target]) => [name, totals(target)]));
+    const slotVisibility = Object.fromEntries(Object.entries(renderedCells)
+        .map(([name, target]) => [name, target ? visible(target) : null]));
     const score = values => Array.isArray(values) && values.length === 5
         && values.every(v => Number.isInteger(v) && v >= 0 && v <= 200)
         ? values.reduce((a, b) => a + b, 0) : null;
@@ -69,6 +94,10 @@ LIVE_SOURCE_JS = r"""preferredId => {
         top_text: top,
         dom_score: domScore ? `${domScore[1]} - ${domScore[2]}` : '',
         rows,
+        rendered_validation_version: 2,
+        rendered_market_label: (component?.$el?.querySelector('.oddsType')?.innerText || '').trim(),
+        rendered_totals: renderedTotals,
+        rendered_slot_visibility: slotVisibility,
         rendered_row_count: rendered.length,
         rendered_cell_present: !!cell && boxes.length === companies.length,
         rendered_live_locked: locked,
@@ -225,6 +254,32 @@ def source_error(source: dict, match_id: str, status: str, score: str) -> str:
         return "rendered_total_unavailable"
     if source.get("rendered_live_locked") is not False:
         return "rendered_total_locked"
+    # Old frozen proofs retain their original checks. New captures additionally
+    # reconcile visible cells. AIScore mobile hides opening/prematch columns;
+    # hidden anchors are not DOM evidence, while the live column must be visible.
+    if source.get("rendered_validation_version") is not None:
+        version = source["rendered_validation_version"]
+        if (version not in (1, 2)
+                or source.get("rendered_market_label", "").strip().casefold() != "total points"):
+            return "rendered_market_unverified"
+        rendered_totals = source.get("rendered_totals")
+        if not isinstance(rendered_totals, dict):
+            return "rendered_total_unavailable"
+        visibility = source.get("rendered_slot_visibility")
+        if version == 2 and (
+                not isinstance(visibility, dict)
+                or any(type(visibility.get(name)) is not bool
+                       for name in ("opening", "prematch", "live"))
+                or visibility["live"] is not True):
+            return "rendered_total_unavailable"
+        for name in ("opening", "prematch", "live"):
+            if version == 2 and visibility[name] is False:
+                if rendered_totals.get(name) != []:
+                    return "rendered_" + name + "_mismatch"
+                continue
+            value = _slot(selected.get(name))
+            if rendered_totals.get(name) != ([] if value is None else [value]):
+                return "rendered_" + name + "_mismatch"
     rendered_values = source.get("rendered_live_values")
     if not isinstance(rendered_values, list) or len(rendered_values) > 1:
         return "rendered_total_ambiguous"

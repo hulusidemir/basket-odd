@@ -1,5 +1,107 @@
 # Current State
 
+8 Ekim 2026 — Kullanıcı örneklemi büyütme/lig kontrolü ve tüm uygun
+sinyalleri gönderme istedi. %60 olasılık veto'su kaldırıldı; eski ortam değeri
+geri açamaz. Yeni frozen politika filtresini false saklar. Kanıtlı geçmiş
+snapshot'ların güncel tabanla salt okunur yeniden kurulumu ve otomatik arşiv
+finalleriyle eşleştirme 215 maç verdi (71 eski forecast'sız). Gelecek kayıtlar
+için hata modeli tüm bilinen 215 finalle donduruldu; kronolojik kontrol ayrı
+115 eğitim /65 kontrol, iki yön de doğrulamayı geçmedi. Ligler74, en büyük17;
+lig katsayısı eklenmedi. 7 Ekim 3652 gözlem tekrarında yeni model %60 açık/
+kapalı100 sinyal /85 maç (53 ALT,47 ÜST); önceki38 modelinde114/89.
+Ayrıntı: docs/PROBABILITY_HISTORY_2026-10-08.md.
+Tam paket528 test (51,44s); son audit temizliği ve ek salt-okunur tekrar
+regresyonuyla ilgili20 test geçti; compileall/diff başarılı. Tutarlı0600
+SQLite yedeği ve quick_check sonrası 8 Ekim01:52'de bot/dashboard yenilendi.
+İkisi active/running, restart0, yeni invocation traceback0. Bot yeni kod
+hash'ini ve olasılık filtresinin kapalı olduğunu doğruluyor; sayfa/API HTTP200.
+İlk3 yeni üretim snapshot'ında eğitim215, kod/model kimliği ve filtre=false
+doğrulandı. DB quick_check başarılı; yeni tablo/migration/arşiv backfill yok.
+
+8 Ekim 2026 — Kullanıcı sonraki talebiyle K.O başlığını OLASILIK yaptı.
+Ortak yüzde kutusu <0,60 pembe/kırmızı, 0,60–<0,70 sarı,
+0,70–<0,80 yeşil, ≥0,80 mavi kullanır; renk yalnız hesaplanan yüzdeye
+bağlıdır. Canlı/geçmiş/tahmin tabloları aynı gösterim fonksiyonunu kullanır.
+Yalnız yüzde/sayı ve tek satır korunur. İlgili 20 test ve JS syntax geçti.
+1863/390px mevcut servis tarayıcı kontrolünde üç sayfa HTTP200, başlık
+taşması yok, dört renk ayrışıyor, yüzde alt etiketi yok; JS hatası0.
+
+8 Ekim 2026 — Kullanıcı talebiyle canlı/geçmiş/tahmin tablolarındaki kazanma
+olasılığı başlığı K.O oldu. Yüzde kutusunda yalnız yüzde ve sayı gösterilir;
+Tahmin alt satırı kaldırıldı. Başlık ve yüzde satır kırmaz. Template otomatik
+yenilemesi açıktır; değişiklik mevcut dashboard üzerinden sunulur.
+İlgili 7 test, JS syntax/compileall/diff geçti. Mevcut serviste 1863/390px
+tarayıcıda üç sayfa HTTP200, K.O başlığı/yüzde gösterimi ve alt etiketin
+yokluğu kontrol edildi; JS hatası0.
+
+8 Ekim 2026 — Kullanıcı yüzde yerine eski puan/boş gösterimi reddetti ve
+karar mantığının düzeltilmesini istedi. Future Pace v10, v9 taban toplamına
+geçmiş final hatası ortalamasını uygular; ALT/ÜST/iade ihtimalini aynı
+dağılımdan hesaplar. Hata genişliği kalan süre ve sonlu eğitim örneklemiyle
+ölçeklenir; dağılım mevcut skordan aşağı final üretmez. Yön de bu olasılıkları
+kullanır. Sayı avantajı yanında MIN_SIGNAL_WIN_PROBABILITY varsayılan0,60
+bildirim koşulu oldu. Olasılık tahmini ile doğrulama durumu ayrı tutulur;
+doğrulama geçmedi diye hesaplanan yüzde gizlenmez.
+
+Eski puan/bileşen gösterimi kaldırıldı. Aktif v9 kayıtların sinyal anındaki
+merkez/saatinden olasılık gösterilebilir; önceki arşivlere hesap eklenmez.
+Kontrol anındaki 19 aktif v9 kaydın tümünde yüzde hesaplandı. Yeni v10 kayıtlar
+base toplamı, olasılıkları ve model/politika kimliğini dondurur. Geçici barem
+senaryosunun olasılığı da hesaplanır; asıl kayıt değişmez. Sütun/badge taşması
+düzeltildi. 1863/1440/390px fixture tarayıcıda üç sayfa, yüzde kutusu hücre
+sınırları ve eski puanın yokluğu doğrulandı; JS hatası0.
+Son tam paket 525 test (47,72s), compileall/JS/diff kontrolü başarılı.
+Son ek aktif-v9 ve uç-yüzde kontrolleriyle ilgili paket 79/79 geçti.
+Eski tempo testleri hata ortalaması0 ve olasılık tabanı0,5 ile o aşamayı
+yalıtır; v10 testleri gerçek öğrenilmiş düzeltmeyi ve0,60 barajını ayrıca sınar.
+Yeni tablo/migration/backfill yok. Ayrıntı
+docs/SIGNAL_PROBABILITY_V10_2026-10-08.md içinde.
+Kullanıcının açık yenileme talimatı sonrası tutarlı, 0600 izinli SQLite yedeği
+alındı; quick_check başarılı. İlk yükleme kontrolünde mobil sayfanın gizlediği
+açılış/maç önü sütunları rendered_opening_mismatch üretip canlı çekimi engelledi.
+Gerçek sayfada gizli 159,5/159,5 hücreleri ve görünür147,5 canlı toplamı
+doğrulandı. Render doğrulama v2 canlı hücrenin görünür/eşleşmiş olmasını şart
+koşar; açılış/maç önü ancak görünürse karşılaştırılır. Eksik hücre ve görünür
+uyuşmazlık hâlâ reddedilir; eski frozen kanıtların kontrolü değişmez.
+İlgili 96 test geçti. Düzeltme sonrası 8 Ekim 00:30'da iki servis
+yenilendi. İkisi active/running, restart0; yeni invocation günlüklerinde
+traceback yok. Botun v10 publication ve mevcut implementation hash'i yüklediği
+doğrulandı. Canlı/tahmin sayfaları ve iki API HTTP200; mevcut 3 aktif kaydın
+tümünde sayısal olasılık var, eski puan metni yok. İlk yeni v10 snapshot'ta
+sayısal olasılık, implementation/model hash eşleşmesi ve render v2 kanıtı
+üretim verisinde doğrulandı; DB quick_check başarılı.
+
+Günlük sayı tahmini: 7 Ekim'de kaydedilmiş 3.652 v9 gözlemin yeni karar ve
+tekrar kurallarıyla salt okunur yeniden değerlendirmesi 89 maçtan 114 sinyal
+(103 ALT, 11 ÜST) verdi. Aynı gün eski sistem 95 maçtan 123 sinyal kaydetmişti.
+Benzer maç yoğunluğunda yaklaşık 100–120 sinyal / 80–90 maç beklenebilir.
+Bu, tam gün ileriye dönük ölçüm veya kazanma başarısı değildir; yeni DOM
+kontrolleri geçmiş gözlemlerde yeniden doğrulanamaz ve kaynak erişimi sayıyı
+etkiler.
+
+7 Ekim 2026 — Kullanıcı canlı barem güvenilirliği ve kazanma olasılığını
+öncelik yaptı; oran/net getiri ve uzatma için yeni çalışma istemedi. Kaynakta
+ana Total Points etiketi, görünür açılış/maç önü/canlı sayılar ile aynı şirket
+state'i karşılaştırılır; ikinci yakalamadaki son tutarlı değer kullanılır.
+135/100 çelişkisi, parçalı sayı, gizli alternatif ve yanlış piyasa tarayıcı
+kontrolleri geçti; gerçek 135→100 olayının kök nedeni kanıtlanmış değildir.
+
+Quality v1 eski puan diye ayrılır; yeni kayıtların olasılığı ayrı model/hash
+ile mevcut JSON alanlarında dondurulur. Adil Barem adı Tahmini toplam oldu.
+İlk uygun kaynak doğrulanan v9 tahminlerinden 118 sonuçlu maçın zaman ayrımı
+38 kullanılabilir eğitim ve 36 kontrol bıraktı. ALT kontrol 34, ÜST 2 maç;
+iki yön de kabul koşullarını geçmedi. Yüzde yerine Henüz doğrulanmadı görünür.
+V9 merkez/yön/eşik değişmedi; daha yüksek başarı kanıtı ileri sürülmez.
+Gerçek ayrı profilli 150 saniyelik AIScore denemesinde bir piyasa doğrulandı,
+iki tamamlanan istatistik okuması eksik/uyuşmayan çıktı; şut/hücum eklenmedi.
+
+Tam paket 511 test (44,03s); ardından ek ilk-kayıt/salt-okunur regresyonuyla
+olasılık testleri 11/11 geçti. compileall, JS sözdizimi ve diff kontrolü geçti.
+1440/390px fixture tarayıcıda canlı/geçmiş/tahmin ekranları ve yeni başlıklar
+kontrol edildi; JS hatası0. Migration/backfill ve servis müdahalesi yok;
+çalışan bot yeni Python kodunu henüz yüklemedi. Ayrıntı
+docs/SIGNAL_PROBABILITY_REPAIR_2026-10-07.md içinde.
+
 7 Ekim 2026 — Kullanıcı talebiyle canlı bilgi kartlarından başarı yüzdesi,
 doğru/yanlış/bekleyen metinleri ve bunlara ait API yenilemesi kaldırıldı.
 Kartlar yalnız aktif sinyal sayılarını gösterir; ÜST/ALT yönü, Oynanan bahis

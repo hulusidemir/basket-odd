@@ -35,6 +35,8 @@ def _build_alert_text(
     future_pace_lower: float | None = None,
     future_pace_upper: float | None = None,
     fair_total: float | None = None,
+    bookmaker: str | None = None,
+    win_probability: dict | None = None,
 ) -> str:
     status_text = (status or "").strip()
     if status_text and period and not status_text.upper().startswith(f"Q{period}"):
@@ -54,13 +56,22 @@ def _build_alert_text(
     if reference_used in {"opening", "prematch"} and reference_total is not None:
         label = "Maç önü" if reference_used == "prematch" else "Açılış"
         reference_text = f"\n<b>Referans:</b> {label} {reference_total:.1f} · fark {diff:+.1f}"
-        if effective_threshold is not None:
+        if effective_threshold:
             reference_text += f" · eşik {effective_threshold:.2f}"
     change_suffix = "" if reference_text else f" ({diff:+.1f})"
 
     future_text = ""
     if fair_total is not None:
-        future_text = f"\n\n<b>Adil Barem:</b> {fair_total:.1f}"
+        future_text = f"\n\n<b>Tahmini toplam:</b> {fair_total:.1f}"
+    source_text = f"\n<b>Kaynak:</b> {escape(bookmaker)}" if bookmaker else ""
+    probability_text = ""
+    if isinstance(win_probability, dict):
+        value = win_probability.get("probability")
+        label = (f"%{value * 100:.1f} · tahmin" if isinstance(value, (int, float))
+                 and not isinstance(value, bool) and 0 <= value <= 1 else "—")
+        if label != "—" and (value >= .9995 or value <= .0005):
+            label = (">%99.9" if value >= .9995 else "<%0.1") + " · tahmin"
+        probability_text = f"\n<b>Kazanma olasılığı:</b> {escape(label)}"
     return (
         f"{signal_headline}\n"
         f"🏀 <b>{escape(match_name)}</b>\n"
@@ -70,6 +81,7 @@ def _build_alert_text(
         f"<b>Barem değişimi:</b> {opening:.1f}{prematch_text} → {live:.1f}{change_suffix}"
         f"{reference_text}"
         f"{future_text}"
+        f"{source_text}{probability_text}"
     )
 
 
@@ -138,6 +150,8 @@ class TelegramNotifier:
         future_pace_lower: float | None = None,
         future_pace_upper: float | None = None,
         fair_total: float | None = None,
+        bookmaker: str | None = None,
+        win_probability: dict | None = None,
     ) -> dict:
         text = _build_alert_text(
             match_name=match_name,
@@ -159,6 +173,8 @@ class TelegramNotifier:
             future_pace_lower=future_pace_lower,
             future_pace_upper=future_pace_upper,
             fair_total=fair_total,
+            bookmaker=bookmaker,
+            win_probability=win_probability,
         )
         if followed_upcoming:
             first_line, separator, remainder = text.partition("\n")

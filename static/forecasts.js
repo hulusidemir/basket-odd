@@ -56,6 +56,7 @@
           (item.match_name || '—') + ' / ' + (item.tournament || '—'),
           (item.score || '—') + ' / ' + (item.status || '—'),
           historyNumber(forecast.line), historyNumber(forecast.predicted_total), forecast.direction || '—',
+          '',
           item.final_total === null ? '—' : (item.final_score || '—') + ' (' + historyNumber(item.final_total) + ')',
           (outcomeLabels[item.outcome] || '—') + (item.is_first ? ' · İlk' : '')];
         for (const value of values) {
@@ -64,6 +65,7 @@
           cell.style.padding = '12px';
           row.append(cell);
         }
+        row.cells[6].innerHTML = qualityBadge({win_probability: forecast.win_probability});
         fragment.append(row);
       }
       document.getElementById('forecastHistoryRows').replaceChildren(fragment);
@@ -101,13 +103,15 @@
           item.score + ' / ' + item.status, item.bookmaker || '—',
           number(forecast.line), number(forecast.predicted_total),
           compared.direction + ' / ' + (edge > 0 ? '+' : '') + number(edge)
-          + (item.scenario ? ' (' + number(item.scenario.line) + ' barem)' : '')];
+          + (item.scenario ? ' (' + number(item.scenario.line) + ' barem)' : ''),
+          ''];
         for (const value of values) {
           const cell = document.createElement('td');
           cell.textContent = value;
           cell.style.padding = '12px';
           row.append(cell);
         }
+        row.cells[6].innerHTML = qualityBadge({win_probability: compared.win_probability});
         fragment.append(row);
       }
       rows.replaceChildren(fragment);

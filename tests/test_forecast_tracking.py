@@ -24,6 +24,14 @@ def save(database, match_id="m", line=157.5, center=160):
     match = payload(match_id=match_id, inplay_total=line)
     forecast = forecast_live_total(match, Config())
     forecast.update(predicted_total=center, direction=direction_for_total(center,line))
+    # Synthetic recorded distributions for tracking tests; neither a fit nor
+    # today's model may alter their stored direction later.
+    from win_probability import outcome_probabilities, direction_for_probabilities
+    probabilities = outcome_probabilities(center, line, 25, 0, 2)
+    forecast["base_predicted_total"] = center
+    forecast["win_probability"].update(under_probability=probabilities["ALT"],
+        over_probability=probabilities["ÜST"], push_probability=probabilities["push"],
+        preferred_direction=direction_for_probabilities(probabilities))
     context = freeze_forecast(match,forecast,Config())
     database.save_snapshot_if_changed(match_id,2,"05:00",900,25,30,30,60,160,line,
                                       market_provenance=match["market_provenance"],forecast=context)

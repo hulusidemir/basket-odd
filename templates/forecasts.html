@@ -32,7 +32,7 @@
   <section class="panel">
     <div class="panel-header"><div>
       <h2 class="panel-title">Her doğrulanmış maç için tahmin</h2>
-      <p class="panel-subtitle">Bildirim çıkmasa da tahmin görünür. Tahmini toplam normal süre içindir; doğruluk yüzdesi değildir.</p>
+      <p class="panel-subtitle">Kazanma olasılığı skor, kalan süre ve geçmiş tahmin hatalarından hesaplanır. Farklı barem seçilince olasılık da değişir.</p>
     </div></div>
     <form class="toolbar" id="scenarioForm">
       <label>Farklı barem <input class="search" id="scenarioLine" type="number" min="0.1" max="1000" step="any" placeholder="Örn. 165,5"></label>
@@ -42,7 +42,7 @@
     <div class="panel-header"><p class="status-line" id="status" role="status" aria-live="polite">Yükleniyor…</p></div>
     <div style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse">
-        <thead><tr><th>Maç / lig</th><th>Skor / saat</th><th>Kaynak</th><th>Canlı barem</th><th>Tahmini toplam</th><th>Yön / fark</th></tr></thead>
+        <thead><tr><th>Maç / lig</th><th>Skor / saat</th><th>Kaynak</th><th>Canlı barem</th><th>Tahmini toplam</th><th>Yön / fark</th><th title="Kazanma olasılığı">OLASILIK</th></tr></thead>
         <tbody id="forecastRows"></tbody>
       </table>
     </div>
@@ -57,12 +57,13 @@
     <div class="panel-header"><p class="status-line" id="forecastHistoryStatus" role="status" aria-live="polite">Yükleniyor…</p></div>
     <div style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse">
-        <thead><tr><th>Kayıt zamanı</th><th>Maç / lig</th><th>Skor / saat</th><th>Barem</th><th>Tahmini toplam</th><th>Yön</th><th>Final</th><th>Sonuç</th></tr></thead>
+        <thead><tr><th>Kayıt zamanı</th><th>Maç / lig</th><th>Skor / saat</th><th>Barem</th><th>Tahmini toplam</th><th>Yön</th><th title="Kazanma olasılığı">OLASILIK</th><th>Final</th><th>Sonuç</th></tr></thead>
         <tbody id="forecastHistoryRows"></tbody>
       </table>
     </div>
   </details>
 </main>
+<script src="{{ url_for('static', filename='signal_display.js') }}"></script>
 <script src="{{ url_for('static', filename='forecasts.js') }}"></script>
 </body>
 </html>

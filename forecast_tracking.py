@@ -6,6 +6,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from live_signals import direction_for_total, valid_total
+from win_probability import frozen_probability_direction
 
 
 def _timestamp(value):
@@ -35,7 +36,9 @@ def forecast_outcome(row, *, as_of=None):
         captured = _timestamp(context.get("market_captured_at"))
         recorded = _timestamp(row.get("recorded_at"))
         if (line is None or not math.isfinite(center) or center < 0
-                or forecast["direction"] != direction_for_total(center, line)
+                or forecast["direction"] != (frozen_probability_direction(forecast["win_probability"])
+                    if forecast.get("engine") == "future_pace_v10"
+                    else direction_for_total(center, line))
                 or captured is None or recorded is None
                 or captured > as_of or recorded > as_of):
             return "invalid"

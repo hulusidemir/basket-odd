@@ -204,3 +204,13 @@ def test_all_forecast_report_respects_a_final_received_after_the_cutoff(database
     assert summary['pending'] == 1 and summary['losses'] == 0
     summary = next(iter(report(database.db_path, as_of=cutoff + timedelta(hours=2))['all_forecasts']['cohorts'].values()))
     assert summary['losses'] == 1
+
+
+@pytest.fixture(autouse=True)
+def isolate_pace_math_from_final_error_bias(monkeypatch):
+    # These legacy cases verify the pace stage and its source/history rules.
+    # The separate v10 distribution tests cover the fitted error correction
+    # and the default probability publication floor.
+    from win_probability import MODEL
+    monkeypatch.setitem(MODEL, "mean_normalized_error", 0)
+    monkeypatch.setattr(Config, "MIN_SIGNAL_WIN_PROBABILITY", .5)

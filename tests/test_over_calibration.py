@@ -86,10 +86,20 @@ def test_worker_freezes_empirical_calibration_in_signal_and_forecast(tmp_path):
     frozen = json.loads(db.get_match_snapshots("m")[-1]["forecast_json"])
     signal = db.get_alert(1)
     context = json.loads(signal["prediction_context_json"])
-    assert frozen["forecast"]["engine"] == "future_pace_v9"
+    assert frozen["forecast"]["engine"] == "future_pace_v10"
     assert frozen["forecast"]["over_calibration"]["applied"] is True
     assert context["decision"]["over_calibration"] == frozen["forecast"]["over_calibration"]
     assert signal["fair_total"] == round(frozen["forecast"]["predicted_total"], 1)
     assert signal["direction"] == frozen["forecast"]["direction"] == "ÜST"
     assert frozen["policy"]["over_calibration_model_sha256"] == MODEL_SHA256
     notifier.send_alert.assert_awaited_once()
+
+
+@pytest.fixture(autouse=True)
+def isolate_pace_math_from_final_error_bias(monkeypatch):
+    # These legacy cases verify the pace stage and its source/history rules.
+    # The separate v10 distribution tests cover the fitted error correction
+    # and the default probability publication floor.
+    from win_probability import MODEL
+    monkeypatch.setitem(MODEL, "mean_normalized_error", 0)
+    monkeypatch.setattr(Config, "MIN_SIGNAL_WIN_PROBABILITY", .5)

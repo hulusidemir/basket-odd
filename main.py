@@ -339,6 +339,8 @@ async def _deliver_signal_payload(match, decision, signal_count, alert_id, db, n
             future_pace_lower=decision.pace_lower_bound,
             future_pace_upper=decision.pace_upper_bound,
             fair_total=decision.sustainable_projection_center,
+            bookmaker=match.get("market_provenance", {}).get("bookmaker"),
+            win_probability=decision.win_probability,
         )
     except Exception as exc:
         db.mark_telegram_delivery_failed(
@@ -667,6 +669,14 @@ async def retry_pending_telegram_deliveries(
                 )
             if row.get("fair_total") is not None:
                 send_kwargs.update(fair_total=row.get("fair_total"))
+            send_kwargs["bookmaker"] = proof.get("bookmaker")
+            try:
+                context = json.loads(row.get("prediction_context_json") or "null")
+                stored_decision = context.get("decision") if isinstance(context, dict) else None
+                if isinstance(stored_decision, dict):
+                    send_kwargs["win_probability"] = stored_decision.get("win_probability")
+            except (TypeError, ValueError):
+                pass
             recipient_keys = getattr(notifier, "recipient_keys", None)
             if isinstance(recipient_keys, set):
                 stored_message_ids = {
@@ -793,7 +803,8 @@ async def run():
         config.MAX_LIVE_OBSERVATION_AGE_SECONDS, config.MAX_LIVE_PROVIDER_AGE_SECONDS, ENGINE_VERSION,
     )
     log.info(
-        "Bot started. Future Pace v9 | hot-start continuation enabled=%s | over calibration enabled=%s | alert elapsed >= %s min | alert remaining >= %s min | edge >= max(%s pts, live * %s) | OT disabled | Poll: %s-%ss | Max/match: %s | Same direction: %s pts live-total gap | 1 alert per period",
+        "Bot started. %s | probability publication filter disabled | hot-start continuation enabled=%s | over calibration enabled=%s | alert elapsed >= %s min | alert remaining >= %s min | edge >= max(%s pts, live * %s) | OT disabled | Poll: %s-%ss | Max/match: %s | Same direction: %s pts live-total gap | 1 alert per period",
+        ENGINE_VERSION,
         config.OVER_CONTINUATION_ENABLED,
         config.OVER_CALIBRATION_ENABLED,
         config.MIN_ELAPSED_MINUTES, config.MIN_REMAINING_MINUTES,

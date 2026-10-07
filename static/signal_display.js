@@ -3,11 +3,20 @@
   const ppmMetric = (value, digits=2) => hasMetric(value) ? Number(value).toLocaleString('tr-TR', {minimumFractionDigits:digits, maximumFractionDigits:digits}) : '–';
   const ppmChange = value => hasMetric(value) ? `(${Number(value) > 0 ? '+' : Number(value) < 0 ? '−' : ''}%${ppmMetric(Math.abs(Number(value)), 1)})` : '';
   const ppmChangeTone = value => { if (!hasMetric(value)) return ''; const n = Number(value); if (n > 0) return 'ppm-change-positive'; if (n < 0) return 'ppm-change-negative'; return 'ppm-change-neutral'; };
+  const hasProbability = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+  const probabilityMetric = value => !hasProbability(value) ? '—' : value >= .9995 ? '>%99,9'
+    : value <= .0005 ? '<%0,1' : `%${ppmMetric(value * 100, 1)}`;
+  const probabilityTone = value => !hasProbability(value) ? '' : value < .60 ? 'low'
+    : value < .70 ? 'medium' : value < .80 ? 'high' : 'very-high';
   function qualityBadge(alert) {
-    if (!hasMetric(alert.quality_score) || !alert.quality_label) return '<span class="quality-empty">—</span>';
-    const score = Number(alert.quality_score);
-    const tone = score < 55 ? 'low' : score < 70 ? 'medium' : score < 85 ? 'high' : 'very-high';
-    return `<span class="quality-badge ${tone}"><strong>${score}</strong><small>${esc(alert.quality_label)}</small></span>`;
+    const estimate = alert.win_probability;
+    if (estimate && typeof estimate === 'object') {
+      if (hasProbability(estimate.probability)) {
+        return `<span class="quality-badge ${probabilityTone(estimate.probability)}" title="Hesaplanan kazanma olasılığı"><strong>${probabilityMetric(estimate.probability)}</strong></span>`;
+      }
+      return '<span class="quality-empty">—</span>';
+    }
+    return '<span class="quality-empty">—</span>';
   }
   function resultClass(value) {
     if (value === 'Başarılı') return 'success';
@@ -136,7 +145,7 @@
         <div><span>Skor</span><strong>${esc(alert.score || '—')}</strong></div>
         <div><span>Periyot / saat</span><strong>${esc(alert.status || '—')}</strong></div>
         <div><span>Canlı Barem</span><strong>${fmt(alert.live)}</strong></div>
-        <div><span>Adil Barem</span><strong>${fmt(alert.fair_total)}</strong>${liveDifference(alert, alert.fair_total)}</div>
+        <div><span>Tahmini toplam</span><strong>${fmt(alert.fair_total)}</strong>${liveDifference(alert, alert.fair_total)}</div>
         <div><span>Projeksiyon</span><strong>${fmt(alert.pace_projection)}</strong>${liveDifference(alert, alert.pace_projection)}</div>
         <div><span>Mevcut → Gereken PPM</span><strong>${ppmMetric(comparison.current_ppm)} → ${ppmMetric(comparison.required_ppm)} <small>${ppmChange(comparison.required_change_pct) || '—'}</small></strong></div>
       </div>
@@ -144,31 +153,15 @@
   }
 
   function qualityReasons(alert) {
-    let factors = alert.quality_factors;
-    if (typeof factors === 'string') {
-      try { factors = JSON.parse(factors); } catch (_) { factors = null; }
-    }
-    const labels = [
-      ['fair_edge', 'Adil barem farkı'],
-      ['pace_support', 'Tempo desteği'],
-      ['market_move', 'Barem hareketi'],
-      ['repeat_penalty', 'Tekrar sinyali etkisi'],
-      ['data_quality', 'Veri kalitesi'],
-      ['game_state', 'Maç durumu'],
-    ];
-    const details = {
-      fair_edge: () => hasMetric(alert.fair_total) && hasMetric(alert.live)
-        ? `: ${signedModalNumber(Number(alert.fair_total) - Number(alert.live))} sayı` : '',
-      pace_support: () => hasMetric(alert.ppm_comparison?.required_change_pct)
-        ? `: Mevcut → gereken PPM farkı ${signedModalNumber(Number(alert.ppm_comparison.required_change_pct))}%` : '',
-      market_move: () => hasMetric(alert.reference_total) && hasMetric(alert.live) && hasMetric(alert.decision_change)
-        ? `: ${ppmMetric(alert.reference_total, 1)} → ${ppmMetric(alert.live, 1)} (${signedModalNumber(Number(alert.decision_change))})` : '',
-    };
-    const items = factors && typeof factors === 'object' && !Array.isArray(factors)
-      ? labels.filter(([key]) => hasMetric(factors[key]) && (key !== 'repeat_penalty' || Number(factors[key]) !== 0)).slice(0, 5)
-        .map(([key, label]) => `<li><span class="${Number(factors[key]) <= 0 ? 'warning' : ''}" aria-hidden="true">${Number(factors[key]) <= 0 ? '⚠' : '✓'}</span> ${label}${details[key]?.() || ''} · ${Number(factors[key]) > 0 ? '+' : ''}${esc(factors[key])} puan</li>`).join('')
-      : '';
-    return `<section class="modal-section modal-quality-reasons"><h3 class="modal-section-title">Sinyal Neden Geldi?</h3>${items ? `<ul>${items}</ul>` : '<p>—</p>'}</section>`;
+    const estimate = alert.win_probability;
+    if (!estimate || !hasProbability(estimate.probability)) return '';
+    const edge = hasMetric(alert.model_edge_points) ? `${ppmMetric(alert.model_edge_points, 1)} sayı` : '—';
+    const threshold = hasMetric(alert.required_edge_points) ? `${ppmMetric(alert.required_edge_points, 1)} sayı` : '—';
+    const under = probabilityMetric(estimate.under_probability);
+    const over = probabilityMetric(estimate.over_probability);
+    const push = hasMetric(estimate.push_probability) && Number(estimate.push_probability) > .001
+      ? ` · İade %${ppmMetric(Number(estimate.push_probability) * 100, 1)}` : '';
+    return `<section class="modal-section modal-quality-reasons"><h3 class="modal-section-title">Kazanma olasılığı</h3><p>ALT ${under} · ÜST ${over}${push}</p><p>${esc(alert.direction || '—')} yönünde toplam farkı: ${edge}. Gereken fark: ${threshold}.</p><p>Skor, kalan süre ve geçmiş tahmin hatalarından hesaplanır. Eğitim: ${esc(estimate.training_matches ?? 0)} maç.</p></section>`;
   }
 
   function signalLineFacts(alert) {

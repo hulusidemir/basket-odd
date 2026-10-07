@@ -32,6 +32,39 @@ class DashboardRawTests(unittest.TestCase):
         self.assertEqual(row["barem_change"], 11)
         self.assertNotIn("display_snapshot", row)
 
+    def test_probability_is_frozen_and_missing_archived_fields_stay_empty(self):
+        probability = {"validated": False, "probability": None, "model_sha256": "original"}
+        source = {"id": 1, "opening": 145, "live": 135, "direction": "ALT",
+            "prediction_context_json": json.dumps({"decision": {
+                "win_probability": probability, "edge_points": 8, "required_edge_points": 5}})}
+        live = self.dashboard._raw_alert(source)
+        self.assertEqual(live["win_probability"], probability)
+        snapshot = self.dashboard._dashboard_snapshot_payloads([live])[1]
+        changed = {**source, "prediction_context_json": json.dumps({"decision": {
+            "win_probability": {"validated": True, "probability": .99}}})}
+        archived = self.dashboard._frozen_deleted_alert({**changed, "display_snapshot": json.dumps(snapshot)})
+        self.assertEqual(archived["win_probability"], probability)
+        self.assertEqual(archived["model_edge_points"], 8)
+        legacy = self.dashboard._frozen_deleted_alert({**source, "display_snapshot": '{}'})
+        self.assertIsNone(legacy["win_probability"])
+        self.assertIsNone(legacy["required_edge_points"])
+
+    def test_active_v9_uses_saved_signal_clock_and_center_without_old_score(self):
+        from config import Config
+        context = {"policy": {"engine": "future_pace_v9", "parameters": {
+            "PRIOR_EQUIV_MINUTES": 10}}, "clock": {"quarter_length": 10,
+            "period_count": 4, "period": 2, "remaining_min": 5}, "decision": {
+            "sustainable_projection_center": 160,
+            "over_continuation": {"enabled": True}, "over_calibration": {"enabled": True}}}
+        source = {"id": 1, "opening": 160, "live": 170.5, "direction": "ALT",
+            "score": "30 - 30", "status": "Q2 05:00", "fair_total": 160,
+            "quality_score": 0, "prediction_context_json": json.dumps(context)}
+        row = self.dashboard._raw_alert(source)
+        self.assertGreater(row["win_probability"]["probability"], .6)
+        self.assertEqual(row["fair_total"], 160)
+        legacy = self.dashboard._frozen_deleted_alert({**source, "display_snapshot": '{}'})
+        self.assertIsNone(legacy["win_probability"])
+
     def test_market_evidence_stays_in_db_and_out_of_dashboard_and_display_snapshot(self):
         source_row = {
             "id": 1, "opening": 160, "live": 171, "direction": "ALT",
@@ -379,7 +412,7 @@ class DashboardRawTests(unittest.TestCase):
         self.assertIn('class="signal-sequence"', template)
         self.assertIn('class="signal-time"', template)
         self.assertIn("signalCount > 1", template)
-        self.assertIn('<thead><tr><th>Sinyal</th><th>Kalite</th><th>Maç</th>', template)
+        self.assertIn('<thead><tr><th>Sinyal</th><th title="Kazanma olasılığı">OLASILIK</th><th>Maç</th>', template)
         self.assertIn('data-label="Sinyal"><button type="button" class="signal-modal-trigger"', template)
         self.assertIn('<span class="direction-pill ${directionClass}"', template)
         self.assertNotIn('<th class="num">Fark</th>', template)

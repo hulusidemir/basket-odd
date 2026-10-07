@@ -35,14 +35,9 @@ def test_modal_uses_stored_quality_fair_projection_and_factors():
         "decision_change": -10, "effective_threshold": 0,
     }
     rendered = render_helpers(alert)
-    assert "72" in rendered["summary"] and "YÜKSEK" in rendered["summary"]
+    assert "72" not in rendered["summary"] and "YÜKSEK" not in rendered["summary"]
     assert "158.5" in rendered["summary"] and "162.0" in rendered["summary"]
     assert "4,30" in rendered["summary"] and "%26,5" in rendered["summary"]
-    assert "Barem hareketi: 180,0 → 170,0 (−10,0) · -4 puan" in rendered["reasons"]
-    assert "Tekrar sinyali etkisi · -5 puan" in rendered["reasons"]
-    assert "Adil barem farkı: −11,5 sayı · +24 puan" in rendered["reasons"]
-    assert "Mevcut → gereken PPM farkı +26,5% · +18 puan" in rendered["reasons"]
-    assert rendered["reasons"].count("<li>") <= 5
     assert "Uygulanan eşik" not in rendered["reference"]
     assert "Son Maç Önü Baremi" in rendered["reference"]
     assert "Maç önü referansına göre fark" in rendered["reference"]
@@ -58,7 +53,7 @@ def test_legacy_null_quality_and_small_team_sample():
          "failed": 0, "success_rate": 100}, "matches": []},
     )
     assert "quality-empty" in rendered["summary"]
-    assert "Sinyal Neden Geldi?" in rendered["reasons"]
+    assert rendered["reasons"] == ""
     assert "1/1 başarılı" in rendered["history"]
     assert "Örneklem yetersiz" in rendered["history"]
     assert "100%" not in rendered["history"]
@@ -76,8 +71,6 @@ def test_fair_projection_reference_and_signal_order_presentation():
     assert "Canlıya +6,3" in rendered["summary"]
     assert "Canlıya +3,7" in rendered["summary"]
     assert rendered["summary"].count('class="positive-text"') == 2
-    assert "Adil barem farkı: +6,3 sayı · 0 puan" in rendered["reasons"]
-    assert "Barem hareketi: 145,5 → 127,5 (−18,0) · +20 puan" in rendered["reasons"]
     assert rendered["lines"].count("145.5") == 1
     assert "Sinyal referansı</span><strong>İlk Açılış Baremi" in rendered["reference"]
     assert "İlk sinyal" in rendered["lines"]
@@ -115,3 +108,27 @@ def test_live_list_management_is_collapsed_and_shared_modal_sections():
         assert "${qualityReasons(alert)}" in template
         assert "${signalLineFacts(alert)}" in template
     assert "${signalSectionSubtitle(alert)}" in live
+
+
+def test_probability_is_not_the_old_quality_score_and_uses_saved_decision():
+    alert = {"direction": "ALT", "quality_score": 90, "quality_label": "ÇOK YÜKSEK",
+             "win_probability": {"validated": False, "probability": .72, "under_probability": .72, "over_probability": .28,
+                 "training_matches": 38, "validation_matches": 34},
+             "model_edge_points": 8, "required_edge_points": 5}
+    result = render_helpers(alert)
+    assert "%72,0" in result["summary"]
+    assert "90" not in result["summary"]
+    assert "8,0 sayı" in result["reasons"] and "5,0 sayı" in result["reasons"]
+    assert "Eğitim: 38 maç" in result["reasons"]
+    alert["win_probability"].update(validated=True, probability=.72)
+    assert "%72,0" in render_helpers(alert)["summary"]
+    del alert["win_probability"]
+    assert "90" not in render_helpers(alert)["summary"]
+    assert "Eski puan" not in render_helpers(alert)["summary"]
+
+
+def test_extreme_estimate_is_not_rounded_into_a_100_percent_promise():
+    result = render_helpers({"win_probability": {"probability": .99999}})
+    assert ">%99,9" in result["summary"]
+    assert "%100" not in result["summary"]
+    assert "<small>Tahmin</small>" not in result["summary"]
