@@ -31,6 +31,8 @@ from signal_lists import (
     split_match_teams,
 )
 from upcoming_app import upcoming_bp
+from live_signals import direction_for_total, valid_total
+from forecast_tracking import forecast_outcome, frozen_context, tracking_summary, signal_tracking_summary
 
 
 logger = logging.getLogger(__name__)
@@ -417,6 +419,78 @@ def deleted_matches():
 @app.route("/api/alerts")
 def api_alerts():
     return jsonify(_build_live_dashboard_rows(db.recent_alerts(limit=500)))
+
+
+@app.route("/forecasts")
+def forecasts():
+    return render_template("forecasts.html")
+
+
+@app.route("/api/forecasts")
+def api_forecasts():
+    requested_line = None
+    if "line" in request.args:
+        requested_line = valid_total(request.args["line"])
+        if requested_line is None:
+            return jsonify({"error": "Geçerli bir barem girin."}), 400
+    items = []
+    for row in db.latest_live_forecasts():
+        try:
+            context = json.loads(row["forecast_json"])
+            frozen = context["forecast"]
+            center = float(frozen["predicted_total"])
+            if not math.isfinite(center):
+                continue
+            item = {key: context.get(key) for key in (
+                "match_name", "tournament", "url", "bookmaker", "status", "score", "market_captured_at",
+            )}
+            item.update({"match_id": row["match_id"], "forecast": frozen})
+            if requested_line is not None:
+                item["scenario"] = {"line": requested_line,
+                    "direction": direction_for_total(center, requested_line),
+                    "signed_edge_points": center - requested_line}
+            items.append(item)
+        except (KeyError, TypeError, ValueError):
+            continue
+    return jsonify(items)
+
+
+@app.route("/api/signals/performance")
+def api_signal_performance():
+    return jsonify(signal_tracking_summary(db.first_signals_for_tracking()))
+
+
+@app.route("/api/forecasts/history")
+def api_forecast_history():
+    try:
+        limit = int(request.args.get("limit", "50"))
+        before = int(request.args["before"]) if "before" in request.args else None
+        if not 1 <= limit <= 100 or (before is not None and before <= 0):
+            raise ValueError
+    except ValueError:
+        return jsonify({"error": "Geçersiz sayfa bilgisi."}), 400
+    data = db.forecast_tracking_data(before_id=before, limit=limit)
+    as_of = datetime.now(timezone.utc)
+    items = []
+    for row in data["rows"]:
+        context = frozen_context(row)
+        forecast = context.get("forecast")
+        if not isinstance(forecast, dict):
+            forecast = {}
+        outcome = forecast_outcome(row, as_of=as_of)
+        # All display facts come from the original saved context. Only automatic
+        # final score/outcome may be added; never call the live model here.
+        items.append({"id": row["id"], "recorded_at": row["recorded_at"],
+                      "match_name": context.get("match_name"), "tournament": context.get("tournament"),
+                      "score": context.get("score"), "status": context.get("status"),
+                      "bookmaker": context.get("bookmaker"), "is_first": row["is_first"],
+                      "forecast": {key: forecast.get(key) for key in
+                                   ("line", "predicted_total", "direction", "engine")},
+                      "final_score": row["final_score"] if outcome not in {"pending", "invalid"} else None,
+                      "final_total": row["final_total"] if outcome not in {"pending", "invalid"} else None,
+                      "outcome": outcome})
+    return jsonify({"summary": tracking_summary(data, as_of=as_of), "items": items,
+                    "next_cursor": data["next_cursor"]})
 
 
 @app.route("/api/signal-lists")

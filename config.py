@@ -44,6 +44,7 @@ def _bool_env(name: str, default: bool) -> bool:
 
 class Config:
     PRIOR_EQUIV_MINUTES: float = _float_env("PRIOR_EQUIV_MINUTES", 10.0)
+    # Retired v5/v6 window votes; v7 uses one point forecast and no unanimity veto.
     MIN_VALID_FUTURE_PACES: int = _int_env("MIN_VALID_FUTURE_PACES", 2)
     MIN_EDGE_POINTS: float = _float_env("MIN_EDGE_POINTS", 4.0)
     MIN_EDGE_RATIO: float = _float_env("MIN_EDGE_RATIO", 0.02)
@@ -73,7 +74,6 @@ class Config:
     POLL_INTERVAL_MIN: int = _int_env("POLL_INTERVAL_MIN", 25)
     POLL_INTERVAL_MAX: int = _int_env("POLL_INTERVAL_MAX", 40)
     LIVE_POLL_SECONDS: float = _float_env("LIVE_POLL_SECONDS", 4.0)
-    M2_ENABLED: bool = _bool_env("M2_ENABLED", True)
     MAX_SIGNALS_PER_MATCH: int = _int_env("MAX_SIGNALS_PER_MATCH", 3)
     SAME_DIRECTION_MIN_LIVE_DELTA: float = _float_env("SAME_DIRECTION_MIN_LIVE_DELTA", 10.0)
     DB_PATH: str = os.getenv("DB_PATH", "basketball.db")

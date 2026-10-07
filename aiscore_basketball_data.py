@@ -9,15 +9,27 @@ import asyncio
 import re
 
 
-BASKETBALL_DATA_JS = r"""expectedId => {
+BASKETBALL_IDENTITY_JS = r"""expectedId => {
     const state = window.$nuxt?.$store?.state?.basketball
         || window.__NUXT__?.state?.basketball;
     const match = state?.basketballDetailMatchData?.match;
     const path = location.pathname.replace(/\/(odds|stats|boxscore|h2h|summary)\/?$/, '');
-    if (!match || String(match.id) !== expectedId
-            || String(state.detailMatchId) !== expectedId
-            || path.split('/').filter(Boolean).pop() !== expectedId) {
-        return {error: 'match_identity_mismatch'};
+    return {
+        source_match_id: !!match && String(match.id) === expectedId,
+        detail_match_id: String(state?.detailMatchId || '') === expectedId,
+        url_match_id: path.split('/').filter(Boolean).pop() === expectedId,
+    };
+}"""
+
+BASKETBALL_READY_JS = "id => Object.values((" + BASKETBALL_IDENTITY_JS + ")(id)).every(Boolean)"
+
+BASKETBALL_DATA_JS = r"""expectedId => {
+    const state = window.$nuxt?.$store?.state?.basketball
+        || window.__NUXT__?.state?.basketball;
+    const match = state?.basketballDetailMatchData?.match;
+    const identityChecks = (""" + BASKETBALL_IDENTITY_JS + r""")(expectedId);
+    if (!Object.values(identityChecks).every(Boolean)) {
+        return {error: 'match_identity_mismatch', identity_checks: identityChecks};
     }
     const lineup = state.lineupData?.lineup || state._boxscoreData?.lineup || {};
     const team = side => lineup[side + 'PlayerTotals']?.bkDetail || null;
@@ -33,7 +45,8 @@ BASKETBALL_DATA_JS = r"""expectedId => {
         top_text: (document.querySelector('.topBox')?.innerText || '').replace(/\s+/g, ' ').trim(),
         status_id: match.statusId, home_scores: match.homeScores,
         away_scores: match.awayScores, team_stats: state.detailStats || {},
-        boxscore: {home: team('home'), away: team('away')}, events};
+        boxscore: {home: team('home'), away: team('away')}, events,
+        identity_checks: identityChecks};
 }"""
 
 
@@ -167,7 +180,10 @@ def normalize_basketball_data(payload, expected_id, *, expected_score=None):
     if not isinstance(payload, dict):
         return {"available": False, "error": "invalid_payload"}
     if payload.get("error"):
-        return {"available": False, "error": payload["error"]}
+        result = {"available": False, "error": payload["error"]}
+        if isinstance(payload.get("identity_checks"), dict):
+            result["identity_checks"] = payload["identity_checks"]
+        return result
     if str(payload.get("match_id")) != str(expected_id):
         return {"available": False, "error": "match_identity_mismatch"}
     scores = [_score_total(payload.get(side + "_scores")) for side in ("home", "away")]
@@ -183,7 +199,8 @@ def normalize_basketball_data(payload, expected_id, *, expected_score=None):
               "top_text": payload.get("top_text", ""),
               "teams": {}, "issues": [], "events": payload.get("events") or [],
               "fetch_method": payload.get("fetch_method", "page_state"),
-              "provider_freshness_verified": False}
+              "provider_freshness_verified": False,
+              "identity_checks": payload.get("identity_checks") or {}}
     stats = payload.get("team_stats") or {}
     boxscores = payload.get("boxscore") or {}
     for side, points in zip(("home", "away"), scores):

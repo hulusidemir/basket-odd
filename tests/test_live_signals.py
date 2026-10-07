@@ -23,10 +23,36 @@ def match(**overrides):
 
 
 class LiveSignalRuleTests(unittest.TestCase):
-    def test_insufficient_data_returns_pas(self):
+    def test_hot_scoring_is_shrunk_without_a_pregame_veto(self):
+        payload = match(status="Q3 10:00", score="50 - 50", opening_total=160,
+                        prematch_total=160, inplay_total=184)
+        history = [{"elapsed_game_seconds": 1080, "total_score": 82, "period": 2}]
+        # 100 points in 20 minutes plus a 40-point/10-minute prior: 4.667 PPM.
+        decision = evaluate_live_signal(payload, history, Config())
+        self.assertEqual(decision.direction, "ÜST")
+        self.assertEqual(decision.sustainable_projection_center, 193.3)
+
+    def test_cold_scoring_is_shrunk_without_a_pregame_veto(self):
+        payload = match(status="Q3 10:00", score="30 - 30", opening_total=160,
+                        prematch_total=160, inplay_total=136)
+        history = [{"elapsed_game_seconds": 1080, "total_score": 58, "period": 2}]
+        # 60 observed + 40 prior points over 30 minutes projects 126.667.
+        decision = evaluate_live_signal(payload, history, Config())
+        self.assertEqual(decision.direction, "ALT")
+        self.assertEqual(decision.sustainable_projection_center, 126.7)
+
+    def test_one_interval_does_not_need_artificial_extra_votes(self):
+        payload = match(status="Q1 00:00", tournament="NBA", score="35 - 35",
+                        opening_total=192, prematch_total=192, inplay_total=230)
+        history = [{"elapsed_game_seconds": 0, "total_score": 0, "period": 1}]
+        decision = evaluate_live_signal(payload, history, Config())
+        self.assertEqual(decision.direction, "ÜST")
+        self.assertEqual(decision.sustainable_projection_center, 250)
+
+    def test_complete_score_and_clock_do_not_require_local_history(self):
         decision = evaluate_live_signal(match(), [], Config())
-        self.assertEqual(decision.direction, "PAS")
-        self.assertEqual(decision.skip_reason, "PAS_INSUFFICIENT_FUTURE_PACE")
+        self.assertEqual(decision.direction, "ÜST")
+        self.assertEqual(decision.sustainable_projection_center, 191.2)
 
     def test_overtime_never_signals(self):
         decision = evaluate_live_signal(match(status="OT 03:00"), [], Config())
@@ -50,6 +76,14 @@ class LiveSignalIntegrationTests(unittest.TestCase):
 
     def process(self, payload, config=None):
         asyncio.run(process_match(verified_payload(payload), self.db, self.notifier, config or Config()))
+
+    def test_complete_observation_can_alert_without_repeated_window_votes(self):
+        payload = match(tournament="NBA", opening_total=192, prematch_total=192,
+                        inplay_total=230, status="Q1 12:00", score="0 - 0")
+        self.process(payload)
+        self.process({**payload, "status": "Q1 00:00", "score": "35 - 35"})
+        self.assertEqual(self.db.count_match_alerts(payload['match_id']), 1)
+        self.notifier.send_alert.assert_awaited_once()
 
     def test_q1_end_to_q2_start_keeps_equal_elapsed_snapshots(self):
         for tournament, quarter_minutes in (("FIBA Intercontinental Cup", 10), ("NBA", 12)):
@@ -90,7 +124,7 @@ class LiveSignalIntegrationTests(unittest.TestCase):
         snapshots = self.db.get_match_snapshots("test-match")
         self.assertEqual([row["elapsed_game_seconds"] for row in snapshots], [746, 1680])
         self.assertEqual(snapshots[-1]["remaining_minutes"], 20)
-        self.assertEqual(self.db.count_match_alerts("test-match"), 0)
+        self.assertEqual(self.db.count_match_alerts("test-match"), 1)
 
     def test_runtime_override_excludes_old_forty_minute_snapshots(self):
         payload = match(tournament="FIBA Intercontinental Cup", status="Q2 09:00", score="25 - 25")
@@ -104,7 +138,7 @@ class LiveSignalIntegrationTests(unittest.TestCase):
         snapshots = self.db.get_match_snapshots("test-match")
         self.assertEqual([row["elapsed_game_seconds"] for row in snapshots], [660, 1515])
         self.assertEqual(snapshots[-1]["remaining_minutes"], 48 - 1515 / 60)
-        self.assertEqual(self.db.count_match_alerts("test-match"), 0)
+        self.assertEqual(self.db.count_match_alerts("test-match"), 1)
 
     def test_static_nba_and_ncaa_histories_are_not_reset_by_long_clocks(self):
         for tournament, first_status, next_status in (
@@ -167,8 +201,8 @@ class LiveSignalIntegrationTests(unittest.TestCase):
         self.process(match(status="Q2 05:30", score="41 - 35"))
         self.process(match(status="Q2 04:30", score="39 - 35"))
         self.assertEqual(len(self.db.get_match_snapshots("test-match")), 2)
-        self.assertEqual(self.db.count_match_alerts("test-match"), 0)
-        self.notifier.send_alert.assert_not_awaited()
+        self.assertEqual(self.db.count_match_alerts("test-match"), 1)
+        self.notifier.send_alert.assert_awaited_once()
 
         self.process(match(status="Q2 04:00", score="41 - 37"))
         self.assertEqual(len(self.db.get_match_snapshots("test-match")), 3)
@@ -176,9 +210,9 @@ class LiveSignalIntegrationTests(unittest.TestCase):
     def test_observation_captured_before_latest_snapshot_is_ignored(self):
         self.process(match())
         self.process(match(market_captured_at="2020-01-01T00:00:00+00:00"))
-        self.assertEqual(self.db.count_match_alerts("test-match"), 0)
+        self.assertEqual(self.db.count_match_alerts("test-match"), 1)
         self.assertEqual(len(self.db.get_match_snapshots("test-match")), 1)
-        self.notifier.send_alert.assert_not_awaited()
+        self.notifier.send_alert.assert_awaited_once()
 
     def test_signal_delivery_uses_notifier_pace_parameter_names(self):
         class StrictNotifier:

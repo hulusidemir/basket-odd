@@ -3,50 +3,80 @@
 AIScore basketbol maçlarında aynı bahis şirketine ait maç önü (yoksa açılış)
 ve canlı toplam baremini karşılaştıran Python/Flask uygulaması.
 
-Güncel karar motoru Future Pace v5'tir:
+Güncel karar motoru Future Pace v7'dir. Her doğrulanmış canlı gözlemde bir
+merkez tahmin hesaplanır; tahmin üretimi ile Telegram uygunluğu ayrıdır.
 
 ```text
 öncül PPM = (geçerli maç önü baremi, yoksa açılış) / normal maç süresi
-gereken PPM = (canlı toplam - mevcut toplam skor) / kalan normal süre
-tempo bandı = öncüle yaklaştırılmış geçerli tempo pencerelerinin alt/üst sınırı
-gereken PPM bandın altında ve sayı avantajı yeterliyse ÜST
-gereken PPM bandın üstünde ve sayı avantajı yeterliyse ALT
-diğer durumlar PAS
+kalan PPM tahmini = (mevcut skor + öncül PPM × öncül dakika) / (oynanan dakika + öncül dakika)
+tahmini toplam = mevcut skor + kalan PPM tahmini × kalan normal süre
+barem tahmini toplamdan küçükse ÜST, büyükse ALT; tam eşitlik EŞİT
 ```
 
-Tempo pencereleri tüm maç, son 2/5 dakika ve mevcut periyottur. Varsayılan
-en az iki geçerli tempo gerekir; ilk 12 dakika, son 5 dakikanın altı ve fazla
-geniş tempo bandı PAS olur. Minimum sayı avantajı `MIN_EDGE_POINTS` ile
-`canlı × MIN_EDGE_RATIO` değerlerinin büyüğüdür; büyük skor farkı ve büyük
-piyasa hareketi gereken avantajı artırır. Uzatma ve belirsiz periyot sinyalsizdir.
-Q4 kalan süre ve diğer v5 kontrollerini karşılıyorsa değerlendirilir.
-Eski `THRESHOLD*`, `Q*_THRESHOLD_MULTIPLIER` ve `DISABLE_Q4_SIGNALS`
-alanları yapılandırmada uyumluluk için kalır; v5 yön kararında kullanılmaz.
-Dashboard'daki tempo projeksiyonu yalnız mevcut skor ve oynanan sürenin basit
-doğrusal gösterimidir; sinyal üretimine katılmaz.
+`PRIOR_EQUIV_MINUTES` varsayılan 10 dakikadır; bu çalışmada sonuçlara göre
+ayarlanmadı. Skor her hesapta bir kez kullanılır. Son 2/5 dakika ve periyot
+aralıkları açıklayıcıdır; yönü belirleyen çoklu oy veya zorunlu maç önü
+senaryosu değildir. `MIN_VALID_FUTURE_PACES` ve `MAX_FUTURE_BAND_WIDTH` eski
+v5/v6 ayarları olarak korunur, yeni yönü veto etmez.
+
+`/forecasts` ekranında bildirim çıkmayan erken/geç veya küçük avantajlı
+maçların tahminleri de bulunur. Farklı bir barem girilerek aynı dondurulmuş
+merkezle yön/fark karşılaştırılabilir; bu senaryo kayıtlı tahmini değiştirmez.
+Tam eşitlikte rastgele ALT/ÜST seçilmez. Son üç dakikada doğrulanmış yeni
+gözlemi olmayan maç güncel tahminler ekranından çıkar.
+
+Aynı ekrandaki başarı kartları maç başına **ilk kayıtlı tahmini** değerlendirir.
+Başarı = doğru / (doğru + yanlış); bekleyen, iade ve EŞİT/yönsüz kayıtlar
+orana katılmaz. "Tahmin geçmişi" bölümünde bütün dondurulmuş tahminler ve
+otomatik final sonuçları 50'şer kayıtla gösterilir. Geçici barem senaryoları
+geçmişe veya başarı oranına yazılmaz. Başarı özeti ve geçmiş dakikada bir
+yenilenir; sayfalama yeni kayıtlar gelince önceki kayıtları atlamaz.
+
+Telegram için ilk 12 dakika ve son 5 dakikanın altı beklenir; minimum sayı
+avantajı `MIN_EDGE_POINTS` ile `canlı × MIN_EDGE_RATIO` değerlerinin büyüğüdür.
+Büyük skor farkı ve piyasa hareketi gereken avantajı artırır. Tekrar, periyot
+ve liste kuralları korunur. Uzatma ve belirsiz periyot hesaplanmaz. Tahmini
+toplam normal süre içindir; uzatma dahil piyasa ile sözleşme uyumu henüz
+çözülmüş değildir. Bu tahmin kalibre edilmiş kazanma olasılığı değildir.
+Eski `THRESHOLD*`, `Q*_THRESHOLD_MULTIPLIER` ve `DISABLE_Q4_SIGNALS` alanları
+uyumluluk için kalır. Dashboard'daki basit tempo projeksiyonu karar hesabı değildir.
 
 Canlı tarama sonuçları bütün maçların bitmesi beklenmeden, her maç okunur okunmaz
 işlenir. Canlı tarayıcı iki ayrıntı sekmesiyle başlar; bağlantı hatasında
 eşzamanlılığı otomatik düşürür ve sağlıklı döngülerden sonra yapılandırılan
-`AISCORE_CONCURRENCY` tavanına doğru kademeli artırır. Yalnız doğrulanmış tam
-maç `Total Points` piyasasının bet365 (`company_id=2`, `bs`) satırı kabul edilir.
-Canlı barem bet365 history yanıtındaki en yeni kayıttan alınır; kilitliyse
-eski satıra dönülmez. Maç
-kimliği, periyot ve skor aynı, saat farkı en fazla 30 saniye olmalıdır.
-Sağlayıcı güncellemesi `MAX_LIVE_PROVIDER_AGE_SECONDS` (varsayılan 30 saniye)
-sınırını aşarsa veya doğrulama yapılamazsa sinyal gönderilmez. Listede canlı
-bet365 satırı varsa history ile eşleşmelidir; sütun boşsa açılış/maç önü aynı
-bet365 satırından, canlı barem doğrulanan history'den alınır. Başka bookmaker,
-alternate barem veya eski history satırına fallback yapılmaz. Ham history yanıtı
-ve kaynak kimliği yeni sinyalde saklanır; mevcut geçmiş kayıtlar değiştirilmez.
+`AISCORE_CONCURRENCY` tavanına doğru kademeli artırır. Doğrulanmış tam maç `Total Points` (`bs`) satırı hangi şirkete ait olursa
+olsun kullanılabilir. Açılış, maç önü ve canlı değerler aynı şirketten alınır;
+farklı şirketlerin baremleri birleştirilmez. Canlı uygulama verisi ve seçilen
+şirketin ekrandaki hücresi aynı baremi göstermeli, kilitsiz olmalı ve maç
+kimliği/periyot/skor doğrulanmalıdır. Dolu canlı hücre için odds tarihçesi
+zorunlu değildir; `aiscore_live_v2` kanıtı yakalama anı ve uygulama/ekran
+uyumunu saklar. Bağımsız sağlayıcı tazeliği kanıtı olarak sunulmaz.
+Boş canlı hücre için aynı şirketin doğrulanmış güncel tarihçesi kullanılabilir;
+bu fallback'te sağlayıcı zaman/skor/saat ve ham yanıt kontrolü sürer.
+Uygun olmayan şirket tüm maçı engellemez; diğer şirket denenir.
+
 Quality v1 puanı yalnız açıklayıcıdır; başarı olasılığı veya yayın barajı değildir.
 Eski `MIN_SIGNAL_QUALITY` ayarı yayın kararına katılmaz. Sinyal için doğrulanmış
-güncel barem ve Future Pace v5'in tempo/sayı avantajı koşulları zorunludur.
+barem ve v7 merkez tahmininin yeterli sayı avantajı zorunludur.
 Yeni gerçek sinyal, kaynak kanıtıyla birlikte kararın kod sürümünü ve kullanılan
 ayarları dondurur. İleriye dönük değerlendirme
 `venv/bin/python forward_validation.py --db basketball.db` ile salt okunur çalışır; her sürümde maçın ilk sinyalini
-sonuçtan önce seçer, ALT/ÜST ve gün sonuçlarını ayrı gösterir. Yöntem ve mevcut
+sonuçtan önce seçer, ALT/ÜST ve gün sonuçlarını ayrı gösterir. Model/piyasa/maç
+önü kalan-hız bazının ortalama hatası ve kayıtlı/teslim edilmiş sinyal paydaları
+da ayrı verilir. M2 erişim durumları/gerekçeleri raporda bulunur. Eski v5 ve
+v6/v7 politikaları karışmaz; geçmiş tahminler yeniden yazılmaz. Yöntem ve mevcut
 kanıtın sınırları `docs/FORWARD_VALIDATION_2026-10-04.md` içindedir.
+Bildirim çıkmayan tahminler de `match_live_snapshots.forecast_json` içinde
+ilk kayıt anında dondurulur. Saatlik otomatik biten maç taraması bu maçları
+ayrıca kontrol eder, final gözlemini `forecast_match_results` içine yazar.
+Salt okunur rapor `all_forecasts` altında her maç/politikanın ilk tahminini
+sonuçtan önce seçer. Sonraki kazanan ilk kaybın yerine geçmez. Yeni nullable
+kolon ve final tablosu eklemelidir; eski snapshot/arşiv/sonuçlar doldurulmaz.
+Geçmiş/başarı ekranı için yalnız iki küçük kısmi indeks eklenir; yeni kayıt
+tablosu, scraper veya arka plan worker'ı yoktur. `/api/forecasts/history`
+salt okunur ve sayfa başına en fazla 100 kayıt döndürür. Ekranın maç başına
+ilk kayıt özeti ile CLI'ın politika başına ilk kayıt raporu ayrı örneklemlerdir.
+V7 davranışı ve başarının sınırları `docs/SIGNAL_REPAIR_2026-10-07.md` içindedir.
 Bellekte `MAX_LIVE_OBSERVATION_AGE_SECONDS` süresini aşan gözlem sinyal üretemez.
 Skor ve oyun saati ilerlediği halde değişmeyen barem de stale kabul edilip atlanır.
 Tek bir bozuk ayrıntı sekmesi `LIVE_MATCH_TIMEOUT_SECONDS`, bütün canlı tarama
@@ -194,10 +224,20 @@ Geçmişte PPM veya yön düğmesi kayıtlı modalı açar. Takım geçmişi de 
 haliyle kalır. Snapshot sürümü 2 bu alanları JSON'a ekler; tablo geçişi gerekmez.
 Eski snapshot'lar değiştirilmez, eksik alanları sonradan hesaplanmaz.
 
+### ALT/ÜST başarı takibi
+
+ALT/ÜST sinyallerinin ayrı doğru/yanlış, bekleyen ve başarı oranı ana
+ekrandaki yön kartlarında görünür; karma eski motorlar dahildir. Her maçın
+ilk kayıtlı sinyali bir kez sayılır. Tüm tahminler ekranı bildirimsiz
+tahminleri de kapsayan ayrı ALT/ÜST özetini gösterir. Kaynak/kalibrasyon
+denemesi için `venv/bin/python directional_audit.py` yalnız toplam metrikler
+üretir; canlı sinyali değiştirmez. Ayrıntılar:
+[yön kalibrasyon raporu](docs/DIRECTIONAL_CALIBRATION_2026-10-07.md).
+
 ### Dashboard M2
 
-M2 yeni sinyal satırlarını bağımsız değerlendirir; kendi sütunu ve gerekçe
-modali vardır. M1 yönü ve Telegram akışı M2 sonucunu beklemez. Varsayılan
-`M2_ENABLED=true`; `false` yeni analizleri kapatır. Ayrı tarayıcı profili
-`AISCORE_M2_BROWSER_PROFILE_DIR` ile seçilebilir. Eski sinyaller doldurulmaz.
-Model varsayımları, veri kapıları ve migration: [MOTOR2.md](docs/MOTOR2.md).
+7 Ekim incelemesi sonrası M2 canlı akıştan kaldırıldı: bot M2 görevi/tarayıcısı
+başlatmaz, yeni sinyallere M2 analizi eklemez; canlı ekranda M2 sütunu/modalı
+yoktur. Eski `M2_ENABLED` ortam ayarı artık kullanılmaz. Önceden dondurulmuş
+arşiv verisi korunur. İnceleme: [M2_REVIEW_2026-10-07.md](docs/M2_REVIEW_2026-10-07.md).
+Eski deneysel modelin açıklaması: [MOTOR2.md](docs/MOTOR2.md).

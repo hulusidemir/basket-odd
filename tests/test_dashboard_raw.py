@@ -86,6 +86,8 @@ class DashboardRawTests(unittest.TestCase):
             }
             self.assertEqual(game_clock("Q3 08:00", tournament=payload["tournament"])["quarter_length"], 10)
             engine_quarter_lengths = []
+            config = Config()
+            config.MIN_EDGE_POINTS = 1000  # Duration fixture creates its own archived alerts below.
 
             def capture_engine_clock(match, snapshots, config):
                 clock = game_clock(match["status"], match["match_name"], match["tournament"])
@@ -94,10 +96,10 @@ class DashboardRawTests(unittest.TestCase):
 
             with patch("main.evaluate_live_signal", side_effect=capture_engine_clock):
                 from tests.market_fixture import verified_payload
-                asyncio.run(process_match(verified_payload(payload), database, notifier, Config()))
+                asyncio.run(process_match(verified_payload(payload), database, notifier, config))
                 asyncio.run(process_match(
                     verified_payload({**payload, "status": "Q3 08:00", "score": "60 - 60"}),
-                    database, notifier, Config(),
+                    database, notifier, config,
                 ))
             self.assertEqual(engine_quarter_lengths, [12, 12])
             self.assertEqual(database.get_match_snapshots("runtime-duration")[0]["game_clock"], "11:34")
@@ -377,7 +379,7 @@ class DashboardRawTests(unittest.TestCase):
         self.assertIn('class="signal-sequence"', template)
         self.assertIn('class="signal-time"', template)
         self.assertIn("signalCount > 1", template)
-        self.assertIn('<thead><tr><th>Sinyal</th><th>M2</th><th>Kalite</th><th>Maç</th>', template)
+        self.assertIn('<thead><tr><th>Sinyal</th><th>Kalite</th><th>Maç</th>', template)
         self.assertIn('data-label="Sinyal"><button type="button" class="signal-modal-trigger"', template)
         self.assertIn('<span class="direction-pill ${directionClass}"', template)
         self.assertNotIn('<th class="num">Fark</th>', template)

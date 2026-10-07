@@ -150,9 +150,12 @@ def test_m2_modal_and_archive_use_frozen_data(database):
         live = client.get('/api/alerts').get_json()[0]
         assert live['direction'] == 'ALT' and live['m2']['direction'] == 'ÜST'
         assert 'm2_analysis_json' not in live
-        for route in ('/', '/deleted-matches'):
-            html = client.get(route).get_data(as_text=True)
-            assert '<th>M2</th>' in html and 'id="m2Modal"' in html and 'id="signalModal"' in html
+        live_html = client.get('/').get_data(as_text=True)
+        assert '<th>M2</th>' not in live_html and 'id="m2Modal"' not in live_html
+        assert 'Motor2.' not in live_html and 'motor2.js' not in live_html
+        assert 'id="signalModal"' in live_html
+        archive_html = client.get('/deleted-matches').get_data(as_text=True)
+        assert '<th>M2</th>' in archive_html and 'id="m2Modal"' in archive_html
         dashboard._archive_active_match('sample')
         with database._conn() as conn:
             conn.execute('UPDATE alerts SET m2_analysis_json = ? WHERE id = ?', ('{}', alert_id))
@@ -253,6 +256,27 @@ def test_collector_keeps_pool_page_alive_until_api_read_completes():
         result = asyncio.run(collector.read({'match_id': 'sample', 'url': url}, context))
     assert result == data
     assert alive == []
+
+
+def test_collector_waits_for_complete_identity_hydration_before_api_read():
+    context, data = sample()
+    url = 'https://m.aiscore.com/basketball/match-home-away/sample/odds'
+    page = type('Page', (), {'url': url, 'evaluate': AsyncMock(side_effect=[False, True]),
+                             'set_default_timeout': lambda self, value: None})()
+
+    async def fetch(url, **kwargs):
+        await kwargs['page_setup'](page)
+        await kwargs['page_action'](page)
+
+    async def read(*args, **kwargs):
+        assert page.evaluate.await_count == 2
+        return data
+
+    collector = M2Collector()
+    collector.session = type('Session', (), {'fetch': AsyncMock(side_effect=fetch)})()
+    with patch('motor2_worker.fetch_basketball_data', new=AsyncMock(side_effect=read)):
+        result = asyncio.run(collector.read({'match_id': 'sample', 'url': url}, context))
+    assert result == data
 
 
 @pytest.mark.parametrize('url,matched', [

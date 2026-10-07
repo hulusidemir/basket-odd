@@ -1,6 +1,8 @@
 """Exercise the production Patchright world and scraper/history boundary offline."""
 
 import asyncio
+import time
+from urllib.parse import parse_qs, urlsplit
 from unittest.mock import AsyncMock
 
 import pytest
@@ -12,18 +14,20 @@ from live_market import LIVE_SOURCE_JS, provenance_error
 from tests.test_live_market import observation, raw_history
 
 
-@pytest.mark.parametrize("rendering,reason", [
-    ("normal", ""),
-    ("hydrating", ""),
-    ("pending_ui_promise", ""),
-    ("blank_empty", ""),
-    ("missing_bookmaker", "bet365_missing_or_ambiguous"),
-    ("locked", "rendered_total_locked"),
-    ("locked_empty", "rendered_total_locked"),
-    ("ambiguous_empty", "rendered_total_ambiguous"),
-    ("missing_empty", "rendered_total_unavailable"),
+@pytest.mark.parametrize("rendering,reason,selected", [
+    ("normal", "", 2),
+    ("hydrating", "", 2),
+    ("pending_ui_promise", "", 2),
+    ("blank_empty", "", 2),
+    ("missing_bookmaker", "", 101),
+    ("locked", "", 101),
+    ("locked_empty", "", 101),
+    ("ambiguous_empty", "", 101),
+    ("missing_empty", "", 101),
+    ("preferred_stale", "", 2),
+    ("all_locked", "rendered_total_locked", None),
 ])
-def test_scraper_reads_main_world_and_intercepts_exact_bet365_history(rendering, reason):
+def test_scraper_reads_main_world_and_uses_a_verified_available_company(rendering, reason, selected):
     async def scenario():
         async with async_playwright() as driver:
             browser = await driver.chromium.launch(headless=True)
@@ -59,12 +63,15 @@ def test_scraper_reads_main_world_and_intercepts_exact_bet365_history(rendering,
                     const el = document.querySelector('.oddsBox');
                     const cell = el.querySelectorAll('.border3')[1];
                     if (mode.startsWith('locked')) cell.classList.add('locked');
+                    if (mode === 'all_locked') el.querySelectorAll('.border3').forEach(c => c.classList.add('locked'));
                     if (mode.endsWith('_empty')) el.__vue__.copyOddsListData.bs[1].s.odd = [];
                     if (mode === 'blank_empty' || mode === 'locked_empty') cell.innerHTML = '';
                     if (mode === 'ambiguous_empty') cell.innerHTML = '<span>187.5</span><span>197.5</span>';
                     if (mode === 'missing_empty') cell.remove();
                     if (mode === 'missing_bookmaker') el.__vue__.copyOddsListData.bs.pop();
                     if (mode === 'pending_ui_promise') {
+                        el.__vue__.copyOddsListData.bs[1].s.odd = [];
+                        cell.innerHTML = '';
                         const fetchHistory = el.__vue__.historyOdd;
                         el.__vue__.historyOdd = async function(id, name) {
                             await fetchHistory.call(this, id, name);
@@ -81,7 +88,9 @@ def test_scraper_reads_main_world_and_intercepts_exact_bet365_history(rendering,
 
                 async def respond(route):
                     requests.append(route.request.url)
-                    await route.fulfill(status=200, body=raw_history(),
+                    company = int(parse_qs(urlsplit(route.request.url).query)['cid'][0])
+                    timestamp = int(time.time()) - (31 if rendering == 'preferred_stale' and company == 2 else 0)
+                    await route.fulfill(status=200, body=raw_history(company, '187.5' if company == 2 else '197.5', timestamp),
                                         headers={"Access-Control-Allow-Origin": "*"},
                                         content_type="application/octet-stream")
 
@@ -94,9 +103,15 @@ def test_scraper_reads_main_world_and_intercepts_exact_bet365_history(rendering,
                     assert requests == []
                     assert result.reason == reason
                 else:
-                    assert len(requests) == 1 and requests[0].endswith("odds_type=bs&cid=2")
+                    uses_history = rendering in {'blank_empty', 'pending_ui_promise'}
+                    assert len(requests) == int(uses_history)
+                    if uses_history:
+                        assert requests[-1].endswith(f"odds_type=bs&cid={selected}")
                     assert isinstance(result, dict), result
-                    assert result["inplay_total"] == 187.5 and result["bookmaker"] == "bet365"
+                    assert result["inplay_total"] == (187.5 if selected == 2 else 197.5)
+                    assert result["bookmaker"] == ("bet365" if selected == 2 else "1xbet")
+                    assert result["market_provenance"]["bookmaker_id"] == selected
+                    assert result["market_provenance"]["version"] == ('aiscore_history_v2' if uses_history else 'aiscore_live_v2')
                     assert provenance_error(result) == ""
             finally:
                 await browser.close()

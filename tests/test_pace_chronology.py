@@ -1,5 +1,5 @@
 from config import Config
-from pace_calculator import chronological_snapshots, get_future_paces
+from pace_calculator import chronological_snapshots, get_future_paces, get_future_pace_windows
 
 
 def test_recorded_future_anchor_cannot_enter_signal_time_pace():
@@ -58,3 +58,30 @@ def test_single_stale_score_dip_is_not_treated_as_correction():
     ]
     state = {"elapsed_game_seconds": 900, "total_score": 82, "period": 2}
     assert chronological_snapshots(history, state) == [history[0], history[1], history[3]]
+
+
+def test_same_interval_with_two_labels_counts_once():
+    state = {"elapsed_game_seconds": 900, "total_score": 75, "period": 2}
+    rows = [{"elapsed_game_seconds": 780, "total_score": 60, "period": 2}]
+    windows = get_future_pace_windows(rows, state, 4, Config())
+    assert len(windows) == 2
+    assert windows[1]['labels'] == ['recent_2m', 'observed_period_segment']
+    assert windows[1]['start_second'] == 780
+    assert len(get_future_paces(rows, state, 4, Config())) == 2
+
+
+def test_whole_game_and_period_from_tipoff_are_one_interval():
+    rows = [{"elapsed_game_seconds": 0, "total_score": 0, "period": 1}]
+    state = {"elapsed_game_seconds": 720, "total_score": 70, "period": 1}
+    windows = get_future_pace_windows(rows, state, 4, Config())
+    assert len(windows) == 1
+    assert windows[0]['labels'] == ['whole_game', 'observed_period_segment']
+
+
+def test_equal_rates_from_different_intervals_remain_distinct():
+    rows = [{"elapsed_game_seconds": 900, "total_score": 60, "period": 2},
+            {"elapsed_game_seconds": 1080, "total_score": 72, "period": 2}]
+    state = {"elapsed_game_seconds": 1200, "total_score": 80, "period": 3}
+    windows = get_future_pace_windows(rows, state, 4, Config())
+    assert len(windows) == 3
+    assert get_future_paces(rows, state, 4, Config()) == [4, 4, 4]

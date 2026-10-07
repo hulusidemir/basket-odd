@@ -15,7 +15,7 @@ from aiscore_match_page import normalize_match_page
 from aiscore_scoreboard import QUARTER_SCORES_JS
 from live_market import (
     FETCH_HISTORY_JS, LIVE_SOURCE_JS, attach_raw_history, decode_history,
-    history_response_matches, source_error, verify_market,
+    history_response_matches, source_error, verify_current_market, verify_market,
 )
 from scrapling.fetchers import AsyncStealthySession
 from match_state import (
@@ -1377,58 +1377,16 @@ class AiscoreScraper:
                 match_id, source.get("match_id"), source.get("component_match_id"), source.get("active_market"),
             )
             return _MatchSkip("market_match_identity_mismatch", degraded=True)
-        source_status = _detail_status_from_top_text(source.get("top_text"))
-        if source_status.get("is_finished"):
-            return _MatchSkip("finished")
-        if source_status.get("is_pending"):
-            return _MatchSkip("pending")
-        reason = source_error(
-            source, match_id, source_status["status"], source.get("dom_score") or "",
-        )
-        if reason:
-            logger.info("Live total rejected before history: match_id=%s reason=%s", match_id, reason)
-            return _MatchSkip(reason, degraded=reason in {
-                "market_match_identity_mismatch", "total_market_unverified", "bookmaker_unverified",
-            })
-        try:
-            async with asyncio.timeout(10.0):
-                async with page.expect_response(
-                    lambda response: history_response_matches(response.url, match_id),
-                    timeout=8000,
-                ) as response_info:
-                    await page.evaluate(FETCH_HISTORY_JS, match_id, isolated_context=False)
-                response = await response_info.value
-                if response.status != 200:
-                    return _MatchSkip("provider_history_http_error", degraded=True)
-                raw_history = await response.body()
-                history = decode_history(raw_history)
-        except (TimeoutError, ValueError) as exc:
-            logger.warning("Live total history rejected: match_id=%s reason=%s", match_id, type(exc).__name__)
-            return _MatchSkip("provider_history_unavailable", degraded=True)
-        except Exception as exc:
-            logger.warning("Live total history unavailable: match_id=%s error_type=%s", match_id, type(exc).__name__)
-            return _MatchSkip("provider_history_unavailable", degraded=True)
-
-        # Source rows, scoreboard and identity are frozen together after the history request.
-        source = await page.evaluate(LIVE_SOURCE_JS, isolated_context=False)
-        detail_status = _detail_status_from_top_text(source.get("top_text"))
-        if detail_status["is_finished"]:
-            return _MatchSkip("finished")
-        parsed["status"] = detail_status["status"]
+        proof = await self._capture_verified_market(page, match_id, source)
+        if isinstance(proof, _MatchSkip):
+            return proof
+        detail_status = _detail_status_from_top_text(proof["source"].get("top_text"))
+        parsed["status"] = proof["status"]
         parsed["periodEnded"] = detail_status["period_ended"]
-        parsed["score"] = source.get("dom_score") or ""
-        captured = datetime.now(timezone.utc)
-        market_captured_monotonic = time.monotonic()
-        proof, reason = verify_market(
-            source, history, match_id, parsed["status"], parsed["score"],
-            now=captured.timestamp(), max_age=self.provider_max_age_seconds,
-        )
-        if reason:
-            logger.info("Live total rejected: match_id=%s reason=%s", match_id, reason)
-            return _MatchSkip(reason)
-        proof = attach_raw_history(proof, raw_history)
+        parsed["score"] = proof["score"]
         opening, inplay, prematch = proof["opening"], proof["live"], proof["prematch"]
-        market_captured_at = captured.isoformat()
+        market_captured_at = proof["captured_at"]
+        market_captured_monotonic = time.monotonic()
 
         parsed_quarter_scores = normalize_quarter_scores(
             parsed.get("quarterScores"),
@@ -1496,7 +1454,7 @@ class AiscoreScraper:
             "opening_total": float(opening),
             "prematch_total": float(prematch) if prematch is not None else None,
             "inplay_total": float(inplay),
-            "bookmaker": "bet365",
+            "bookmaker": proof["bookmaker"],
             "market_provenance": proof,
             "market_captured_at": market_captured_at,
             "_market_captured_monotonic": market_captured_monotonic,
@@ -1510,6 +1468,67 @@ class AiscoreScraper:
             match["_market_stale"] = True
             match["_market_stale_reason"] = stale_skip.reason
         return match
+
+    async def _capture_verified_market(self, page, match_id: str, source: dict):
+        """Try each available company without mixing companies' lines or histories."""
+        candidates = source.get("candidate_ids") or [source.get("bookmaker_id")]
+        last_reason = "bookmaker_odds_unavailable"
+        degraded = False
+        for bookmaker_id in candidates:
+            if type(bookmaker_id) is not int or bookmaker_id <= 0:
+                continue
+            source = await page.evaluate(LIVE_SOURCE_JS, bookmaker_id, isolated_context=False)
+            state = _detail_status_from_top_text(source.get("top_text"))
+            if state.get("is_finished"):
+                return _MatchSkip("finished")
+            if state.get("is_pending"):
+                return _MatchSkip("pending")
+            last_reason = source_error(source, match_id, state["status"], source.get("dom_score") or "")
+            if last_reason:
+                continue
+            proof, last_reason = verify_current_market(
+                source, match_id, state["status"], source.get("dom_score") or "",
+                now=datetime.now(timezone.utc).timestamp(),
+            )
+            if not last_reason:
+                return proof
+            selected = next(row for row in source["rows"] if row["bookmaker_id"] == bookmaker_id)
+            try:
+                async with asyncio.timeout(10.0):
+                    async with page.expect_response(
+                        lambda response: history_response_matches(response.url, match_id, bookmaker_id),
+                        timeout=8000,
+                    ) as response_info:
+                        await page.evaluate(FETCH_HISTORY_JS, {
+                            "match_id": match_id, "bookmaker_id": bookmaker_id,
+                            "bookmaker": selected.get("bookmaker") or str(bookmaker_id),
+                        }, isolated_context=False)
+                    response = await response_info.value
+                    if response.status != 200:
+                        last_reason = "provider_history_http_error"
+                        degraded = True
+                        continue
+                    raw_history = await response.body()
+                    history = decode_history(raw_history, bookmaker_id)
+            except Exception as exc:
+                logger.warning("Live total history unavailable: bookmaker_id=%s error_type=%s",
+                               bookmaker_id, type(exc).__name__)
+                last_reason = "provider_history_unavailable"
+                degraded = True
+                continue
+            # Re-read exactly the requested company after the response arrives.
+            source = await page.evaluate(LIVE_SOURCE_JS, bookmaker_id, isolated_context=False)
+            state = _detail_status_from_top_text(source.get("top_text"))
+            if state.get("is_finished"):
+                return _MatchSkip("finished")
+            proof, last_reason = verify_market(
+                source, history, match_id, state["status"], source.get("dom_score") or "",
+                now=datetime.now(timezone.utc).timestamp(), max_age=self.provider_max_age_seconds,
+            )
+            if not last_reason:
+                return attach_raw_history(proof, raw_history)
+        logger.info("Live total rejected: match_id=%s reason=%s", match_id, last_reason)
+        return _MatchSkip(last_reason, degraded=degraded)
 
     async def _fetch_overview_data(self, page, url: str) -> dict:
         try:

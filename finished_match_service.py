@@ -134,6 +134,9 @@ def _settle_deleted_match_from_final_score(
     final_total = parse_score_total(final_score)
     if final_total is None:
         return False
+    save_forecast_final = getattr(db, 'save_forecast_final_observation', None)
+    if callable(save_forecast_final):
+        save_forecast_final(match_id, final_score, final_status_label(final_status), final_total)
 
     alerts = (
         db.get_deleted_alerts_for_match(match_id)
@@ -247,11 +250,16 @@ async def run_active_match_finished_scan(db, config, before_delete=None, on_prog
 
 async def _run_active_match_finished_scan(db, config, before_delete=None, on_progress=None) -> dict:
     tracked_matches = db.get_active_matches_with_urls()
+    active_ids = {match['match_id'] for match in tracked_matches}
+    forecast_matches = getattr(db, 'forecast_matches_for_final_check', lambda: [])()
+    forecast_ids = {match['match_id'] for match in forecast_matches}
+    tracked_matches.extend(match for match in forecast_matches if match['match_id'] not in active_ids)
     summary = {
         **_empty_result_summary(tracked_count=len(tracked_matches)),
         "finished_match_count": 0,
         "moved_count": 0,
         "archive_failed_count": 0,
+        "forecast_finished_count": 0,
     }
     if not tracked_matches:
         summary["message"] = "Taranacak aktif maç bulunamadı."
@@ -270,6 +278,13 @@ async def _run_active_match_finished_scan(db, config, before_delete=None, on_pro
         summary["finished_match_count"] += 1
         match_id = result.get("match_id")
         if not match_id:
+            return
+        if match_id in forecast_ids:
+            db.save_forecast_final_observation(
+                match_id, result['score'], final_status_label(result['status']), parse_score_total(result['score']),
+            )
+            summary['forecast_finished_count'] += 1
+        if match_id not in active_ids:
             return
         try:
             if before_delete is not None:

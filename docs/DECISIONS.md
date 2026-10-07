@@ -1,5 +1,116 @@
 # Decisions
 
+## ALT/ÜST başarılarını ayrı izleme ve ÜST düzeltmesinin kapsamını ölçme
+
+7 Ekim 2026 — Kullanıcı ÜST güvenini sorguladı ve ayrı kalibrasyon istedi.
+Karma eski motorların ilk sinyallerinde ALT 438/726, ÜST 198/399; ÜST'ü
+ters çevirmek %50,4. Eğitimde öğrenilen yaklaşık 9 sayılık ÜST sapması
+sonraki testte merkez isabetini 85/171'den 95/171'e çıkardı; 116 aday ALT'a
+döndü. Aynı payı ek bildirim avantajı yapmak 17/25'e çıkarırken 171 ÜST'ten
+yalnız 25'ini bıraktı; kaynak doğrulanan alt grupta yalnız bir ÜST kaldı.
+Bu nedenle canlı kalibrasyon/filtre eklenmedi. Gerçek kaynak alt grubu ve
+eski sinyallerin v7 tekrar hesabı gerçek v7 ileri başarı diye sunulmaz.
+ALT/ÜST sinyal ve bütün-tahmin başarısı ayrı ekranda gösterilir. Her maçın
+ilk kaydı yön/sonuçtan önce seçilir; sonraki kazanan veya karşı yönlü tahmin
+ilk kaydın grubunu değiştirmez. Oranlardan bekleyen/iade/geçersiz/yönsüz
+çıkarılır; karma motor kapsamı açıkça yazılır. Yeni toplam-sinyal API'si
+salt okunur ve dakikalıktır; arşiv/migration/backfill/manuel sonuç yok.
+Tekrar çalıştırılabilir directional_audit.py üretim verisini değiştirmez.
+
+## M2'yi canlı akıştan kaldırma
+
+7 Ekim 2026 — Kullanıcı M2'nin incelenmesini, çalışmıyorsa kaldırılmasını
+istedi. Başlangıçta 28, son kontrolde 30 üretim denemesinin tamamı başarısızdı.
+İlk iki kaynak kontrolünden biri gerçek veride değerlendirme üretti; fakat
+aday onarımın gerçek worker/kayıt akışında dört ek denemenin tamamı reddedildi.
+Tek başarılı kaynak okuması operasyonel kullanılabilirlik ve tahmin üstünlüğü
+kanıtı sayılmadı. Son karar: bot M2 modüllerini import etmez, worker/tarayıcı
+başlatmaz, yeni sinyallerde M2 analizi kaydetmez. Canlı sütun/modal kaldırılır;
+eski `M2_ENABLED` ayarı artık kullanılmaz. M1 matematiği, Telegram avantaj
+kuralları ve tüm tahminlerin başarı takibi korunur. Kolon/ham eski kayıt ve
+dondurulmuş arşiv M2 gösterimi tutulur; migration/backfill veya geçmiş silme
+yoktur. Eski deneysel modüller çalışan uygulamaya bağlanmaz; tekrar açma
+ayarına dönüştürülmez. Aday v2 onarımı üretime alınmadı; eski v1 tanımı
+korundu. Ayrıntılar M2_REVIEW_2026-10-07.md içinde.
+
+## Tüm tahminlerin hafif geçmiş ve başarı takibi
+
+7 Ekim 2026 — Kullanıcı bütün tahminler için hafif başarı/geçmiş istedi.
+Mevcut frozen snapshot ve otomatik final tabloları yeniden kullanılır;
+yeni tahmin tablosu veya worker eklenmez. Her kayıt geçmişte görünür,
+headline başarı maç başına ilk kaydedilen tahminden hesaplanır. Bu seçim
+sonuçtan önce yapılır ve geçersiz/kaybeden ilk kayıt sonrakiyle değiştirilmez.
+Doğru/(doğru+yanlış) paydasından bekleyen, iade, EŞİT ve geçersiz çıkarılır.
+UI'da aynı maçın tekrarları başarıyı şişirmez. Bu ekranın ilk-maç özeti ile
+CLI'ın ilk-maç/politika raporu ayrı örneklemlerdir. Geçmiş gösterim alanları
+context'ten aynen okunur; model tekrar çalıştırılmaz, kullanıcı barem senaryosu
+kaydedilmez. Sonuç yazma yetkisi mevcut otomatik final servisinde kalır.
+İki eklemeli kısmi indeks, 50 kayıt varsayılan/100 üst sınır ve ID cursor ile
+hafif sorgu/sayfalama kullanılır; yenileme dakikada bir. Eski SQLite satırları
+ve arşivler doldurulmaz veya yeniden hesaplanmaz.
+
+## Hız dönüşü araştırmasında hedefleri ve kaynak gruplarını ayırma
+
+7 Ekim 2026 — Kullanıcının hızlanan/yavaşlayan maçın devamını değerlendirme
+talebi için salt okunur kronolojik araştırma aracı eklendi. İlk sinyal
+uygunluk/sonuçtan önce seçilir; eğitim/test aynı maçı paylaşmaz, eğitim
+sonucu test başlangıcından önce gözlenmiş olmalıdır. Kısa gelecekteki
+sayı hızı, kalan normal süre hızı, %10 değişimin büyüklük sınıfı ve final
+ALT/ÜST ayrı ölçülür. Eski kanıtsız kayıtlar araştırmaya katılabilir;
+tarihsel kaynak/politika doğrulama alt grubu ayrıca gösterilir, yeni canlı
+başarı sayılmaz. Finalde ayrıştırılamayan uzatma normal süre hızı diye
+etiketlenmez. Özellik/ceza seçimi eğitim içinde kalır; testte daha iyi
+görünen alt gruba bakarak üretim motoru yeniden ayarlanmaz. Ana motor
+bu araştırmada değişmedi; ayrıntılar TEMPO_REVERSAL_2026-10-07.md içinde.
+
+## V7: şirket zorunluluğu olmadan bütün tahminler, ayrı bildirim avantajı
+
+7 Ekim 2026 — Kullanıcı bet365 zorunluluğunu reddetti; tüm tahminleri ekranda,
+yeterli avantajı olanları Telegram'da istedi. Bu talep v6 seçiciliği ve eski
+bet365 zorunluluğu kararlarının yerini alır. Aynı şirketin uygulama ve DOM
+canlı baremi uyumluysa tarihçe zorunlu değildir; boş hücre yalnız aynı şirketin
+güncel, ham kanıtlı history'siyle tamamlanır. Uygun olmayan şirkette diğer
+şirkete geçilir; şirketler arası açılış/canlı birleştirme yapılmaz. Dolu
+hücrenin v2 kanıtı yakalama anını/uyumu gösterir, bağımsız provider tazeliğini
+kanıtladığı iddia edilmez. Eski v1'in sıkı tarihçe kontrolleri korunur.
+
+V6'nın maç önü senaryosunda da ayrı avantaj istemesi ve farklı tempo aralıklarının
+veto oyları kaldırılır. V7 tek merkez kullanır: kalan PPM=(skor + öncül PPM ×
+öncül dakika)/(oynanan dakika + öncül dakika). Mevcut 10 dakika öncül gücü
+sonuçlara göre değiştirilmedi. ALT/ÜST merkez ile barem karşılaştırmasıdır;
+tam eşitlik EŞİT. Her erken/geç/küçük avantajlı geçerli gözlemin tahmini de
+dondurulur. Telegram'ın zaman, minimum sayı avantajı, tekrar ve liste
+kuralları korunur. Bu sürekli tahmin erişimi veya daha fazla yayın,
+başarının arttığı anlamına gelmez: seçilmiş geçmişte yön doğruluğu artmadı.
+
+`match_live_snapshots.forecast_json` nullable eklemeli migration'dır.
+`forecast_match_results` yalnız otomatik final taramasından doldurulur;
+sinyalsiz tahmin maçları da taranır. İleri rapor hem sinyalleri hem tüm
+tahminlerin maç/politika başına ilk kaydını sonuçtan önce seçer. Eski kayıt,
+arşiv ve sonuçlar yeniden yazılmaz. Tahmin normal süre içindir; uzatma ve
+kalibre edilmiş olasılık sorunu sürer. `/forecasts` ve geçici barem senaryosu
+UI'da görünür; senaryo DB tahminini değiştirmez.
+
+## Future Pace v6: farklı kaynak aralıkları ve maç önü senaryosu
+
+7 Ekim 2026 — Kullanıcı sinyal hatalarını ölçüp uygulamayı düzeltmeyi istedi.
+Üç ayrı doğrulanmış politika grubunda M1 merkez hatası maç önü kalan-hız
+bazından daha büyüktü. Şut/hücum verisi olmadan sıcak/soğuk sayı hızının
+kalıcılığı kanıtlanamaz. V6 bandı hem farklı gözlem aralıklarını hem maç önü
+hızına dönüş senaryosunu kapsar; senaryo gözlem sayısına eklenmez. Aynı
+başlangıç/bitiş zaman ve skor aralığı bir kez sayılır. Model merkezi hâlâ
+gözlem medyanıdır; bant istatistiksel güven aralığı değildir. Yeni engine/
+publication v6, önceki v5 politikalarından ayrı dondurulur ve raporlanır.
+Eski kayıp/kazançlardan eşik araması, yön ters çevirme veya backfill yoktur.
+Bu seçicilik gerçek tempo değişimlerinde fırsat kaçırabilir; yeni dönemde
+başarı üstünlüğü henüz yoktur. Kaynak/tekrar/liste/kalite ve otomatik sonuç
+kuralları korunur. Şema migration'ı yok. M2 ortak kimlik hazırlığına kadar
+bekler ve hangi alanın reddedildiğini kaydeder. Forward raporu gerçek
+prediction context'ten model/piyasa/baz hatası ve ilk kayıt/teslim alt
+kümesini ayırır. Retry hareket işareti kayıtlı live-reference'tır.
+Ayrıntılı ölçüm, dış kaynaklar ve sınırlamalar SIGNAL_REPAIR_2026-10-07.md
+içindedir. Servisler kullanıcı onayı olmadan yeniden başlatılmadı.
+
 ## M2 erişim ve hata ayrımı
 
 7 Ekim 2026 — Ayrı M2 profilinde Cloudflare çözümü için ham `goto` yerine

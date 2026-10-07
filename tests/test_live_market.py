@@ -146,8 +146,8 @@ def test_legacy_snapshots_cannot_override_new_source_duration_or_chronology(tmp_
     assert len(used) == 1 and used[0]["elapsed_game_seconds"] == 766
     assert used[0]["remaining_minutes"] == pytest.approx(40 - 766 / 60)
     assert db.get_match_snapshots("m")[0] == legacy
-    assert db.count_match_alerts("m") == 0
-    notifier.send_alert.assert_not_awaited()
+    assert db.count_match_alerts("m") == 1
+    notifier.send_alert.assert_awaited_once()
 
 
 def test_history_response_url_requires_match_bookmaker_and_market():
@@ -170,10 +170,10 @@ def field(number, value):
     return vi(number*8) + vi(value) if isinstance(value, int) else vi(number*8+2) + vi(len(value)) + value
 
 
-def raw_history(bookmaker=2):
+def raw_history(bookmaker=2, total="187.5", updated_at=None):
     row = b"".join(field(k, v) for k, v in [(1, "07:12"), (2, "30-24"), (3, "0.86"),
-                   (4, "187.5"), (5, "0.86"), (6, "0"), (7, 4), (8, int(time.time()))])
-    company = field(1, row) + field(2, field(1, bookmaker) + field(2, "bet365"))
+                   (4, total), (5, "0.86"), (6, "0"), (7, 4), (8, int(time.time()) if updated_at is None else updated_at)])
+    company = field(1, row) + field(2, field(1, bookmaker) + field(2, "bet365" if bookmaker == 2 else "1xbet"))
     return field(15, field(1, company))
 
 
@@ -281,9 +281,10 @@ def test_real_engine_publishes_exact_187_5_and_rejects_197_5_substitution(tmp_pa
     config.MIN_SIGNAL_QUALITY = 70  # Retired setting must not silence the actual engine.
     base = {"match_id": "m", "match_name": "Home - Away", "tournament": "FIBA",
             "opening_total": 200, "prematch_total": 200}
-    first = verified_payload(dict(base, status="Q2 08:00", score="15 - 15", inplay_total=190))
+    first = verified_payload(dict(base, status="Q2 09:00", score="15 - 15", inplay_total=190))
     asyncio.run(process_match(first, db, notifier, config))
-    assert db.count_match_alerts("m") == 0  # No usable tempo history yet.
+    assert db.count_match_alerts("m") == 0  # Too early to notify, but a forecast is saved.
+    assert db.get_match_snapshots('m')[0]['forecast_json'] is not None
     second = verified_payload(dict(base, status="Q2 05:00", score="20 - 20", inplay_total=187.5))
     corrupted = dict(second, inplay_total=197.5)
     asyncio.run(process_match(corrupted, db, notifier, config))

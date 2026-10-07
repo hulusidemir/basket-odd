@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 from scrapling.fetchers import AsyncStealthySession
 
-from aiscore_basketball_data import fetch_basketball_data
+from aiscore_basketball_data import BASKETBALL_READY_JS, fetch_basketball_data
 from aiscore_browser import session_options
 from aiscore_match_page import mobile_match_url
 from motor2 import MAX_CAPTURE_DELAY_SECONDS, evaluate_m2, m2_status
@@ -79,12 +79,8 @@ class M2Collector:
             while True:
                 if urlsplit(page.url).path == urlsplit(url).path:
                     try:
-                        matched = await page.evaluate("""id => {
-                            const state = window.$nuxt?.$store?.state?.basketball
-                                || window.__NUXT__?.state?.basketball;
-                            return String(state?.basketballDetailMatchData?.match?.id || '') === id
-                                && String(state?.detailMatchId || '') === id;
-                        }""", str(match_id), isolated_context=False)
+                        matched = await page.evaluate(BASKETBALL_READY_JS, str(match_id),
+                                                      isolated_context=False)
                     except Exception:
                         matched = False  # Redirect or hydration replaced the context.
                     if matched:

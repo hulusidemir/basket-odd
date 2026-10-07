@@ -52,12 +52,13 @@ def chronological_snapshots(snapshots: list[dict], current_state: dict) -> list[
     return accepted
 
 
-def get_future_paces(snapshots: list[dict], current_state: dict, pregame_ppm: float, config) -> list[float]:
-    """Calculate all valid future paces: recent 2m, recent 5m, current quarter, whole game shrunk to prior."""
+def get_future_pace_windows(snapshots: list[dict], current_state: dict,
+                           pregame_ppm: float, config) -> list[dict]:
+    """Describe distinct observed intervals; overlapping intervals are not independent."""
     if not snapshots:
         return []
 
-    future_paces = []
+    windows = {}
 
     # Extract current state vars
     now_elapsed = current_state.get("elapsed_game_seconds", 0)
@@ -67,18 +68,29 @@ def get_future_paces(snapshots: list[dict], current_state: dict, pregame_ppm: fl
     if not snapshots:
         return []
 
-    def add_future_pace(observed_pace: float, window_minutes: float):
+    def add_window(label, start_second, start_score):
+        seconds = now_elapsed - start_second
+        points = now_score - start_score
+        if seconds <= 0 or points < 0:
+            return
+        key = (start_second, start_score, now_elapsed, now_score)
+        if key in windows:
+            windows[key]["labels"].append(label)
+            return
+        window_minutes = seconds / 60.0
+        observed_pace = points / window_minutes
         weight = window_minutes / (window_minutes + config.PRIOR_EQUIV_MINUTES)
         future_pace = pregame_ppm + weight * (observed_pace - pregame_ppm)
-        future_paces.append(future_pace)
+        windows[key] = {"labels": [label], "start_second": start_second,
+                        "end_second": now_elapsed, "start_score": start_score,
+                        "end_score": now_score, "window_minutes": window_minutes,
+                        "observed_ppm": observed_pace, "future_ppm": future_pace}
 
     # WHOLE GAME PACE
     if now_elapsed > 0:
-        window_min = now_elapsed / 60.0
-        whole_game_pace = now_score / window_min
-        add_future_pace(whole_game_pace, window_min)
+        add_window("whole_game", 0, 0)
 
-    def get_anchor_pace(target_delta_sec: int) -> tuple[float, float] | None:
+    def get_anchor(target_delta_sec: int) -> dict | None:
         target_elapsed = now_elapsed - target_delta_sec
         min_elapsed = now_elapsed - (target_delta_sec * config.ANCHOR_TOLERANCE_MAX_PCT)
         max_elapsed = now_elapsed - (target_delta_sec * config.ANCHOR_TOLERANCE_MIN_PCT)
@@ -98,18 +110,18 @@ def get_future_paces(snapshots: list[dict], current_state: dict, pregame_ppm: fl
             delta_score = now_score - best_snapshot["total_score"]
             delta_time = now_elapsed - best_snapshot["elapsed_game_seconds"]
             if delta_time > 0 and delta_score >= 0:
-                return (delta_score / (delta_time / 60.0), delta_time / 60.0)
+                return best_snapshot
         return None
 
     # RECENT 2M PACE
-    p2 = get_anchor_pace(120)
+    p2 = get_anchor(120)
     if p2:
-        add_future_pace(p2[0], p2[1])
+        add_window("recent_2m", p2["elapsed_game_seconds"], p2["total_score"])
 
     # RECENT 5M PACE
-    p5 = get_anchor_pace(300)
+    p5 = get_anchor(300)
     if p5:
-        add_future_pace(p5[0], p5[1])
+        add_window("recent_5m", p5["elapsed_game_seconds"], p5["total_score"])
 
     # CURRENT QUARTER PACE
     if current_period is not None:
@@ -124,6 +136,13 @@ def get_future_paces(snapshots: list[dict], current_state: dict, pregame_ppm: fl
             if delta_time >= config.MIN_QUARTER_ELAPSED_SEC:
                 delta_score = now_score - q_start_snap["total_score"]
                 if delta_score >= 0:
-                    add_future_pace(delta_score / (delta_time / 60.0), delta_time / 60.0)
+                    add_window("observed_period_segment", q_start_snap["elapsed_game_seconds"],
+                               q_start_snap["total_score"])
 
-    return future_paces
+    return list(windows.values())
+
+
+def get_future_paces(snapshots: list[dict], current_state: dict, pregame_ppm: float, config) -> list[float]:
+    """Count each source interval once, even when it serves multiple windows."""
+    return [window["future_ppm"] for window in
+            get_future_pace_windows(snapshots, current_state, pregame_ppm, config)]

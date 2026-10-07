@@ -20,7 +20,7 @@ class RawSignalTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_without_history_returns_pas_and_no_alert(self):
+    def test_complete_live_observation_can_alert_without_local_history(self):
         asyncio.run(process_match(verified_payload({
             "match_id": "m1",
             "match_name": "Home - Away",
@@ -33,8 +33,12 @@ class RawSignalTests(unittest.TestCase):
         }), self.db, self.notifier, Config()))
 
         row = self.db.get_alert(1)
-        self.assertIsNone(row)
-        self.notifier.send_alert.assert_not_awaited()
+        self.assertEqual(row['direction'], 'ÜST')
+        self.assertEqual(row['fair_total'], 190)
+        self.assertEqual(row['telegram_status'], 'sent')
+        self.assertIsNone(row['m2_analysis_json'])
+        self.assertEqual(self.db.pending_m2_alerts(), [])
+        self.notifier.send_alert.assert_awaited_once()
 
     def test_payload_rejects_non_finite_total(self):
         with self.assertRaises(ValueError):

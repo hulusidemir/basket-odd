@@ -171,6 +171,15 @@ class Database:
 
                 CREATE INDEX IF NOT EXISTS idx_match_snapshots
                 ON match_live_snapshots(match_id, recorded_at);
+
+                CREATE TABLE IF NOT EXISTS forecast_match_results (
+                    match_id TEXT PRIMARY KEY,
+                    final_score TEXT NOT NULL,
+                    final_status TEXT NOT NULL,
+                    final_total INTEGER NOT NULL,
+                    result_source TEXT NOT NULL DEFAULT 'automatic_final_score',
+                    settled_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
             """)
             # Main bot and dashboard can start together after a deployment.
             # Serialize this additive migration so both processes cannot race.
@@ -198,6 +207,16 @@ class Database:
             snapshot_columns = {row["name"] for row in conn.execute("PRAGMA table_info(match_live_snapshots)")}
             if "market_provenance_json" not in snapshot_columns:
                 conn.execute("ALTER TABLE match_live_snapshots ADD COLUMN market_provenance_json TEXT")
+            if "forecast_json" not in snapshot_columns:
+                conn.execute("ALTER TABLE match_live_snapshots ADD COLUMN forecast_json TEXT")
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_forecast_snapshots_match
+                ON match_live_snapshots(match_id, id) WHERE forecast_json IS NOT NULL
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_forecast_snapshots_history
+                ON match_live_snapshots(id DESC) WHERE forecast_json IS NOT NULL
+            """)
             if "quarter_scores_json" not in alert_columns:
                 conn.execute(
                     "ALTER TABLE alerts "
@@ -1580,6 +1599,106 @@ class Database:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def latest_live_forecasts(self, max_age_seconds: int = 180) -> list[dict]:
+        """Read frozen forecasts; scores or model fields are never recomputed here."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT s.* FROM match_live_snapshots s
+                WHERE s.id IN (
+                    SELECT MAX(id) FROM match_live_snapshots GROUP BY match_id
+                )
+                  AND s.forecast_json IS NOT NULL
+                  AND s.recorded_at >= datetime('now', ?)
+                ORDER BY s.recorded_at DESC, s.id DESC
+                """, (f"-{int(max_age_seconds)} seconds",),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def forecast_matches_for_final_check(self) -> list[dict]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT s.match_id, s.forecast_json FROM match_live_snapshots s
+                LEFT JOIN forecast_match_results f ON f.match_id=s.match_id
+                WHERE s.id IN (
+                    SELECT MAX(id) FROM match_live_snapshots
+                    WHERE forecast_json IS NOT NULL GROUP BY match_id
+                ) AND f.match_id IS NULL
+                ORDER BY s.id
+                """,
+            ).fetchall()
+        matches = []
+        for row in rows:
+            try:
+                context = json.loads(row['forecast_json'])
+                if context.get('url'):
+                    matches.append({"match_id": row['match_id'],
+                        "match_name": context['match_name'], "url": context['url'],
+                        "status": context['status']})
+            except (KeyError, TypeError, ValueError):
+                continue
+        return matches
+
+    def first_signals_for_tracking(self) -> list[dict]:
+        """Select the first saved signal before inspecting its result/direction."""
+        with self._conn() as conn:
+            rows = conn.execute("""
+                SELECT id, alerted_at, direction, live, final_total, result_source, settled_at
+                FROM alerts WHERE id IN (SELECT MIN(id) FROM alerts GROUP BY match_id)
+                ORDER BY id
+            """).fetchall()
+        return [dict(row) for row in rows]
+
+    def forecast_tracking_data(self, *, before_id: int | None = None, limit: int = 50) -> dict:
+        """Small history page plus first saved forecast per match; no outcome writes."""
+        limit = max(1, min(int(limit), 100))
+        columns = """
+            s.id, s.match_id, s.recorded_at, s.forecast_json,
+            f.final_score, f.final_status, f.final_total, f.result_source, f.settled_at
+        """
+        with self._conn() as conn:
+            conn.execute("BEGIN")
+            first = conn.execute(f"""
+                SELECT {columns} FROM match_live_snapshots s
+                LEFT JOIN forecast_match_results f ON f.match_id=s.match_id
+                WHERE s.id IN (
+                    SELECT MIN(id) FROM match_live_snapshots
+                    WHERE forecast_json IS NOT NULL GROUP BY match_id
+                ) ORDER BY s.id
+            """).fetchall()
+            rows = conn.execute(f"""
+                SELECT {columns} FROM match_live_snapshots s
+                LEFT JOIN forecast_match_results f ON f.match_id=s.match_id
+                WHERE s.forecast_json IS NOT NULL
+                  {"AND s.id < ?" if before_id is not None else ""}
+                ORDER BY s.id DESC LIMIT ?
+            """, (before_id, limit + 1) if before_id is not None else (limit + 1,)).fetchall()
+            count = conn.execute("""
+                SELECT COUNT(*) FROM match_live_snapshots WHERE forecast_json IS NOT NULL
+            """).fetchone()[0]
+        more = len(rows) > limit
+        page = [dict(row) for row in rows[:limit]]
+        first_ids = {row["id"] for row in first}
+        for row in page:
+            row["is_first"] = row["id"] in first_ids
+        return {"first": [dict(row) for row in first], "rows": page,
+                "forecast_count": count,
+                "next_cursor": page[-1]["id"] if more else None}
+
+    def save_forecast_final_observation(self, match_id: str, final_score: str,
+                                       final_status: str, final_total: int) -> None:
+        """Called only by the verified automatic final-score observation service."""
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO forecast_match_results (match_id,final_score,final_status,final_total)
+                SELECT ?,?,?,? WHERE EXISTS (
+                    SELECT 1 FROM match_live_snapshots WHERE match_id=? AND forecast_json IS NOT NULL
+                ) ON CONFLICT(match_id) DO NOTHING
+                """, (match_id, final_score, final_status, final_total, match_id),
+            )
+
     def save_snapshot_if_changed(
         self,
         match_id: str,
@@ -1594,6 +1713,7 @@ class Database:
         live_total: float,
         heartbeat_seconds: int = 60,
         market_provenance: dict | None = None,
+        forecast: dict | None = None,
     ) -> bool:
         with self._conn() as conn:
             # A legacy observation cannot block or suppress the first snapshot
@@ -1629,11 +1749,12 @@ class Database:
                     """
                     INSERT INTO match_live_snapshots (
                         match_id, period, game_clock, elapsed_game_seconds, remaining_minutes,
-                        home_score, away_score, total_score, pregame_total, live_total, market_provenance_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        home_score, away_score, total_score, pregame_total, live_total, market_provenance_json, forecast_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (match_id, period, game_clock, elapsed_game_seconds, remaining_minutes, home_score, away_score, total_score, pregame_total, live_total,
-                     json.dumps({k: v for k, v in market_provenance.items() if k != "raw_history_base64"}, separators=(",", ":"), allow_nan=False) if market_provenance else None)
+                     json.dumps({k: v for k, v in market_provenance.items() if k != "raw_history_base64"}, separators=(",", ":"), allow_nan=False) if market_provenance else None,
+                     json.dumps(forecast, separators=(",", ":"), allow_nan=False) if forecast else None)
                 )
                 return True
         return False

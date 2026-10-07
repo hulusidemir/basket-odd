@@ -11,8 +11,10 @@ from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from live_market import decode_history, verify_market
-from match_state import game_clock
+from live_market import decode_history, verify_current_market, verify_market
+from live_signals import ENGINE_VERSION, direction_for_total
+from match_state import game_clock, parse_score
+from pace_calculator import get_future_pace_windows
 
 
 RULE_PARAMETERS = (
@@ -45,6 +47,27 @@ def _implementation_hash() -> str:
 IMPLEMENTATION_HASH = _implementation_hash()
 
 
+def freeze_forecast(match, forecast, config) -> dict | None:
+    """Persist the forecast at observation time, including those without an alert."""
+    if forecast is None:
+        return None
+    policy = {
+        "implementation_sha256": IMPLEMENTATION_HASH, "engine": ENGINE_VERSION,
+        "prior_equivalent_minutes": config.PRIOR_EQUIV_MINUTES,
+        "source": (match.get("market_provenance") or {}).get("version"),
+    }
+    return {
+        "schema_version": 1, "policy_id": _digest(policy), "policy": policy,
+        "match_name": match["match_name"], "tournament": match["tournament"],
+        "url": match.get("url", ""),
+        "bookmaker": (match.get("market_provenance") or {}).get("bookmaker"),
+        "bookmaker_id": (match.get("market_provenance") or {}).get("bookmaker_id"),
+        "status": match["status"], "score": match["score"],
+        "market_captured_at": (match.get("market_provenance") or {}).get("captured_at"),
+        "forecast": forecast,
+    }
+
+
 def _timestamp(value) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
@@ -57,15 +80,30 @@ def freeze_prediction(match, decision, config, snapshots) -> dict:
     """Only called for an actual publication; contains no credentials or final score."""
     policy = {"implementation_sha256": IMPLEMENTATION_HASH,
               "parameters": {name: getattr(config, name) for name in RULE_PARAMETERS},
-              "engine": "future_pace_v5", "quality": "v1", "source": "bet365_history_v1",
-              "publication": "verified_future_pace_v5"}
+              "engine": ENGINE_VERSION, "quality": "v1",
+              "source": (match.get("market_provenance") or {}).get("version"),
+              "publication": "verified_" + ENGINE_VERSION}
     clock = game_clock(match["status"], match["match_name"], match["tournament"])
+    home, away = parse_score(match.get("score", ""))
+    windows = []
+    if clock.get("period") and clock.get("remaining_min") is not None and home is not None:
+        elapsed = ((clock["period"] - 1) * clock["quarter_length"]
+                   + clock["quarter_length"] - clock["remaining_min"])
+        regulation = clock["quarter_length"] * clock["period_count"]
+        windows = get_future_pace_windows(snapshots, {
+            "elapsed_game_seconds": round(elapsed * 60), "total_score": home + away,
+            "period": clock["period"], "observed_at": match.get("market_captured_at"),
+        }, decision.reference_total / regulation, config)
     return {
         "schema_version": 1, "policy_id": _digest(policy), "policy": policy,
         "predicted_at": datetime.now(timezone.utc).isoformat(),
         "market_captured_at": (match.get("market_provenance") or {}).get("captured_at"),
         "clock": clock, "decision": asdict(decision),
         "snapshot_ids": [row["id"] for row in snapshots if row.get("id") is not None],
+        "pace_windows": windows,
+        "pace_window_semantics": "distinct_source_intervals_with_overlap",
+        "pregame_prior_ppm": decision.reference_total / (
+            clock["quarter_length"] * clock["period_count"]),
     }
 
 
@@ -83,7 +121,7 @@ def _verified_prediction(row, context) -> bool:
             # Earlier frozen policies genuinely required a minimum; do not rewrite history.
             if row["quality_score"] < context["policy"]["parameters"]["MIN_SIGNAL_QUALITY"]:
                 return False
-        elif publication != "verified_future_pace_v5":
+        elif publication not in {"verified_future_pace_v5", "verified_future_pace_v6", "verified_future_pace_v7"}:
             return False
         predicted = _timestamp(context["predicted_at"])
         alerted = _timestamp(row["alerted_at"])
@@ -91,15 +129,31 @@ def _verified_prediction(row, context) -> bool:
         if not predicted or not alerted or not captured or not captured <= predicted < alerted + timedelta(seconds=1):
             return False
         proof = json.loads(row.get("market_provenance_json") or "null")
-        if not isinstance(proof, dict) or proof.get("verified") is not True or proof.get("version") != "bet365_history_v1":
+        if (not isinstance(proof, dict) or proof.get("verified") is not True
+                or proof.get("version") not in {"bet365_history_v1", "aiscore_history_v2", "aiscore_live_v2"}):
+            return False
+        if context["policy"].get("source") != proof["version"]:
+            return False
+        bookmaker_id = proof.get("bookmaker_id")
+        if (type(bookmaker_id) is not int or bookmaker_id <= 0
+                or (proof["version"] == "bet365_history_v1" and bookmaker_id != 2)):
             return False
         if _timestamp(proof["captured_at"]) != captured:
             return False
+        if proof["version"] == "aiscore_live_v2":
+            if (predicted - captured).total_seconds() > context["policy"]["parameters"]["MAX_LIVE_OBSERVATION_AGE_SECONDS"]:
+                return False
+            verified, error = verify_current_market(
+                proof["source"], row["match_id"], row["status"], row["score"], now=captured.timestamp(),
+            )
+            return (not error and verified == proof
+                    and all(verified[key] == row[column] for key, column in
+                            (("live", "live"), ("opening", "opening"), ("prematch", "prematch"))))
         raw = base64.b64decode(proof["raw_history_base64"], validate=True)
         if hashlib.sha256(raw).hexdigest() != proof["raw_history_sha256"]:
             return False
         verified, error = verify_market(
-            proof["source"], decode_history(raw), row["match_id"], row["status"], row["score"],
+            proof["source"], decode_history(raw, bookmaker_id), row["match_id"], row["status"], row["score"],
             now=captured.timestamp(),
             max_age=context["policy"]["parameters"]["MAX_LIVE_PROVIDER_AGE_SECONDS"],
         )
@@ -107,13 +161,15 @@ def _verified_prediction(row, context) -> bool:
                 and all(verified[key] == row[column] == proof[key] for key, column in
                         (("live", "live"), ("opening", "opening"), ("prematch", "prematch")))
                 and all(verified[key] == proof.get(key) for key in
-                        ("match_id", "market", "bookmaker_id", "history_latest", "provider_updated_at")))
+                        ("version", "match_id", "market", "bookmaker_id", "history_latest", "provider_updated_at")))
     except (KeyError, TypeError, ValueError, AttributeError):
         return False
 
 
 def _summary(rows, as_of) -> dict:
     counts = Counter()
+    errors = []
+    baseline_errors = []
     for row in rows:
         settled = _timestamp(row.get("settled_at"))
         result = row.get("result")
@@ -135,6 +191,22 @@ def _summary(rows, as_of) -> dict:
             counts["invalid_result"] += 1
         else:
             counts[{"Başarılı": "wins", "Başarısız": "losses", "İade": "pushes"}[result]] += 1
+            try:
+                context = json.loads(row.get("prediction_context_json") or "null")
+                center = float(context["decision"]["sustainable_projection_center"])
+                if math.isfinite(center):
+                    errors.append((center - final, line - final))
+                    clock = context["clock"]
+                    duration = clock["quarter_length"] * clock["period_count"]
+                    elapsed = ((clock["period"] - 1) * clock["quarter_length"]
+                               + clock["quarter_length"] - clock["remaining_min"])
+                    home, away = parse_score(row.get("score", ""))
+                    prior = float(context["decision"]["reference_total"]) / duration
+                    baseline = home + away + (duration - elapsed) * prior
+                    if math.isfinite(baseline) and 0 <= elapsed <= duration:
+                        baseline_errors.append(baseline - final)
+            except (KeyError, TypeError, ValueError, ZeroDivisionError):
+                pass
     n = counts["wins"] + counts["losses"]
     interval = None
     if n:
@@ -147,7 +219,110 @@ def _summary(rows, as_of) -> dict:
     return {"matches": len(rows), **{key: counts[key] for key in
             ("wins", "losses", "pushes", "pending", "invalid_result")},
             "win_rate": round(counts["wins"] / n, 6) if n else None,
-            "wilson_95": interval}
+            "wilson_95": interval,
+            "forecast_error": {
+                "samples": len(errors),
+                "model_mae": round(sum(abs(a) for a, _ in errors) / len(errors), 3) if errors else None,
+                "market_mae": round(sum(abs(b) for _, b in errors) / len(errors), 3) if errors else None,
+                "model_bias": round(sum(a for a, _ in errors) / len(errors), 3) if errors else None,
+                "pregame_baseline_samples": len(baseline_errors),
+                "pregame_baseline_mae": round(sum(abs(a) for a in baseline_errors) / len(baseline_errors), 3)
+                                        if baseline_errors else None,
+                "model_closer": sum(abs(a) < abs(b) for a, b in errors),
+                "market_closer": sum(abs(b) < abs(a) for a, b in errors),
+                "equal_error": sum(abs(a) == abs(b) for a, b in errors),
+            }}
+
+
+def _m2_availability(rows):
+    states, failures = Counter(), Counter()
+    for row in rows:
+        try:
+            analysis = json.loads(row.get("m2_analysis_json") or "null")
+        except (TypeError, ValueError):
+            states["invalid_json"] += 1
+            continue
+        if not isinstance(analysis, dict):
+            states["no_record"] += 1
+            continue
+        state = analysis.get("state")
+        states[state if state in {"ready", "pending", "disabled", "unavailable"} else "unknown"] += 1
+        if state == "unavailable":
+            code = analysis.get("reason_code") or analysis.get("source_error")
+            failures[str(code or "unspecified")] += 1
+    return {"states": dict(states), "failure_reasons": dict(failures)}
+
+
+def _forecast_report(rows, finals, as_of):
+    """Select the first frozen observation before looking at its final score."""
+    first, excluded = {}, Counter()
+    for row in rows:
+        recorded = _timestamp(row.get('recorded_at'))
+        if not recorded or recorded > as_of:
+            continue
+        try:
+            context = json.loads(row.get('forecast_json') or 'null')
+            if not isinstance(context, dict):
+                continue
+            key = (context['policy_id'], row['match_id'])
+            if key in first:
+                continue
+            first[key] = (row, context)
+        except (KeyError, TypeError, ValueError):
+            excluded['invalid_context'] += 1
+    groups = defaultdict(list)
+    for (policy_id, match_id), (row, context) in first.items():
+        try:
+            forecast = context['forecast']
+            proof = json.loads(row['market_provenance_json'])
+            captured = _timestamp(context['market_captured_at'])
+            if not captured or captured > as_of:
+                continue
+            if (context['policy_id'] != _digest(context['policy'])
+                    or context['policy']['source'] != proof['version']
+                    or forecast['engine'] != context['policy']['engine']
+                    or forecast['line'] != row['live_total']
+                    or context['score'] != f"{row['home_score']} - {row['away_score']}"):
+                raise ValueError('inconsistent forecast')
+            if proof['version'] == 'aiscore_live_v2':
+                verified, reason = verify_current_market(proof['source'], match_id, context['status'], context['score'], now=captured.timestamp())
+            else:
+                verified, reason = verify_market(proof['source'], [proof['history_latest']], match_id, context['status'], context['score'], now=captured.timestamp())
+            if (reason or verified['version'] != proof['version'] or verified['live'] != forecast['line']
+                    or verified['bookmaker_id'] != context['bookmaker_id']):
+                raise ValueError('inconsistent source')
+            center = float(forecast['predicted_total'])
+            if not math.isfinite(center):
+                raise ValueError('invalid forecast')
+            if forecast['direction'] != direction_for_total(center, forecast['line']):
+                raise ValueError('inconsistent direction')
+            final = finals.get(match_id)
+            groups[policy_id].append((forecast, final))
+        except (KeyError, TypeError, ValueError):
+            excluded['invalid_first_forecast'] += 1
+    output = {}
+    for policy_id, group in groups.items():
+        counts, errors = Counter(), []
+        for forecast, final in group:
+            settled = _timestamp(final.get('settled_at')) if final else None
+            if not final or not settled or settled > as_of or final['result_source'] != 'automatic_final_score':
+                counts['pending'] += 1
+                continue
+            total = final['final_total']
+            line = forecast['line']
+            if forecast['direction'] == 'EŞİT':
+                counts['no_direction'] += 1
+            elif total == line:
+                counts['pushes'] += 1
+            else:
+                counts['wins' if (total < line) == (forecast['direction'] == 'ALT') else 'losses'] += 1
+            errors.append((abs(forecast['predicted_total'] - total), abs(line - total)))
+        output[policy_id] = {'matches': len(group),
+            **{key: counts[key] for key in ('pending', 'wins', 'losses', 'pushes', 'no_direction')},
+            'forecast_error': {'samples': len(errors),
+                'model_mae': sum(pair[0] for pair in errors) / len(errors) if errors else None,
+                'market_mae': sum(pair[1] for pair in errors) / len(errors) if errors else None}}
+    return {'sampling': 'first_recorded_forecast_per_match_per_policy', 'cohorts': output, 'excluded': dict(excluded)}
 
 
 def report(db_path, *, as_of=None) -> dict:
@@ -158,8 +333,14 @@ def report(db_path, *, as_of=None) -> dict:
         raise ValueError("invalid as_of timestamp")
     uri = Path(db_path).resolve().as_uri() + "?mode=ro"
     with sqlite3.connect(uri, uri=True) as connection:
+        connection.execute("PRAGMA query_only=ON")
         connection.row_factory = sqlite3.Row
         rows = [dict(row) for row in connection.execute("SELECT * FROM alerts ORDER BY alerted_at, id")]
+        snapshot_columns = {row['name'] for row in connection.execute('PRAGMA table_info(match_live_snapshots)')}
+        forecasts = ([dict(row) for row in connection.execute('SELECT * FROM match_live_snapshots WHERE forecast_json IS NOT NULL ORDER BY recorded_at,id')]
+                     if 'forecast_json' in snapshot_columns else [])
+        finals = ({row['match_id']: dict(row) for row in connection.execute('SELECT * FROM forecast_match_results')}
+                  if connection.execute("SELECT 1 FROM sqlite_master WHERE name='forecast_match_results' AND type='table'").fetchone() else {})
     first = {}
     excluded = Counter()
     for row in rows:
@@ -197,11 +378,16 @@ def report(db_path, *, as_of=None) -> dict:
             "by_direction": {direction: _summary([r for r in group if r["direction"] == direction], as_of)
                              for direction in ("ALT", "ÜST")},
             "by_day_utc": {day: _summary(day_rows, as_of) for day, day_rows in sorted(days.items())},
+            "delivery_status": dict(Counter(r.get("telegram_status") or "unknown" for r in group)),
+            "delivered": _summary([r for r in group if r.get("telegram_status") == "sent"], as_of),
+            "m2_availability": _m2_availability(group),
         }
-    return {"as_of_utc": as_of.isoformat(), "sampling": "first_published_signal_per_match_per_policy",
+    return {"as_of_utc": as_of.isoformat(), "sampling": "first_recorded_signal_per_match_per_policy",
             "excluded": dict(excluded), "cohorts": output,
+            "all_forecasts": _forecast_report(forecasts, finals, as_of),
             "limitations": ["Win rate is not profitability or a calibrated probability.",
                             "Intervals do not account for league/day correlation.",
+                            "Recorded, delivered and actually placed bets are distinct; entry prices are not recorded.",
                             "Final-score evaluation does not verify bookmaker settlement terms."]}
 
 

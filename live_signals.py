@@ -1,12 +1,14 @@
-"""Future Pace Engine v5 for live total-line signals."""
+"""Continuous total forecasts, with alert eligibility separate from direction."""
 
 import math
 import re
-import statistics
 from dataclasses import dataclass
 
 from match_state import game_clock, parse_score
 from pace_calculator import get_future_paces
+
+
+ENGINE_VERSION = "future_pace_v7"
 
 
 def valid_total(value) -> float | None:
@@ -39,8 +41,46 @@ class SignalDecision:
     sustainable_projection_center: float | None = None
 
 
+def direction_for_total(center: float, line: float) -> str:
+    """An equal estimate carries no directional advantage."""
+    return "ÜST" if center > line else "ALT" if center < line else "EŞİT"
+
+
+def forecast_live_total(match: dict, config) -> dict | None:
+    """Use each scored point once; prior strength is declared, not fitted here."""
+    reference = valid_total(match.get("prematch_total")) or valid_total(match.get("opening_total"))
+    line = valid_total(match.get("inplay_total"))
+    clock = game_clock(match.get("status", ""), match.get("match_name", ""), match.get("tournament", ""))
+    home, away = parse_score(match.get("score", ""))
+    if (reference is None or line is None or home is None or away is None
+            or clock.get("period") is None or clock.get("remaining_min") is None
+            or not clock.get("quarter_length") or not clock.get("period_count")):
+        return None
+    duration = clock["quarter_length"] * clock["period_count"]
+    elapsed = (clock["period"] - 1) * clock["quarter_length"] + clock["quarter_length"] - clock["remaining_min"]
+    if not 0 <= elapsed <= duration:
+        return None
+    prior_minutes = float(config.PRIOR_EQUIV_MINUTES)
+    if elapsed + prior_minutes <= 0:
+        return None
+    score = home + away
+    pregame_ppm = reference / duration
+    future_ppm = (score + prior_minutes * pregame_ppm) / (elapsed + prior_minutes)
+    remaining = duration - elapsed
+    center = score + future_ppm * remaining
+    return {
+        "engine": ENGINE_VERSION, "method": "whole_game_pregame_shrinkage",
+        "predicted_total": center, "line": line,
+        "direction": direction_for_total(center, line), "signed_edge_points": center - line,
+        "future_ppm": future_ppm, "pregame_ppm": pregame_ppm,
+        "prior_equivalent_minutes": prior_minutes,
+        "elapsed_minutes": elapsed, "remaining_minutes": remaining,
+        "scope": "regulation", "probability_calibrated": False,
+    }
+
+
 def evaluate_live_signal(match: dict, snapshots: list[dict], config) -> SignalDecision:
-    """Evaluate Future Pace Engine v5 rules."""
+    """Keep a point forecast even when its advantage is too small for an alert."""
     prematch = valid_total(match.get("prematch_total"))
     reference_used = "prematch" if prematch is not None else "opening"
     reference = valid_total(match.get("opening_total")) if prematch is None else prematch
@@ -100,18 +140,12 @@ def evaluate_live_signal(match: dict, snapshots: list[dict], config) -> SignalDe
 
     future_paces = get_future_paces(snapshots, current_state, pregame_ppm, config)
 
-    if len(future_paces) < config.MIN_VALID_FUTURE_PACES:
-        return SignalDecision(reference_used, reference, diff, 0.0, "PAS", period, "PAS_INSUFFICIENT_FUTURE_PACE")
-
-    future_pace_lower = min(future_paces)
-    future_pace_upper = max(future_paces)
-
-    future_band_width = future_pace_upper - future_pace_lower
-    if future_band_width > config.MAX_FUTURE_BAND_WIDTH:
-        return SignalDecision(reference_used, reference, diff, 0.0, "PAS", period, "PAS_VOLATILE_REGIME")
-
-    if future_pace_lower <= market_future_pace <= future_pace_upper:
-        return SignalDecision(reference_used, reference, diff, 0.0, "PAS", period, "PAS_MARKET_INSIDE_PACE_BAND")
+    forecast = forecast_live_total(match, config)
+    if forecast is None:
+        return SignalDecision(reference_used, reference, diff, 0.0, "PAS", period, "missing_forecast")
+    # These intervals describe sensitivity, not a unanimous voting/veto system.
+    future_pace_lower = min(future_paces, default=forecast["future_ppm"])
+    future_pace_upper = max(future_paces, default=forecast["future_ppm"])
 
     required_edge_points = max(config.MIN_EDGE_POINTS, inplay_total * config.MIN_EDGE_RATIO)
 
@@ -125,24 +159,22 @@ def evaluate_live_signal(match: dict, snapshots: list[dict], config) -> SignalDe
     if abs(line_move_ratio) >= config.LARGE_REPRICE_RATIO:
         required_edge_points *= config.LARGE_REPRICE_EDGE_MULTIPLIER
 
-    over_edge_points = (future_pace_lower - market_future_pace) * remaining_total_minutes
-    under_edge_points = (market_future_pace - future_pace_upper) * remaining_total_minutes
+    signed_edge = forecast["signed_edge_points"]
 
     direction = "PAS"
     reason = "PAS_NO_EDGE"
     edge = 0.0
 
-    if market_future_pace < future_pace_lower and over_edge_points >= required_edge_points:
+    if signed_edge > 0 and signed_edge >= required_edge_points:
         direction = "ÜST"
-        edge = over_edge_points
+        edge = signed_edge
         reason = ""
-    elif market_future_pace > future_pace_upper and under_edge_points >= required_edge_points:
+    elif signed_edge < 0 and -signed_edge >= required_edge_points:
         direction = "ALT"
-        edge = under_edge_points
+        edge = -signed_edge
         reason = ""
 
-    future_pace_center = statistics.median(future_paces)
-    sustainable_projection = current_score + (future_pace_center * remaining_total_minutes)
+    sustainable_projection = forecast["predicted_total"]
 
     return SignalDecision(
         reference_used=reference_used,

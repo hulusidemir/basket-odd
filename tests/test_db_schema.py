@@ -43,6 +43,7 @@ class DatabaseSchemaTests(unittest.TestCase):
                 "upcoming_match_actions",
                 "upcoming_matches",
                 "match_live_snapshots",
+                "forecast_match_results",
             },
         )
         self.assertNotIn("ai_analysis", alert_columns)

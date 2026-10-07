@@ -75,6 +75,16 @@ class TelegramOutboxTests(unittest.TestCase):
         self.assertEqual(row["telegram_retry_count"], 1)
         self.assertNotIn("chat", row["telegram_last_error"].lower())
 
+    def test_retry_line_movement_does_not_assume_direction_matches_movement(self):
+        # A Future Pace OVER can be above the pregame line; movement is still +10.
+        with self.db._conn() as conn:
+            conn.execute("UPDATE alerts SET direction='ÜST' WHERE id=?", (self.alert_id,))
+        notifier = type('Notifier', (), {'send_alert': AsyncMock(return_value={'chat': 123})})()
+        summary = asyncio.run(retry_pending_telegram_deliveries(self.db, notifier))
+        self.assertEqual(summary['sent'], 1)
+        self.assertEqual(notifier.send_alert.call_args.args[4], 'ÜST')
+        self.assertEqual(notifier.send_alert.call_args.args[5], 10)
+
     def test_retry_during_slow_scan_recovers_initial_timeout_without_duplicate_send(self):
         async def scenario():
             started = asyncio.Event()
@@ -163,7 +173,8 @@ class TelegramOutboxTests(unittest.TestCase):
                     patch("main.TelegramNotifier", return_value=notifier), \
                     patch("main.AiscoreScraper", return_value=scraper), \
                     patch("main._telegram_outbox_worker", side_effect=worker), \
-                    patch("main._run_live_loop", side_effect=scan):
+                    patch("main._run_live_loop", side_effect=scan), \
+                    patch("main.asyncio.create_task", wraps=asyncio.create_task) as create_task:
                 task = asyncio.create_task(run())
                 await asyncio.wait_for(worker_started.wait(), 1)
                 task.cancel()
@@ -171,6 +182,8 @@ class TelegramOutboxTests(unittest.TestCase):
                     await task
                 self.assertTrue(worker_stopped.is_set())
                 scraper.close.assert_awaited_once()
+                # The run task and Telegram outbox are the only spawned tasks.
+                self.assertEqual(create_task.call_count, 2)
 
         asyncio.run(scenario())
 

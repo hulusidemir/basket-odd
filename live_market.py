@@ -1,4 +1,4 @@
-"""Verify bet365's full-game total against its source history, never row order."""
+"""Verify a selected bookmaker's full-game total against that same source."""
 
 import base64
 import hashlib
@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 BOOKMAKER_ID = 2
 MARKET = "bs"
 
-LIVE_SOURCE_JS = r"""() => {
+LIVE_SOURCE_JS = r"""preferredId => {
     const state = window.$nuxt?.$store?.state;
     const source = state?.basketball?.basketballDetailMatchData?.match;
     const component = [...document.querySelectorAll('.oddsBox, .oddsContent')]
@@ -26,11 +26,21 @@ LIVE_SOURCE_JS = r"""() => {
         prematch: [...(row.l?.odd || [])],
         live: [...(row.s?.odd || [])],
     }));
-    const rendered = component?.oddListDataArray?.filter(row => Number(row.id) === 2) || [];
     // Read the actual rendered row by its component's company order, not the first row.
     const companies = component?.oddListDataArray || [];
     const boxes = component?.$el?.querySelectorAll('.oddsBoxContent') || [];
-    const index = companies.findIndex(row => Number(row.id) === 2);
+    const slot = values => Array.isArray(values) && values.length === 4
+        && String(values[3]) === '0' && Number(values[1]) >= 100 && Number(values[1]) <= 400;
+    const counts = new Map();
+    for (const row of rows) counts.set(row.bookmaker_id, (counts.get(row.bookmaker_id) || 0) + 1);
+    const candidates = rows.filter(row => Number.isInteger(row.bookmaker_id) && row.bookmaker_id > 0
+        && counts.get(row.bookmaker_id) === 1 && slot(row.opening)
+        && (!row.live.length || slot(row.live)))
+        .sort((a, b) => Number(b.bookmaker_id === 2) - Number(a.bookmaker_id === 2)
+            || a.bookmaker_id - b.bookmaker_id);
+    const bookmakerId = preferredId ?? candidates[0]?.bookmaker_id ?? null;
+    const rendered = companies.filter(row => Number(row.id) === bookmakerId);
+    const index = companies.findIndex(row => Number(row.id) === bookmakerId);
     const cell = index >= 0 ? boxes[index]?.querySelector('.border3') : null;
     const locked = !!cell && /(?:^|[^a-z])(?:lock(?:ed|icon)?|islocked|suspend(?:ed)?|unavailable|closed)/i
         .test(`${cell.className || ''} ${cell.innerHTML || ''}`);
@@ -51,7 +61,9 @@ LIVE_SOURCE_JS = r"""() => {
         match_id: source?.id || '',
         component_match_id: component?.match?.match?.id || '',
         active_market: component?.activeTab || '',
-        market: 'bs', bookmaker_id: 2,
+        market: 'bs', bookmaker_id: bookmakerId,
+        source_version: 'aiscore_history_v2',
+        candidate_ids: candidates.map(row => row.bookmaker_id),
         source_status_id: source?.statusId,
         source_score: [score(source?.homeScores), score(source?.awayScores)],
         top_text: top,
@@ -66,7 +78,10 @@ LIVE_SOURCE_JS = r"""() => {
 }"""
 
 
-FETCH_HISTORY_JS = r"""expectedId => {
+FETCH_HISTORY_JS = r"""request => {
+    const expectedId = typeof request === 'string' ? request : request.match_id;
+    const bookmakerId = typeof request === 'string' ? 2 : request.bookmaker_id;
+    const bookmaker = typeof request === 'string' ? 'bet365' : request.bookmaker;
     const component = [...document.querySelectorAll('.oddsBox, .oddsContent')]
         .map(node => node.__vue__)
         .find(value => typeof value?.historyOdd === 'function');
@@ -75,14 +90,14 @@ FETCH_HISTORY_JS = r"""expectedId => {
     component.allData = [];
     // The raw response is consumed by Python. The UI's rendering promise must
     // not hold it up after a response has already arrived.
-    Promise.resolve(component.historyOdd(2, 'bet365'))
+    Promise.resolve(component.historyOdd(bookmakerId, bookmaker))
         .catch(() => {})
         .finally(() => { component.isShowModal = false; });
     return true;
 }"""
 
 
-def history_response_matches(url: str, match_id: str) -> bool:
+def history_response_matches(url: str, match_id: str, bookmaker_id: int = BOOKMAKER_ID) -> bool:
     parsed = urlsplit(url)
     query = parse_qs(parsed.query)
     return (
@@ -90,7 +105,7 @@ def history_response_matches(url: str, match_id: str) -> bool:
         and parsed.path == "/v1/m/api/match/odds/detail"
         and query.get("match_id") == [match_id]
         and query.get("odds_type") == [MARKET]
-        and query.get("cid") == [str(BOOKMAKER_ID)]
+        and query.get("cid") == [str(bookmaker_id)]
     )
 
 
@@ -141,7 +156,7 @@ def _single_field(fields: dict, number: int, default):
     return values[0]
 
 
-def decode_history(data: bytes) -> list[dict]:
+def decode_history(data: bytes, bookmaker_id: int = BOOKMAKER_ID) -> list[dict]:
     """Decode AiScore Response -> MatchOddsDetail using its published client schema."""
     if not data or len(data) > 512_000:
         raise ValueError("invalid_provider_response_size")
@@ -154,7 +169,7 @@ def decode_history(data: bytes) -> list[dict]:
         raise ValueError("ambiguous_history_bookmaker")
     company = _fields(companies[0])
     metadata = _fields(_single_field(company, 2, b""))
-    if metadata.get(1) != [BOOKMAKER_ID]:
+    if metadata.get(1) != [bookmaker_id]:
         raise ValueError("history_bookmaker_mismatch")
     rows = []
     for raw in company.get(1, []):
@@ -194,15 +209,18 @@ def source_error(source: dict, match_id: str, status: str, score: str) -> str:
         return "market_match_identity_mismatch"
     if source.get("market") != MARKET or source.get("active_market") != MARKET:
         return "total_market_unverified"
-    if source.get("bookmaker_id") != BOOKMAKER_ID:
+    generic = source.get("source_version") == "aiscore_history_v2"
+    bookmaker_id = source.get("bookmaker_id")
+    if (type(bookmaker_id) is not int or bookmaker_id <= 0
+            or (not generic and bookmaker_id != BOOKMAKER_ID)):
         return "bookmaker_unverified"
-    rows = [row for row in source.get("rows", []) if row.get("bookmaker_id") == BOOKMAKER_ID]
+    rows = [row for row in source.get("rows", []) if row.get("bookmaker_id") == bookmaker_id]
     if len(rows) != 1:
-        return "bet365_missing_or_ambiguous"
+        return "bookmaker_missing_or_ambiguous" if generic else "bet365_missing_or_ambiguous"
     selected = rows[0]
     opening, source_live = _slot(selected.get("opening")), _slot(selected.get("live"))
     if opening is None or (selected.get("live") and source_live is None):
-        return "bet365_odds_unavailable"
+        return "bookmaker_odds_unavailable" if generic else "bet365_odds_unavailable"
     if source.get("rendered_row_count") != 1 or source.get("rendered_cell_present") is not True:
         return "rendered_total_unavailable"
     if source.get("rendered_live_locked") is not False:
@@ -231,7 +249,9 @@ def verify_market(source: dict, history: list[dict], match_id: str, status: str,
     reason = source_error(source, match_id, status, score)
     if reason:
         return None, reason
-    selected = next(row for row in source["rows"] if row.get("bookmaker_id") == BOOKMAKER_ID)
+    bookmaker_id = source["bookmaker_id"]
+    generic = source.get("source_version") == "aiscore_history_v2"
+    selected = next(row for row in source["rows"] if row.get("bookmaker_id") == bookmaker_id)
     opening, source_live = _slot(selected.get("opening")), _slot(selected.get("live"))
     match = re.fullmatch(r"Q([1-4])\s+(\d{1,2}):([0-5]\d)", status)
     expected_score = list(map(int, re.fullmatch(r"\s*(\d{1,3})\s*-\s*(\d{1,3})\s*", score).groups()))
@@ -266,16 +286,48 @@ def verify_market(source: dict, history: list[dict], match_id: str, status: str,
             or abs(int(history_clock[2]) * 60 + int(history_clock[3]) - minutes * 60 - seconds) > 30):
         return None, "history_clock_mismatch"
     proof = {
-        "version": "bet365_history_v1", "match_id": match_id, "market": MARKET,
-        "bookmaker_id": BOOKMAKER_ID, "bookmaker": "bet365", "verified": True,
+        "version": "aiscore_history_v2" if generic else "bet365_history_v1",
+        "match_id": match_id, "market": MARKET,
+        "bookmaker_id": bookmaker_id,
+        "bookmaker": (selected.get("bookmaker") or str(bookmaker_id)) if generic else "bet365",
+        "verified": True,
         "opening": opening, "prematch": _slot(selected.get("prematch")), "live": live,
-        "live_source": "bet365_history", "source_live": source_live,
+        "live_source": "bookmaker_history" if generic else "bet365_history", "source_live": source_live,
         "status": status, "score": score, "provider_updated_at": newest,
         "provider_age_seconds": max(0.0, age),
         "captured_at": datetime.fromtimestamp(now, timezone.utc).isoformat(),
         "source": source, "history_latest": record,
     }
     return proof, ""
+
+
+def verify_current_market(source: dict, match_id: str, status: str, score: str,
+                          *, now: float) -> tuple[dict | None, str]:
+    """Verify the currently rendered quote against same-company application state.
+
+    Odds-history timestamps describe line changes; they are not a heartbeat
+    for the current quote. A populated live cell does not need that history.
+    """
+    if source.get("source_version") != "aiscore_history_v2":
+        return None, "bookmaker_unverified"
+    reason = source_error(source, match_id, status, score)
+    if reason:
+        return None, reason
+    selected = next(row for row in source["rows"] if row["bookmaker_id"] == source["bookmaker_id"])
+    live = _slot(selected.get("live"))
+    if live is None:
+        return None, "current_live_total_missing"
+    return {
+        "version": "aiscore_live_v2", "match_id": match_id, "market": MARKET,
+        "bookmaker_id": source["bookmaker_id"],
+        "bookmaker": selected.get("bookmaker") or str(source["bookmaker_id"]),
+        "verified": True, "opening": _slot(selected.get("opening")),
+        "prematch": _slot(selected.get("prematch")), "live": live,
+        "status": status, "score": score,
+        "captured_at": datetime.fromtimestamp(now, timezone.utc).isoformat(),
+        "live_source": "current_state_and_rendered_cell", "source": source,
+        "provider_freshness_verified": False,
+    }, ""
 
 
 def attach_raw_history(proof: dict, raw: bytes) -> dict:
@@ -286,15 +338,33 @@ def attach_raw_history(proof: dict, raw: bytes) -> dict:
 def provenance_error(match: dict, max_age: float = 30.0) -> str:
     """Recheck frozen source identity and age at the final signal boundary."""
     proof = match.get("market_provenance")
-    if not isinstance(proof, dict) or proof.get("version") != "bet365_history_v1" or proof.get("verified") is not True:
+    if (not isinstance(proof, dict) or proof.get("version") not in {"bet365_history_v1", "aiscore_history_v2", "aiscore_live_v2"}
+            or proof.get("verified") is not True):
         return "market_provenance_missing"
+    bookmaker_id = proof.get("bookmaker_id")
+    if (type(bookmaker_id) is not int or bookmaker_id <= 0
+            or (proof["version"] == "bet365_history_v1" and bookmaker_id != BOOKMAKER_ID)):
+        return "bookmaker_unverified"
     for key, value in (("match_id", match.get("match_id")), ("market", MARKET),
-                       ("bookmaker_id", BOOKMAKER_ID), ("live", match.get("inplay_total")),
+                       ("live", match.get("inplay_total")),
                        ("opening", match.get("opening_total")), ("prematch", match.get("prematch_total")),
                        ("status", match.get("status")), ("score", match.get("score"))):
         if proof.get(key) != value:
             return "market_provenance_mismatch"
     updated = proof.get("provider_updated_at")
+    if proof["version"] == "aiscore_live_v2":
+        try:
+            captured = datetime.fromisoformat(proof["captured_at"])
+            if captured.tzinfo is None or not -5 <= datetime.now(timezone.utc).timestamp() - captured.timestamp() <= max_age:
+                return "market_observation_stale"
+            verified, reason = verify_current_market(
+                proof["source"], match["match_id"], match["status"], match["score"], now=captured.timestamp(),
+            )
+            if reason:
+                return reason
+            return "" if verified == proof else "market_provenance_mismatch"
+        except (KeyError, ValueError, TypeError):
+            return "market_provenance_invalid"
     if type(updated) is not int or not -5 <= datetime.now(timezone.utc).timestamp() - updated <= max_age:
         return "provider_history_stale"
     try:
@@ -302,14 +372,14 @@ def provenance_error(match: dict, max_age: float = 30.0) -> str:
         if hashlib.sha256(raw).hexdigest() != proof.get("raw_history_sha256"):
             return "provider_history_evidence_mismatch"
         verified, reason = verify_market(
-            proof.get("source") or {}, decode_history(raw), match["match_id"],
+            proof.get("source") or {}, decode_history(raw, bookmaker_id), match["match_id"],
             match.get("status", ""), match.get("score", ""),
             now=datetime.now(timezone.utc).timestamp(), max_age=max_age,
         )
         if reason:
             return reason
         if any(verified[key] != proof.get(key) for key in (
-            "opening", "prematch", "live", "provider_updated_at", "history_latest",
+            "version", "bookmaker_id", "opening", "prematch", "live", "provider_updated_at", "history_latest",
         )):
             return "provider_history_evidence_mismatch"
     except (ValueError, TypeError, KeyError, AttributeError):

@@ -1,5 +1,135 @@
 # Current State
 
+7 Ekim 2026 — Kullanıcının ALT/ÜST ayrımı ve ÜST kalibrasyon talebiyle
+salt okunur inceleme/kronolojik deneme yapıldı. Karma eski ilk sinyallerde
+ALT 438/726 (%60,3), ÜST 198/399 (%49,6). Eğitimde öğrenilen 8,972961 sayılık
+ÜST sapması sonraki testte merkez isabetini 85/171'den 95/171'e çıkardı;
+ek bildirim avantajı yapmak ise 171 ÜST'ün 25'ini bırakıp 17/25 gösterdi.
+Kaynak doğrulanan alt grupta yalnız bir ÜST kaldığından canlı pay/filtre
+eklenmedi. Ana model/eşik/Telegram değişmedi; otomatik yön ters çevirme yok.
+Ana ekran ALT/ÜST sinyal başarıları ve tüm tahminler ekranı ayrı yön başarı
+kartları eklendi. İlk kayıt yön/sonuçtan önce seçilir; sonraki ters yönlü
+kazanan kayıp ilk tahminin grubunu değiştirmez. Toplam-only GET
+/api/signals/performance ve mevcut tahmin özeti by_direction kullanılır;
+dakikalık yenileme, yeni tablo/indeks/worker/migration/backfill yok.
+directional_audit.py geçmişi değişmeden tekrar ölçer. Son paket 468 test
+(35,27s), compileall/JS/diff geçti. Ayrı fixture tarayıcıda 1440/390px,
+ikili yön oranları, barem senaryosunun başarıya etkisizliği geçti; JS hatası 0.
+Ayrıntılar docs/DIRECTIONAL_CALIBRATION_2026-10-07.md içinde.
+Tutarlı 0600 SQLite yedeği sonrası yalnız dashboard yenilendi; bot PID'si
+aynı. İkisi active/running, restart/traceback 0. İki ekran/iki takip API'si
+HTTP 200; sinyal toplamları 35,31ms, tahmin geçmişi 9,57ms, quick_check ok.
+
+7 Ekim 2026 — Kullanıcının "M2 çalışmıyorsa kaldır" talebiyle motor yeniden
+incelendi. Başlangıçta 28, son kontrolde 30 üretim denemesinin tamamı
+kullanılamaz; ilk kaynak kontrolünde tek ready görülmesine rağmen aday
+onarımın gerçek worker/geçici DB akışındaki dört denemesi de başarısızdı.
+M2 canlı akıştan kaldırıldı: bot import/worker/tarayıcı bağlantısı ve yeni
+sinyale M2 eklenmesi yok; canlı sütun/modal/asset/sıralama alanı kaldırıldı.
+Eski M2_ENABLED ayarı kullanılmaz. Önceden dondurulmuş arşiv ve DB kolonu
+korunur; migration/backfill yok. Ana model hesabı, Telegram avantajı ve tüm
+tahminlerin hafif geçmiş/başarı takibi değişmedi. Ayrıntı ve son doğrulama:
+`docs/M2_REVIEW_2026-10-07.md`.
+Son paket 456 test (44,17s), compileall/JS/diff geçti; ayrı fixture tarayıcıda
+1440/390px, dokuz sütun, sıralama ve ana modal kontrolü başarılı, JS hatası 0.
+Tutarlı 0600 SQLite yedeği sonrası mevcut bot/dashboard servisleri yenilendi.
+İkisi active/running, restart/traceback 0; bot M2 kaldırma kaydı/hash eşleşti.
+Üretimde M2 tarayıcı process'i 0; ana/tahmin/arşiv ekranları ve iki tahmin
+API'si HTTP 200, SQLite quick_check ok. Yeni tahmin üstünlüğü iddiası yok.
+
+7 Ekim 2026 — Kullanıcının "tüm tahminler için başarı/geçmiş, light olsun"
+talebi uygulandı. `/forecasts` başarı yüzdesi, doğru/yanlış, bekleyen ve
+maç/kayıt kartları ile tüm kayıtların 50'lik geçmiş sayfalarını gösterir.
+Özet maç başına ilk kaydı kullanır; sonraki kazanan ilk kaybın yerine geçmez.
+Bekleyen/iade/EŞİT ve geçersiz kayıtlar başarı paydasına girmez. Gösterim
+yalnız frozen forecast context'ten, sonuç yalnız otomatik final tablosundan
+okunur. Barem senaryosu bu takibe yazılmaz. GET `/api/forecasts/history`
+cursor sayfalı, en fazla 100 kayıt; yenileme dakikada bir. Mevcut snapshot/final
+tablolarına ek olarak yalnız iki küçük kısmi indeks var; eski verilerde
+backfill, yeni scraper/worker veya manuel sonuç API'si yok.
+İlgili 55 test ve tam paket 456 test (45,30s), compileall/JS/diff kontrolleri
+geçti. Kendi geçici tarayıcısıyla 1440/390px, 50/10 kayıt sayfalama, canlı
+barem senaryosunun başarıya etki etmemesi ve güvenli metin gösterimi geçti;
+tarayıcı kapatıldı. Tutarlı 0600 SQLite yedeği/bütünlük kontrolü sonrası yalnız
+mevcut dashboard servisi yenilendi; bot PID'si değişmedi. İkisi active/running,
+otomatik restart 0. Ana ekran, tahmin ekranı ve iki tahmin API'si HTTP 200;
+geçmiş API'si ilk kontrolde 6,3ms, 6 maç/156 kayıt, 1 sonuçlanmış/5 bekleyen
+ve geçersiz 0 gösterdi. İki indeks üretimde mevcut, SQLite quick_check ok,
+yeni dashboard invocation'ında traceback 0.
+
+7 Ekim 2026 — Kullanıcının hızlı/yavaş başlayan maçın sonraki hız dönüşünü
+ölçme talebi için `reversal_audit.py` eklendi. 1.355 sinyal/1.126 maç ve
+yaklaşık 68 bin gözlem salt okunur incelendi. Maç başına ilk kayıt ve
+sinyal zamanı prefix'i seçilir; sonraki skor yalnız etikettir. 1 Ekimden
+sonraki ayrı testte maç önü hıza dönüş, beş dakika yönünü 138/193, kalan
+normal süre yönünü 86/104 doğru buldu. Ancak %10 değişim üçlü sınıflamasında
+V7 yalnız 54/193, basit dönüş 108/193: V7 miktarı fazla bastırıyor. Final
+testinde V7 180/327, dönüş 174/327; ham kaynak/politikası doğrulanan 71
+maçta V7 33/71, dönüş 40/71. Hız ve bahis başarıları birbirine eşitlenmez.
+Ridge/trend eklemek geniş testte bahis isabetini artırmadı; motor/servis
+değiştirilmedi. Ayrıntı ve internet kaynakları TEMPO_REVERSAL_2026-10-07.md.
+
+7 Ekim 2026 yaklaşık 01:06 Türkiye saati — Kullanıcının bet365 zorunluluğunu
+kaldırma ve "Tüm tahminler ekranda, avantaj varsa Telegram" talebi uygulandı.
+V7 tek merkezle bütün geçerli gözlemlerde tahmin üretir; erken/geç ve küçük
+avantajlılar da `/forecasts` ekranında görünür, farklı baremle geçici yön/fark
+karşılaştırması yapılabilir. V6 maç önü senaryosu ve pencere oyları yayın vetosu
+olmaktan çıktı; merkez bütün skorun öncüle yaklaştırılmasıdır. Eski kesitte
+yön doğruluğu artmadı; başarı/kârlılık iddiası yok. Her şirketin kendi canlı
+state/DOM uyumu kullanılabilir; dolu hücre history beklemez. Boş hücre için
+aynı şirketin ham kanıtlı, güncel history fallback'i vardır. Yeni live v2
+kanıtı provider tazeliğini bağımsız doğruladığı iddiasını taşımaz.
+
+Nullable `forecast_json` ve otomatik final için `forecast_match_results`
+eklemeli geçişi var. Sinyalsiz tahmin maçları da mevcut saatlik/buton final
+taramasına dahildir; rapor ilk tahmini sonuçtan önce seçer. Eski snapshot,
+alert/arşiv/sonuç yeniden yazılmaz; manuel sonuç API'si eklenmedi.
+Tam paket 416 test (34,81s), compileall, JS/diff kontrolü geçti. Geçici
+tarayıcıyla 1440/390px, senaryo/sıfırlama ve güvenli metin gösterimi kontrolü
+başarılı; özel tarayıcı kapatıldı. Tutarlı 0600 SQLite yedeği alındı ve mevcut
+bot/dashboard servisleri yenilendi. V7 startup/publication ve implementation
+hash'i doğrulandı; her iki servis active/running, otomatik restart 0.
+`/`, `/forecasts`, `/api/forecasts` HTTP 200; SQLite quick_check ok.
+
+İlk üç taramada bir partial, ardından iki ok: toplam üç doğrulanmış gözlem
+işlendi; bir maçta üç gerçek v7 tahmini kaydedildi. İlk partial'daki iki
+provider hazırlık hatası sonraki çevrimde görülmedi; son iki çevrimde üç
+bağlantı `bookmaker_odds_unavailable` nedeniyle atlandı. Bet365 dışı üretim
+tahmini, yeni alert/Telegram teslimi ve gerçek M2 sonucu bu kısa kontrolde
+gözlenmedi. Yeni forecast raporunda bir politika, dışlanan tahmin 0; yeni
+tahminlerin final sonucu henüz yok. Ayrıntılar SIGNAL_REPAIR_2026-10-07.md.
+
+7 Ekim 2026 yaklaşık 00:47 Türkiye saati — Kullanıcının açık başlatma
+onayıyla mevcut `basket-bot.service` yeniden başlatıldı. Önce tutarlı SQLite
+yedeği alındı; yedek izinleri 0600 ve bütünlük kontrolü başarılı. Başlangıç
+implementation hash'i mevcut kodla eşleşiyor; Future Pace v6 ve
+`verified_future_pace_v6` yüklenmiş. İlk dört tarama `ok`; ana döngü/maç
+işleme hatası ve otomatik restart 0, SQLite quick_check ok. Son taramada
+dört bağlantının üçü `bet365_missing_or_ambiguous`, biri
+`live_clock_or_score_unverified` nedeniyle atlandı. Dört çevrimde motora
+ulaşan doğrulanmış maç 0; yeni gerçek sinyal/M2/teslim/tahmin başarısı bu
+kontrolde gözlenmedi. Dashboard servisi yeniden başlatılmadı. V6'nın geçmiş
+seçilmiş sinyalleri daha fazla elemesi, canlı başarı veya sabit sinyal
+sayısı garantisi olarak yorumlanmaz.
+
+7 Ekim 2026 — Kullanıcının sinyal hatalarını ölçüp düzeltme talebiyle salt
+okunur denetim ve internet kaynak incelemesi yapıldı. En yeni politikada ilk
+25 maçın 23'ü sonuçlanmış: 9 kazanç/14 kayıp; ALT 8/17, ÜST 1/6. Model MAE
+11,68, piyasa 9,07, maç önü kalan-hız bazı 8,71 sayı. M2'nin 26 kaydının
+tamamı kimlik reddi; geçici profilli gerçek kontrolde kimlik/API geçti fakat
+örnek maçta tam boxscore yoktu. Servis ve üretim kayıtları değiştirilmedi.
+M1 v6, aynı aralığı bir kez sayar ve maç önü hızına dönüş senaryosunda da
+yeterli ALT/ÜST avantajı arar; senaryo gözlem sayılmaz. Yeni politika ve
+gerçek aralıklar yalnız yeni sinyallerde dondurulur. M2 hazırlık/okuyucu
+kimlik kontrolleri ortaklaştırıldı; başarısız alanlar kaydedilir. Forward
+raporuna model/piyasa/baz hata, teslim alt kümesi ve M2 durumları eklendi.
+Retry barem farkının işareti yön yerine live-reference'tan okunur.
+V6 tekrarında son grupta 21/25 PAS oldu; bu seçilmiş eski örneklerden yeni
+başarı sonucu çıkarılmaz. Tam paket 406 test, ilgili Python compileall,
+JS sözdizimi ve diff-check geçti. Migration/backfill yok; yeni tahmin başarısı ve
+serviste yeni davranış henüz doğrulanmadı. Ayrıntılar:
+`docs/SIGNAL_REPAIR_2026-10-07.md`.
+
 7 Ekim 2026 — M2'nin sürekli veri yetersiz görünmesi incelendi. Ayrı profilin
 doğrudan `page.goto` yolu Scrapling'in Cloudflare çözümünü kullanmıyordu;
 M2 artık `session.fetch` üzerinden gezinir ve aynı sekmede kimlik/URL hazır

@@ -70,7 +70,7 @@ def test_only_actual_published_predictions_get_a_frozen_policy(database):
     assert context["clock"]["quarter_length"] == 10
     assert len(context["policy_id"]) == 64
     assert context["snapshot_ids"]
-    assert context["policy"]["publication"] == "verified_future_pace_v5"
+    assert context["policy"]["publication"] == "verified_future_pace_v7"
     assert "MIN_SIGNAL_QUALITY" not in context["policy"]["parameters"]
     settle(database, 1)
     assert overall(database)["wins"] == 1
@@ -174,3 +174,51 @@ def test_inconsistent_prediction_or_source_is_excluded(database, column, value):
     with database._conn() as conn:
         conn.execute(f"UPDATE alerts SET {column}=? WHERE id=?", (value, alert_id))
     assert report(database.db_path)["cohorts"] == {}
+
+
+def test_forecast_error_uses_frozen_prediction_and_market_baseline(database):
+    alert_id = published(database)
+    settle(database, alert_id, total=170)
+    with database._conn() as conn:
+        conn.execute('UPDATE alerts SET fair_total=999 WHERE id=?', (alert_id,))
+    error = overall(database)['forecast_error']
+    assert error['samples'] == 1
+    assert (error['model_mae'], error['market_mae'], error['model_bias']) == (20, 10, -20)
+    assert (error['model_closer'], error['market_closer'], error['equal_error']) == (0, 1, 0)
+    assert error['pregame_baseline_samples'] == 1
+    # Frozen score 54, 25 minutes remaining at 165/40 PPM -> 157.125, final 170.
+    assert error['pregame_baseline_mae'] == 12.875
+
+
+def test_unsettled_or_invalid_result_does_not_enter_forecast_error(database):
+    published(database, 'pending')
+    settle(database, published(database, 'bad'), total=190, result='Başarılı')
+    summary = overall(database)
+    assert summary['forecast_error']['samples'] == 0
+    assert summary['forecast_error']['model_mae'] is None
+
+
+def test_delivered_subset_does_not_replace_cancelled_first_with_later_win(database):
+    first = published(database)
+    later = published(database, signal_count=2)
+    settle(database, first, total=190, result='Başarısız')
+    settle(database, later, total=170)
+    with database._conn() as conn:
+        conn.execute("UPDATE alerts SET telegram_status='cancelled' WHERE id=?", (first,))
+        conn.execute("UPDATE alerts SET telegram_status='sent' WHERE id=?", (later,))
+    cohort = next(iter(report(database.db_path)['cohorts'].values()))
+    assert cohort['overall']['losses'] == 1
+    assert cohort['delivered']['matches'] == 0
+    assert cohort['delivery_status'] == {'cancelled': 1}
+
+
+def test_new_prediction_freezes_actual_intervals_and_merged_labels():
+    payload = verified_payload({'match_id': 'm', 'match_name': 'Home - Away', 'tournament': 'FIBA',
+                               'status': 'Q2 05:00', 'score': '40 - 35', 'opening_total': 160,
+                               'prematch_total': 160, 'inplay_total': 180})
+    history = [{'id': 1, 'elapsed_game_seconds': 780, 'total_score': 60, 'period': 2,
+                'recorded_at': (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()}]
+    decision = SignalDecision('prematch', 160, 20, 0, 'ALT', 2)
+    context = freeze_prediction(payload, decision, Config(), history)
+    assert len(context['pace_windows']) == 2
+    assert context['pace_windows'][1]['labels'] == ['recent_2m', 'observed_period_segment']

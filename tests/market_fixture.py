@@ -3,7 +3,7 @@
 import re
 import time
 
-from live_market import attach_raw_history, verify_market
+from live_market import attach_raw_history, verify_current_market, verify_market
 
 
 def _varint(number):
@@ -55,4 +55,17 @@ def verified_payload(payload):
                                  payload["score"], now=now)
     assert not reason
     payload["market_provenance"] = attach_raw_history(proof, raw)
+    return payload
+
+
+def current_payload(payload, bookmaker_id=101):
+    payload = verified_payload(payload)
+    source = payload['market_provenance']['source']
+    source['source_version'] = 'aiscore_history_v2'
+    source['bookmaker_id'] = bookmaker_id
+    source['rows'][0]['bookmaker_id'] = bookmaker_id
+    source['rows'][0]['bookmaker'] = 'Book A'
+    proof, reason = verify_current_market(source, payload['match_id'], payload['status'], payload['score'], now=time.time())
+    assert not reason
+    payload['market_provenance'] = proof
     return payload

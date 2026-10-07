@@ -1,6 +1,8 @@
+import json
+import subprocess
 import unittest
 
-from aiscore_basketball_data import normalize_basketball_data
+from aiscore_basketball_data import BASKETBALL_DATA_JS, BASKETBALL_READY_JS, normalize_basketball_data
 
 
 def observation():
@@ -16,6 +18,31 @@ def observation():
 
 
 class BasketballDataTests(unittest.TestCase):
+    def test_readiness_waits_for_all_identity_fields_and_reports_failed_field(self):
+        script = '''const window = {$nuxt: {$store: {state: {basketball: {
+            basketballDetailMatchData: {match: {id: 'sample', statusId: 4,
+                homeScores: [20,28,0,0,0], awayScores: [20,28,0,0,0]}},
+            detailMatchId: 'previous'
+        }}}}};
+        const location = {pathname: '/basketball/match-home-away/sample/odds'};
+        const document = {querySelector: () => null};
+        '''
+        script += 'const ready = (' + BASKETBALL_READY_JS + ');\n'
+        script += 'const read = (' + BASKETBALL_DATA_JS + ');\n'
+        script += '''const before = {ready: ready('sample'), data: read('sample')};
+        window.$nuxt.$store.state.basketball.detailMatchId = 'sample';
+        const after = {ready: ready('sample'), data: read('sample')};
+        console.log(JSON.stringify({before, after}));'''
+        result = json.loads(subprocess.run(['node', '-e', script], check=True,
+                                           capture_output=True, text=True).stdout)
+        self.assertFalse(result['before']['ready'])
+        checks = result['before']['data']['identity_checks']
+        self.assertEqual(checks, {'source_match_id': True, 'detail_match_id': False, 'url_match_id': True})
+        self.assertTrue(result['after']['ready'])
+        self.assertNotIn('error', result['after']['data'])
+        normalized = normalize_basketball_data(result['before']['data'], 'sample')
+        self.assertEqual(normalized['identity_checks'], checks)
+
     def test_exact_attempts_and_two_pointers(self):
         result = normalize_basketball_data(observation(), "sample")
         self.assertTrue(result["full_boxscore_available"])

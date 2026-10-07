@@ -64,6 +64,13 @@ def evaluate_m2(context, data, *, now=None):
 
     if not data.get("available"):
         result["source_error"] = data.get("error")
+        identity_labels = {"source_match_id": "Kaynak maç kimliği",
+                           "detail_match_id": "Ayrıntı sayfası maç kimliği",
+                           "url_match_id": "Sayfa URL maç kimliği"}
+        for key, label in identity_labels.items():
+            checked = (data.get("identity_checks") or {}).get(key)
+            if isinstance(checked, bool):
+                result["checks"].append({"label": label, "passed": checked})
         errors = {
             "observation_score_mismatch": "İstatistik skoru sinyal anıyla uyuşmuyor",
             "match_identity_mismatch": "Maç kimliği doğrulanamadı",

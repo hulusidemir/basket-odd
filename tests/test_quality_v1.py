@@ -30,7 +30,8 @@ def decision(payload, paces):
 
 
 def test_under_negative_move_keeps_candidate_with_quality_pas():
-    payload = match(inplay_total=150, score="25 - 25")
+    # Low enough realized score that ALT survives the pregame-rate scenario too.
+    payload = match(inplay_total=150, score="20 - 20")
     candidate = decision(payload, [2.5, 2.8])
     score, label, factors = score_signal_quality(payload, candidate, Config())
     assert candidate.direction == "ALT"
@@ -38,7 +39,7 @@ def test_under_negative_move_keeps_candidate_with_quality_pas():
     assert score < 40 and label == "PAS"
     assert factors["market_move"] <= -45
 
-    worse_payload = match(inplay_total=148, score="25 - 25")
+    worse_payload = match(inplay_total=148, score="20 - 20")
     worse = decision(worse_payload, [2.5, 2.8])
     worse_score, worse_label, worse_factors = score_signal_quality(worse_payload, worse, Config())
     assert worse.direction == "ALT"
@@ -71,7 +72,7 @@ def test_over_pace_margin_and_q2_margin_lower_quality():
 
 
 def test_over_fair_edge_below_eight_keeps_candidate_with_penalty():
-    payload = match(opening_total=200, prematch_total=200)
+    payload = match(opening_total=200, prematch_total=200, inplay_total=225)
     candidate = decision(payload, [4.2, 4.3])
     assert candidate.direction == "ÜST" and candidate.skip_reason == ""
     score, _, factors = score_signal_quality(payload, candidate, Config())
@@ -128,8 +129,8 @@ def test_engine_pas_rules_remain_active():
     for payload, paces, reason in (
         (match(score=""), [4.4, 4.5], "missing_score"),
         (match(inplay_total=90), [4.4, 4.5], "PAS_STALE_DATA_SCORE_HIGH"),
-        (match(), [3.0, 6.0], "PAS_VOLATILE_REGIME"),
-        (match(), [4.0, 4.1], "PAS_MARKET_INSIDE_PACE_BAND"),
+        (match(status="Q1 05:00"), [3.0, 6.0], "PAS_EARLY_GAME"),
+        (match(status="Q4 01:00"), [4.0, 4.1], "PAS_LATE_GAME"),
     ):
         candidate = decision(payload, paces)
         assert candidate.direction == "PAS"
@@ -142,7 +143,7 @@ def test_quality_insert_archive_restart_and_legacy_null(tmp_path):
     database = Database(str(tmp_path / "quality.db"))
     database.init()
     legacy = database.save_alert("old", "Old - Match", 160, 170, "ALT", 10)
-    payload = match(inplay_total=150, score="25 - 25")
+    payload = match(inplay_total=150, score="20 - 20")
     candidate = decision(payload, [2.5, 2.8])
     assert candidate.direction == "ALT"
     notifier = type("Notifier", (), {"send_alert": AsyncMock(return_value={"recipient": 1})})()

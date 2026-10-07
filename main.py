@@ -25,13 +25,18 @@ from match_state import (
 )
 from signal_lists import build_signal_blacklist_matches, build_signal_list_profile
 from signal_repeat import live_total_delta
-from live_signals import SignalDecision, evaluate_live_signal, valid_total
+from live_signals import ENGINE_VERSION, SignalDecision, evaluate_live_signal, forecast_live_total, valid_total
 from reversal_features import collect_reversal_features
 from signal_quality import score_signal_quality
 from live_market import provenance_error
-from forward_validation import IMPLEMENTATION_HASH, freeze_prediction
-from motor2 import pending_m2
-from motor2_worker import run_m2_worker
+from forward_validation import IMPLEMENTATION_HASH, freeze_forecast, freeze_prediction
+
+
+def _provenance_age_limit(match, config) -> float:
+    proof = match.get("market_provenance") or {}
+    if proof.get("version") == "aiscore_live_v2":
+        return float(config.MAX_LIVE_OBSERVATION_AGE_SECONDS)
+    return float(config.MAX_LIVE_PROVIDER_AGE_SECONDS)
 
 
 class _ConsecutiveFailureAlertLatch:
@@ -298,7 +303,6 @@ def _save_signal(match: dict, decision: SignalDecision, signal_count: int, db: D
         reversal_features_version="v1", reversal_features=reversal_features,
         market_provenance=match.get("market_provenance"),
         prediction_context=freeze_prediction(match, decision, config, snapshots or []),
-        m2_analysis=pending_m2(match, enabled=getattr(config, "M2_ENABLED", True)),
     )
 
 
@@ -314,7 +318,7 @@ async def _deliver_signal(match, decision, signal_count, alert_id, db, notifier,
 
 
 async def _deliver_signal_payload(match, decision, signal_count, alert_id, db, notifier, config):
-    reason = provenance_error(match, config.MAX_LIVE_PROVIDER_AGE_SECONDS)
+    reason = provenance_error(match, _provenance_age_limit(match, config))
     if reason:
         db.cancel_telegram_delivery(alert_id, f"Source validation failed before delivery: {reason}")
         return
@@ -381,7 +385,7 @@ async def process_match(
     match = _normalize_match_payload(match)
     if _match_is_blocked(match, db, config, signal_list_profile):
         return
-    source_error = provenance_error(match, float(getattr(config, "MAX_LIVE_PROVIDER_AGE_SECONDS", 30.0)))
+    source_error = provenance_error(match, _provenance_age_limit(match, config))
     if source_error:
         logging.getLogger("main").warning(
             "Unverified live total rejected: match_id=%s reason=%s", match["match_id"], source_error,
@@ -480,6 +484,9 @@ async def _process_match_with_format(match, db, notifier, config, observation_ag
             live_total=float(match["inplay_total"]),
             heartbeat_seconds=config.HEARTBEAT_SECONDS,
             market_provenance=match.get("market_provenance"),
+            forecast=(None if score_decreased else freeze_forecast(
+                match, forecast_live_total(match, config), config,
+            )),
         )
         if score_decreased:
             logging.getLogger("main").warning(
@@ -523,9 +530,11 @@ def _snapshot_has_verified_market(row: dict) -> bool:
     except (TypeError, ValueError):
         return False
     return (
-        isinstance(proof, dict) and proof.get("version") == "bet365_history_v1"
+        isinstance(proof, dict) and proof.get("version") in {"bet365_history_v1", "aiscore_history_v2", "aiscore_live_v2"}
         and proof.get("verified") is True and proof.get("market") == "bs"
-        and proof.get("bookmaker_id") == 2 and proof.get("match_id") == row.get("match_id")
+        and type(proof.get("bookmaker_id")) is int and proof["bookmaker_id"] > 0
+        and (proof["version"] != "bet365_history_v1" or proof["bookmaker_id"] == 2)
+        and proof.get("match_id") == row.get("match_id")
         and proof.get("live") == row.get("live_total")
         and proof.get("score") == f'{row.get("home_score")} - {row.get("away_score")}'
         and proof.get("status") == f'Q{row.get("period")} {row.get("game_clock")}'
@@ -608,7 +617,7 @@ async def retry_pending_telegram_deliveries(
             "opening_total": row.get("opening"), "prematch_total": row.get("prematch"),
             "inplay_total": row.get("live"), "status": row.get("status"), "score": row.get("score"),
         }
-        if provenance_error(payload, Config.MAX_LIVE_PROVIDER_AGE_SECONDS):
+        if provenance_error(payload, _provenance_age_limit(payload, Config)):
             db.cancel_telegram_delivery(alert_id, "Source proof expired, missing or inconsistent")
             cancelled += 1
             continue
@@ -666,7 +675,9 @@ async def retry_pending_telegram_deliveries(
                 float(row.get("opening")),
                 float(row.get("live")),
                 direction,
-                float(row["diff"]) * (1 if direction == "ALT" else -1),
+                float(row["live"]) - (valid_total(row.get("reference_total"))
+                    or (valid_total(row.get("prematch")) if row.get("reference_used") != "opening" else None)
+                    or float(row["opening"])),
                 str(row.get("status") or ""),
                 score=str(row.get("score") or ""),
                 signal_count=int(row.get("signal_count") or 1),
@@ -772,12 +783,12 @@ async def run():
         config.LIVE_SCRAPE_TIMEOUT_SECONDS,
     )
     log.info(
-        "Live source verification: bet365 company_id=2 market=bs history_max_age=%.1fs; Quality v1 informational; publication=verified_future_pace_v5",
-        config.MAX_LIVE_PROVIDER_AGE_SECONDS,
+        "Live source verification: any available bookmaker, same-company market=bs observation_max_age=%.1fs history_fallback_max_age=%.1fs; Quality v1 informational; publication=verified_%s",
+        config.MAX_LIVE_OBSERVATION_AGE_SECONDS, config.MAX_LIVE_PROVIDER_AGE_SECONDS, ENGINE_VERSION,
     )
     log.info(
-        "Bot started. Future Pace v5 | elapsed >= %s min | remaining >= %s min | valid paces >= %s | edge >= max(%s pts, live * %s) | OT disabled | Poll: %s-%ss | Max/match: %s | Same direction: %s pts live-total gap | 1 alert per period",
-        config.MIN_ELAPSED_MINUTES, config.MIN_REMAINING_MINUTES, config.MIN_VALID_FUTURE_PACES,
+        "Bot started. Future Pace v7 | continuous forecasts, whole-game pregame shrinkage | alert elapsed >= %s min | alert remaining >= %s min | edge >= max(%s pts, live * %s) | OT disabled | Poll: %s-%ss | Max/match: %s | Same direction: %s pts live-total gap | 1 alert per period",
+        config.MIN_ELAPSED_MINUTES, config.MIN_REMAINING_MINUTES,
         config.MIN_EDGE_POINTS, config.MIN_EDGE_RATIO,
         config.POLL_INTERVAL_MIN, config.POLL_INTERVAL_MAX,
         config.MAX_SIGNALS_PER_MATCH, config.SAME_DIRECTION_MIN_LIVE_DELTA,
@@ -785,13 +796,12 @@ async def run():
 
     in_flight_alert_ids: set[int] = set()
     outbox_task = asyncio.create_task(_telegram_outbox_worker(db, notifier, in_flight_alert_ids))
-    m2_task = asyncio.create_task(run_m2_worker(db, enabled=config.M2_ENABLED))
+    log.info("M2 removed from live operation: no new assessments or M2 browser worker.")
     try:
         await _run_live_loop(config, db, notifier, scraper, in_flight_alert_ids)
     finally:
         outbox_task.cancel()
-        m2_task.cancel()
-        await asyncio.gather(outbox_task, m2_task, return_exceptions=True)
+        await asyncio.gather(outbox_task, return_exceptions=True)
         await scraper.close()
 
 

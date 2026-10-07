@@ -1,5 +1,10 @@
 # M2: bağımsız basketbol değerlendirmesi
 
+> 7 Ekim 2026: M2 canlı uygulamadan kaldırıldı. Yeni analiz veya M2 worker
+> çalıştırılmaz; `M2_ENABLED` ayarı kullanılmaz. Aşağıdaki metin eski v1
+> deneyini ve dondurulmuş arşiv verisinin anlamını açıklar. Güncel karar:
+> [M2 incelemesi](M2_REVIEW_2026-10-07.md).
+
 6 Ekim 2026 kullanıcı talebi: dashboard'da mevcut motorun yanında M2 yönünü
 göster; veri yoksa bunu açıkla, ayrı modalda veri kalitesini ve ALT/ÜST
 gerekçesini göster. Bu talep, önceki yalnız araştırma okuyucusu kararını
